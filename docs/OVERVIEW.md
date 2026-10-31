@@ -207,8 +207,17 @@ what you get, what to do next.
   bypass setting (Never, On-Net, Always), the client forwarding policy
   (Intercept, Intercept accessible, Bypass) and the access policy, with
   device posture answered both passing and failing; a destination ZPA
-  carries is not traced through ZIA. Then Client Connector's app and
-  forwarding profile and the **PAC file**, evaluated for the destination
+  carries is not traced through ZIA. Then **Client Connector**, every
+  bypass in order with the one that decided named (`zcc_bypass.py`): the
+  app profile's VPN gateway bypass, its host name and address bypasses,
+  its IP-based application bypass (the predefined and custom IP-based
+  applications it names, read with their addresses, ports and protocols),
+  the application bypass by name, then the forwarding mode for the
+  protocol and port traced (Z-Tunnel 1.0 carries web traffic on TCP 80
+  and 443 only, Enforce proxy web traffic only, Z-Tunnel 2.0 every port
+  and protocol except its own destination exclusions, and only its
+  inclusions when they are limited; a host name limited inclusions would
+  need resolved is unknown), and the **PAC file**, evaluated for the destination
   (`pac_eval.py`: parsed and interpreted, never run; anything outside the
   PAC subset says "could not evaluate safely") and classified DIRECT,
   Zscaler or another proxy. Then **every ZIA module**, one by one (the
@@ -411,6 +420,15 @@ what you get, what to do next.
   Excel workbook (devices, versions, operating systems, stale devices; with
   a counts-only option). Without device permission it says so and shows
   the configuration only. Read-only; Stop ends the read at once.
+  **One-time passwords for a device** (help desk): one device's Client
+  Connector one-time passwords (uninstall, turn a service off, exit, as
+  the tenant provides them; SDK `getOtp`), found by its enrolled user and
+  host name or UDID. A sensitive read guarded like a write: ZCC ticked on
+  the Scope page, a person allowed to change the tenant, the assessor's
+  name and SHOW OTP and the device typed, at most 5 requests in 10 minutes
+  per person (`zcc_otp.py`). Shown once with a Copy button and hidden
+  after 60 seconds; never stored, logged or cached; the audit log records
+  who asked, when and for which device, never a password.
   Its **Install command builder** writes the MSI, EXE or macOS install
   command and a .bat or .command script for a chosen app profile (its
   policy token is read only when ZCC is in scope); tokens and passwords
@@ -665,7 +683,15 @@ what you get, what to do next.
   Undo (and **Delete a Client Connector profile**) needs the profile's
   typed name and is refused while the profile is in use (an enabled app
   profile, or a forwarding profile an app profile links to).
-  Tamper-protection passwords are never set from here.
+  The app profile's uninstall, turn-off (Internet security) and log-out
+  passwords can be set: typed in password fields, sent beside the
+  operation for its preview and apply (never in it), written once in the
+  create call and never kept (not in the plan, the record, the audit log,
+  job logs, snapshots, exports or the browser); the plan shows "set
+  (hidden)" and its hash covers only a salted, keyed digest, the read-back
+  says set or not set, and Undo deletes the profiles but cannot restore a
+  password, as the preview says. The exit and the ZPA, ZDX and Endpoint
+  DLP turn-off passwords are not set from here.
   Under *Build new* on the same page, **ZDX probe setup** (only when ZDX
   is ticked on the Scope page, with a OneAPI API client) sets up Zscaler
   Digital Experience apps and probes from a template (Best practice:

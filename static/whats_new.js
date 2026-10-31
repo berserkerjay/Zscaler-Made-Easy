@@ -351,6 +351,24 @@ window.WHATS_NEW = {
         { "page": "/report/exports", "at": "#exRgImport" },
         { "page": "/report/exports", "at": "#exRgBuild" }
       ]
+    },
+    {
+      "id": "zcc-bypass-path", "release": "2026-10-31", "label": "Client Connector bypasses on the Path analyzer",
+      "what": "The Path analyzer's Client Connector step checks every bypass in order (VPN gateways, destination bypasses, IP-based applications, Z-Tunnel 1.0 and 2.0) and names the one that decided.",
+      "changelog": ["Client Connector bypasses on the Path analyzer", "VPN gateway bypass", "IP-based application bypass", "Z-Tunnel 1.0 and 2.0"],
+      "marks": [{ "page": "/report/path", "at": "li.pm-hop[data-module=\"zcc\"] > .df-hop-h > strong", "shown": "after a destination is analyzed" }]
+    },
+    {
+      "id": "zcc-tamper-passwords", "release": "2026-10-31", "label": "Tamper protection passwords",
+      "what": "The Client Connector profile builder can set the app profile's uninstall, turn-off and log-out passwords: typed, sent once and never kept.",
+      "changelog": ["Tamper protection passwords"],
+      "marks": [{ "page": "/report/operations", "at": "#zcPwH", "shown": "once the Client Connector form is read" }]
+    },
+    {
+      "id": "zcc-device-otp", "release": "2026-10-31", "label": "One-time passwords for a device",
+      "what": "The fleet page shows a device's Client Connector one-time passwords for the help desk, once, for 60 seconds, after the assessor's name and a typed confirmation; never kept.",
+      "changelog": ["One-time passwords for a device", "rate limit"],
+      "marks": [{ "page": "/report/fleet", "at": "#zfOtpH" }]
     }
   ]
 };

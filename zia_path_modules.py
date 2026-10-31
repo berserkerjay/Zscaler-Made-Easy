@@ -1649,7 +1649,10 @@ def extend_trace(t: Dict[str, Any], result: Dict[str, Any]) -> None:
         t["decrypted"] = False
         if stop is None:
             fw = by_key["firewall"]
-            t["outcome"] = "out_of_scope" if fw["status"] == "out_of_scope" else "unknown" if fw["verdict"] == "unknown" else "blind"
+            # How the device reaches ZIA unverified (Client Connector, the
+            # forwarding profile or the PAC file): unknown, whatever the firewall says.
+            t["outcome"] = ("unknown" if t.get("conditional") else "out_of_scope" if fw["status"] == "out_of_scope" else
+                            "unknown" if fw["verdict"] == "unknown" else "blind")
             t["policy_conditional"] = t.get("policy_conditional") or fw["certainty"] == "conditional"
             t["content_inspection_possible"] = False
     if stop in ("atp", "firewall", "dns"):
@@ -1684,6 +1687,7 @@ def annotate_verdict(v: Dict[str, Any], result: Dict[str, Any], host: str) -> No
         return
     fw = next(m for m in result["modules"] if m["key"] == "firewall")
     r = fw.get("rule") or {}
+    unverified = {"headline": v["headline"], "summary": v.get("summary") or ""} if str(v.get("headline") or "").startswith("Unable to verify how the device reaches") else None
     if fw["status"] == "out_of_scope":
         v["headline"] = f"{traffic['label']} to {host}: whether the Cloud Firewall allows it is not assessed (not in scope)."
     elif fw["verdict"] == "unknown":
@@ -1695,8 +1699,14 @@ def annotate_verdict(v: Dict[str, Any], result: Dict[str, Any], host: str) -> No
         v["headline"] = f"{traffic['label']} to {host} is {what} by {by}" + (
             ", unless admin ranking is on: it was not established, and with it on another rule decides." if fw["certainty"] == "conditional" and fw.get("admin_rank_caution") and not fw.get("could_override_other") else
             ", unless an earlier rule with a condition this tool cannot evaluate applies first." if fw["certainty"] == "conditional" else ".")
-    v["summary"] = (f"{traffic['label']} is not web traffic: URL filtering, Cloud App Control, SSL inspection, Sandbox, File Type Control and Web DLP never see it, "
-                    "so its content is not inspected inline.")
+    if unverified:
+        # How the device reaches ZIA is not verified: that stays the answer;
+        # the firewall's decision applies only if the traffic gets there.
+        v["summary"] = f"{unverified['summary']} If it does reach ZIA: {v['headline'][:1].lower()}{v['headline'][1:]}"
+        v["headline"] = unverified["headline"]
+    else:
+        v["summary"] = (f"{traffic['label']} is not web traffic: URL filtering, Cloud App Control, SSL inspection, Sandbox, File Type Control and Web DLP never see it, "
+                        "so its content is not inspected inline.")
     v["content_inspection_possible"] = False
 
 

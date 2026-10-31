@@ -199,7 +199,7 @@ def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any], platform
     say "not in scope" for what is now in it."""
     return (bool(snapshot) and snapshot_scope_key(snapshot) == scope.get("key") and zia_path_modules.snapshot_ready(snapshot, scope) and
             ("zcc" not in scope.get("read", []) or
-             ((snapshot.get("client_connector") or {}).get("profile_schema") == 4 and
+             ((snapshot.get("client_connector") or {}).get("profile_schema") == 5 and
               (snapshot.get("client_connector") or {}).get("profile_platform") in (None, platform))))
 
 
@@ -302,6 +302,9 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     rd["pac_url"] = pac_url(d, traffic)
     if traffic["web"] and traffic["encrypted"] is False:
         context = dict(context or {}, plaintext=True)   # plain HTTP: no TLS on this path
+    # The protocol and port decide what Client Connector's forwarding mode
+    # carries (zcc_bypass: Z-Tunnel 1.0 and Enforce proxy carry web traffic only).
+    context = dict(context or {}, traffic={k: traffic[k] for k in ("protocol", "port", "web", "label")})
     # What-if (path_whatif): rules scoped to the identity given apply, the
     # others are skipped; the PAC file is evaluated by pac_eval, never run.
     import path_whatif

@@ -5798,6 +5798,11 @@ class OperationRequest(OperationCredsRequest):
     # Restore / clone only (ops_config_restore): pre-shared keys typed on the
     # page, by VPN credential name. Held in memory for the apply, never stored.
     secrets: Dict[str, str] = {}
+    # The Client Connector builder's typed tamper passwords
+    # ({uninstall_password, disable_password, logout_password}): beside the
+    # operation, never in it; taken off the request before sign-in and held
+    # only for that preview or apply (ops_zcc.passwords_in_flight).
+    tamper_passwords: Dict[str, str] = {}
 
 
 OPS_ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name, or the field on this page) before applying a "
@@ -5863,6 +5868,35 @@ def _run_ops_objects(client, family: str, scope: Dict[str, Any], label: str, log
         return {"status": "refused", "message": str(e), "tenant_label": label}
     out.update(status="done", tenant_label=label, writes_enabled=writes_enabled(), scope_source=scope.get("source") or "")
     return out
+
+
+def _ops_passwords(req: OperationRequest) -> Dict[str, str]:
+    """The typed tamper passwords, checked before sign-in and taken off the
+    request, so nothing that keeps the request (a job, an error) keeps
+    them. 400 for passwords sent with another operation or not valid; the
+    refusal never repeats a value."""
+    import ops_zcc
+    raw = req.tamper_passwords or {}
+    req.tamper_passwords = {}
+    if not raw or not any(v not in (None, "") for v in raw.values()):
+        return {}
+    if not isinstance(req.operation, dict) or req.operation.get("type") != ops_zcc.BUILD:
+        raise HTTPException(status_code=400, detail="Passwords are taken only by the Client Connector profile builder. Nothing was read.")
+    try:
+        return ops_zcc.check_passwords(raw)
+    except ops_zcc.BuilderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _with_passwords(passwords: Dict[str, str], fn, *args):
+    """fn(*args) with the typed passwords in flight for this thread, and the
+    passwords dropped when it returns."""
+    import ops_zcc
+    try:
+        with ops_zcc.passwords_in_flight(passwords):
+            return fn(*args)
+    finally:
+        passwords.clear()
 
 
 def _run_ops_preview(client, req: OperationRequest, scope: Dict[str, Any], label: str, log, cancel) -> Dict[str, Any]:
@@ -5988,12 +6022,13 @@ async def operations_preview_start(req: OperationRequest, request: Request):
     exclusions, impact, plan_hash. Reads only; nothing is written."""
     import pack_jobs
     scope = _ops_scope(req, req.operation)
+    pw = _ops_passwords(req)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
     _cfg_restore_gate(req, creds, apply=False)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)
-    job = pack_jobs.start("ops_preview", lambda log, cancel: _keyed(client, _run_ops_preview, client, req, scope, label, log, cancel),
+    job = pack_jobs.start("ops_preview", lambda log, cancel: _with_passwords(pw, _keyed, client, _run_ops_preview, client, req, scope, label, log, cancel),
                           label=label[:80], actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
@@ -6003,12 +6038,13 @@ async def operations_preview(req: OperationRequest, request: Request):
     """The same preview, waited for (for scripts). It runs as the person who
     asked (an upload held for them, ops_zpa_admin, is theirs only)."""
     scope = _ops_scope(req, req.operation)
+    pw = _ops_passwords(req)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
     _cfg_restore_gate(req, creds, apply=False)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(_as_actor, _actor(request), _keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds),
-                                  None, None)
+    out = await asyncio.to_thread(_as_actor, _actor(request), _with_passwords, pw, _keyed, client, _run_ops_preview, client, req, scope,
+                                  tenant_auth.record_label(creds), None, None)
     if out.get("status") == "refused":
         raise HTTPException(status_code=400, detail=out["message"])
     return out
@@ -6023,6 +6059,7 @@ async def operations_apply_start(req: OperationRequest, request: Request):
     written is activated, read back and recorded."""
     import pack_jobs
     scope, by = _ops_apply_gate(req)
+    pw = _ops_passwords(req)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
     _cfg_restore_gate(req, creds, apply=True)
@@ -6031,7 +6068,7 @@ async def operations_apply_start(req: OperationRequest, request: Request):
         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     actor = _actor(request)
-    job = pack_jobs.start("ops_apply", lambda log, cancel: _keyed(client, _run_ops_apply, client, creds, req, scope, by, actor, log, cancel),
+    job = pack_jobs.start("ops_apply", lambda log, cancel: _with_passwords(pw, _keyed, client, _run_ops_apply, client, creds, req, scope, by, actor, log, cancel),
                           label=str((req.operation or {}).get("type") or "")[:80], actor=actor, start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
@@ -6041,6 +6078,7 @@ async def operations_apply(req: OperationRequest, request: Request):
     """The same apply, waited for (for scripts). 409 when the tenant moved
     since the preview or the plan is blocked."""
     scope, by = _ops_apply_gate(req)
+    pw = _ops_passwords(req)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
     _cfg_restore_gate(req, creds, apply=True)
@@ -6049,7 +6087,7 @@ async def operations_apply(req: OperationRequest, request: Request):
         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     actor = _actor(request)
-    result = await asyncio.to_thread(_as_actor, actor, _keyed, client, _run_ops_apply, client, creds, req, scope, by, actor, None, None)
+    result = await asyncio.to_thread(_as_actor, actor, _with_passwords, pw, _keyed, client, _run_ops_apply, client, creds, req, scope, by, actor, None, None)
     if result.get("status") in ("plan_changed", "blocked"):
         return JSONResponse(result, status_code=409)
     if result.get("status") == "refused":
@@ -10051,6 +10089,69 @@ async def zcc_install(req: ZccInstallRequest):
     if token_note:
         out["warnings"].insert(0, token_note)
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+class ZccOtpRequest(ScopedTenantCredsRequest):
+    """One device's Client Connector one-time passwords (zcc_otp): the
+    enrolled user, the device's host name or UDID, the assessor and the
+    typed confirmation "SHOW OTP <device>"."""
+    user: str = ""
+    device: str = ""
+    confirm_text: str = ""
+
+
+ZCC_OTP_WHAT = "Client Connector one-time passwords"
+ZCC_OTP_ASSESSOR = ("Enter the assessor's name before showing a one-time password: the audit log names the person who asked "
+                    "for it. Nothing was read.")
+
+
+@app.post("/api/zcc/otp")
+async def zcc_otp_show(req: ZccOtpRequest, request: Request):
+    """A device's one-time passwords (uninstall, turn a service off, exit,
+    as the API provides them) for help-desk use: a sensitive read guarded
+    like a write. Refused before sign-in unless ZCC is in scope, the caller
+    may change the tenant, the assessor is named, "SHOW OTP <device>" is
+    typed and the rate limit allows it. The values are in this answer only
+    (no-store): never logged, stored or cached; the audit entry names who,
+    when and which device, never a value (zcc_otp)."""
+    import pack_deploy
+    import zcc_otp
+    _require_in_scope(req, "zcc", ZCC_OTP_WHAT)   # user rule 1: nothing read out of scope
+    _security.require_writer()
+    if pack_deploy.is_tool_name(getattr(req, "assessor", "") or ""):
+        raise HTTPException(status_code=400, detail=ASSESSOR_NOT_TOOL)
+    by = _assessor(req)
+    if not by:
+        raise HTTPException(status_code=400, detail=ZCC_OTP_ASSESSOR)
+    try:
+        user = zcc_otp.clean(req.user, "enrolled user name")
+        device = zcc_otp.clean(req.device, "device's host name or UDID")
+    except zcc_otp.OtpError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    want = zcc_otp.phrase(device)
+    if not _security.typed_phrase_matches(req.confirm_text, want):
+        raise HTTPException(status_code=400, detail=f"Type {want} to confirm. Nothing was read.")
+    actor = _actor(request)
+    creds = _tenant_creds(req)
+    label = tenant_auth.record_label(creds)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="The classic ZIA API sign-in has no Client Connector API; sign in with a OneAPI API client.")
+    wait = zcc_otp.LIMITER.take(actor or "local")
+    if wait:
+        zcc_otp.audit("rate_limited", actor=actor, by=by, tenant=label, device=device, reason=f"retry after {wait}s")
+        raise HTTPException(status_code=429, detail=f"Too many one-time password requests: try again in {wait} seconds. Nothing was read.",
+                            headers={"Retry-After": str(wait)})
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    try:
+        out = await asyncio.to_thread(zcc_otp.retrieve, sdk, user, device)
+    except zcc_otp.OtpError as e:
+        zcc_otp.audit("refused" if e.status < 500 else "failed", actor=actor, by=by, tenant=label, device=device, reason=str(e))
+        raise HTTPException(status_code=e.status, detail=str(e))
+    finally:
+        _close_quietly(sdk)
+    zcc_otp.audit("shown", actor=actor, by=by, tenant=label, device=out["device"]["hostname"], ref=out["device"]["ref"],
+                  kinds=[o["key"] for o in out["otps"]])
+    return JSONResponse(out, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 
 @app.get("/report/view")

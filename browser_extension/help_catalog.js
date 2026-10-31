@@ -3547,6 +3547,41 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Build the command first.",
     "effect": "download"
    },
+   "#zfOtpUser": {
+    "what": "The user the device is enrolled to, as the fleet lists it. Used to find the device for its one-time passwords.",
+    "input": "Required. The enrolled user name, like jdoe@acme.example.",
+    "effect": "local"
+   },
+   "#zfOtpDevice": {
+    "what": "The device whose one-time passwords you need: its host name or its UDID.",
+    "input": "Required. A host name, like LT-0042, or the UDID. Type the UDID when the user has two devices with the same name.",
+    "effect": "local"
+   },
+   "#zfOtpAssessor": {
+    "what": "Your name, for the audit log entry that records who asked for the one-time passwords.",
+    "input": "Required. A person's name, like Jane Doe.",
+    "effect": "local"
+   },
+   "#zfOtpPhrase": {
+    "what": "Confirms you mean to show this device's one-time passwords.",
+    "input": "Required. Type SHOW OTP and the device exactly as you typed it above, like SHOW OTP LT-0042.",
+    "effect": "local"
+   },
+   "#zfOtpShow": {
+    "what": "Reads the device's Client Connector one-time passwords from the tenant and shows them here for 60 seconds. Nothing is changed in the tenant, and the passwords are never kept. Needs ZCC on the Scope page and permission to change the tenant; at most 5 requests in 10 minutes.",
+    "input": "Fill in the user, the device, your name and the confirmation first.",
+    "effect": "read"
+   },
+   "#zfOtpHide": {
+    "what": "Hides the one-time passwords now. They are not kept anywhere.",
+    "input": "Nothing to type. Just click it. They hide on their own after 60 seconds.",
+    "effect": "local"
+   },
+   "#zfOtpOut button[data-otp]": {
+    "what": "Copies this one-time password to the clipboard, for the user who needs it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "a.rp-btn[href=\"/help#fleet\"]": {
     "what": "Opens the help for this page in a new tab.",
     "input": "Nothing to type. Just click it.",
@@ -4629,6 +4664,11 @@ window.HELP_CATALOG = {
    "#zcEnable": {
     "what": "Turns the profiles on when they are made. They are off by default, so you can review them first.",
     "input": "Tick it to make them on.",
+    "effect": "local"
+   },
+   "input[data-zpw]": {
+    "what": "A tamper protection password for the new app profile: users need it to uninstall Client Connector, turn off Internet security or log out. It is sent once, when the profile is made, and never kept; the preview shows set (hidden).",
+    "input": "Optional. Up to 128 characters. Leave it empty to set no password. You type it again before you apply.",
     "effect": "local"
    },
    "input[name=\"zcDel\"]": {

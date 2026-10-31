@@ -302,8 +302,10 @@ class Route:
 
     def __init__(self, path: str, body: Optional[Dict[str, Any]] = None, *, partial: Optional[Dict[str, Any]] = WEB,
                  out: tuple = WEB_OUT, nothing: int = 400, setup: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
-                 why: str = "") -> None:
+                 why: str = "", ok: int = 200) -> None:
         self.path, self.body, self.partial, self.out, self.nothing, self.setup, self.why = path, body or {}, partial, out, nothing, setup, why
+        # The answer once the part in scope is read (the OTP route's fake device list has no such device: 404 after the read).
+        self.ok = ok
 
     def request(self, sel: Dict[str, Any]) -> Dict[str, Any]:
         if self.setup is not None:
@@ -415,6 +417,9 @@ ROUTES: List[Route] = [
     Route("/api/operations/preview", {"operation": {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}},
           partial=ZCC, out=ZCC_OUT),
     Route("/api/zcc/install", {"app_profile_id": "21"}, partial=ZCC, out=ZCC_OUT),
+    # One device's one-time passwords (zcc_otp): a sensitive read, ZCC only.
+    Route("/api/zcc/otp", {"assessor": "QA tester", "user": "jdoe@acme.example", "device": "LT-1", "confirm_text": "SHOW OTP LT-1"},
+          partial=ZCC, out=ZCC_OUT, ok=404),
     # The ZPA builder (ops_zpa): plugin types and their pick lists on the same routes
     Route("/api/operations/objects", {"family": "zpa_objects"}, partial=ZPA, out=ZPA_OUT),
     # Day-to-day admin (ops_zpa_admin, ops_zcc_admin, ops_zdx_trace): the picker, previews, lookups and the deep trace follow
@@ -477,7 +482,7 @@ def test_part_in_scope_reads_only_that_part(tenant, route):
     # Act
     r = TestClient(srv.app).post(route.path, json=body)
     # Assert
-    assert r.status_code == 200, r.text[:400]
+    assert r.status_code == route.ok, r.text[:400]
     assert tenant.built and tenant.reads, "nothing was read: the partial selection proves nothing"
     leaked = sorted({x for x in tenant.reads if any(o in x for o in route.out)})
     assert not leaked, f"read out of scope: {leaked}"
@@ -495,7 +500,7 @@ def test_part_in_scope_of_a_saved_profile_reads_only_that_part(tenant, route):
     # Act
     r = TestClient(srv.app).post(route.path, json=body)
     # Assert
-    assert r.status_code == 200, r.text[:400]
+    assert r.status_code == route.ok, r.text[:400]
     assert tenant.built and tenant.reads
     leaked = sorted({x for x in tenant.reads if any(o in x for o in route.out)})
     assert not leaked, f"read out of scope: {leaked}"

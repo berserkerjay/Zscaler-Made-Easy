@@ -186,14 +186,15 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 73,
+            "fixed": 76,
             "accepted": 8,
             "records": [
               "c6-api-server",
               "c6-auth",
               "c6-scope-offline",
               "sbd-auth",
-              "w7-mcp-skill"
+              "w7-mcp-skill",
+              "w7-zcc-plus"
             ]
           },
           "coverage": {
@@ -462,7 +463,7 @@
     }
   ],
   "counts": {
-    "findings": 648,
+    "findings": 651,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -476,12 +477,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 166,
+        "fixed": 167,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 366,
+        "fixed": 368,
         "accepted": 3
       },
       "info": {
@@ -491,12 +492,12 @@
       }
     },
     "checks": {
-      "pass": 458,
+      "pass": 465,
       "fixed": 314,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 10065
+    "tests_added": 10166
   },
   "findings": [
     {
@@ -4002,6 +4003,22 @@
       "slug": "w7-path-coverage",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W7-ZCC-01",
+      "title": "The Path analyzer read the app profile's VPN gateways and IP-based application ids but never evaluated them: a VPN gateway or an IP-based app bypass was reported as reaching Zscaler",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-697",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "zcc_bypass.py: VPN gateway check, IP-based application definitions read (SDK custom-ip-based-apps, predefined-ip-based-apps, webAppService) and matched by address, host name, port and protocol; data_flow.trace names the deciding list; Test a list indexes the new lists",
+      "test": "tests/test_zcc_bypass_path.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-zcc-plus",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "W7-ZPAID-01",
@@ -9796,6 +9813,38 @@
       "sub_area": "write_paths"
     },
     {
+      "id": "W7-ZCC-02",
+      "title": "Z-Tunnel 1.0 carried every web port in the trace (TCP 8080 and 8443 included), and a host name that limited Z-Tunnel 2.0 inclusions would need resolved was reported as tunnelled",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "zcc_bypass.tunnel_check (TCP 80 and 443 for Z-Tunnel 1.0, unknown with the proxy-port option) and tunnel2_lists (unknown for a host name with limited inclusions)",
+      "test": "tests/test_zcc_bypass_path.py::test_z_tunnel_1_and_enforce_proxy_carry_web_traffic_only",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-zcc-plus",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W7-ZCC-03",
+      "title": "For traffic that is not web, an unverified Client Connector or forwarding step still ended in the firewall's headline and a 'blind' outcome",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "zia_path_modules.extend_trace keeps 'unknown' and annotate_verdict keeps 'Unable to verify how the device reaches' (the firewall's decision moves to the summary, as what applies if the traffic gets there)",
+      "test": "tests/test_zcc_bypass_path.py::test_definitions_that_cannot_be_read_leave_an_address_unknown_never_not_bypassed",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-zcc-plus",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
       "id": "W7-ZPAID-02",
       "title": "With an IdP given, a SCIM group condition of another IdP still matched a group of the same name, and a SAML condition of another IdP matched typed values",
       "severity": "low",
@@ -12157,6 +12206,46 @@
       "tests_added": 58
     },
     {
+      "slug": "w7-zcc-plus",
+      "area": "Client Connector, the rest of the way (zcc_bypass.py and the Path analyzer's Client Connector step, the profile builder's tamper passwords in ops_zcc.py, one device's one-time passwords in zcc_otp.py and /api/zcc/otp)",
+      "title": "Every Client Connector bypass evaluated on the path with the list that decided named; tamper passwords typed, sent once and never kept; device one-time passwords as a gated, rate-limited, audited read that keeps nothing",
+      "standards": [
+        "ASVS V1.4.4",
+        "ASVS V4.1.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V7.1.1",
+        "ASVS V7.4.1",
+        "ASVS V8.2.2",
+        "ASVS V8.3.4",
+        "ASVS V11.1.1",
+        "ASVS V11.1.4",
+        "CWE-20",
+        "CWE-209",
+        "CWE-256",
+        "CWE-285",
+        "CWE-312",
+        "CWE-345",
+        "CWE-524",
+        "CWE-532",
+        "CWE-693",
+        "CWE-697",
+        "CWE-754",
+        "CWE-799",
+        "CWE-841",
+        "CWE-863",
+        "CWE-922",
+        "WSTG-ATHZ-02",
+        "WSTG-BUSL-05",
+        "WSTG-ERRH-01",
+        "WCAG 2.2 SC 2.2.1",
+        "WCAG 2.2 SC 4.1.3"
+      ],
+      "checks": 7,
+      "findings": 3,
+      "tests_added": 101
+    },
+    {
       "slug": "w7-zpa-identity",
       "area": "ZPA identity: Path analyzer what-if, Test a list and the ZPA builder",
       "title": "ZPA access policy evaluated for an IdP, a user's SCIM groups and SAML or SCIM attribute values, with the condition that decided; access rules over SCIM groups and SAML attributes",
@@ -12253,6 +12342,7 @@
       "SC 1.1.1",
       "SC 1.3.1",
       "SC 1.3.2",
+      "SC 1.3.5",
       "SC 1.4.1",
       "SC 1.4.3",
       "SC 1.4.6",
@@ -12262,6 +12352,7 @@
       "SC 1.4.13",
       "SC 2.1.1",
       "SC 2.1.2",
+      "SC 2.2.1",
       "SC 2.2.2",
       "SC 2.3.3",
       "SC 2.4.2",
@@ -12421,6 +12512,7 @@
       "CWE-694",
       "CWE-696",
       "CWE-697",
+      "CWE-703",
       "CWE-704",
       "CWE-706",
       "CWE-732",

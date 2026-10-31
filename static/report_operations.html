@@ -237,7 +237,10 @@
     // (admin_ops.register). Each ships static/ops_<name>.js, which calls
     // window.OPS_PLUGINS.register({type, render(res, where, S, H), spec(S, H)})
     // and then runs through the same read, preview, gates, apply and Undo.
-    window.OPS_PLUGINS = { defs: {}, register(def) { if (def && def.type) { this.defs[def.type] = def; if (S.kind === def.type) renderObjects(); } } };
+    window.OPS_PLUGINS = { defs: {}, state: S, register(def) { if (def && def.type) { this.defs[def.type] = def; if (S.kind === def.type) renderObjects(); } } };
+    // A builder's typed secrets (the Client Connector tamper passwords): sent
+    // beside the operation for its preview and apply, never part of S.spec.
+    const plugSecrets = type => { const d = window.OPS_PLUGINS.defs[type]; return d && typeof d.secrets === 'function' ? (d.secrets(S) || {}) : {}; };
     // body(): the tenant sign-in and the Scope page selection a plugin's own read-only lookups send;
     // runJob(): the shared job runner (Stop, the live log) for a plugin's read-only job;
     // read(query): a form that searches (users) reads again with what was typed.
@@ -495,7 +498,7 @@
     $('opPreview').addEventListener('click', () => {
       let spec;
       try { spec = buildSpec(); } catch (e) { fail($('opPlan'), 'Nothing to preview yet', e.message, true); say(e.message); return; }
-      preview('/api/operations/preview/start', body({ operation: spec }), null);
+      preview('/api/operations/preview/start', body(Object.assign({ operation: spec }, plugSecrets(spec.type))), null);
     });
 
     // A list reads as a comma list, an object (a rule's changed columns) as "column: value; ...".
@@ -589,7 +592,8 @@
       if (S.preview.confirm_phrase && !phraseMatches(phrase, S.preview.confirm_phrase)) { say(`Type ${S.preview.confirm_phrase} to confirm.`); $('opPhrase').focus(); return; }
       S.assessor = $('opAssessor').value.trim();
       if (!S.assessor) { say("Enter the assessor's name: the change record names who made it."); $('opAssessor').focus(); return; }
-      const payload = body({ operation: S.spec, plan_hash: S.preview.plan_hash, confirm: true, confirm_text: phrase, undo_of: S.undoOf || '', assessor: S.assessor });
+      const payload = body(Object.assign({ operation: S.spec, plan_hash: S.preview.plan_hash, confirm: true, confirm_text: phrase, undo_of: S.undoOf || '', assessor: S.assessor },
+        S.undoOf ? {} : plugSecrets(S.spec && S.spec.type)));
       // A builder may hand the apply what must never be in the operation (a typed pre-shared key): only `secrets`, kept in memory server-side.
       const plugApply = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[S.kind];
       if (plugApply && typeof plugApply.applyExtra === 'function' && !S.undoOf) { const x = plugApply.applyExtra(S, H) || {}; if (x.secrets) payload.secrets = x.secrets; }

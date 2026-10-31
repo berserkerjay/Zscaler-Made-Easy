@@ -352,6 +352,10 @@ APP_PROFILES = [
     {"id": 1204, "name": "iOS - Drivers", "device_type": 1, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
      "strictEnforcement": 0, "groups": [_ref(32, "Drivers")], "users": []},
 ]
+# The custom IP-based application the contractors' profile bypasses
+# (bypassCustomAppIds; zscaler/zcc/models/custom_ip_base_apps.py).
+CUSTOM_IP_APPS = [{"id": 5001, "appName": "Depot handheld sync", "active": True,
+                   "appDataBlob": [{"proto": "TCP", "port": "443", "ipaddr": "198.51.100.0/24", "fqdn": ""}]}]
 FORWARDING_PROFILES = [
     {"id": 1301, "name": "Corporate tunnel", "active": "1", "trustedNetworkIds": [1401], "forwardingProfileActions": [
         {"networkType": "ON_TRUSTED_NETWORK", "actionType": "ZSCALER_TUNNEL_2", "tunnelType": "ZSCALER_TUNNEL_2"},
@@ -578,6 +582,7 @@ def responses() -> Dict[str, Any]:
         f"{ZCC}/getAdminUsersSyncInfo": {"id": 1, "ziaInitialSyncDone": 1, "ziaLastSyncTime": "2026-10-28 02:00:00", "ziaSyncErrorCode": 0, "ziaSyncStatus": 1,
                                              "zpaInitialSyncDone": 1, "zpaLastSyncTime": "2026-10-28 02:00:00", "zpaSyncErrorCode": 0, "zpaSyncStatus": 1},
         f"{ZCC}/getPacFiles": [], f"{ZCC}/webAppService/listByCompany": [], f"{ZCC}/webBypassAppConfig/listByCompany": [],
+        f"{ZCC}/custom-ip-based-apps": {"customAppContracts": CUSTOM_IP_APPS}, f"{ZCC}/predefined-ip-based-apps": {"appServiceContracts": []},
         f"{ZCC}/getAdminUsers": [], f"{ZCC}/getAdminRoles": [], f"{ZCC}/webDeviceGroups/listByCompany": [],
         f"{ZCC}/getZpaGroupEntitlements": {"zpaEnableForAll": True}, f"{ZCC}/getZdxGroupEntitlements": {"zdxEnableForAll": True},
         # ZPA

@@ -74,6 +74,10 @@ _ZCC_MAP = {
     "pacFiles":           "getPacFiles",
     "zpnModuleMode":      "webZPNModuleMode/listByCompany",
     "appBypass":          "webBypassAppConfig/listByCompany",
+    # IP-based application definitions an app profile's bypass names
+    # (zscaler-sdk-python 1.11.3 zcc/custom_ip_base_apps.py, predefined_ip_based_apps.py).
+    "customIpBasedApps":     "custom-ip-based-apps",
+    "predefinedIpBasedApps": "predefined-ip-based-apps",
     "privacyInfo":        ["getWebPrivacyInfo", "webPrivacyInfo/listByCompany"],
     "deviceCleanup":      "getDeviceCleanupInfo",
     "deviceGroups":       "webDeviceGroups/listByCompany",

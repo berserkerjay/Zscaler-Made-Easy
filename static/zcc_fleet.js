@@ -396,6 +396,74 @@
     setTimeout(() => URL.revokeObjectURL(url), 2000);
     say(instOut.masked && instOut.masked.length ? `Downloaded ${instOut.script_name}, with the secrets masked: reveal them first for a script that runs as is.` : `Downloaded ${instOut.script_name}.`);
   });
+  // ── One-time passwords for one device (help desk) ──────────────────
+  // A sensitive read: the server asks for ZCC in scope, permission to change
+  // the tenant, the assessor and "SHOW OTP <device>" typed. The values live
+  // in this closure and the page for 60 seconds, then both are cleared;
+  // nothing is put in the browser's storage.
+  let otpTimer = null, otpTick = null;
+  const otpPhrase = () => `SHOW OTP ${$('zfOtpDevice').value.trim()}`;
+  function otpArm() {
+    const need = [];
+    if (!$('zfOtpUser').value.trim()) need.push('the enrolled user');
+    if (!$('zfOtpDevice').value.trim()) need.push('the device');
+    if (!$('zfOtpAssessor').value.trim()) need.push("the assessor's name");
+    if ($('zfOtpPhrase').value.trim().toUpperCase() !== otpPhrase().toUpperCase()) need.push(`${otpPhrase()} typed`);
+    $('zfOtpPhraseLbl').textContent = `Type ${otpPhrase()} to confirm`;
+    setEnabled('zfOtpShow', need.length === 0);
+    const st = $('zfOtpStatus');
+    if (!$('zfOtpOut').hidden) return;
+    st.classList.remove('bad');
+    st.textContent = need.length ? `Still needed: ${need.join(', ')}.` : 'Ready.';
+  }
+  function otpHide(why) {
+    clearTimeout(otpTimer); clearInterval(otpTick); otpTimer = otpTick = null;
+    const box = $('zfOtpOut'); box.textContent = ''; box.hidden = true;
+    if (why) { $('zfOtpStatus').textContent = why; say(why); }
+  }
+  function otpRender(d) {
+    const box = $('zfOtpOut');
+    const list = Array.isArray(d.otps) ? d.otps : [];
+    let left = Number(d.show_seconds) || 60;
+    box.innerHTML = `<p class="zf-dim">${E(d.device && d.device.hostname)} · ${E(d.note || '')}</p>
+      <ul class="zf-otp-list">${list.map((o, i) => `<li><span class="k">${E(o.label)}</span><code id="zfOtpV${i}">${E(o.value)}</code>
+        <button type="button" class="rp-btn" data-otp="${i}" aria-label="Copy the ${E(o.label)} one-time password">Copy</button></li>`).join('')}</ul>
+      <div class="zf-row"><span class="zf-dim" id="zfOtpLeft" aria-live="off">Hidden in ${left} s.</span><button type="button" class="rp-btn" id="zfOtpHide">Hide now</button></div>`;
+    box.hidden = false;
+    box.querySelectorAll('button[data-otp]').forEach(b => b.addEventListener('click', async () => {
+      const el = $(`zfOtpV${b.dataset.otp}`);
+      try { await navigator.clipboard.writeText(el ? el.textContent : ''); say('Copied.'); }
+      catch (e) { say('Copy is blocked in this browser: select the password and copy it.'); }
+    }));
+    $('zfOtpHide').addEventListener('click', () => { otpHide('Hidden. Nothing was kept.'); $('zfOtpShow').focus(); });
+    otpTick = setInterval(() => { left -= 1; const el = $('zfOtpLeft'); if (el) el.textContent = `Hidden in ${Math.max(0, left)} s.`; }, 1000);
+    otpTimer = setTimeout(() => otpHide('The one-time passwords were hidden after 60 seconds. Nothing was kept.'), (Number(d.show_seconds) || 60) * 1000);
+  }
+  async function otpShow() {
+    otpHide('');
+    const st = $('zfOtpStatus'); st.classList.remove('bad'); st.textContent = 'Reading the device\'s one-time passwords…';
+    setEnabled('zfOtpShow', false);
+    const payload = Object.assign({}, credBody(), scopeSelection(), { user: $('zfOtpUser').value.trim(), device: $('zfOtpDevice').value.trim(),
+      assessor: $('zfOtpAssessor').value.trim(), confirm_text: $('zfOtpPhrase').value });
+    $('zfOtpPhrase').value = '';
+    try {
+      const r = await fetch('/api/zcc/otp', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(d, r.status));
+      otpRender(d);
+      st.textContent = `Shown for ${Number(d.show_seconds) || 60} seconds.`;
+      say(st.textContent);
+      const first = $('zfOtpOut').querySelector('button[data-otp]'); if (first) first.focus();
+    } catch (e) {
+      st.textContent = e.message; st.classList.add('bad'); say(e.message);
+    } finally { otpArm(); }
+  }
+  ['zfOtpUser', 'zfOtpDevice', 'zfOtpAssessor', 'zfOtpPhrase'].forEach(id => $(id).addEventListener('input', otpArm));
+  $('zfOtpShow').addEventListener('click', otpShow);
+  try { const a = window.opener && !window.opener.closed && window.opener.document.getElementById('assessor'); if (a && a.value) $('zfOtpAssessor').value = String(a.value).trim(); } catch (e) { /* another origin */ }
+  otpArm();
+  window.addEventListener('pagehide', () => otpHide(''));
+
   instLoad();
   tenantChoices();
 })();
