@@ -125,6 +125,7 @@ SINKS = [
     ("remediation", "execute", 3),
     ("rule_migrator", "enable_evaluate_all_rules", 1), ("rule_migrator", "delete_all_rules", 1),
     ("rule_migrator", "post_new_rule_order", 2),
+    ("zdx_insights", "start_analysis", None), ("zdx_insights", "stop_analysis", None),
 ]
 
 
@@ -284,6 +285,7 @@ ZCC_SCOPE = {"scopes": ["zcc"], "channels": {}, "from_page": True}
 ZCC_BUILD = {"type": "zcc_profile_build", "platform": "windows", "forwarding": {"template": "best_practice", "name": "QA fwd"},
              "app": {"template": "best_practice", "name": "QA app"}}
 ZCC_DELETE = {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}
+ZDX_SCOPE = {"scopes": ["zdx"], "channels": {}, "from_page": True}
 
 WRITE_CASES: List[WriteCase] = [
     ("deploy", "POST", "/api/dlp-packs/apply",
@@ -333,6 +335,10 @@ WRITE_CASES: List[WriteCase] = [
      lambda w: ("/api/migrate/enable", dict(_b(**SCOPE), dry_run=False, confirm=True)), BOOL),
     ("migrate-delete-all", "POST", "/api/migrate/delete-all",
      lambda w: ("/api/migrate/delete-all", dict(_b(**SCOPE), dry_run=False, confirm=True, plan_hash=HASH)), BOOL),
+    ("zdx-analysis-start", "POST", "/api/zdx/analysis/start",
+     lambda w: ("/api/zdx/analysis/start", _b(**ZDX_SCOPE, app_id="3002", confirm=True, confirm_text="START ANALYSIS")), BOOL),
+    ("zdx-analysis-stop", "POST", "/api/zdx/analysis/stop",
+     lambda w: ("/api/zdx/analysis/stop", _b(**ZDX_SCOPE, analysis_id="90001", confirm=True)), BOOL),
     ("migrate-post", "POST", "/api/migrate/post",
      lambda w: ("/api/migrate/post", dict(_b(**SCOPE), dry_run=False, confirm=True, mode="update", plan_hash=HASH,
                                           proposed_rules=[{"id": 1, "name": "QA rule"}])), BOOL),
@@ -451,6 +457,10 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/report/findings-csv"): "report",
     ("POST", "/api/zcc/fleet/start"): "reads",
     ("POST", "/api/zcc/install"): "builds an install command; with app_profile_id it reads that profile's policy token (scope-gated)",
+    ("POST", "/api/zcc/device-details"): "reads one device's service state (scope-gated)",
+    ("POST", "/api/zcc/disable-reasons"): "reads the disable-reason report and counts it (scope-gated)",
+    ("POST", "/api/zdx/cloudpath"): "reads ZDX applications and one measured cloud path (scope-gated)",
+    ("POST", "/api/zdx/analysis/status"): "reads a ZDX score analysis back (scope-gated)",
     ("POST", "/api/readiness/start"): "reads (the API role, licences and one call per product in scope)",
     ("POST", "/api/report/bypass"): "reads",
     ("POST", "/api/report/data-flow"): "reads",

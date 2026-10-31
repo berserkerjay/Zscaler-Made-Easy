@@ -147,8 +147,19 @@ def zdx_troubleshoot(cl):
 # Personal data is counted, never listed: affected devices are a number.
 
 POOR_SCORE = 66            # ZDX scores 66-100 as good; below is okay or poor (ZDX Admin Portal legend)
-_HISTORY = {"since": 336}  # 14 days, the documented limit for the alert history
-_WEEK = {"since": 168}
+
+
+def window(hours):
+    """The look-back as the SDK sends it: its zdx_params decorator turns
+    since=<hours> into from / to epoch seconds (zscaler/utils.py)."""
+    import time
+    now = int(time.time())
+    return {"from": now - int(hours) * 3600, "to": now}
+
+
+
+_HISTORY = 336             # 14 days, the documented limit for the alert history
+_WEEK = 168
 MAX_APPS = 25              # applications whose score and metrics are read in one run
 MAX_ALERTS = 20            # alerts whose affected devices are counted
 AVAILABILITY_MIN = 99.0    # assumed target: an app available less than 99% of the week needs a look
@@ -185,7 +196,7 @@ def _values(series):
 
 
 def _apps(cl):
-    d, c = cl.get("/zdx/administration/apps", _WEEK)
+    d, c = cl.get("/zdx/administration/apps", window(_WEEK))
     if c not in (200, 204):
         return None, c
     return [a for a in _ls(d) if isinstance(a, dict) and a.get("id") not in (None, "")][:MAX_APPS], c
@@ -197,7 +208,7 @@ def _app_name(a):
 
 def zdx_alert_history(cl):
     """ZDX alert history (14 days) and the devices each alert touched, counted"""
-    d, c = cl.get("/zdx/alerts/historical", _HISTORY)
+    d, c = cl.get("/zdx/alerts/historical", window(_HISTORY))
     na = _not_licensed(c, "the ZDX alert history")
     if na:
         return na
@@ -217,7 +228,7 @@ def zdx_alert_history(cl):
         aid = str(a.get("id") or "")
         if not aid or not aid.replace("-", "").isalnum() or len(aid) > 40:
             continue
-        dd, dc = cl.get(f"/zdx/alerts/{aid}/affected_devices", _HISTORY)
+        dd, dc = cl.get(f"/zdx/alerts/{aid}/affected_devices", window(_HISTORY))
         if dc not in (200, 204):
             unread += 1
             continue
@@ -249,7 +260,7 @@ def zdx_app_scores(cl):
         aid = str(a["id"])
         if not aid.isdigit() or len(aid) > 20:
             continue
-        d, sc = cl.get(f"/zdx/apps/{aid}/score", _WEEK)
+        d, sc = cl.get(f"/zdx/apps/{aid}/score", window(_WEEK))
         if sc not in (200, 204):
             unread += 1
             continue
@@ -288,7 +299,7 @@ def zdx_app_metrics(cl):
         aid = str(a["id"])
         if not aid.isdigit() or len(aid) > 20:
             continue
-        d, mc = cl.get(f"/zdx/apps/{aid}/metrics", _WEEK)
+        d, mc = cl.get(f"/zdx/apps/{aid}/metrics", window(_WEEK))
         if mc not in (200, 204):
             unread += 1
             continue
