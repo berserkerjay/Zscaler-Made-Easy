@@ -270,6 +270,18 @@ window.WHATS_NEW = {
       "marks": [
         { "page": "/", "at": "#scopeField input.scope-cb[value=\"rbac\"]", "shown": "on the Scope assessment step" }
       ]
+    },
+    {
+      "id": "rules-csv", "release": "2026-10-31", "label": "Rules from a spreadsheet",
+      "what": "Rules from a spreadsheet on Bulk changes: export Cloud Firewall, URL filtering or ZPA access policy rules as CSV, edit them offline and import the file as a previewed plan of adds, updates, moves and (only if you tick it) deletes, with the write gates, read-back and Undo.",
+      "changelog": ["Rules from a spreadsheet", "Read from the tenant", "Download the rules as CSV", "Preview", "Remove rules not in the file", "Create new rules enabled"],
+      "marks": [{ "page": "/report/operations", "at": "#rcExport", "shown": "after Read from the tenant, with Rules from a spreadsheet picked" }]
+    },
+    {
+      "id": "scheduled-sync", "release": "2026-10-31", "label": "Scheduled sync",
+      "what": "Scheduled sync on the change queue: a job keeps target tenants' rules in step with a source by filing a plan per target for four-eyes approval; nothing is applied until a named writer applies it.",
+      "changelog": ["Scheduled sync", "Run now", "Bulk change plan"],
+      "marks": [{ "page": "/report/queue", "at": "#syH" }]
     }
   ]
 };

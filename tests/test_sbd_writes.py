@@ -841,9 +841,30 @@ def _config_restore_default():
     return ok and bool(cb.BY_KEY)
 
 
+def _rules_csv_default():
+    """A new ZIA rule from a file is planned DISABLED, even when the row says ENABLED."""
+    from fake_rule_tenant import client
+    _st, c = client()
+    text = "name,state,action\r\nQA new rule,ENABLED,BLOCK_DROP\r\n"
+    p = ao.plan(c, {"type": "zia_rules_csv", "policy": "firewall", "csv": text}, scope=ao.scope_for(["zia_extras"], {}))
+    adds = [g["target"] for g in p["groups"] if g["handler"] == "rcsv_create"]
+    return len(adds) == 1 and adds[0]["values"]["state"] == "DISABLED"
+
+
+def _zpa_access_csv_default():
+    """A new ZPA access rule (it cannot be created disabled) is left out unless the operator ticks 'create new rules enabled'."""
+    from fake_rule_tenant import client
+    _st, c = client()
+    text = "name,action,segment_groups\r\nQA new access,ALLOW,Finance apps\r\n"
+    p = ao.plan(c, {"type": "zpa_access_csv", "policy": "zpa_access", "csv": text}, scope=ao.scope_for(["zpa"], {}))
+    return not p["groups"] and any(u["kind"] == "rule_add" and u["status"] == "excluded" for u in p["items"])
+
+
 # How each type that creates or changes enforcement keeps it off unless the
 # operator chose it; or why "off" does not apply. A new type must be listed.
 DEFAULT_OFF: Dict[str, Any] = {
+    "zia_rules_csv": _rules_csv_default,
+    "zpa_access_csv": _zpa_access_csv_default,
     "zcc_profile_build": _zcc_default,
     "zia_baseline": _baseline_default,
     "zpa_app_segments": _zpa_segments_default,

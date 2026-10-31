@@ -2171,8 +2171,11 @@ class ChangeRequestDecision(BaseModel):
 class ChangeRequestApply(TenantCredsRequest):
     """Apply an approved request: the tenant credentials and the typed
     confirmation phrase, plus the Scope page selection (a fix recipe's rule
-    policy must still be in scope when it is applied)."""
+    policy must still be in scope when it is applied). A Bulk change plan
+    (a sync job's) that names its own phrase (above ten changes, or any
+    delete: "DELETE <n> RULES") also needs it typed in `confirm_text`."""
     confirm: str = ""
+    confirm_text: str = ""
     scopes: List[str] = []
     channels: Dict[str, Any] = {}
     from_page: bool = False
@@ -2380,7 +2383,8 @@ def _cq_outcome(kind: str, result: Dict[str, Any]) -> Tuple[str, str]:
     st = str(result.get("status") or "")
     if st in ("plan_changed", "stale"):
         return "stale", change_queue.STALE_MESSAGE
-    ok = {"pack_deploy": ("applied",), "pack_removal": ("removed", "nothing"), "fix_recipe": ("completed",)}.get(kind, ())
+    ok = {"pack_deploy": ("applied",), "pack_removal": ("removed", "nothing"), "fix_recipe": ("completed",),
+          "admin_operation": ("applied",)}.get(kind, ())
     if st in ok:
         return "applied", ""
     why = result.get("message") or result.get("error") or result.get("reason") or "; ".join(result.get("blockers") or []) or st
@@ -2390,7 +2394,7 @@ def _cq_outcome(kind: str, result: Dict[str, Any]) -> Tuple[str, str]:
 def _cq_result(result: Dict[str, Any]) -> Dict[str, Any]:
     """What the request keeps of an apply's result: the outcome and its counts, no logs or tenant objects."""
     keep = ("status", "summary", "message", "deployment_id", "http_status", "error", "reason", "blockers", "expected_hash", "current_hash",
-            "activation_required", "complete")
+            "activation_required", "complete", "operation_id", "counts_run")
     return {k: result[k] for k in keep if k in result and result[k] not in (None, "", [], {})}
 
 
@@ -2430,6 +2434,8 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
         raise HTTPException(status_code=400, detail=f'Type "{change_queue.CONFIRM_PHRASE}" to confirm the apply.')
     if rec.get("kind") == "pack_deploy":
         _require_assessor(req)
+    elif rec.get("kind") == "admin_operation":
+        _ops_assessor(req)
     else:
         _require_write_assessor(req)
     if not writes_enabled():
@@ -2437,6 +2443,15 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
     if rec.get("kind") == "fix_recipe":   # the recipe's rule policy must still be in scope (user rule 1), before sign-in
         _p = rec.get("payload") or {}
         _require_recipe_in_scope(_p.get("check_id"), _p.get("criteria") or {}, req, what="Applying this fix")
+    op_scope: Dict[str, Any] = {}
+    if rec.get("kind") == "admin_operation":   # its policy must be in scope (user rule 1), its own phrase typed, before sign-in
+        _op = (rec.get("payload") or {}).get("operation")
+        if not isinstance(_op, dict) or not _op.get("type"):
+            raise HTTPException(status_code=409, detail="This request carries no operation to apply; request it again.")
+        op_scope = _ops_scope(req, _op)
+        _phrase = str((rec.get("payload") or {}).get("confirm_phrase") or "")
+        if _phrase and not _security.typed_phrase_matches(req.confirm_text, _phrase):
+            raise HTTPException(status_code=400, detail=f'This plan also needs its own confirmation: type "{_phrase}".')
     creds = _tenant_creds(req)
     tk, label = _cq_tenant(creds)
     if tk != rec.get("tenant"):
@@ -2462,6 +2477,13 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
     elif kind == "fix_recipe":
         client = await asyncio.to_thread(_build_client, req)
         job_kind, run = "remediation", (lambda log, cancel: _cq_recipe_run(client, rec, log))
+    elif kind == "admin_operation":
+        _ops_zpa_gate(p.get("operation"), creds)
+        oreq = OperationRequest(**{k: getattr(req, k) for k in TenantCredsRequest.model_fields}, operation=p.get("operation") or {},
+                                plan_hash=rec["plan_hash"], confirm=True, confirm_text=req.confirm_text)
+        op_by, op_actor = _ops_assessor(req), _actor(request)
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        job_kind, run = "ops_apply", (lambda log, cancel: _keyed(client, _run_ops_apply, client, creds, oreq, op_scope, op_by, op_actor, log, cancel))
     else:
         raise HTTPException(status_code=400, detail=f"Unknown change request kind: {kind}")
 
@@ -2481,7 +2503,8 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
         except Exception as e:  # noqa: BLE001 — recorded, then reported by the job
             change_queue.finish_apply(rid, by=by, status="failed", result={"status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"})
             raise
-        if result.get("busy"):   # another run held the tenant: nothing was read or written, the request stays approved
+        if result.get("busy") or (kind == "admin_operation" and result.get("status") == "refused"):
+            # another run held the tenant, or the typed phrase did not match: nothing was written, the request stays approved
             log(str(result.get("message") or "Another run holds the tenant; nothing was written."))
             result["change_request"] = change_queue.release(rid, by=by, reason=str(result.get("message") or "busy"))
             return result
@@ -6271,6 +6294,253 @@ async def operations_request(job_id: str):
     before and after, plan_hash) for a shared approval queue."""
     import admin_ops
     return admin_ops.to_request(_ops_preview_job(job_id))
+
+
+# ── Rules from a spreadsheet: CSV export / validate (ops_rule_csv, rule_csv) ──
+# Export and import of ZIA Cloud Firewall, URL filtering and ZPA access
+# policy rules. The import itself is an operation type on the Bulk changes
+# engine (zia_rules_csv / zpa_access_csv): previewed, gated, re-read before
+# every write, read back and reversible. Choosing a file never applies
+# anything: validate only parses it (no tenant read), and the preview is
+# its own step.
+class RuleCsvValidateRequest(BaseModel):
+    """A CSV file's text and the policy it is for; nothing is read or written."""
+    policy: str = ""
+    csv: str = ""
+
+
+class RuleCsvExportRequest(OperationCredsRequest):
+    """Which policy to export: firewall, url_filtering or zpa_access."""
+    policy: str = ""
+
+
+@app.get("/api/rule-csv/format")
+async def rule_csv_format():
+    """The documented columns per policy, the list separator and the limits."""
+    import rule_csv
+    return rule_csv.column_docs()
+
+
+@app.post("/api/rule-csv/validate")
+async def rule_csv_validate(req: RuleCsvValidateRequest):
+    """Check a CSV file against the policy's columns (schema, values, size,
+    duplicates). Reads no tenant and plans nothing: names are resolved and
+    the changes planned only by the preview."""
+    import rule_csv
+    try:
+        parsed = rule_csv.parse(req.csv, req.policy)
+    except rule_csv.CsvError as e:
+        return {"ok": False, "message": str(e), "problems": e.problems}
+    return {"ok": True, "policy": parsed["policy"], "columns": parsed["columns"], "rows": len(parsed["rows"]),
+            "names": [r["values"]["name"] for r in parsed["rows"][:20]]}
+
+
+@app.post("/api/rule-csv/export")
+async def rule_csv_export(req: RuleCsvExportRequest):
+    """Download one policy's rules as CSV (names, not ids; order and rank;
+    every cell safe to open in a spreadsheet). Read-only; the policy must be
+    in scope on the Scope page (400 before sign-in otherwise)."""
+    import ops_rule_csv
+    import rule_csv
+    if req.policy not in rule_csv.POLICIES:
+        raise HTTPException(status_code=400, detail=f"policy must be one of {', '.join(rule_csv.POLICIES)}")
+    spec = {"type": ops_rule_csv.type_for(req.policy), "policy": req.policy}
+    _ops_scope(req, spec)
+    creds = _tenant_creds(req)
+    _ops_zpa_gate(spec, creds)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    try:
+        out = await asyncio.to_thread(_keyed, client, ops_rule_csv.export_csv, client, req.policy)
+    except Exception as e:  # noqa: BLE001
+        import admin_ops
+        if isinstance(e, admin_ops.OperationError):
+            raise HTTPException(status_code=502, detail=str(e))
+        raise
+    return _attachment(out["csv"].encode("utf-8"), "text/csv; charset=utf-8", rule_csv.filename(req.policy, label))
+
+
+# ── Scheduled sync (sync_jobs): plans for approval, never unattended writes ──
+# A job reads its source and each target and files one change request per
+# target and policy in the change queue (four-eyes). The timer only starts
+# due jobs; nothing here or in sync_jobs writes to a tenant.
+_SYNC_STATE: Dict[str, Any] = {"enabled": False, "tick_seconds": 60, "last_tick_at": None, "last_error": None,
+                               "setting": "DLP_CHECK_SYNC_TIMER (0 turns the timer off; each job's own schedule decides when it runs)"}
+_SYNC_RUN_LOCK = threading.Lock()
+
+
+class SyncJobRequest(BaseModel):
+    """A sync job: name, source {kind: profile|snapshot|template, id},
+    target profile ids, resource groups, an optional rule label and name
+    prefix, deletes (off by default), new rules enabled (off by default)
+    and how often (hours; 0 = only Run now). The Scope page selection must
+    put every group's policy in scope."""
+    name: str = ""
+    source: Dict[str, Any] = {}
+    targets: List[str] = []
+    groups: List[str] = []
+    label: str = ""
+    prefix: str = ""
+    include_deletes: bool = False
+    new_rules_enabled: bool = False
+    interval_hours: int = 0
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+class SyncJobEnable(BaseModel):
+    enabled: bool = True
+
+
+def _sync_deps():
+    import sync_jobs
+    return sync_jobs.Deps(build_client=_build_sdk_client, tenant_key=_cq_tenant, notify=sync_jobs.notify_via_digest)
+
+
+def _sync_fail(e: Exception):
+    import sync_jobs
+    if isinstance(e, sync_jobs.SyncError):
+        raise HTTPException(status_code=e.status, detail=str(e))
+    raise e
+
+
+def _sync_view(job: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in job.items()}
+
+
+@app.get("/api/sync-jobs")
+async def sync_jobs_list(request: Request):
+    """Every sync job with its last runs, what can be a source or target,
+    the timer and the notification settings (no secrets)."""
+    import continuous_eval
+    import sync_jobs
+    jobs = await asyncio.to_thread(sync_jobs.list_jobs)
+    return {"jobs": [_sync_view(j) for j in jobs], "sources": await asyncio.to_thread(sync_jobs.sources),
+            "timer": dict(_SYNC_STATE), "notifications": continuous_eval.notification_settings(),
+            "viewer": {"actor": _cq_by(request), "may_write": _security.may_write()}}
+
+
+@app.get("/api/sync-jobs/{jid}")
+async def sync_jobs_get(jid: str):
+    import sync_jobs
+    job = sync_jobs.get_job(jid)
+    if not job:
+        raise HTTPException(status_code=404, detail="No such sync job.")
+    return _sync_view(job)
+
+
+@app.post("/api/sync-jobs")
+async def sync_jobs_create(req: SyncJobRequest, request: Request):
+    """Save a sync job (writers). Every resource group's policy must be in
+    scope on the Scope page (400 otherwise). Reads no tenant."""
+    import ops_rule_csv
+    import sync_jobs
+    _security.require_writer()
+    for g in req.groups or []:
+        if g in sync_jobs.GROUPS:
+            pol = sync_jobs.GROUPS[g]["policy"]
+            _ops_scope(req, {"type": ops_rule_csv.type_for(pol), "policy": pol})
+    try:
+        job = await asyncio.to_thread(sync_jobs.create_job, req.model_dump(exclude={"scopes", "channels", "from_page"}), by=_cq_by(request))
+    except Exception as e:  # noqa: BLE001
+        _sync_fail(e)
+    return _sync_view(job)
+
+
+@app.delete("/api/sync-jobs/{jid}")
+async def sync_jobs_delete(jid: str, request: Request):
+    """Delete a job (writers). Requests it filed stay in the queue."""
+    import sync_jobs
+    _security.require_writer()
+    try:
+        sync_jobs.delete_job(jid, by=_cq_by(request))
+    except Exception as e:  # noqa: BLE001
+        _sync_fail(e)
+    return {"deleted": jid}
+
+
+@app.post("/api/sync-jobs/{jid}/enabled")
+async def sync_jobs_enable(jid: str, req: SyncJobEnable, request: Request):
+    """Pause or resume a job's schedule (writers)."""
+    import sync_jobs
+    _security.require_writer()
+    try:
+        return _sync_view(sync_jobs.set_enabled(jid, req.enabled, by=_cq_by(request)))
+    except Exception as e:  # noqa: BLE001
+        _sync_fail(e)
+
+
+@app.post("/api/sync-jobs/{jid}/run")
+async def sync_jobs_run(jid: str, request: Request):
+    """Run a job now, as a job the page follows (writers). It reads the
+    source and the targets and files plans in the change queue; it never
+    writes to a tenant."""
+    import pack_jobs
+    import sync_jobs
+    _security.require_writer()
+    job = sync_jobs.get_job(jid)
+    if not job:
+        raise HTTPException(status_code=404, detail="No such sync job.")
+    if job.get("running"):
+        raise HTTPException(status_code=409, detail="This job is already running.")
+    by, actor, deps = _cq_by(request), _actor(request), _sync_deps()
+
+    def fn(log, cancel):
+        try:
+            return {"status": "done", "run": sync_jobs.run_job(jid, trigger="manual", by=by, deps=deps, say=log, cancel=cancel)}
+        except sync_jobs.SyncError as e:
+            return {"status": "refused", "message": str(e)}
+    pj = pack_jobs.start("sync_run", fn, label=f"sync job {jid}", actor=actor, start_token=_start_token(request))
+    return {"job_id": pj.id, "status": pj.status, "kind": pj.kind}
+
+
+def _sync_timer_on() -> bool:
+    return os.environ.get("DLP_CHECK_SYNC_TIMER", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _sync_tick() -> List[str]:
+    """Run every due job once (one at a time); returns the run ids."""
+    import sync_jobs
+    if not _SYNC_RUN_LOCK.acquire(blocking=False):
+        return []
+    ran = []
+    try:
+        for job in sync_jobs.due_jobs():
+            try:
+                run = sync_jobs.run_job(job["id"], trigger="schedule", by="", deps=_sync_deps())
+                ran.append(run["id"])
+            except sync_jobs.SyncError:
+                continue
+    finally:
+        _SYNC_RUN_LOCK.release()
+    return ran
+
+
+async def _sync_loop() -> None:
+    while _SYNC_STATE.get("enabled"):
+        try:
+            await asyncio.sleep(_SYNC_STATE["tick_seconds"])
+        except asyncio.CancelledError:
+            break
+        try:
+            await asyncio.to_thread(_sync_tick)
+            _SYNC_STATE.update(last_tick_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), last_error=None)
+        except Exception as e:  # noqa: BLE001 — the timer never takes the server down
+            _SYNC_STATE["last_error"] = f"{type(e).__name__}: {str(e)[:200]}"
+
+
+@app.on_event("startup")
+async def _start_sync_timer() -> None:
+    if not _sync_timer_on():
+        _SYNC_STATE["enabled"] = False
+        return
+    try:
+        import sync_jobs  # noqa: F401
+        _SYNC_STATE["enabled"] = True
+        asyncio.create_task(_sync_loop())
+    except Exception:  # noqa: BLE001
+        _SYNC_STATE["enabled"] = False
 
 
 # ── Browser extension (companion) ────────────────────────────────────

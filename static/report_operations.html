@@ -480,7 +480,9 @@
       preview('/api/operations/preview/start', body({ operation: spec }), null);
     });
 
-    const fmt = (v, field) => v == null ? '' : field === 'urls' || field === 'domain_names' ? (v ? 'listed' : 'not listed') : field === 'exists' ? (v ? 'exists' : 'does not exist') : String(v);
+    // A list reads as a comma list, an object (a rule's changed columns) as "column: value; ...".
+    const fmt = (v, field) => v == null ? '' : field === 'urls' || field === 'domain_names' ? (v ? 'listed' : 'not listed') : field === 'exists' ? (v ? 'exists' : 'does not exist')
+      : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? Object.entries(v).map(([k, x]) => `${k}: ${x}`).join('; ') : String(v);
     const chip = st => { const [l, c] = STATUS[st] || [st, '']; return `<span class="df-chip ${c}">${E(l)}</span>`; };
     function objName(u) { const o = u.object || {}; return `${E(o.name || o.id || '')}${o.policy_label ? ` <span class="df-by">${E(o.policy_label)}${o.rule_type ? ' · ' + E(o.rule_type) : ''}</span>` : o.type === 'url_category' ? ' <span class="df-by">URL category</span>' : o.type === 'zpa_segment' ? ' <span class="df-by">ZPA segment</span>' : ''}`; }
     function itemsTable(items, caption) {
