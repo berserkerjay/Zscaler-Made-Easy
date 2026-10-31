@@ -303,14 +303,17 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
 
     "insights": {
         "label": "ZIA Insights (traffic data)",
-        "description": "Traffic insights page: web traffic by action and location, cloud applications (Shadow IT), SaaS security (CASB) by application, firewall traffic by action, and the users with the most security incidents. Traffic numbers, not configuration; no assessment check reads them.",
+        "description": "Traffic insights page: web traffic by action and location, web threats by class and super-category, cloud applications (Shadow IT), SaaS security (CASB) by application, firewall traffic by action, location and network service, security incidents by location, IoT device counts, and the users with the most security incidents. The Insights assessment checks (high-risk unsanctioned apps with traffic, SaaS apps with traffic but no SaaS Security API tenant) and the cloud application sanction change in Bulk changes read it too. Traffic numbers (aggregates), not configuration.",
         "service": "ZIA (Z-Insights)",
         "permissions_read": [
             "Z-Insights / Insights analytics (read) on the API client's role",
         ],
         "permissions_write": [],
         "endpoints_used": [
-            "/zins/graphql (WEB_TRAFFIC, SHADOW_IT, SAAS_SECURITY, ZERO_TRUST_FIREWALL, CYBER_SECURITY)",
+            "/zins/graphql (WEB_TRAFFIC, SHADOW_IT, SAAS_SECURITY, ZERO_TRUST_FIREWALL, CYBER_SECURITY, IOT)",
+            "/zia/subscriptions (licences, for the Insights checks)",
+            "/zia/casbTenant/lite (SaaS Security API tenants, for the SaaS coverage check; only when the SaaS channel is on Zscaler)",
+            "/zia/cloudApplications/lite (the cloud application list, for the sanction change)",
         ],
         "license_required": "Standard ZIA license for web and firewall traffic; Shadow IT and SaaS security sections show data only where the tenant has Cloud App Control and CASB.",
         "customer_id_needed": False,

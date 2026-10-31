@@ -25,7 +25,11 @@ What it covers, on purpose with the gaps an assessment should find:
     server and connector groups, App Connectors (one disconnected), an
     IdP, posture profiles, access and timeout policies;
   - ZDX: monitored applications, devices, departments, locations;
-  - ZIdentity: users, groups, resource servers.
+  - ZIdentity: users, groups, resource servers;
+  - ZIA Insights: one answer per Traffic insights query (aggregates only),
+    the cloud application list and the licences, with high-risk
+    unsanctioned apps carrying traffic and sanctioned SaaS apps with no
+    SaaS Security API tenant.
 
 The fixtures in tests/ (test_data_flow.py, test_pack_channels.py) gave the
 shapes; the values are new.
@@ -377,6 +381,77 @@ ZID_USERS = [{"id": "u-41", "loginName": "avery.quinn@larkspur-freight.example",
 ZID_GROUPS = [{"id": "g-33", "name": "Finance Team", "source": "SCIM"}, {"id": "g-34", "name": "Developers", "source": "SCIM"}]
 ZID_RESOURCE_SERVERS = [{"id": "rs-1", "name": "ZIA", "primaryAud": "https://api.zscaler.com"}]
 
+# ZIA Insights (Z-Insights GraphQL, POST /zins/graphql): one answer per SDK
+# operation, in the shape zscaler/zins/*.py reads (offline the time window is
+# not applied). Aggregates, and the per-user incidents of the sample's own
+# made-up people (never kept in a snapshot of a real tenant).
+# The gaps on purpose: WeTransfer, MEGA and Pastebin are unsanctioned, high
+# risk and carry traffic; Slack and Salesforce are sanctioned with traffic but
+# no SaaS Security API tenant; ChatGPT's sanction state is not stated.
+CLOUD_APPS = [{"id": 2100 + i, "name": n} for i, n in enumerate(
+    ("Box", "Google Drive", "Microsoft OneDrive", "Slack", "Salesforce", "WeTransfer", "MEGA", "Pastebin", "Dropbox", "ChatGPT", "Zoom"))]
+_APPS = [  # application, category, risk index, sanctioned state, bytes up, bytes down, users
+    ("Box", "File Share", 1, "Sanctioned", 9_400_000_000, 21_000_000_000, 140),
+    ("Google Drive", "File Share", 2, "Sanctioned", 2_100_000_000, 6_800_000_000, 85),
+    ("Microsoft OneDrive", "File Share", 1, "Sanctioned", 5_300_000_000, 12_000_000_000, 150),
+    ("Slack", "Enterprise Collaboration", 2, "Sanctioned", 1_200_000_000, 3_900_000_000, 120),
+    ("Salesforce", "Sales and Marketing", 1, "Sanctioned", 640_000_000, 2_700_000_000, 60),
+    ("WeTransfer", "File Share", 5, "Unsanctioned", 3_800_000_000, 120_000_000, 14),
+    ("MEGA", "File Share", 5, "Unsanctioned", 1_600_000_000, 900_000_000, 6),
+    ("Pastebin", "Consumer", 4, "Unsanctioned", 4_000_000, 9_000_000, 9),
+    ("Dropbox", "File Share", 3, "Unsanctioned", 260_000_000, 410_000_000, 11),
+    ("ChatGPT", "System and Development", 4, "", 52_000_000, 310_000_000, 48),
+    ("Zoom", "Enterprise Collaboration", 2, "Sanctioned", 300_000_000, 8_200_000_000, 130),
+]
+SHADOW_IT_APPS = [{"application": a, "application_category": c, "risk_index": r, "computed_risk_index": r, "sanctioned_state": st,
+                   "integration": 0, "data_consumed": up + down, "data_uploaded": up, "data_downloaded": down, "authenticated_users": u,
+                   "unAuthenticated_location_count": 0, "last_access_time": 1793404800000, "vulnerability": None, "undiscovered": False,
+                   "custom_risk_index": None} for a, c, r, st, up, down, u in _APPS]
+
+
+def _zins(domain: str, field: str, entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {"data": {domain: {field: {"obfuscated": False, "entries": entries}}}}
+
+
+def _nt(*pairs: Any) -> List[Dict[str, Any]]:
+    return [{"name": n, "total": t} for n, t in pairs]
+
+
+ZINS = {
+    "WebTrafficNoGrouping": _zins("WEB_TRAFFIC", "no_grouping", _nt(("TOTAL", 4_820_000))),
+    "WebTrafficByLocation": _zins("WEB_TRAFFIC", "location", _nt(("Larkspur HQ (Portland)", 3_100_000), ("Reno depot", 1_200_000), ("Road warriors", 520_000))),
+    "WebThreatClass": _zins("WEB_TRAFFIC", "threat_class", _nt(("Advanced Threats", 412), ("Viruses and spyware", 96), ("Behavioral analysis", 31))),
+    "WebThreatSuperCategories": _zins("WEB_TRAFFIC", "threat_super_categories", _nt(("Phishing", 288), ("Malicious content", 154), ("Botnet callback", 97))),
+    "ShadowITApps": _zins("SHADOW_IT", "apps", SHADOW_IT_APPS),
+    "ShadowITSummary": {"data": {"SHADOW_IT": {"shadow_it_summary": {
+        "total_apps": len(_APPS), "total_upload_bytes": sum(x[4] for x in _APPS), "total_download_bytes": sum(x[5] for x in _APPS),
+        "total_bytes": sum(x[4] + x[5] for x in _APPS),
+        "group_by_risk_index_for_app": {"obfuscated": False, "entries": _nt(("1", 3), ("2", 4), ("3", 1), ("4", 2), ("5", 2))},
+        "group_by_app_cat_for_app": {"obfuscated": False, "entries": _nt(("File Share", 6), ("Enterprise Collaboration", 2), ("Consumer", 1),
+                                                                          ("Sales and Marketing", 1), ("System and Development", 1))}}}}},
+    "CasbAppReport": _zins("SAAS_SECURITY", "casb_app", _nt(("Box", 1840), ("Google Drive", 920), ("Microsoft OneDrive", 1310))),
+    "FirewallByAction": _zins("ZERO_TRUST_FIREWALL", "action", _nt(("ALLOW", 920_000), ("BLOCK", 41_000))),
+    "FirewallByLocation": _zins("ZERO_TRUST_FIREWALL", "location_firewall",
+                                [{"id": 1101, "name": "Larkspur HQ (Portland)", "total": 690_000}, {"id": 1102, "name": "Reno depot", "total": 271_000}]),
+    "FirewallNetworkServices": _zins("ZERO_TRUST_FIREWALL", "network_service", _nt(("DNS", 510_000), ("HTTPS", 300_000), ("NTP", 92_000), ("SSH", 1_900))),
+    "CyberSecurityByLocation": _zins("CYBER_SECURITY", "cyber_security_location",
+                                     [{"id": 1101, "name": "Larkspur HQ (Portland)", "total": 61}, {"id": 1102, "name": "Reno depot", "total": 23}]),
+    # Made-up people of the made-up company (ZID_USERS): the page shows them on screen only.
+    "CyberSecurityIncidents": _zins("CYBER_SECURITY", "incidents", _nt(("avery.quinn@larkspur-freight.example", 12),
+                                                                       ("rowan.ellis@larkspur-freight.example", 5))),
+    "IoTDeviceStats": {"data": {"IOT": {"device_stats": {
+        "devices_count": 412, "user_devices_count": 57, "iot_devices_count": 96, "server_devices_count": 18, "un_classified_devices_count": 11,
+        "entries": [{"classifications": "IP camera", "classification_uuid": "lkf-iot-1", "category": "IoT", "total": 38},
+                    {"classifications": "Label printer", "classification_uuid": "lkf-iot-2", "category": "IoT", "total": 31},
+                    {"classifications": "Handheld scanner", "classification_uuid": "lkf-iot-3", "category": "IoT", "total": 27}]}}}},
+}
+# The licences (GET /subscriptions, organization_information.get_subscriptions):
+# ids as readiness.SKU_INFO knows them.
+SUBSCRIPTIONS = [{"id": sid, "subscribed": True, "status": "ACTIVE", "endDate": 1830297600000} for sid in (
+    "ZIA_TENANT", "URL_FILTER", "ZMAN_WEB_2_0", "ZIA_SSL", "ZIA_ATP", "ZSEC_WEB_ABA", "Z_FIREWALL_BASIC", "Z_API", "ZDLP_WEB",
+    "Z_DLP_ENDPOINT", "ZS_DP_GEN_AI", "ZS_DP_EMAIL", "Z_CASB", "Z_WORKFLOW_AUTOMATION", "Z_CLOUD_NSS_WEB", "ZIA_ISO_STD",
+    "ZSCALER_CLIENT_CONNECTOR", "Z_ZDX_STD")]
+
 
 def responses() -> Dict[str, Any]:
     """Every answer of the sample tenant: {OneAPI path: JSON body}. A fresh
@@ -478,6 +553,10 @@ def responses() -> Dict[str, Any]:
         f"{ZID}/groups": {"records": ZID_GROUPS, "results_total": len(ZID_GROUPS)},
         f"{ZID}/resource-servers": {"records": ZID_RESOURCE_SERVERS, "results_total": len(ZID_RESOURCE_SERVERS)},
     }
+    r[f"{ZIA}/cloudApplications/lite"] = CLOUD_APPS
+    r[f"{ZIA}/subscriptions"] = SUBSCRIPTIONS
+    for op, body in ZINS.items():
+        r[f"/zins/graphql/{op}"] = body
     for rule_type in CAC_RULE_TYPES:
         r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
     return copy.deepcopy(r)
@@ -486,7 +565,7 @@ def responses() -> Dict[str, Any]:
 def meta() -> Dict[str, Any]:
     """What the sample says about itself (the banner, the status, records)."""
     return {"kind": "sample", "company": COMPANY, "tenant_label": LABEL, "saved_at": "",
-            "scopes": ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac"],
+            "scopes": ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights"],
             "channels": {}}
 
 
