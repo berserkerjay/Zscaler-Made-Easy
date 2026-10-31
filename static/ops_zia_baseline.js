@@ -23,7 +23,7 @@
   function state(S, res) {
     if (!S.zb) {
       S.zb = { tier: 'balanced', overlays: new Set(), areas: null, prefix: 'BL', mode: 'tier', rules: {}, atp: {}, ucaas: {}, enable: false,
-        profile: '', cert: '', framework: null, frameworkName: '', fileError: '' };
+        profile: '', cert: '', framework: null, frameworkName: '', fileError: '', compliance: '', cpReady: false, cpSaved: '', cpInfo: null, cpError: '' };
     }
     if (!S.zb.areas && res && res.areas) {
       S.zb.areas = new Set(res.areas.filter(a => a.default && (res.in_scope || []).includes(a.key)).map(a => a.key));
@@ -31,7 +31,10 @@
     return S.zb;
   }
 
-  // The rules the review lists: the tier's catalog rules, or a loaded framework's.
+  // The compliance profile picked (compliance_profiles.py): its entry in the catalogue the server sent.
+  const cpOf = (res, z) => (res.compliance_profiles || []).find(p => p.key === z.compliance) || null;
+  // The rules the review lists: the tier's catalog rules (changed by the
+  // compliance profile as the server's _template_rules does), or a loaded framework's.
   function templateRules(res, z) {
     if (z.framework) {
       const out = [];
@@ -40,8 +43,22 @@
         catch_all: !!r.catch_all, default_on: true, choices: (res.areas.find(a => a.key === area) || {}).choices || [], sources: [] })));
       return out;
     }
-    return (res.rules || []).filter(r => r.tiers && Object.prototype.hasOwnProperty.call(r.tiers, z.tier))
-      .map(r => Object.assign({}, r, { def: r.tiers[z.tier], name: `${z.prefix}-${r.suffix}` }));
+    const sm = (cpOf(res, z) || {}).summary || {};
+    const adds = {}, req = {}, forbid = new Set((sm.forbids || []).map(f => f.key));
+    (sm.adds || []).forEach(a => { adds[a.key] = a; });
+    (sm.requires || []).forEach(q => { req[q.key] = q; });
+    const has = r => r.tiers && Object.prototype.hasOwnProperty.call(r.tiers, z.tier);
+    return (res.rules || []).filter(r => !forbid.has(r.key) && (has(r) || adds[r.key]))
+      .map(r => {
+        const x = Object.assign({}, r, { def: has(r) ? r.tiers[z.tier] : adds[r.key].action, name: `${z.prefix}-${r.suffix}`, profileNote: '' });
+        if (!has(r)) x.profileNote = `Added by ${sm.label} (${adds[r.key].control}): ${adds[r.key].why}`;
+        if (req[r.key]) {
+          x.locked = `required by ${sm.label} (${req[r.key].control}): always on, with the tier's action`;
+          x.choices = [];
+          x.profileNote = (x.profileNote ? x.profileNote + ' ' : '') + `Required by ${sm.label} (${req[r.key].control}).`;
+        }
+        return x;
+      });
   }
   function effective(r, z) {
     const ch = z.rules[r.key] || {};
@@ -82,7 +99,8 @@
         <td>${E(actLabel(r.def))}</td>
         <td>${opts.length > 1 ? `<select data-zb-act="${E(r.key)}" aria-label="Action for ${E(r.name)}">${opts.map(o => `<option value="${E(o)}"${e.choice === o ? ' selected' : ''}>${E(choiceLabel[o])}</option>`).join('')}</select>` : '<span class="df-hint">Tier default</span>'}</td>
         <td>${r.locked ? `<span class="df-chip">Locked</span> <span class="df-hint">${E(r.locked)}</span>` : ''}${r.action_locked ? `<span class="df-chip">Action locked</span> <span class="df-hint">${E(r.action_locked)}</span>` : ''}
-          ${r.catch_all ? '<span class="df-chip">Goes last</span>' : ''}${e.weakened ? ` <span class="df-chip st-warn">Weaker than the tier: ${E(e.weakened)}</span>` : ''}</td>
+          ${r.catch_all ? '<span class="df-chip">Goes last</span>' : ''}${e.weakened ? ` <span class="df-chip st-warn">Weaker than the tier: ${E(e.weakened)}</span>` : ''}
+          ${r.profileNote ? `<div class="df-hint">${E(r.profileNote)}</div>` : ''}</td>
         <td>${(r.sources || []).map(s => `<a href="${E(httpsOnly(s.url))}" target="_blank" rel="noopener noreferrer">${E(s.title)}</a>`).join('<br>') || '<span class="df-hint">From the framework file</span>'}</td></tr>`;
     };
     const areaBlock = a => {
@@ -117,6 +135,38 @@
           return `<label class="df-ctl"><input type="checkbox" data-zb-ucaas="${E(s.key)}"${v ? ' checked' : ''}><span>${E(s.label)}${v && !def ? ' <span class="df-chip st-warn">Not inspected</span>' : ''}</span></label>`;
         }).join('')}</div>`;
     };
+    const C = window.ZMECompliance;
+    if (C && !z.cpReady && !z.cpLoading) {
+      // The choice remembered for the saved tenant profile picked above, once.
+      z.cpLoading = true;
+      Promise.all([C.catalog().catch(() => null), C.remembered()]).then(([, key]) => {
+        z.cpReady = true; z.cpLoading = false;
+        if (key && !z.compliance && (res.compliance_profiles || []).some(p => p.key === key)) { applyProfile(res, z, key); z.cpSaved = 'Remembered for this tenant profile.'; }
+        renderBaseline(res, where, S, H);
+      });
+    }
+    const cp = cpOf(res, z), cps = (cp && cp.summary) || null;
+    const groups = {};
+    (res.compliance_profiles || []).forEach(p => { (groups[p.group] = groups[p.group] || []).push(p); });
+    const cpBlock = `<fieldset class="op-cp" style="border:0;margin:0 0 0.6rem;padding:0;min-width:0"><legend class="df-h">Compliance profile</legend>
+        <div class="df-hint">One choice drives the tier, the overlay, the rules the profile adds or requires, the DLP policy packs offered, the AI Guard detection profile and the compliance pack. It is remembered for the saved tenant profile picked above.</div>
+        <div class="op-row"><label class="df-ctl" style="max-width:100%"><span class="lbl">Compliance profile</span><select id="zbCompliance" aria-label="Compliance profile" style="max-width:100%">
+          <option value="">None (no compliance profile)</option>${Object.keys(groups).map(g => `<optgroup label="${E(g)}">${groups[g].map(p => `<option value="${E(p.key)}"${z.compliance === p.key ? ' selected' : ''}>${E(p.label)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+          ${z.cpSaved ? `<span class="df-chip" role="status">${E(z.cpSaved)}</span>` : ''}</div>
+        ${cps ? `<div class="bp-card" id="zbCpSummary"><div class="t">What ${E(cps.label)} will do</div><ul style="padding-left:1.2rem">${(cps.lines || []).map(l => `<li>${E(l)}</li>`).join('')}</ul>
+          <div class="df-hint">${E(cps.reuses)}${cps.assumed_profile ? ` Assumed: ${E(cps.assumed_profile)}` : ''}</div>
+          ${(cps.sources || []).length ? `<div class="df-hint">Sources: ${cps.sources.map(x => `<a href="${E(httpsOnly(x.url))}" target="_blank" rel="noopener noreferrer">${E(x.title)}</a>`).join('; ')}</div>` : ''}
+          ${(cps.assumed_controls || []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(cps.assumed_controls.join(', '))}</div>` : ''}
+          ${cps.tier && !z.framework && cps.tier !== z.tier ? `<div class="df-chip st-warn" role="status">${E(cps.label)} builds on the ${E(cps.tier)} tier; this build uses ${E(z.tier)}. ${E(cps.tier_why)}</div>` : ''}
+          <div class="op-row">${(cps.packs || []).map(pk => pk.available ? `<a class="rp-btn" href="/?simple=deploy&amp;pack=${encodeURIComponent(pk.id)}">Deploy ${E(pk.name)}</a>` : `<span class="df-hint">${E(pk.name)} is not installed</span>`).join('')}
+            <span class="df-hint">AI Guard detection policy: ${E(cps.aiguard_name)} (pick AI Guard detection policy under Build new).</span></div>
+          <h3 class="op-h">Compliance pack</h3>
+          <div class="df-hint">Local files from the build on screen: nothing is written to the tenant. Every rule is mapped to a control of the profile or carries a reason code; the DLP test files hold synthetic test data only.</div>
+          <div class="op-row" id="zbCpFiles">${[['mapping.html', 'Control mapping (HTML)'], ['mapping.xlsx', 'Control mapping (Excel)'], ['mapping.csv', 'Control mapping (CSV)'], ['policy.json', 'Policy export'], ['testplan.html', 'Test plan by control'], ['compliance-pack.zip', 'Everything, with the DLP test files (ZIP)']]
+            .map(([id, l]) => `<button type="button" class="rp-btn" data-zb-cp-file="${E(id)}">${E(l)}</button>`).join('')}
+            <button type="button" class="rp-btn" id="zbCpCheck">Check the mapping</button></div>
+          ${z.cpInfo ? `<div class="df-hint" role="status">${E(z.cpInfo)}</div>` : ''}${z.cpError ? `<div class="df-chip st-fail" role="alert">${E(z.cpError)}</div>` : ''}</div>` : ''}
+      </fieldset>`;
     where.innerHTML = `${errorsHtml(res)}
       <p>Build a ZIA security baseline: pick a tier (or load a framework file saved from another tenant), the compliance frameworks to map it to and the areas, then check each rule below and preview. New rules arrive disabled; nothing is written until you apply.</p>
       <fieldset class="op-kinds"><legend class="df-h">Tier</legend>
@@ -125,6 +175,7 @@
       <div class="op-row"><label class="df-ctl"><span class="lbl">Or load a framework file (from Export from tenant, ZIA policy framework)</span><input type="file" id="zbFile" accept="application/json,.json" aria-label="Framework file"></label>
         ${z.framework ? `<span class="df-chip st-ok">Framework: ${E(z.frameworkName)}</span> <button type="button" class="rp-btn" id="zbClearFw">Use a tier instead</button>` : ''}
         ${z.fileError ? `<span class="df-chip st-fail" role="alert">${E(z.fileError)}</span>` : ''}</div>
+      ${cpBlock}
       <fieldset class="op-kinds"><legend class="df-h">Compliance overlays</legend>
         <div class="df-hint">An overlay adds the controls of that framework to each rule it fits, with the document they come from. It does not change the rules.</div>
         <div class="op-row">${(res.overlays || []).map(o => `<label class="df-ctl"><input type="checkbox" data-zb-ov="${E(o.key)}"${z.overlays.has(o.key) ? ' checked' : ''}><span>${E(o.label)}</span></label>`).join('')}</div>
@@ -165,6 +216,32 @@
     on('zbCert', 'change', e => { z.cert = e.target.value; });
     on('zbEnable', 'change', e => { z.enable = e.target.checked; });
     on('zbClearFw', 'click', () => { z.framework = null; z.frameworkName = ''; z.rules = {}; rerender(); });
+    on('zbCompliance', 'change', async e => {
+      applyProfile(res, z, e.target.value);
+      z.cpSaved = ''; z.cpInfo = ''; z.cpError = '';
+      rerender('zbCompliance');
+      if (C) {
+        const ok = await C.remember(z.compliance).catch(() => false);
+        z.cpSaved = ok ? (z.compliance ? 'Remembered for this tenant profile.' : 'No compliance profile for this tenant profile.') : 'Pick a saved tenant profile above to remember this choice.';
+        rerender('zbCompliance');
+      }
+      H.say(z.compliance ? `Compliance profile: ${(cpOf(res, z) || {}).label}.` : 'No compliance profile.');
+    });
+    where.querySelectorAll('button[data-zb-cp-file]').forEach(b => b.addEventListener('click', async () => {
+      if (!C) return;
+      z.cpError = '';
+      try { await C.download({ compliance_profile: z.compliance, spec: specOf(z), file: b.dataset.zbCpFile }); H.say('Downloaded.'); } catch (err) { z.cpError = `Could not make the file: ${err.message}`; rerender(); }
+    }));
+    on('zbCpCheck', 'click', async () => {
+      if (!C) return;
+      z.cpError = '';
+      try {
+        const m = await C.manifest({ compliance_profile: z.compliance, spec: specOf(z) });
+        const c = m.counts || {};
+        z.cpInfo = `${c.rules} rules and settings: ${c.mapped} map to controls of ${m.label}, ${c.reasoned} carry a reason code, none has neither. ${(m.files || []).filter(f => f.dlp).length} synthetic DLP test files.${m.tier_warning ? ' ' + m.tier_warning : ''}`;
+      } catch (err) { z.cpError = `Could not check the mapping: ${err.message}`; }
+      rerender('zbCpCheck');
+    });
     on('zbFile', 'change', async e => {
       const f = e.target.files && e.target.files[0];
       z.fileError = '';
@@ -180,14 +257,27 @@
     });
   }
 
+  // Picking a compliance profile: its tier (unless a framework file is loaded), its overlay, the choice shared with the other builders.
+  function applyProfile(res, z, key) {
+    z.compliance = key || '';
+    const p = cpOf(res, z);
+    if (p && p.tier && !z.framework) z.tier = p.tier;
+    if (p && p.overlay) z.overlays.add(p.overlay);
+    z.rules = {}; z.atp = {}; z.ucaas = {};
+    if (window.ZMECompliance) window.ZMECompliance.set(z.compliance);
+  }
+  function specOf(z) {
+    const spec = { type: 'zia_baseline', tier: z.framework ? undefined : z.tier, overlays: [...z.overlays], areas: [...(z.areas || [])], prefix: z.prefix,
+      mode: z.mode, rules: z.rules, atp: z.atp, ucaas: z.ucaas || {}, enable_rules: !!z.enable, isolation_profile: z.profile, certificate: z.cert };
+    if (z.compliance) spec.compliance_profile = z.compliance;
+    if (z.framework) spec.framework = z.framework;
+    return spec;
+  }
   function baselineSpec(S) {
     const z = S.zb;
     if (!z || !z.areas || !z.areas.size) throw new Error('Pick at least one area.');
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,9}$/.test(z.prefix)) throw new Error('The rule name prefix is 1 to 10 letters, digits, - or _.');
-    const spec = { type: 'zia_baseline', tier: z.framework ? undefined : z.tier, overlays: [...z.overlays], areas: [...z.areas], prefix: z.prefix,
-      mode: z.mode, rules: z.rules, atp: z.atp, ucaas: z.ucaas || {}, enable_rules: !!z.enable, isolation_profile: z.profile, certificate: z.cert };
-    if (z.framework) spec.framework = z.framework;
-    return spec;
+    return specOf(z);
   }
 
   // ── SSL certificate manager ──

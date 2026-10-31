@@ -72,6 +72,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import admin_ops as ao
+import compliance_profiles as cp
 import pack_channels as pc
 import pack_ops as ops
 import ucaas_oneclick
@@ -697,13 +698,20 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
             _check_step(st)
         return {"type": TYPE, "action": "revert", "steps": steps}
     framework = spec.get("framework")
-    out["tier"] = str(spec.get("tier") or ("captured" if framework else "balanced")).lower()
+    try:
+        out["compliance_profile"] = cp.key_of(spec.get("compliance_profile"))
+    except cp.ProfileError as e:
+        raise ao.OperationError(str(e)) from None
+    prof = cp.PROFILES.get(out["compliance_profile"]) or {}
+    out["tier"] = str(spec.get("tier") or ("captured" if framework else (prof.get("tier") or "balanced"))).lower()
     if out["tier"] not in TIERS and not (framework and out["tier"] == "captured"):
         raise ao.OperationError(f"Unknown tier '{str(spec.get('tier'))[:40]}'. Use one of: {', '.join(TIERS)}.")
     out["overlays"] = [o for o in _norm_list(spec.get("overlays"), "overlays")]
     bad = [o for o in out["overlays"] if o not in OVERLAYS]
     if bad:
         raise ao.OperationError(f"Unknown compliance overlay(s): {', '.join(bad)}. Use: {', '.join(OVERLAYS)}.")
+    if prof and prof["overlay"] not in out["overlays"]:
+        out["overlays"].append(prof["overlay"])   # the one compliance choice brings its overlay
     areas = _norm_list(spec.get("areas"), "areas")
     bad = [a for a in areas if a not in AREAS]
     if bad:
@@ -746,14 +754,32 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _template_rules(n: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The tier's rules, changed by the compliance profile where its source
+    justifies it (compliance_profiles.applies): rules it adds (with the
+    action it gives them), rules it requires (always on, the tier's action)
+    and rules it leaves out."""
     if n.get("framework"):
         return copy.deepcopy(n["framework"]["rules"])
     tier = n["tier"]
+    pk = n.get("compliance_profile") or ""
+    eff = cp.applies(pk, tier) if pk else {"add": {}, "add_why": {}, "require": {}, "forbid": {}}
+    label = cp.PROFILES[pk]["label"] if pk else ""
     out = []
     for r in CATALOG:
-        if tier in r["tiers"]:
+        if r["key"] in eff["forbid"]:
+            continue
+        if tier in r["tiers"] or r["key"] in eff["add"]:
             x = copy.deepcopy(r)
-            x["default"] = x["tiers"][tier]
+            if tier in r["tiers"]:
+                x["default"] = x["tiers"][tier]
+            else:
+                x["default"] = eff["add"][r["key"]]
+                why = eff["add_why"][r["key"]]
+                x["profile_note"] = f"Added by {label} ({why['control']}): {why['why']}"
+            if r["key"] in eff["require"]:
+                x["locked"] = f"required by {label} ({eff['require'][r['key']]}): always on, with the tier's action"
+                x["profile_note"] = (x.get("profile_note", "") + " " if x.get("profile_note") else "") + \
+                    f"Required by {label} ({eff['require'][r['key']]})."
             out.append(x)
     return out
 
@@ -808,7 +834,7 @@ def review(spec: Dict[str, Any]) -> Dict[str, Any]:
                      "locked": lock, "action_locked": r.get("action_locked") or "", "weakened": weakened, "catch_all": r.get("catch_all", False),
                      "risky": r.get("risky") if r.get("risky") and not _is_restrictive(action) else "",
                      "fields": r["fields"], "sources": _sources(r.get("sources") or []),
-                     "controls": overlay_controls(domains, n["overlays"])})
+                     "controls": overlay_controls(domains, n["overlays"]), "profile_note": r.get("profile_note", "")})
     _unique_names(rows)
     tier = n["tier"]
     atp = []
@@ -823,9 +849,26 @@ def review(spec: Dict[str, Any]) -> Dict[str, Any]:
         value = n["ucaas"].get(k, default)
         ucaas.append({"key": k, "label": label, "default": default, "value": value,
                       "exempts": "its calls break out without inspection" if value else ""})
-    return {"tier": tier, "tier_label": TIERS.get(tier, {}).get("label", "Captured framework"), "normalized": n, "rules": rows, "atp": atp,
-            "atp_controls": overlay_controls(AREAS["atp"]["domain"], n["overlays"]), "atp_sources": _sources(["cis", "nistcsf"]),
-            "ucaas": ucaas, "ucaas_sources": _sources(["zsucaas"])}
+    out = {"tier": tier, "tier_label": TIERS.get(tier, {}).get("label", "Captured framework"), "normalized": n, "rules": rows, "atp": atp,
+           "atp_controls": overlay_controls(AREAS["atp"]["domain"], n["overlays"]), "atp_sources": _sources(["cis", "nistcsf"]),
+           "ucaas": ucaas, "ucaas_sources": _sources(["zsucaas"])}
+    pk = n.get("compliance_profile") or ""
+    if pk:
+        # rule -> objective -> the profile's controls, or a reason code, per row
+        for r in rows:
+            r["profile"] = _profile_map(pk, r)
+        for s in atp:
+            s["profile"] = cp.map_rule(pk, "atp." + s["key"], action="BLOCK" if s["value"] else "ALLOW")
+        out["compliance_profile"] = {"key": pk, "label": cp.PROFILES[pk]["label"],
+                                     "tier_warning": cp.applies(pk, tier)["tier_warning"] if not n.get("framework") else ""}
+    return out
+
+
+def _profile_map(pk: str, row: Dict[str, Any]) -> Dict[str, Any]:
+    if row["key"] in cp.RULE_OBJECTIVES:
+        return cp.map_rule(pk, row["key"], action=row["action"], on=row["on"])
+    # a rule of a captured framework has no catalog key: no control is claimed for it
+    return cp._finish_map(pk, "", "VENDOR_DEFAULT", row["action"], row["on"])
 
 
 def _act_label(a: Any) -> str:
@@ -851,6 +894,7 @@ def catalog() -> Dict[str, Any]:
             "ucaas": [{"key": k, "label": l, "on_in": list(ucaas_oneclick.TIERS_ON)} for k, l, _ in ucaas_oneclick.SETTINGS],
             "ucaas_sources": _sources(["zsucaas"]),
             "area_controls": {a: overlay_controls(AREAS[a]["domain"], list(OVERLAYS)) for a in AREA_ORDER},
+            "compliance_profiles": [dict(p, summary=cp.summary(p["key"])) for p in cp.catalog()["profiles"]],
             "max_name": MAX_NAME}
 
 
@@ -1237,6 +1281,12 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
     if weak:
         warnings.append(f"Weaker than the {tier_label} tier: " + "; ".join(weak) + ".")
     warnings += [f"{r['name']}: {r['risky']}" for r in on_rows if r.get("risky")]
+    prof = rev.get("compliance_profile") or {}
+    if prof.get("tier_warning"):
+        warnings.append(prof["tier_warning"])
+    if prof:
+        notes.append(f"Compliance profile {prof['label']}: every rule below shows its objective and the profile's controls, or the reason "
+                     "no control applies. The compliance pack (local files, nothing written) holds the full mapping and the test plan.")
     zia = client.zia
     facts = _read_facts(zia, on_rows, areas, n, say, cancel)
     warnings += fit(on_rows, facts)
@@ -1367,7 +1417,8 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
         notes.append("Every new rule is created DISABLED: enable each one after review (Bulk changes, Enable or disable rules). "
                      "Re-running the baseline updates the rules it made in place and never changes their state.")
     return {"type": TYPE, "product": "zia", "spec": nspec, "items": items, "groups": groups,
-            "title": f"ZIA baseline ({tier_label}{', ' + ', '.join(OVERLAYS[o]['label'] for o in n['overlays']) if n['overlays'] else ''}): "
+            "title": f"ZIA baseline ({tier_label}{', ' + prof['label'] if prof else ''}"
+                     f"{', ' + ', '.join(OVERLAYS[o]['label'] for o in n['overlays']) if n['overlays'] else ''}): "
                      f"{created} new, {len(groups) - created} updated",
             "warnings": warnings, "notes": notes, "review": rev["rules"], "atp_review": rev["atp"] if "atp" in areas else [],
             "ucaas_review": rev["ucaas"] if "ucaas" in areas else [],

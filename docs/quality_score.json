@@ -332,13 +332,14 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 61,
-            "accepted": 1,
+            "fixed": 62,
+            "accepted": 2,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
               "func-builders",
               "w7-admin-zpa-zcc-zdx",
+              "w7-federal-compliance",
               "w7-rank-inherit",
               "w7-restore-clone"
             ]
@@ -454,7 +455,7 @@
     }
   ],
   "counts": {
-    "findings": 618,
+    "findings": 620,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -473,22 +474,22 @@
       },
       "low": {
         "open": 1,
-        "fixed": 353,
+        "fixed": 354,
         "accepted": 0
       },
       "info": {
         "open": 1,
         "fixed": 52,
-        "accepted": 30
+        "accepted": 31
       }
     },
     "checks": {
-      "pass": 388,
-      "fixed": 311,
+      "pass": 394,
+      "fixed": 312,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 9248
+    "tests_added": 9362
   },
   "findings": [
     {
@@ -938,6 +939,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-FC-02",
+      "title": "The existing assessment mapping (compliance_mapping.CONTROL_DOMAINS CMMC_L2, ssl_inspection) credits TLS inspection to SC.L2-3.13.8 and SC.L2-3.13.16 (protection of CUI in transit and at rest), which inspection does not carry out; the ZIA baseline's SP 800-171 overlay source says Rev. 3 while its ids are Rev. 2",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1059",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "Left as it is to keep the 13-framework assessment contract unchanged in this branch; the new federal profiles do not reuse these mappings (CMMC Level 2 credits inspection to SI.L2-3.14.6 only).",
+      "slug": "w7-federal-compliance",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "W7-SAST-02",
@@ -9404,6 +9421,22 @@
       "sub_area": "builders"
     },
     {
+      "id": "W7-FC-01",
+      "title": "The compliance profile select and the profile view's select overflowed a 320px viewport (long profile names widened the fieldset)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "",
+      "wcag": "WCAG 2.2 SC 1.4.10",
+      "fix": "The selects are capped at the container width and the block stacks vertically.",
+      "test": "tests/test_compliance_profiles_browser.py::test_no_sideways_scroll_at_320px_and_no_script_errors",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-federal-compliance",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "W7-O365-03",
       "title": "Test a list counted a rule unknown only on its app service group as 'blocks in some contexts' (a user, a time), although it is the destination that is not known",
       "severity": "low",
@@ -11304,6 +11337,37 @@
       "tests_added": 94
     },
     {
+      "slug": "w7-federal-compliance",
+      "area": "Federal compliance profiles, one compliance choice and the compliance pack: ZIA security baseline, AI Guard detection policy, policy packs (IRS 1075 FTI Pack), the Compliance page, the POV planner and Simple mode",
+      "title": "Six federal profiles with sourced control catalogues that change rules where the source justifies it, every created rule mapped to a control or a reason code, and local compliance pack exports with synthetic DLP test data",
+      "standards": [
+        "ASVS V1.14.1",
+        "ASVS V4.1.1",
+        "ASVS V5.1.3",
+        "ASVS V5.2.4",
+        "ASVS V5.3.3",
+        "ASVS V8.3.1",
+        "ASVS V12.3.1",
+        "ASVS V13.2.3",
+        "CWE-20",
+        "CWE-22",
+        "CWE-79",
+        "CWE-95",
+        "CWE-200",
+        "CWE-306",
+        "CWE-352",
+        "CWE-359",
+        "CWE-1059",
+        "CWE-1188",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 3.3.2",
+        "WCAG 2.2 SC 4.1.3"
+      ],
+      "checks": 7,
+      "findings": 2,
+      "tests_added": 114
+    },
+    {
       "slug": "w7-o365-endpoints",
       "area": "Traffic analysis: ZIA app services and app service groups (the Office 365 One Click rule's OFFICE365) matched with Microsoft's published Microsoft 365 endpoint list in the Path analyzer, its what-if, DNS Control, workload forwarding, Test a list and Shadowed rules (app_services.py, m365_endpoints.py), and the optional, off-by-default fetch of that list (Advanced settings)",
       "title": "Microsoft 365 app service groups matched by host name and address, with the list treated as untrusted and every gap left unknown",
@@ -11620,6 +11684,7 @@
       "CWE-405",
       "CWE-407",
       "CWE-409",
+      "CWE-434",
       "CWE-436",
       "CWE-440",
       "CWE-441",

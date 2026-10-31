@@ -168,6 +168,13 @@
     const dom = h('input', { type: 'text', id: nid('pv'), value: intake.domain || '', maxlength: 253, placeholder: 'corp.example.com', autocomplete: 'off', spellcheck: 'false' });
     const pre = h('input', { type: 'text', id: nid('pv'), value: intake.prefix || '', maxlength: 8, placeholder: 'Made from the name', autocomplete: 'off' });
     const vert = h('select', { id: nid('pv') }, cat.verticals.map(v => h('option', { value: v.key, text: v.label, selected: v.key === (intake.vertical || 'general') })));
+    // The one compliance choice (compliance_profiles.py): the vertical preset picks one, the operator can change it.
+    const cpList = cat.compliance_profiles || [];
+    const cpGroups = [...new Set(cpList.map(p => p.group))];
+    const vertDefault = key => (cat.verticals.find(v => v.key === key) || {}).compliance_profile || '';
+    const cpStart = intake.compliance_profile !== undefined ? (intake.compliance_profile || '') : vertDefault(vert.value);
+    const cpSel = h('select', { id: nid('pv'), 'data-pv-compliance': '1' }, h('option', { value: '', text: 'None', selected: !cpStart }),
+      cpGroups.map(g => h('optgroup', { label: g }, cpList.filter(p => p.group === g).map(p => h('option', { value: p.key, text: p.label, selected: p.key === cpStart })))));
     let tpl = null;
     if (!pov && templates.length) tpl = h('select', { id: nid('pv') }, h('option', { value: '', text: 'No template' }), templates.map(t => h('option', { value: t.id, text: t.name })));
     const prodBox = h('fieldset', { class: 'pv-checks' }, h('legend', { text: 'Products in scope' }));
@@ -177,19 +184,22 @@
     const showDesc = () => { const v = cat.verticals.find(x => x.key === vert.value); desc.textContent = v ? v.description : ''; };
     vert.addEventListener('change', () => {
       showDesc();
-      if (!pov) { const v = cat.verticals.find(x => x.key === vert.value); boxes.forEach(b => { b.checked = v.products.includes(b.value); }); }
+      if (!pov) { const v = cat.verticals.find(x => x.key === vert.value); boxes.forEach(b => { b.checked = v.products.includes(b.value); }); cpSel.value = vertDefault(vert.value); }
     });
     cust.addEventListener('input', () => { if (!pre.dataset.touched) pre.value = suggest(cust.value); });
     pre.addEventListener('input', () => { pre.dataset.touched = '1'; });
     showDesc();
     f.append(...[h('label', { for: cust.id }, 'Customer name', cust), h('label', { for: dom.id }, 'Internal domain', dom),
       h('label', { for: pre.id }, 'Short prefix (2 to 8 letters or digits)', pre), h('label', { for: vert.id }, 'Vertical preset', vert, desc),
+      cpList.length ? h('label', { for: cpSel.id }, 'Compliance profile', cpSel, h('span', { class: 'pv-meta', text: 'Drives the ZIA baseline, the DLP packs offered, the AI Guard profile and the compliance pack.' })) : null,
       tpl ? h('label', { for: tpl.id }, 'Start from a template', tpl) : null,
       h('div', { class: 'pv-field', style: 'grid-column: 1 / -1' }, prodBox),
       h('div', { class: 'pv-row', style: 'grid-column: 1 / -1' }, h('button', { type: 'submit', class: 'rp-btn primary', text: submitLabel }))].filter(Boolean));
     f.addEventListener('submit', e => {
       e.preventDefault();
-      onSubmit({ customer: cust.value, domain: dom.value, prefix: pre.value, vertical: vert.value, products: boxes.filter(b => b.checked).map(b => b.value) }, tpl ? tpl.value : '');
+      const out = { customer: cust.value, domain: dom.value, prefix: pre.value, vertical: vert.value, products: boxes.filter(b => b.checked).map(b => b.value) };
+      if (cpList.length) out.compliance_profile = cpSel.value;
+      onSubmit(out, tpl ? tpl.value : '');
     });
     return f;
   }
@@ -415,8 +425,22 @@
         h('div', { class: 'grow' }, h('strong', { text: f.label }), f.vertical && f.vertical === vertical ? h('span', { class: 'pv-chip pass', text: ' This POV\'s vertical' }) : null, h('div', { class: 'pv-meta', text: f.why })),
         h('a', { class: 'rp-btn', href: `/api/pov/kit/${encodeURIComponent(f.id)}`, download: '', text: 'Download' })))),
         h('p', { class: 'pv-meta', text: k.ssn_note })),
+      compliancePackSec(),
       h('div', { class: 'pv-sec' }, h('h2', { text: 'EICAR antivirus test files (through ZIA)' }), links(k.eicar_links)),
       h('div', { class: 'pv-sec' }, h('h2', { text: 'AMTSO security features checks' }), links(k.amtso_links)));
+  }
+
+  // The compliance pack for this POV's compliance profile: local files, made for the profile's own defaults.
+  function compliancePackSec() {
+    const key = pov && pov.intake ? String(pov.intake.compliance_profile || '') : '';
+    const p = (cat.compliance_profiles || []).find(x => x.key === key);
+    if (!p) return h('div', { class: 'pv-sec' }, h('h2', { text: 'Compliance pack' }),
+      h('p', { class: 'pv-meta', text: 'Pick a compliance profile in the POV intake (Plan tab) for a control mapping, a test plan by control and one synthetic DLP test file per DLP rule.' }));
+    const files = [['mapping.html', 'Control mapping (HTML)'], ['mapping.xlsx', 'Control mapping (Excel)'], ['testplan.html', 'Test plan by control'],
+      ['policy.json', 'Policy export'], ['compliance-pack.zip', 'Everything, with the DLP test files (ZIP)']];
+    return h('div', { class: 'pv-sec' }, h('h2', { text: `Compliance pack: ${p.label}` }),
+      h('p', { class: 'pv-meta', text: 'Made for the profile\'s own defaults (its tier, the default areas and Advanced Threat Protection); for the exact build use the ZIA security baseline in Bulk changes. Local files only: nothing is written to the tenant.' }),
+      h('div', { class: 'pv-row' }, files.map(([id, label]) => h('a', { class: 'rp-btn', href: `/api/compliance-pack/${encodeURIComponent(key)}/${encodeURIComponent(id)}`, download: '', text: label }))));
   }
 
   // Notes and follow-ups.

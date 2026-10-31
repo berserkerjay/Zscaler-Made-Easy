@@ -19,7 +19,8 @@ reversible with Undo, exactly like every other bulk change:
                             cannot create it, so the plan says how and leaves
                             the forwarding rule out until it exists.
   aiguard_detection_policy  a compliance profile (HIPAA, HITRUST, PCI, GDPR,
-                            CJIS, FERPA, SOX, general) as an AI Guard detection
+                            CJIS, FERPA, SOX, NIST 800-53, NIST 800-171 / CMMC,
+                            IRS 1075, general) as an AI Guard detection
                             policy plus a policy match rule for the apps' LLM
                             providers. Monitor (detect only) by default.
 
@@ -764,6 +765,13 @@ def _plan_policy(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cance
     if spec.get("action") == "undo":
         return _plan_undo(client, spec, POLICY, "aiguard", say, cancel)
     profile = str(spec.get("profile") or "").strip().upper()
+    if not profile and spec.get("compliance_profile"):
+        # The one compliance choice (compliance_profiles.py) names its AI Guard profile.
+        import compliance_profiles as cp
+        chosen = cp.get(spec.get("compliance_profile"))
+        if not chosen:
+            raise ao.OperationError(f"Unknown compliance profile '{str(spec.get('compliance_profile'))[:40]}'.")
+        profile = chosen["aiguard"]
     if profile not in ag.PROFILES:
         raise ao.OperationError(f"Pick a compliance profile: {', '.join(ag.PROFILES)}.")
     mode = str(spec.get("mode") or "monitor").strip().lower()
@@ -1087,7 +1095,8 @@ ao.register(ROUTING, family="aiguard_routing_setup", product="zia", label="AI Gu
             in_scope=_in_scope_routing, plan=_plan_routing, read_objects=_objects_routing, handlers={HANDLER: _h_step},
             verify=_verify, inverse=_inverse, script="ops_aiguard.js")
 ao.register(POLICY, family="aiguard_policy_setup", product="aiguard", label="AI Guard detection policy",
-            hint="Turn a compliance profile (HIPAA, HITRUST, PCI, GDPR, CJIS, FERPA, SOX, general) into an AI Guard detection policy and a "
+            hint="Turn a compliance profile (HIPAA, HITRUST, PCI, GDPR, CJIS, FERPA, SOX, NIST 800-53, NIST 800-171 / CMMC, IRS 1075, general) "
+                 "into an AI Guard detection policy and a "
                  "match rule for the GenAI apps. Monitor (detect only) by default. Needs AI Guard ticked.",
             in_scope=_in_scope_policy, plan=_plan_policy, read_objects=_objects_policy, handlers={HANDLER: _h_step},
             verify=_verify, inverse=_inverse, script="ops_aiguard.js")

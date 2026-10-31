@@ -41,7 +41,7 @@ HISTORY_LIMIT = 50
 
 PROFILE_FIELDS = ("name", "org_name", "assessor", "cloud", "vanity_domain", "client_id", "customer_id",
                   "auth_method", "username",
-                  "industry", "baseline_packs", "scopes", "frameworks", "channels", "notes")
+                  "industry", "baseline_packs", "scopes", "frameworks", "channels", "notes", "compliance_profile")
 # The remembered secrets: the OneAPI client secret, and the password and
 # API key of the classic ZIA sign-in. Each is kept in the credential store
 # (or the owner-only file) under its own key; the profile holds a marker.
@@ -414,6 +414,24 @@ def upsert(fields: Dict[str, Any], *, client_secret: str = "", remember_secret: 
             out["secret_warning"] = NOT_REMEMBERED
             out["secret_not_remembered"] = not_kept
         return out
+
+
+def set_compliance_profile(profile_id: str, key: str) -> Optional[Dict[str, Any]]:
+    """Remember the one compliance choice (compliance_profiles.py) on a
+    profile; '' forgets it. None when there is no such profile. The key is
+    checked by the caller (compliance_profiles.key_of)."""
+    with _LOCK:
+        data = _read()
+        p = data["profiles"].get(profile_id) if isinstance(profile_id, str) else None
+        if p is None:
+            return None
+        if key:
+            p["compliance_profile"] = key
+        else:
+            p.pop("compliance_profile", None)
+        p["updated_at"] = _now()
+        _write(data)
+        return masked(p, with_history=False)
 
 
 def delete(profile_id: str) -> bool:

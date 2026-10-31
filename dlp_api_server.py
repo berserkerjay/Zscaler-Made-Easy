@@ -7870,7 +7870,47 @@ async def compliance_report(request: Request):
            "check_count": len(__import__("channel_scope").visible(results)[0]),   # checks outside the scope are hidden
            "metadata": {k: meta.get(k) for k in ("org", "assessor", "vanity_domain", "cloud", "date") if meta.get(k)}}
     rid = _remember_report("compliance", rep, str(meta.get("org") or meta.get("vanity_domain") or ""))
+    # The checks (id, status, label only) kept beside the report, so the page can read the
+    # assessment against a compliance profile (compliance_profiles.assessment_view).
+    _COMPLIANCE_CHECKS[rid] = [{"id": str(r.get("id") or "")[:40], "status": str(r.get("status") or "")[:12], "label": str(r.get("label") or "")[:200],
+                                "channel": r.get("channel"), "scope": r.get("scope")} for r in results if isinstance(r, dict)]
+    while len(_COMPLIANCE_CHECKS) > _COMPLIANCE_CHECKS_MAX:
+        _COMPLIANCE_CHECKS.pop(next(iter(_COMPLIANCE_CHECKS)))
     return {"report_id": rid}
+
+
+_COMPLIANCE_CHECKS: Dict[str, List[Dict[str, Any]]] = {}
+_COMPLIANCE_CHECKS_MAX = 64
+
+
+@app.get("/api/compliance/report/{report_id}/profile/{key}")
+async def compliance_report_profile(report_id: str, key: str, format: str = "json"):
+    """A remembered assessment read against a compliance profile (FedRAMP,
+    CMMC, zero trust, IRS 1075, GovRAMP or a framework profile): JSON, or
+    CSV to download."""
+    import compliance_profiles as cp
+    checks = _COMPLIANCE_CHECKS.get(report_id)
+    if checks is None or not report_id.startswith("compliance-") or report_id not in _REPORTS:
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    k = _cp_key(key)
+    view = cp.assessment_view(k, checks)
+    if format == "csv":
+        import csv_safe
+        import io
+        buf = io.StringIO()
+        w = csv_safe.writer(buf, lineterminator="\r\n")
+        w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"])
+        for c in view["controls"]:
+            w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"],
+                        "; ".join(f"{e['check_id']} {e['status']}" for e in c["evidence"])])
+        for cid in view["not_assessed"]:
+            w.writerow([cid, "", "Not assessed by this assessment's checks", "", "", "", "", ""])
+        name = f"compliance_{k.lower()}"   # k is a profile key, [A-Z0-9_] only (_cp_key)
+        return PlainTextResponse(buf.getvalue(), media_type="text/csv", headers={
+            "Content-Disposition": f'attachment; filename="{name}.csv"', "Cache-Control": "no-store"})
+    if format != "json":
+        raise HTTPException(status_code=400, detail="format is json or csv.")
+    return view
 
 
 @app.get("/api/compliance/report/{report_id}")
@@ -7919,6 +7959,140 @@ async def compliance_report_export(report_id: str, format: str = "markdown"):
                 lines.append(f"  - [{e.get('status')}] {e.get('check_id')} {e.get('label')}{': ' + str(e.get('detail'))[:160] if e.get('detail') else ''}")
         lines.append("")
     return PlainTextResponse("\n".join(lines), media_type="text/markdown", headers={"Content-Disposition": f'attachment; filename="compliance_alignment_{stamp}.md"'})
+
+
+# ── Compliance profiles and the compliance pack ─────────────────────────
+# One compliance choice (compliance_profiles.py) drives the ZIA baseline, the
+# policy packs offered, the AI Guard profile and the compliance pack
+# (compliance_pack.py). Nothing here reads or writes a tenant; every route is
+# behind the UI token and the origin check like any other /api/ route.
+class ComplianceChoiceRequest(BaseModel):
+    """Remember the compliance profile on a tenant profile ('' forgets it)."""
+    profile_id: str = Field("", max_length=64)
+    compliance_profile: str = Field("", max_length=40)
+
+
+class CompliancePackRequest(BaseModel):
+    """A compliance pack: the profile, and the baseline spec on screen (what
+    would be built) or a recorded baseline run (what was built)."""
+    compliance_profile: str = Field("", max_length=40)
+    spec: Optional[Dict[str, Any]] = None
+    operation_id: str = Field("", max_length=64)
+    file: str = Field("", max_length=96)
+
+
+class ComplianceProfileViewRequest(BaseModel):
+    """An assessment's checks read against a compliance profile."""
+    compliance_profile: str = Field("", max_length=40)
+    results: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
+
+
+def _cp_key(key: str) -> str:
+    import compliance_profiles as cp
+    try:
+        k = cp.key_of(key)
+    except cp.ProfileError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not k:
+        raise HTTPException(status_code=400, detail="Pick a compliance profile.")
+    return k
+
+
+@app.get("/api/compliance-profiles")
+async def compliance_profiles_list():
+    """Every compliance profile, grouped, with what picking it does."""
+    import compliance_profiles as cp
+    out = cp.catalog()
+    out["summaries"] = {p["key"]: cp.summary(p["key"]) for p in out["profiles"]}
+    return out
+
+
+@app.get("/api/compliance-profiles/{key}")
+async def compliance_profile_get(key: str):
+    """One profile: what it does and its control catalogue (sources and the assumed flag)."""
+    import compliance_profiles as cp
+    k = _cp_key(key)
+    return {"summary": cp.summary(k), "controls": cp.controls(k), "reasons": cp.REASONS}
+
+
+@app.post("/api/compliance-profiles/choice")
+async def compliance_profile_choice(req: ComplianceChoiceRequest):
+    """Remember the one compliance choice on a saved tenant profile, so every
+    builder and the compliance pack start from it. Writes the local profile
+    store only; never the tenant."""
+    import compliance_profiles as cp
+    import tenant_profiles
+    try:
+        k = cp.key_of(req.compliance_profile)
+    except cp.ProfileError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    out = tenant_profiles.set_compliance_profile(req.profile_id, k)
+    if out is None:
+        raise HTTPException(status_code=404, detail="No such tenant profile.")
+    return {"profile_id": out["id"], "compliance_profile": out.get("compliance_profile") or ""}
+
+
+def _compliance_pack_ctx(req: CompliancePackRequest):
+    import compliance_pack
+    import deployments
+    k = _cp_key(req.compliance_profile)
+    rec = None
+    if req.operation_id:
+        rec = deployments.get_operation(req.operation_id)
+        if not rec:
+            raise HTTPException(status_code=404, detail="Recorded change not found.")
+    try:
+        return compliance_pack.build(k, req.spec, rec)
+    except compliance_pack.PackError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+def _compliance_pack_file(ctx, file_id: str) -> Response:
+    import compliance_pack
+    import report_exports
+    try:
+        data, media, name = compliance_pack.render(ctx, file_id)
+    except compliance_pack.PackError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    stem, _, ext = name.rpartition(".")
+    filename = f"{report_exports.safe_filename_part(stem, 'compliance-pack')}.{report_exports.safe_filename_part(ext, 'txt')}"
+    return Response(content=data, media_type=media, headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                                                             "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@app.post("/api/compliance-pack")
+async def compliance_pack_manifest(req: CompliancePackRequest):
+    """What the compliance pack holds for this profile and build: the files,
+    the rule counts and what the profile does. Reads no tenant."""
+    import compliance_pack
+    return compliance_pack.manifest(_compliance_pack_ctx(req))
+
+
+@app.post("/api/compliance-pack/file")
+async def compliance_pack_file(req: CompliancePackRequest):
+    """One file of the compliance pack (or the ZIP of all of them), made
+    from the build on screen or a recorded run. Local files only."""
+    return _compliance_pack_file(_compliance_pack_ctx(req), req.file)
+
+
+@app.get("/api/compliance-pack/{key}/{file_id}")
+async def compliance_pack_default_file(key: str, file_id: str):
+    """One file of the compliance pack for the profile's own defaults (its
+    tier, the default areas and Advanced Threat Protection)."""
+    return _compliance_pack_file(_compliance_pack_ctx(CompliancePackRequest(compliance_profile=_cp_key(key))), file_id)
+
+
+@app.post("/api/compliance/profile-view")
+async def compliance_profile_view(req: ComplianceProfileViewRequest):
+    """An existing tenant's assessment read against a compliance profile:
+    each of the profile's controls Met / Partially met / Not met / Not
+    tested from the checks that back it."""
+    import compliance_profiles as cp
+    k = _cp_key(req.compliance_profile)
+    try:
+        return cp.assessment_view(k, req.results)
+    except cp.ProfileError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/report/evalall")

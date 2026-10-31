@@ -1,0 +1,18 @@
+# Written by Zscaler Made Easy. Local Terraform state, saved plans, variable files and overrides. Commit .terraform.lock.hcl.
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+*.tfplan
+*.tfplan.*
+crash.log
+crash.*.log
+terraform.tfvars
+*.auto.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc

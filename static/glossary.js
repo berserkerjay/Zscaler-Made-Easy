@@ -40,6 +40,7 @@
     'score': { term: 'score', def: 'The score shows how well your settings follow good advice. Higher is better, and 100 is the top.' },
     'finding': { term: 'finding', def: 'A finding is one thing the check-up noticed. Some are fine and some need a fix.' },
     'preflight': { term: 'preflight', def: 'Preflight is a practice run. It shows what would change, but it changes nothing.' },
+    'compliance': { term: 'compliance', def: 'Compliance means you follow the rules a law asks for. FedRAMP and HIPAA are two of them.' },
     'deploy': { term: 'deploy', def: 'Deploy means put new rules into your Zscaler. It only happens after you say yes.' },
     'activate': { term: 'activate', def: 'Activate means switch saved changes on in Zscaler. Until then, they wait.' },
     'bypass': { term: 'bypass', def: 'A bypass lets traffic skip Zscaler. Zscaler cannot check what it cannot see.' },

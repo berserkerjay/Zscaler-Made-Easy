@@ -2233,6 +2233,11 @@ window.HELP_CATALOG = {
     "input": "Pick one. Ticking this shows the rule sets that fit that kind of work.",
     "effect": "local"
    },
+   "#smWizard input[name=\"smProfile\"]": {
+    "what": "Picks the compliance rules your company must follow, like FedRAMP or HIPAA. It picks the rule sets on the next step.",
+    "input": "Pick one, or None of these.",
+    "effect": "local"
+   },
    "#smWizard input[name=\"smPack\"]": {
     "what": "Picks a ready-made rule set, called a policy pack. The first one is the best first pick.",
     "input": "Pick one. Ticking this shows what that rule set would add, on the next step.",
@@ -2772,6 +2777,16 @@ window.HELP_CATALOG = {
    }
   },
   "/report/compliance": {
+   "#cpProfilePick": {
+    "what": "Reads this assessment's checks against a compliance profile, like FedRAMP High. Each control shows met, partly met, not met or not tested.",
+    "input": "Optional. Pick a profile. It reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "#cpProfileCsv": {
+    "what": "Saves the assessment read against the picked compliance profile as a CSV file.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
    "#cpScope": {
     "what": "Picks which frameworks to show as cards.",
     "input": "Pick Selected in the assessment, or All frameworks.",
@@ -4306,8 +4321,8 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#aigProfile": {
-    "what": "Picks the compliance profile the detection policy looks for.",
-    "input": "Required. HIPAA, HITRUST, PCI DSS, GDPR, CJIS, FERPA, SOX or General.",
+    "what": "Picks the compliance profile the detection policy looks for. It follows the compliance profile picked in the ZIA security baseline, until you change it here.",
+    "input": "Required. HIPAA, HITRUST, PCI DSS, GDPR, CJIS, FERPA, SOX, NIST SP 800-53, NIST SP 800-171 / CMMC, IRS Publication 1075 or General.",
     "effect": "local"
    },
    "input[name=\"aigMode\"][value=\"monitor\"]": {
@@ -4639,6 +4654,26 @@ window.HELP_CATALOG = {
     "what": "Picks the tier the baseline is built from.",
     "input": "Tick one: Strict, Balanced, Permissive or Healthcare zero trust.",
     "effect": "local"
+   },
+   "#zbCompliance": {
+    "what": "Picks the one compliance profile, like FedRAMP High or CMMC Level 2. It sets the tier and the rules its source asks for. It also picks the policy packs, the AI Guard profile and the compliance pack.",
+    "input": "Optional. Pick a profile, or None. With a saved tenant profile picked above, the choice is remembered for that tenant.",
+    "effect": "local"
+   },
+   "button[data-zb-cp-file]": {
+    "what": "Saves one file of the compliance pack, made from the build on screen. Pick the control mapping, the policy export, the test plan, or all of them with the DLP test files.",
+    "input": "Nothing to type. Pick a compliance profile first. Local files only: nothing is written to the tenant.",
+    "effect": "download"
+   },
+   "#zbCpCheck": {
+    "what": "Checks that every rule of the build maps to a control of the profile, or has a reason code.",
+    "input": "Nothing to type. Pick a compliance profile first. It reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "#zbCpSummary a.rp-btn[href*=\"simple=deploy\"]": {
+    "what": "Opens Deploy policy packs with this policy pack picked. Nothing is deployed until you preview and confirm there.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    },
    "#zbFile": {
     "what": "Loads a framework file saved from another tenant, instead of a tier.",
@@ -6006,6 +6041,11 @@ window.HELP_CATALOG = {
     "input": "Optional. 2 to 8 letters or digits, like CH.",
     "effect": "local"
    },
+   "#pvPlan form.pv-form select[data-pv-compliance]": {
+    "what": "Picks the POV's compliance profile, like FedRAMP Moderate. The vertical preset picks one. It drives the compliance pack on the Test kit tab.",
+    "input": "Optional. Pick a profile, or None.",
+    "effect": "local"
+   },
    "#pvPlan form.pv-form select:has(+ p.pv-meta)": {
     "what": "Picks the vertical preset, like Healthcare. It fills in the products and suggested success criteria.",
     "input": "Pick one from the list. You can change the products after.",
@@ -6150,6 +6190,11 @@ window.HELP_CATALOG = {
     "what": "Adds the evidence to this test.",
     "input": "Type the evidence first.",
     "effect": "local"
+   },
+   "#pvKit a.rp-btn[href^=\"/api/compliance-pack/\"]": {
+    "what": "Saves a file of the compliance pack for this POV's compliance profile. Pick the control mapping, the test plan, the policy export, or all of them.",
+    "input": "Nothing to type. Just click it. Local files only: nothing is written to the tenant.",
+    "effect": "download"
    },
    "#pvKit a.rp-btn[download]": {
     "what": "Saves this test file on this computer. It is synthetic test data or a harmless test file, never real data.",

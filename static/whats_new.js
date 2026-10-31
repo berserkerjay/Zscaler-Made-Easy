@@ -204,6 +204,51 @@ window.WHATS_NEW = {
       "what": "Rules a change creates or moves take the admin rank they need when Admin Ranking is on, never one the API client cannot assign; the preview says each rule's rank and why, and the read-back checks what ZIA stored.",
       "changelog": ["Rank inherited, not fixed at 7", "Never a rank the API client cannot assign", "Preview", "Read-back", "Undo", "Use rank 0", "Admin rank of the rules this change places"],
       "marks": [{ "page": "/report/operations", "at": "#opRankH", "shown": "in a preview that places a rule" }]
+    },
+    {
+      "id": "compliance-profile", "release": "2026-10-31", "label": "Compliance profile",
+      "what": "One compliance choice (FedRAMP Moderate or High, CMMC Level 2, Federal Zero Trust, IRS 1075, GovRAMP or a framework) drives the baseline, the policy packs offered, the AI Guard profile and the compliance pack.",
+      "changelog": ["Compliance profile"],
+      "marks": [{"page": "/report/operations", "at": "#zbCompliance", "shown": "after Read from the tenant, in ZIA security baseline"}]
+    },
+    {
+      "id": "every-rule-mapped", "release": "2026-10-31", "label": "Every rule mapped",
+      "what": "Every rule the build creates maps to a control of the profile, or carries a reason code; Check the mapping counts them.",
+      "changelog": ["Every rule mapped"],
+      "marks": [{"page": "/report/operations", "at": "#zbCpCheck", "shown": "after picking a compliance profile"}]
+    },
+    {
+      "id": "compliance-pack", "release": "2026-10-31", "label": "Compliance pack",
+      "what": "A control mapping report, a policy export, a test plan by control and synthetic DLP test files, as local files.",
+      "changelog": ["Compliance pack"],
+      "marks": [{"page": "/report/operations", "at": "button[data-zb-cp-file=\"compliance-pack.zip\"]", "shown": "after picking a compliance profile"}]
+    },
+    {
+      "id": "irs-fti-pack", "release": "2026-10-31", "label": "IRS 1075 FTI Pack",
+      "what": "A policy pack for federal tax information: FTI markings and return data, monitor-only and disabled.",
+      "changelog": ["IRS 1075 FTI Pack"],
+      "marks": [{"page": "/report/operations", "at": "#zbCpSummary a.rp-btn[href*=\"simple=deploy\"]", "shown": "after picking IRS Publication 1075"}]
+    },
+    {
+      "id": "aiguard-federal", "release": "2026-10-31", "label": "AI Guard federal profiles",
+      "what": "NIST SP 800-53, NIST SP 800-171 / CMMC and IRS 1075 detection profiles, following the compliance profile.",
+      "changelog": ["AI Guard federal profiles"],
+      "marks": [{"page": "/report/operations", "at": "#aigProfile", "shown": "in AI Guard detection policy"}]
+    },
+    {
+      "id": "profile-view", "release": "2026-10-31", "label": "Read against a profile",
+      "what": "Read this assessment against a compliance profile: each control met, partially met, not met or not tested.",
+      "changelog": ["Read against a profile"],
+      "marks": [{"page": "/report/compliance", "at": "#cpProfileH"}]
+    },
+    {
+      "id": "federal-preset", "release": "2026-10-31", "label": "Federal and public sector preset",
+      "what": "A Federal and public sector vertical and a compliance profile in the POV intake; Simple mode asks which compliance rules apply.",
+      "changelog": ["Federal and public sector preset"],
+      "marks": [
+        {"page": "/simple", "at": "input[name=\"smProfile\"]", "shown": "in the Protect task"},
+        {"page": "/report/pov", "at": "select[data-pv-compliance]", "shown": "in the POV intake"}
+      ]
     }
   ]
 };

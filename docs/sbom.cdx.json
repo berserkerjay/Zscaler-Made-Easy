@@ -5857,7 +5857,7 @@
       "name": "terraform-provider-zia",
       "version": "4.8.8",
       "purl": "pkg:generic/zscaler/terraform-provider-zia@4.8.8?download_url=https://registry.terraform.io/providers/zscaler/zia/4.8.8",
-      "description": "Terraform provider registry.terraform.io/zscaler/zia, pinned in terraform/cjis_policy_pack/.terraform.lock.hcl, terraform/fed_policy_pack/.terraform.lock.hcl, terraform/global_banking_baseline/.terraform.lock.hcl, terraform/healthcare_phi_baseline/.terraform.lock.hcl, terraform/zbp_enterprise_baseline/.terraform.lock.hcl, terraform/zbp_source_code_baseline/.terraform.lock.hcl",
+      "description": "Terraform provider registry.terraform.io/zscaler/zia, pinned in terraform/cjis_policy_pack/.terraform.lock.hcl, terraform/fed_policy_pack/.terraform.lock.hcl, terraform/global_banking_baseline/.terraform.lock.hcl, terraform/healthcare_phi_baseline/.terraform.lock.hcl, terraform/irs_fti_pack/.terraform.lock.hcl, terraform/zbp_enterprise_baseline/.terraform.lock.hcl, terraform/zbp_source_code_baseline/.terraform.lock.hcl",
       "licenses": [
         {
           "license": {
