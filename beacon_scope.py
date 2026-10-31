@@ -60,10 +60,16 @@ SCOPE_REGISTRIES: Dict[str, Tuple[Tuple[str, str, Optional[str]], ...]] = {
     "zdx": (("zscaler_zdx_checks", "ZDX_REG", None),),
     "zidentity": (("zscaler_zidentity_checks", "ZID_REG", None),),
     "rbac": (("zscaler_rbac_checks", "RBAC_REG", None),),
+    "ztb": (("zscaler_other_products_checks", "OTHER_REG", "ZTB"),),
+    "easm": (("zscaler_other_products_checks", "OTHER_REG", "EASM"),),
+    "zbi": (("zscaler_other_products_checks", "OTHER_REG", "ZBI"),),
+    "zcell": (("zscaler_other_products_checks", "OTHER_REG", "ZCell"),),
+    "zms": (("zscaler_other_products_checks", "OTHER_REG", "ZMS"),),
 }
 SCOPE_LABELS: Dict[str, str] = {
     "dlp": "DLP", "zia_extras": "ZIA platform", "zpa": "ZPA", "zcc": "ZCC", "genai": "GenAI & prompts",
     "automation": "Automation readiness", "zdx": "ZDX", "zidentity": "ZIdentity", "rbac": "RBAC",
+    "ztb": "Zero Trust Branch", "easm": "EASM", "zbi": "Business Insights", "zcell": "Zero Trust Cellular", "zms": "Microsegmentation",
 }
 # Short channel names for the one-line summary ("DLP (Web, Email)").
 CHANNEL_SHORT: Dict[str, str] = {

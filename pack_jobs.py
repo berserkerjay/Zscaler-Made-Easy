@@ -356,7 +356,7 @@ def cancel(job_id: str) -> bool:
     if job is None or job.status != RUNNING:
         return False
     job.cancel.set()
-    if job.kind in ("path", "fleet", "shadow", "browser"):   # a read-only analysis: there is no write, activation or read-back
+    if job.kind in ("path", "fleet", "shadow", "browser", "other"):   # a read-only analysis: there is no write, activation or read-back
         job.log("Stop requested: nothing more is read from the tenant, also while waiting for ZIA's rate limit; the analysis ends as stopped with no partial result.")
     elif job.kind == "insights":   # read-only traffic numbers: nothing is written
         job.log("Stop requested: the Insights query in flight finishes, nothing more is asked; the run ends as stopped with no partial result.")

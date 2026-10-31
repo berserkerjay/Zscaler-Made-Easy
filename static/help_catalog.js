@@ -1036,6 +1036,31 @@ window.HELP_CATALOG = {
     "input": "Tick it to allow it. Needs a OneAPI API client with a Cloud & Branch Connector role.",
     "effect": "local"
    },
+   "#scopeField input.scope-cb[value=\"ztb\"]": {
+    "what": "Lets the app read Zero Trust Branch: sites, templates, alarms, API key names and ages, hubs. Five checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with Zero Trust Branch read access. Off by default.",
+    "effect": "local"
+   },
+   "#scopeField input.scope-cb[value=\"easm\"]": {
+    "what": "Lets the app read External Attack Surface Management: organizations, findings and lookalike domains. Four checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with EASM read access. Off by default.",
+    "effect": "local"
+   },
+   "#scopeField input.scope-cb[value=\"zbi\"]": {
+    "what": "Lets the app read Business Insights: custom applications and scheduled reports. Two checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with Business Insights read access. Off by default.",
+    "effect": "local"
+   },
+   "#scopeField input.scope-cb[value=\"zcell\"]": {
+    "what": "Lets the app read Zero Trust Cellular: account, regions, anomaly policies and SIM counts. Three checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with Zero Trust Cellular access and the ZCell customer ID. Off by default.",
+    "effect": "local"
+   },
+   "#scopeField input.scope-cb[value=\"zms\"]": {
+    "what": "Lets the app read Microsegmentation: agents, agent groups, provisioning key names, policy and default rules. Six checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with Microsegmentation access; uses the ZPA customer ID unless you give another. Off by default.",
+    "effect": "local"
+   },
    "#scopeField a[href*=\"github.com/zscaler\"]": {
     "what": "Opens Zscaler's public code pages (SDKs, Terraform and Ansible) in a new tab.",
     "input": "Nothing to type. Just click it.",

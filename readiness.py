@@ -73,6 +73,12 @@ PRODUCTS: "OrderedDict[str, Dict[str, Any]]" = OrderedDict([
     ("ZGUARD", {"label": "AI Guard", "scopes": ("aiguard", "ai_guard"), "codes": ("ZGUARD", "AIGUARD"), "portal": "the AI Guard console"}),
     ("ZIDENTITY", {"label": "ZIdentity", "scopes": ("zidentity",), "codes": ("ZIAM", "ZIDENTITY"), "portal": "ZIdentity"}),
     ("ZTW", {"label": "Cloud & Branch Connector", "scopes": ("ztw",), "codes": ("ZTW",), "portal": "the Cloud & Branch Connector Admin Portal"}),
+    # The other products (other_products.py); token only, codes assumed like the rest.
+    ("ZTB", {"label": "Zero Trust Branch", "scopes": ("ztb",), "codes": ("ZTB",), "portal": "the Zero Trust Branch admin portal"}),
+    ("ZEASM", {"label": "External attack surface (EASM)", "scopes": ("easm",), "codes": ("ZEASM", "EASM"), "portal": "the EASM admin portal"}),
+    ("ZBI", {"label": "Business Insights", "scopes": ("zbi",), "codes": ("ZBI", "BI"), "portal": "Business Insights"}),
+    ("ZCELL", {"label": "Zero Trust Cellular", "scopes": ("zcell",), "codes": ("ZCELL",), "portal": "the Zero Trust Cellular admin portal"}),
+    ("ZMS", {"label": "Microsegmentation", "scopes": ("zms",), "codes": ("ZMS",), "portal": "the Microsegmentation admin portal"}),
 ])
 _CODE_TO_PRODUCT = {code: key for key, p in PRODUCTS.items() for code in p["codes"]}
 PROBED = ("ZIA", "ZPA", "ZCC", "ZDX", "ZINSIGHTS", "ZGUARD")   # ZIdentity, Cloud & Branch Connector: token only
@@ -177,6 +183,11 @@ SCOPE_FEATURES: "OrderedDict[str, F]" = OrderedDict([
     ("insights", {"product": "ZINSIGHTS", "oneapi_only": True}),
     ("aiguard", {"product": "ZGUARD", "oneapi_only": True}),
     ("ztw", {"product": "ZTW", "oneapi_only": True}),
+    ("ztb", {"product": "ZTB", "oneapi_only": True}),
+    ("easm", {"product": "ZEASM", "oneapi_only": True}),
+    ("zbi", {"product": "ZBI", "oneapi_only": True}),
+    ("zcell", {"product": "ZCELL", "oneapi_only": True}),
+    ("zms", {"product": "ZMS", "oneapi_only": True, "customer_id": True}),
 ])
 SCOPE_LABELS = {"rbac": "RBAC", "zidentity": "ZIdentity"}
 

@@ -119,7 +119,12 @@ def assessment_checks(checks, declared, scopes):
 
 
 # The first path segment of a read -> the scope that must be selected for it.
-_SERVICE_SCOPE = {"zcc": "zcc", "zpa": "zpa", "zdx": "zdx", "zidentity": "zidentity", "zid": "zidentity", "ziam": "zidentity"}
+_SERVICE_SCOPE = {"zcc": "zcc", "zpa": "zpa", "zdx": "zdx", "zidentity": "zidentity", "zid": "zidentity", "ziam": "zidentity",
+                  # The other products (other_products.py), each behind its own Scope page key.
+                  "ztb": "ztb", "easm": "easm", "bi": "zbi", "zcell": "zcell", "zms": "zms"}
+# Services whose reads may be sent as a POST (a Microsegmentation GraphQL
+# query): the guard refuses that POST too when the service is not selected.
+_POST_READ_SCOPES = frozenset({"zms"})
 
 
 class ScopedClient(channel_scope.ScopedClient):
@@ -140,6 +145,14 @@ class ScopedClient(channel_scope.ScopedClient):
                 rec.append((path, 0))
             return {"error": "required evidence unavailable", "message": "This service was not selected; no request was sent."}, 0
         return super().get(ep, *args, **kwargs)
+
+    def post(self, ep, *args, **kwargs):
+        path = str(ep or "").removeprefix("raw:")
+        service = path.lstrip("/").split("/", 1)[0]
+        if service in _POST_READ_SCOPES and _SERVICE_SCOPE[service] not in self._analysis_scopes:
+            self.refused.append(path)
+            return {"error": "required evidence unavailable", "message": "This service was not selected; no request was sent."}, 0
+        return self._client.post(ep, *args, **kwargs)
 
 
 def markdown(report):

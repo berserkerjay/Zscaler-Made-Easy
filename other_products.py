@@ -724,7 +724,7 @@ def inventory(product: str, prod: Dict[str, Any], now: Optional[datetime] = None
                           "service": _text(_f(a, "service")), "description": _text(_f(a, "description")),
                           "recommended": _text(_f(a, "recommended_action")), "age_days": _age_days(_f(a, "created_at"), now)}
                          for a in _rows(prod, "alarms")]
-        inv["api_keys"] = [{"name": _text(_f(k, "name")), "age_days": _age_days(_f(k, "created_at"), now)} for k in _rows(prod, "api_keys")]
+        inv["automation_access"] = [{"name": _text(_f(k, "name")), "age_days": _age_days(_f(k, "created_at"), now)} for k in _rows(prod, "api_keys")]
         inv["hubs"] = [{"location": _text(_f(h, "location_display_name", "location")), "region": _text(_f(h, "region")),
                         "sites": len(_f(h, "sites") or []) if isinstance(_f(h, "sites"), list) else int(_num(_f(h, "sites")) or 0),
                         "gateways": len(((_f(h, "cluster_info") or {}).get("gateways") or [])) if isinstance(_f(h, "cluster_info"), dict) else 0}
@@ -846,7 +846,7 @@ def _exploited(f: Dict[str, Any]) -> bool:
 # why, fix, source}. The page turns non-PASS results into findings; the
 # assessment (zscaler_other_products_checks) scores them.
 _OPEN = re.compile(r"acknowledg|ignored|resolved|closed|cleared|done|fixed|taken_?down|remediated|false_?positive|accepted", re.I)
-_ONLINE = re.compile(r"online|active|up|connected|healthy|running|deployed|green|ok", re.I)
+_ONLINE = re.compile(r"\A\s*(online|active|up|connected|healthy|running|deployed|green|ok|enabled)\s*\Z", re.I)
 
 
 def _res(status: str, severity: str, detail: str, why: str, fix: str, source: str) -> Dict[str, Any]:
@@ -900,7 +900,7 @@ def _ztb_alarms(inv, prod):
 
 
 def _ztb_keys(inv, prod):
-    keys = inv.get("api_keys") or []
+    keys = inv.get("automation_access") or []
     old = [k for k in keys if k["age_days"] is not None and k["age_days"] > KEY_MAX_AGE_DAYS]
     if old:
         return _res("REVIEW", "medium", f"{len(old)} ZTB API key(s) are older than {KEY_MAX_AGE_DAYS} days: {_names(old)}.",
@@ -1063,7 +1063,7 @@ def _zms_upgrade(inv, prod):
     vers = {v["version"] for v in inv.get("version_stats") or [] if v["version"]}
     if gs or len(vers) > 2:
         return _res("REVIEW", "low", (f"Automatic upgrade is off in {len(gs)} agent group(s): {_names(gs)}. " if gs else "")
-                    + (f"{len(vers)} agent versions are running." if len(vers) > 2 else ""),
+                    + (f"{len(vers)} agent versions are running." if len(vers) > 2 else "").strip(),
                     "Old agents miss fixes and new enforcement features; many versions make problems hard to reproduce.",
                     "Turn on automatic upgrade with a maintenance window, or upgrade the old agents.",
                     "Assumed: patch management practice (CIS Control 7.4).")
@@ -1149,7 +1149,7 @@ def analyse(snap: Dict[str, Any], now: Optional[datetime] = None) -> Dict[str, A
     for key, prod in (snap.get("products") or {}).items():
         p = PRODUCTS[key]
         results = evaluate(key, prod, now)
-        lists = [{"key": k, "label": e["label"], "method": e["method"], "read": e["read"], "count": e["count"], "total": e["total"],
+        lists = [{"list": k, "label": e["label"], "method": e["method"], "read": e["read"], "count": e["count"], "total": e["total"],
                   "error": e.get("error", "")} for k, e in (prod.get("lists") or {}).items()]
         products[key] = {"label": p["label"], "what": p["what"], "status": prod.get("status"), "note": prod.get("note", ""),
                          "license": p["license"], "lists": lists, "inventory": inventory(key, prod, now) if prod.get("status") == "read" else {},
@@ -1177,7 +1177,7 @@ _SHEETS = {
     "ztb": [("sites", "Sites", ["name", "status", "gateway_type", "template", "gateways"]),
             ("templates", "Templates", ["name", "deployment", "platform", "default", "sites", "nat", "dhcp"]),
             ("alarms", "Alarms", ["site", "severity", "status", "service", "description", "recommended", "age_days"]),
-            ("api_keys", "API keys", ["name", "age_days"]), ("hubs", "Hubs", ["location", "region", "sites", "gateways"]),
+            ("automation_access", "API keys", ["name", "age_days"]), ("hubs", "Hubs", ["location", "region", "sites", "gateways"]),
             ("groups", "Groups", ["name", "type", "members", "policies"]),
             ("operating_systems", "Operating systems", ["os", "devices", "versions"])],
     "easm": [("findings", "Findings", ["organization", "name", "category", "risk", "asset", "status", "age_days", "exploited"]),
@@ -1230,3 +1230,56 @@ def workbook(report: Dict[str, Any]) -> bytes:
     for line in rep.get("assumptions") or []:
         a.append([line])
     return wb.to_bytes()
+
+
+# ── snapshots ──────────────────────────────────────────────────────────
+def _mask_raw(v: Any, depth: int = 0) -> Any:
+    """A raw API answer with its keys as sent and every secret-named field
+    (a provisioning key, a site secret, a token...) dropped: what a snapshot
+    may keep. The offline scrub then runs over it again."""
+    if depth > 40:
+        return None
+    if isinstance(v, dict):
+        return {k: _mask_raw(x, depth + 1) for k, x in v.items() if not _SECRET.search(snake(k))}
+    if isinstance(v, list):
+        return [_mask_raw(x, depth + 1) for x in v]
+    return v
+
+
+def snapshot_answers(cl: Any, product: str, ids: Optional[Dict[str, str]] = None,
+                     cancel: Optional[threading.Event] = None) -> Tuple[Dict[str, Any], List[str]]:
+    """The raw answers a snapshot keeps for `product`, keyed by request path
+    (a Microsegmentation query under /zms/graphql/<operationName>), with
+    secrets dropped; and what could not be read. Read-only."""
+    ids = dict(ids or {})
+    got: Dict[str, Any] = {}
+    unread: List[str] = []
+    p = PRODUCTS[product]
+    if getattr(cl, "legacy", False):
+        return got, [f"{p['label']}: {NEEDS_ONEAPI}"]
+    if p["needs"] and not ids.get(p["needs"]):
+        return got, [f"{p['label']}: " + (NEEDS_ZCELL_ID if p["needs"] == "zcell" else NEEDS_ZMS_ID)]
+
+    def one(req: Dict[str, Any]) -> Tuple[Any, int]:
+        body, code = _send(cl, req)
+        if code in (200, 204):
+            key = f"{req['url']}/{req['body']['operationName']}" if req["method"] == "POST" else req["url"]
+            got[key] = _mask_raw(body if code == 200 else [])
+        else:
+            unread.append(f"{p['label']}: {req['url']}: HTTP {code}")
+        return body, code
+
+    specs = READS[product]
+    calls = specs if product != "easm" else specs[:1]
+    for key, label, method, call in calls:
+        if cancel is not None and cancel.is_set():
+            break
+        body, code = one(sdk_request(product, lambda s, c=call: c(s, ids), ids))
+        if product == "easm" and code == 200:
+            rows, _ = _items("easm", body)
+            for org in [o for o in rows if valid_id(str(o.get("id") or ""))][:MAX_ORGS]:
+                for _k, _l, _m, c in specs[1:]:
+                    if cancel is not None and cancel.is_set():
+                        break
+                    one(sdk_request("easm", lambda s, c=c, oid=str(org["id"]): c(s, {"org": oid})))
+    return got, unread

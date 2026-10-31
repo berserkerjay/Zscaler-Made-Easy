@@ -131,6 +131,17 @@ try:
 except Exception:
     pass
 
+# Other Zscaler products — ZTB, EASM, Business Insights, Zero Trust Cellular,
+# Microsegmentation (other_products.py), each behind its own Scope page key.
+OTHER_REG = []
+OTHER_BY_SCOPE: Dict[str, list] = {}
+try:
+    import zscaler_other_products_checks as _other_checks
+    OTHER_REG = list(_other_checks.OTHER_REG)
+    OTHER_BY_SCOPE = dict(_other_checks.BY_SCOPE)
+except Exception as _e:  # noqa: BLE001
+    print(f"[warn] other product checks not loaded: {_e}")
+
 # ── FastAPI App ──────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -597,6 +608,8 @@ class AssessRequest(BaseModel):
     scope: str = "full"
     scopes: list[str] = []  # list of scope keys (dlp, zia_extras, zpa, zcc, ...): the Scope page's choice
     customer_id: str = ""  # Optional ZPA customer ID
+    zcell_customer_id: str = ""   # Optional: Zero Trust Cellular checks (zcell scope)
+    zms_customer_id: str = ""     # Optional: Microsegmentation checks (zms scope); the ZPA customer ID when blank
     profile_id: str = ""   # Saved tenant profile: fills blanks, records history
     # The Scope page's channel ownership: {id: {choice: zscaler|alternative|gap, note, name}}.
     # Only a Zscaler channel is read; an alternative or a gap has its checks
@@ -3002,6 +3015,136 @@ async def browser_security_export(report_id: str, format: str = "xlsx"):
     data = await asyncio.to_thread(bs.workbook, rep)
     return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
                     headers={"Content-Disposition": f"attachment; filename=browser_security_{ts}.xlsx"})
+
+
+# ── Other Zscaler products (read-only): Zero Trust Branch, EASM, Business
+# Insights, Zero Trust Cellular and Microsegmentation (other_products). Each
+# is read only when its own Scope page key is ticked; kept as report
+# "other-…" for the Excel and JSON exports. Never holds a secret.
+class OtherProductsRequest(MigrateRequest):
+    """Body of the other products read: tenant credentials, the Scope page
+    selection and, optionally, the ZCell customer ID and the
+    Microsegmentation customer ID (the ZPA customer ID when blank). Refused
+    (400) before sign-in unless one of ztb, easm, zbi, zcell, zms is ticked."""
+    zcell_customer_id: str = ""
+    zms_customer_id: str = ""
+
+
+@app.get("/report/other-products")
+async def report_other_products_page():
+    """Other Zscaler products (static/report_other_products.html)."""
+    page = os.path.join(STATIC_DIR, "report_other_products.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _other_inputs(req: OtherProductsRequest) -> Tuple[Dict[str, Any], Dict[str, str], Dict[str, str]]:
+    """(scope, creds, ids) for an other products read; 400 before anything
+    is signed in to or read when nothing it reads is in scope, a customer ID
+    is malformed, or nothing ticked can be read with this sign-in."""
+    import other_products as op
+    sc, _ch, source = _scope_selection(req)
+    scope = op.scope_for(sc)
+    if not scope["read"]:
+        raise HTTPException(status_code=400, detail=op.NOTHING_IN_SCOPE)
+    scope["source"] = source
+    for name, label in (("zcell_customer_id", "ZCell customer ID"), ("zms_customer_id", "Microsegmentation customer ID")):
+        v = str(getattr(req, name, "") or "").strip()
+        if v and not op.valid_id(v):
+            raise HTTPException(status_code=400, detail=f"The {label} may hold only letters, digits, - and _ (at most 64). Nothing was read.")
+    creds = _validate_creds(_tenant_creds(req))
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=op.NEEDS_ONEAPI)
+    ids = {"zcell": str(req.zcell_customer_id or "").strip(), "zms": str(req.zms_customer_id or "").strip() or creds.get("customer_id", "")}
+    if _offline.is_offline_creds(creds) and not ids["zcell"]:
+        ids["zcell"] = _offline.ZCELL_CUSTOMER_ID
+    ids = {k: (v if op.valid_id(v) else "") for k, v in ids.items()}
+    readable = [p for p in scope["products"] if not op.PRODUCTS[p]["needs"] or ids.get(op.PRODUCTS[p]["needs"])]
+    if not readable:
+        raise HTTPException(status_code=400, detail=(op.NEEDS_ZCELL_ID if "zcell" in scope["products"] else op.NEEDS_ZMS_ID) + " Nothing was read.")
+    return scope, creds, ids
+
+
+def _run_other_products(client, label: str, creds: Dict[str, Any], scope: Dict[str, Any], ids: Dict[str, str], log, cancel) -> Dict[str, Any]:
+    """Sign in, read only what `scope` puts in scope and analyse it. Stop ends
+    the run as stopped: nothing more is read and no partial result is kept."""
+    import other_products as op
+    logs: List[str] = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    _log(f"Reading {label}. Nothing is written to the tenant. " + (f"In scope, from {scope['source']}: " if scope.get("source") else "") + scope["summary"])
+    auth = client.auth()
+    if auth is not True:
+        reason = tenant_auth.mask_secrets(str(auth[1]) if isinstance(auth, tuple) and len(auth) == 2 else "", creds)
+        raise RuntimeError(f"Authentication failed for {tenant_auth.identity(creds)}: {reason[:200]}")
+    if cancel is not None:
+        client.stop_check = cancel.is_set
+    try:
+        out = op.run(client, scope, ids, log=_log, cancel=cancel)
+    except op.Stopped:
+        _log("STOPPED — you clicked Stop; nothing more was read and no partial result is kept.")
+        return {"stopped": op.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    if cancel is not None and cancel.is_set():
+        return {"stopped": op.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    for p in (out.get("products") or {}).values():
+        p["note"] = tenant_auth.mask_secrets(str(p.get("note") or ""), creds)
+        for x in p.get("lists") or []:
+            x["error"] = tenant_auth.mask_secrets(str(x.get("error") or ""), creds)
+    rid = _remember_report("other", dict(out, kind="other"), label)
+    _log(f"Done: {out['counts']['total']} finding(s).")
+    return dict(_REPORTS[rid], status="done", logs=logs)
+
+
+@app.post("/api/other-products/start")
+async def other_products_start(req: OtherProductsRequest, request: Request):
+    """Read the other Zscaler products in scope (Zero Trust Branch, EASM,
+    Business Insights, Zero Trust Cellular, Microsegmentation) as a job the
+    page follows, and check them. Read-only. Poll GET
+    /api/dlp-packs/jobs/{job_id}; Stop ends it with nothing more read."""
+    import pack_jobs
+    scope, creds, ids = _other_inputs(req)   # before signing in (user rule 1)
+    client = _raw_client(creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("other", lambda log, cancel: _run_other_products(client, label, creds, scope, ids, log, cancel),
+                          label=f"Other products {label}"[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _other_report(rid: str) -> Dict[str, Any]:
+    rep = _REPORTS.get(rid or "")
+    if not rep or not str(rid).startswith("other-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Read it again.")
+    return rep
+
+
+@app.get("/api/other-products/report/{report_id}")
+async def other_products_report(report_id: str):
+    return _other_report(report_id)
+
+
+@app.get("/api/other-products/report/{report_id}/export")
+async def other_products_export(report_id: str, format: str = "xlsx"):
+    """The other products report as Excel (xlsx_writer) or JSON."""
+    import other_products as op
+    import xlsx_writer
+    rep = _other_report(report_id)
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "xlsx").lower()
+    if fmt == "json":
+        return Response(content=json.dumps(op.scrub(rep), indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=other_products_{ts}.json"})
+    if fmt != "xlsx":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    data = await asyncio.to_thread(op.workbook, rep)
+    return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
+                    headers={"Content-Disposition": f"attachment; filename=other_products_{ts}.xlsx"})
 
 
 # ── Device posture (read-only) ───────────────────────────────────────
@@ -7079,8 +7222,10 @@ async def list_checks(scope: Optional[str] = None):
         all_checks = list(ZID_REG)
     elif scope == "rbac":
         all_checks = list(RBAC_REG)
+    elif scope in OTHER_BY_SCOPE:
+        all_checks = list(OTHER_BY_SCOPE[scope])
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG) + list(OTHER_REG)
 
     # Try to enrich with compliance mappings
     try:
@@ -7119,8 +7264,10 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
         all_checks = list(ZID_REG)
     elif scope == "rbac":
         all_checks = list(RBAC_REG)
+    elif scope in OTHER_BY_SCOPE:
+        all_checks = list(OTHER_BY_SCOPE[scope])
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG) + list(OTHER_REG)
 
     try:
         from compliance_mapping import get_compliance_for_check
@@ -7129,7 +7276,7 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
 
     # Only a scope the catalogue knows names the file: anything else exported every check, and a
     # caller's text never goes into the Content-Disposition header (non-Latin-1 text there was a 500).
-    suffix = scope if scope in ("dlp", "zia", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac") else "all"
+    suffix = scope if scope in ("dlp", "zia", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac") or scope in OTHER_BY_SCOPE else "all"
     fname_base = f"zscaler_checks_{suffix}_{datetime.now().strftime('%Y%m%d')}"
 
     if format == "json":
@@ -7918,6 +8065,11 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
             for c in RBAC_REG:
                 if c[0] not in seen:
                     seen.add(c[0]); out.append(c)
+        for key, reg in OTHER_BY_SCOPE.items():   # ztb, easm, zbi, zcell, zms: each only when ticked
+            if key in scopes:
+                for c in reg:
+                    if c[0] not in seen:
+                        seen.add(c[0]); out.append(c)
         return out
     # Legacy scope string
     if scope == "full" or scope == "all":
@@ -8022,6 +8174,13 @@ async def assess_stream(req: AssessRequest):
             yield _sse("auth", {"status": "authenticating", "auth_method": creds["auth_method"]})
 
             client = _raw_client(creds)
+            # The other products' customer IDs (other_products.ids_for): only a
+            # well-formed one is kept; the ZPA customer ID stands in for ZMS.
+            import other_products as _op
+            for _attr in ("zcell_customer_id", "zms_customer_id"):
+                _v = str(getattr(req, _attr, "") or "").strip()
+                if _v and _op.valid_id(_v):
+                    setattr(client, _attr, _v)
             auth_result = await asyncio.to_thread(client.auth)
 
             if auth_result is not True:
