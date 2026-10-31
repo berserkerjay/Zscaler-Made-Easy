@@ -228,7 +228,11 @@ def test_old_profile_snapshots_are_refreshed():
     scope = df.path_scope(["zcc"], {})
     snapshot = {"path_scope": scope["key"], "client_connector": {}}
     assert not path_analyzer.reusable(snapshot, scope)
+    # Schema 5 (zcc_bypass: each app profile's bypass lists and the IP-based
+    # apps they name): a kept schema-4 read is read again.
     snapshot["client_connector"]["profile_schema"] = 4
+    assert not path_analyzer.reusable(snapshot, scope)
+    snapshot["client_connector"]["profile_schema"] = 5
     assert path_analyzer.reusable(snapshot, scope)
 
 
