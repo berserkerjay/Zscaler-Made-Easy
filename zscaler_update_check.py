@@ -142,6 +142,9 @@ ALLOWED_HOSTS = {
     "www.zscaler.com",
     "trust.zscaler.com",
     "community.zscaler.com",
+    # Zscaler's published IP ranges (zscaler_ip_ranges): fetched only when the
+    # operator turns it on and clicks Fetch now; that module checks its own one-host list too
+    "config.zscaler.com",
     # SDK wheels for the upstream check (upstream_check.download_sdk,
     # SHA-256 checked against PyPI's JSON before anything is unpacked)
     "files.pythonhosted.org",

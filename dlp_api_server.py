@@ -9772,6 +9772,233 @@ async def zcc_fleet_export(job_id: str, what: str = "plan", counts_only: bool = 
     return Response(content=text, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={name}"})
 
 
+# ── Network files: DNS records for client hostnames (dns_forward_zones) ──────
+# Download only: built from a finished fleet read (ZCC in scope, read-only),
+# no tenant call, no DNS server contacted, nothing applied or saved.
+class ZccDnsRequest(BaseModel):
+    """What the DNS records are built from: the domain the client names go
+    under, the client-to-client resolver addresses, which devices count,
+    optional e-mail domain -> DNS domain mappings and the output options."""
+    domain: str = ""
+    resolvers: str = ""
+    platforms: List[str] = ["Windows", "macOS", "Linux"]
+    registered_only: bool = True
+    seen_within_days: Optional[int] = None
+    mappings: str = ""
+    ttl: int = 300
+    unbound_local_zone: bool = True
+    unbound_insecure: bool = True
+
+    @field_validator("domain", "resolvers", "mappings")
+    @classmethod
+    def _short(cls, v: str) -> str:
+        if len(v or "") > 8000:
+            raise ValueError("too long")
+        return v
+
+    @field_validator("platforms")
+    @classmethod
+    def _few(cls, v: List[str]) -> List[str]:
+        if len(v) > 10 or any(len(str(x)) > 20 for x in v):
+            raise ValueError("pick from Windows, macOS, Linux, iOS, Android and other")
+        return v
+
+
+@app.post("/api/zcc/fleet/{job_id}/dns-records")
+async def zcc_fleet_dns_records(job_id: str, req: ZccDnsRequest, request: Request):
+    """DNS records (Unbound forward and local zones, BIND forward zones and
+    a zone file fragment, and a CSV) mapping the client hostnames of a
+    finished fleet read to <label>.<domain>, with every rename, duplicate,
+    collision and refusal reported. Text only, for the operator to
+    download: no tenant call, nothing applied. Hostnames are never logged
+    (the audit record holds counts)."""
+    import dns_forward_zones as dfz
+    res = _fleet_result(job_id)
+    if (res.get("telemetry") or {}).get("status") not in ("read", "partial"):
+        raise HTTPException(status_code=409, detail="This fleet read has no enrolled devices (the API client may not read them), so there are no hostnames to write.")
+    try:
+        out = await asyncio.to_thread(dfz.build, res.get("devices") or [], domain=req.domain, resolvers=req.resolvers,
+                                      platforms=req.platforms, registered_only=req.registered_only,
+                                      seen_within_days=req.seen_within_days, mappings=req.mappings, ttl=req.ttl,
+                                      unbound_local_zone=req.unbound_local_zone, unbound_insecure=req.unbound_insecure,
+                                      read_at=res.get("read_at"), truncated=bool(res.get("devices_truncated")))
+    except dfz.DnsInputError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("zcc_dns_records", actor=_actor(request) or _security.current_actor(), records=out["counts"]["records"],
+                  collisions=out["counts"]["collisions"], resolvers=len(out["meta"]["resolvers"]))
+    out["file_names"] = {k: v[0] for k, v in dfz.FILES.items()}
+    return out
+
+
+# ── Network files: Zscaler's published IP ranges (zscaler_ip_ranges) ────────
+# Optional outbound fetch, off by default and only on request:
+# https://config.zscaler.com (the config portal). Manual import for offline
+# installs. Server-wide settings, so under SSO only a listed writer may
+# change them; nothing here touches a tenant or a firewall.
+class ZsRangesSettings(BaseModel):
+    """Fetch Zscaler's published ranges from config.zscaler.com (off by default)."""
+    enabled: bool = False
+
+
+class ZsRangesPick(BaseModel):
+    """Which cloud and feeds: the ZIA cloud (as the Connect page names it),
+    the ZPA cloud for the ZPA allow list (optional) and the feed keys."""
+    cloud: str = "zscaler.net"
+    zpa_cloud: Optional[str] = None
+    feeds: List[str] = ["cenr", "hubs_recommended", "hubs_required", "future", "svpn", "zpa"]
+
+    @field_validator("cloud")
+    @classmethod
+    def _cloud(cls, v: str) -> str:
+        if len(v or "") > 40:
+            raise ValueError("too long")
+        return v
+
+    @field_validator("feeds")
+    @classmethod
+    def _feeds(cls, v: List[str]) -> List[str]:
+        if len(v) > 12 or any(len(str(x)) > 30 for x in v):
+            raise ValueError("pick from the listed feeds")
+        return v
+
+
+class ZsRangesImport(BaseModel):
+    """One feed's JSON, saved by hand from config.zscaler.com, for one cloud."""
+    cloud: str = ""
+    feed: str = ""
+    content: str = ""
+
+    @field_validator("content")
+    @classmethod
+    def _cap(cls, v: str) -> str:
+        if len(v or "") > 4 * 1024 * 1024 + 1024:
+            raise ValueError("larger than 4 MB, so it is not a Zscaler feed")
+        return v
+
+    @field_validator("cloud", "feed")
+    @classmethod
+    def _short(cls, v: str) -> str:
+        if len(v or "") > 40:
+            raise ValueError("too long")
+        return v
+
+
+class ZsRangesBuild(ZsRangesPick):
+    """The allowlist options: regions to keep (none: every region), ranges to
+    leave out, ranges to add (certificate validation, for example), the
+    address families and, for a download, the format."""
+    regions: List[str] = []
+    exclude: str = ""
+    extra: str = ""
+    ipv4: bool = True
+    ipv6: bool = True
+    format: str = ""
+
+    @field_validator("regions")
+    @classmethod
+    def _regions(cls, v: List[str]) -> List[str]:
+        if len(v) > 64 or any(len(str(x)) > 80 for x in v):
+            raise ValueError("at most 64 regions")
+        return v
+
+    @field_validator("exclude", "extra")
+    @classmethod
+    def _typed(cls, v: str) -> str:
+        if len(v or "") > 100_000:
+            raise ValueError("too long")
+        return v
+
+
+@app.get("/api/zscaler-ranges")
+async def zscaler_ranges_status():
+    """The switch, the destination, the kept feeds (where from, when, how old, counts) and the last error. Reads nothing remote."""
+    import zscaler_ip_ranges as zr
+    return await asyncio.to_thread(zr.status)
+
+
+@app.put("/api/zscaler-ranges/settings")
+async def zscaler_ranges_settings(req: ZsRangesSettings, request: Request):
+    """Turn fetching from config.zscaler.com on or off. Turning it on fetches nothing by itself."""
+    import zscaler_ip_ranges as zr
+    _security.require_writer()
+    out = await asyncio.to_thread(zr.set_enabled, req.enabled)
+    _audit.record("zscaler_ranges_settings", actor=_actor(request) or _security.current_actor(), enabled=bool(req.enabled))
+    return out
+
+
+@app.post("/api/zscaler-ranges/fetch")
+async def zscaler_ranges_fetch(req: ZsRangesPick, request: Request):
+    """Fetch the chosen feeds now (only when fetching is on: 409 otherwise). Each feed is kept or refused on its own; 502 when none was kept."""
+    import zscaler_ip_ranges as zr
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(zr.fetch, req.cloud, req.feeds, req.zpa_cloud)
+    except zr.FetchDisabled as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except zr.FeedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    ok = [r for r in out["results"] if r["ok"]]
+    _audit.record("zscaler_ranges_fetch", actor=_actor(request) or _security.current_actor(), kept=len(ok), failed=len(out["results"]) - len(ok))
+    if not ok:
+        raise HTTPException(status_code=502, detail="Nothing was fetched: " + " ".join(f"{r['feed']}: {r['error']}" for r in out["results"])[:600]
+                            + " The feeds kept before are still used.")
+    return out
+
+
+@app.post("/api/zscaler-ranges/import")
+async def zscaler_ranges_import(req: ZsRangesImport, request: Request):
+    """Keep a feed saved by hand (offline or air-gapped). Checked as untrusted: refused whole (400) when it is not that feed."""
+    import zscaler_ip_ranges as zr
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(zr.import_file, req.feed, req.cloud, req.content)
+    except zr.FeedError as e:
+        raise HTTPException(status_code=400, detail=f"The feed was not imported: {e}")
+    _audit.record("zscaler_ranges_import", actor=_actor(request) or _security.current_actor(), feed=out["feed"], cloud=out["cloud"],
+                  ranges=out.get("ranges"), rejected=out.get("rejected"))
+    return out
+
+
+@app.delete("/api/zscaler-ranges")
+async def zscaler_ranges_remove(request: Request, cloud: str = ""):
+    """Forget the kept feeds (of one cloud, or all): they are unknown again."""
+    import zscaler_ip_ranges as zr
+    _security.require_writer()
+    c = (cloud or "").strip()[:40] or None
+    if c is not None and c not in zr.ZIA_CLOUDS.values() and c not in zr.ZPA_CLOUDS:
+        raise HTTPException(status_code=400, detail="Unknown cloud.")
+    out = await asyncio.to_thread(zr.remove, c)
+    _audit.record("zscaler_ranges_remove", actor=_actor(request) or _security.current_actor(), cloud=c or "all")
+    return out
+
+
+def _zs_ranges_build(req: ZsRangesBuild) -> Dict[str, Any]:
+    import zscaler_ip_ranges as zr
+    try:
+        return zr.build(req.cloud, req.feeds, zpa_cloud=req.zpa_cloud, regions=req.regions or None, exclude=req.exclude,
+                        extra=req.extra, ipv4=req.ipv4, ipv6=req.ipv6)
+    except zr.FeedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/zscaler-ranges/build")
+async def zscaler_ranges_build(req: ZsRangesBuild):
+    """The consolidated allowlist from the kept feeds (no fetch): per region and overall, aggregated, with every source's date and what is missing or stale."""
+    return await asyncio.to_thread(_zs_ranges_build, req)
+
+
+@app.post("/api/zscaler-ranges/download")
+async def zscaler_ranges_download(req: ZsRangesBuild):
+    """The same allowlist as a file: plain list, CSV, Palo Alto EDL (IP or URL list), JSON or a Microsoft 365-style endpoint list."""
+    import zscaler_ip_ranges as zr
+    result = await asyncio.to_thread(_zs_ranges_build, req)
+    try:
+        name, media, text = zr.render(result, req.format)
+    except zr.FeedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _attachment(text.encode("utf-8"), media, name)
+
+
 class ZccInstallRequest(ScopedTenantCredsRequest):
     """The Client Connector install command builder (ops_zcc.install_commands):
     platform, installer type, the installer's options and, to fill in the

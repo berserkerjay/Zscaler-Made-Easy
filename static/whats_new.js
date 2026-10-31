@@ -330,6 +330,27 @@ window.WHATS_NEW = {
       "what": "Say once per version, by e-mail or webhook (the digests' channel), when a newer version of the app is out. Off by default.",
       "changelog": ["Update notifications"],
       "marks": [{ "page": "/report/advanced", "at": "#advUpdNotify" }]
+    },
+    {
+      "id": "net-dns-records", "release": "2026-10-31", "label": "DNS records for client hostnames",
+      "what": "One DNS name per enrolled device for ZPA client-to-client access, as Unbound, BIND and CSV files to download. Built from the fleet read; nothing is applied.",
+      "changelog": ["DNS records for client hostnames", "Build the records"],
+      "marks": [
+        { "page": "/report/fleet", "at": "#zfDnsH" },
+        { "page": "/report/fleet", "at": "#zfDnsBuild" }
+      ]
+    },
+    {
+      "id": "net-ip-ranges", "release": "2026-10-31", "label": "Zscaler IP ranges and allowlists",
+      "what": "Zscaler's published IP ranges and host names for your cloud, joined per region, as firewall allowlists: plain list, CSV, Palo Alto lists, JSON or a Microsoft 365-style list. Fetching is off until you turn it on; files can be imported instead.",
+      "changelog": ["Zscaler IP ranges and allowlists", "Fetch from config.zscaler.com", "Fetch now", "Import", "Forget the kept feeds", "Build the allowlist"],
+      "marks": [
+        { "page": "/report/exports", "at": "#exRgH" },
+        { "page": "/report/exports", "at": "#exRgFetchOn" },
+        { "page": "/report/exports", "at": "#exRgFetch" },
+        { "page": "/report/exports", "at": "#exRgImport" },
+        { "page": "/report/exports", "at": "#exRgBuild" }
+      ]
     }
   ]
 };

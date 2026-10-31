@@ -627,6 +627,25 @@ summary { min-height: 24px; }
 .ex-colgrid input { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--accent); }
 .ex-colgrid input:disabled + span { color: var(--dim); }
 .ex-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.8rem; }
+/* Zscaler IP ranges and allowlists (net_ranges.js). */
+.ex-ranges { display: flex; flex-direction: column; gap: 0.6rem; max-width: 100ch; }
+.ex-ranges .ex-pick legend { font-size: 0.8rem; color: var(--dim); padding: 0; margin-bottom: 0.2rem; width: 100%; }
+.ex-rg-box div { margin: 0.15rem 0; overflow-wrap: anywhere; }
+.ex-rg-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 0.6rem 1rem; }
+.ex-rg-cell { display: flex; align-items: flex-start; gap: 0.3rem; min-width: 0; padding-right: 4px; }
+.ex-rg-cell .ex-rg-text { flex: 1 1 0; }
+.ex-ranges .ex-pick .hh-mark { align-self: center; }
+.ex-rg-text { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; font-weight: 600; min-width: 0; }
+.ex-rg-text small { font-weight: 400; color: var(--dim); }
+.ex-rg-text textarea { width: 100%; box-sizing: border-box; min-height: 4.2rem; padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--well); color: var(--text); font-family: var(--mono); font-size: 0.8rem; resize: vertical; }
+.ex-rg-text textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ex-rg-out .df-tablewrap { overflow-x: auto; max-width: 100%; }
+.ex-rg-out td, .ex-rg-out code { overflow-wrap: anywhere; }
+.ex-rg-import input[type="file"] { max-width: 100%; min-width: 0; font-size: 0.8rem; }
+.ex-rg-box .rg-on { font-weight: 700; color: var(--chip-warn, var(--warn)); }
+.ex-rg-box .rg-off { font-weight: 700; color: var(--chip-ok, var(--pass)); }
+.ex-rg-box .rg-warn { color: var(--chip-warn, var(--warn)); font-weight: 700; }
+.ex-rg-pre { font-family: var(--mono); font-size: 0.74rem; background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem; overflow: auto; max-height: 360px; white-space: pre; max-width: 100%; }
 @media (max-width: 760px) {
   .ex-page .df-ctl { flex-wrap: wrap; max-width: 100%; }
   .ex-page .df-ctl select, .ex-page .df-ctl input:not([type="checkbox"]) { max-width: 100%; min-width: 0; }

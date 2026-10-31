@@ -1,0 +1,26 @@
+{
+ "zscaler.net": {
+  "continent : EMEA": {
+   "city : Amsterdam II": [
+    {"range": "165.225.240.0/23", "vpn": "ams2-2-vpn.zscaler.net", "gre": "165.225.240.12", "hostname": "ams2-2.sme.zscaler.net", "latitude": "52", "longitude": "5"},
+    {"range": "165.225.242.0/23", "vpn": "", "gre": "", "hostname": "", "latitude": "52", "longitude": "5"}
+   ],
+   "city : Frankfurt IV": [
+    {"range": "165.225.72.0/22", "vpn": "fra4-vpn.zscaler.net", "gre": "165.225.72.38", "hostname": "fra4.sme.zscaler.net", "latitude": "50", "longitude": "8"},
+    {"range": "2a03:eec0:1411::/48", "vpn": "", "gre": "", "hostname": "", "latitude": "50", "longitude": "8"}
+   ]
+  },
+  "continent : Americas": {
+   "city : Chicago": [
+    {"range": "136.226.0.0/23", "vpn": "chi1-vpn.zscaler.net", "gre": "136.226.0.38", "hostname": "chi1.sme.zscaler.net", "latitude": "41", "longitude": "-87"},
+    {"range": "136.226.2.0/23", "vpn": "", "gre": "", "hostname": "", "latitude": "41", "longitude": "-87"},
+    {"range": "2605:4300:1211::/48", "vpn": "", "gre": "", "hostname": "", "latitude": "41", "longitude": "-87"}
+   ]
+  },
+  "continent : APAC": {
+   "city : Singapore IV": [
+    {"range": "147.161.192.0/22", "vpn": "sin4-vpn.zscaler.net", "gre": "147.161.192.38", "hostname": "sin4.sme.zscaler.net", "latitude": "1", "longitude": "103"}
+   ]
+  }
+ }
+}
