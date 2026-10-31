@@ -3462,6 +3462,86 @@ window.HELP_CATALOG = {
     "input": "Tick it to export counts only. Untick it to include names.",
     "effect": "local"
    },
+   "#zfExpPdf": {
+    "what": "Saves the page as a PDF report: the tiles, alerts, versions, profiles, last seen, sites, history and the plan. It never names a user or a device.",
+    "input": "Nothing to type. Read the fleet or import the files first.",
+    "effect": "download"
+   },
+   "#zfImpDev": {
+    "what": "Picks the Device Details file you exported from the Client Connector Portal, under Enrolled Devices.",
+    "input": "Optional. A CSV file of up to 48 MB. Pick this one, the Service Status file, or both.",
+    "effect": "local"
+   },
+   "#zfImpSvc": {
+    "what": "Picks the Service Status file you exported from the Client Connector Portal. It says if ZIA, ZPA and ZDX are on.",
+    "input": "Optional. A CSV file of up to 48 MB. Export it at the same time as Device Details.",
+    "effect": "local"
+   },
+   "#zfImpLabel": {
+    "what": "Names this import in the history, so you can follow the same customer over time.",
+    "input": "Optional. Up to 80 letters, digits or spaces, like Acme Corp. Empty is Imported CSV.",
+    "effect": "local"
+   },
+   "#zfImpGo": {
+    "what": "Reads the files you picked and shows the fleet from them. Nothing is sent to a tenant.",
+    "input": "Nothing to type. Pick at least one file first.",
+    "effect": "local"
+   },
+   "#zfSiteMode": {
+    "what": "Picks how a host name names its site, so devices are counted per site.",
+    "input": "Pick No grouping, First characters, Part before a separator, or A list of site prefixes.",
+    "effect": "local"
+   },
+   "#zfSiteLen": {
+    "what": "How many first letters of the host name are the site. With 3, LON-LT-001 is site LON.",
+    "input": "A whole number from 1 to 12.",
+    "effect": "local"
+   },
+   "#zfSiteDelim": {
+    "what": "The character that ends the site part of a host name. With a hyphen, LON-LT-001 is site LON.",
+    "input": "Pick a hyphen, an underscore or a dot.",
+    "effect": "local"
+   },
+   "#zfSiteSeg": {
+    "what": "How many parts before the separator make the site. With 2, LON-HQ-001 is site LON-HQ.",
+    "input": "A whole number from 1 to 4.",
+    "effect": "local"
+   },
+   "#zfSiteList": {
+    "what": "The site prefixes to look for. The longest one a host name starts with is its site. Others go to Other.",
+    "input": "Prefixes split by commas or spaces, like LON, NYC, PAR. Letters, digits, dots, hyphens. Up to 200.",
+    "effect": "local"
+   },
+   "#zfSiteApply": {
+    "what": "Counts the devices per site with your choice. It uses the fleet already read and keeps the choice in this browser.",
+    "input": "Nothing to type. Pick how to group first.",
+    "effect": "local"
+   },
+   "#zfHistSave": {
+    "what": "Keeps the counts of this read on this computer, so you can see the trend later. No user or device name is kept.",
+    "input": "Nothing to type. Saving the same read twice keeps it once.",
+    "effect": "local"
+   },
+   "#zfHistForget": {
+    "what": "Removes every saved read of this tenant from this computer. It asks first.",
+    "input": "Nothing to type. Click OK in the question to remove them.",
+    "effect": "local"
+   },
+   "#zfHistA": {
+    "what": "Picks the older saved read to compare.",
+    "input": "Pick a date from the list.",
+    "effect": "local"
+   },
+   "#zfHistB": {
+    "what": "Picks the newer saved read to compare.",
+    "input": "Pick a date from the list.",
+    "effect": "local"
+   },
+   "#zfHistCompare": {
+    "what": "Shows what changed between the two saved reads: devices, ZIA, ZPA and ZDX, alerts, last seen and versions.",
+    "input": "Nothing to type. Pick two different reads first.",
+    "effect": "local"
+   },
    "#zfA": {
     "what": "Picks the first app profile to compare.",
     "input": "Required. Pick a profile from the list.",

@@ -9898,7 +9898,18 @@ async def report_fleet_page():
 
 class ZccFleetRequest(ScopedTenantCredsRequest):
     """Tenant credentials and the Scope page selection; the fleet is read
-    only when ZCC is ticked there (else 400 before sign-in)."""
+    only when ZCC is ticked there (else 400 before sign-in). `site` is the
+    optional site grouping by host name (zcc_fleet.site_rule: none, a
+    prefix length, a delimiter, or a list of prefixes; never a regex)."""
+    site: Optional[Dict[str, Any]] = None
+
+
+def _fleet_site_rule(raw: Any) -> Dict[str, Any]:
+    import zcc_fleet
+    try:
+        return zcc_fleet.site_rule(raw or {"mode": "none"})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def _zcc_fleet_clients(req: ZccFleetRequest, creds: Dict[str, str]):
@@ -9926,13 +9937,14 @@ async def zcc_fleet_start(req: ZccFleetRequest, request: Request):
     import pack_jobs
     import zcc_fleet
     _require_in_scope(req, "zcc", FLEET_WHAT)   # user rule 1: nothing read out of scope
+    site = _fleet_site_rule(req.site)            # checked before sign-in too
     creds = _tenant_creds(req)
     label = tenant_auth.record_label(creds)
     client, sdk, why = await asyncio.to_thread(_zcc_fleet_clients, req, creds)
 
     def fn(log, cancel):
         try:
-            return zcc_fleet.run(client, sdk, log=log, cancel=cancel, label=label, sdk_reason=why)
+            return zcc_fleet.run(client, sdk, log=log, cancel=cancel, label=label, sdk_reason=why, site=site)
         finally:
             _close_quietly(client)
     job = pack_jobs.start("fleet", fn, label="Client Connector fleet", actor=_actor(request), start_token=_start_token(request))
@@ -9950,6 +9962,114 @@ def _fleet_result(job_id: str) -> Dict[str, Any]:
     return res
 
 
+class ZccFleetImportRequest(BaseModel):
+    """The Client Connector Portal's Enrolled Devices exports, as uploaded
+    files ({name, content, encoding}: text, base64 or gzip-base64): the
+    Device Details export, the Service Status export, or both. The name is
+    read only for the export time the portal puts in it. `tenant_label`
+    names the import in the fleet history; `site` is a site_rule."""
+    devices: Optional[PackUploadFile] = None
+    service: Optional[PackUploadFile] = None
+    tenant_label: str = ""
+    site: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/zcc/fleet/import")
+async def zcc_fleet_import(req: ZccFleetImportRequest, request: Request):
+    """The fleet page from the portal's CSV exports instead of the API
+    (zcc_fleet_import): no tenant is contacted, so no sign-in and no Scope
+    page selection is needed. The files are untrusted (decoded, size-, row-,
+    column- and cell-capped, parsed by the CSV module only); a file that
+    cannot be used is a 400 with the reason. The result is kept as a
+    finished fleet run, so the exports, the site grouping and the history
+    work on it as on a read. Answers like /api/zcc/fleet/start."""
+    import pack_jobs
+    import zcc_fleet_import
+    site = _fleet_site_rule(req.site)
+    try:
+        res = await asyncio.to_thread(zcc_fleet_import.run_import, req.devices.model_dump() if req.devices else None,
+                                      req.service.model_dump() if req.service else None, label=req.tenant_label, site=site)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:400])
+
+    def fn(log, cancel):
+        log(f"Imported {res.get('devices_total', 0)} device record(s) from the portal's CSV exports; nothing was read from a tenant.")
+        return res
+    job = pack_jobs.start("fleet", fn, label="Client Connector fleet (CSV import)", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+class ZccFleetSitesRequest(BaseModel):
+    """A site grouping for a finished fleet run (zcc_fleet.site_rule)."""
+    site: Dict[str, Any] = {}
+
+
+@app.post("/api/zcc/fleet/{job_id}/sites")
+async def zcc_fleet_sites(job_id: str, req: ZccFleetSitesRequest):
+    """Group a finished run's devices by site with this rule (no tenant
+    call) and keep it for the run's exports."""
+    import zcc_fleet
+    res = _fleet_result(job_id)
+    rule = _fleet_site_rule(req.site)
+    try:
+        return zcc_fleet.regroup_sites(res, rule)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class ZccFleetHistoryForget(BaseModel):
+    """Remove one tenant label's fleet history (local file only)."""
+    tenant: str = ""
+    confirm: bool = False
+
+
+@app.get("/api/zcc/fleet/history")
+async def zcc_fleet_history(tenant: str = ""):
+    """The counts-only fleet snapshots kept for a tenant label, oldest
+    first, with each one's change since the one before (no tenant call)."""
+    import zcc_fleet_history as zh
+    hist = await asyncio.to_thread(zh.load, tenant[:120])
+    return {"tenant": tenant[:120], "history": hist, "trend": zh.trend(hist), "keep": zh.HISTORY_KEEP}
+
+
+@app.get("/api/zcc/fleet/history/compare")
+async def zcc_fleet_history_compare(tenant: str = "", a: int = 0, b: int = 0):
+    """Two kept snapshots of a tenant side by side, with the change from A
+    to B (indices into the history, oldest first; no tenant call)."""
+    import zcc_fleet_history as zh
+    hist = await asyncio.to_thread(zh.load, tenant[:120])
+    try:
+        return zh.compare(hist, a, b)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/zcc/fleet/history/forget")
+async def zcc_fleet_history_forget(req: ZccFleetHistoryForget):
+    """Delete a tenant label's kept fleet snapshots from this computer. The
+    request must say confirm: true (the page asks first). No tenant call."""
+    import zcc_fleet_history as zh
+    if req.confirm is not True:
+        raise HTTPException(status_code=400, detail="Confirm that the fleet history of this tenant should be removed from this computer.")
+    return {"tenant": req.tenant[:120], "removed": await asyncio.to_thread(zh.forget, req.tenant[:120])}
+
+
+@app.post("/api/zcc/fleet/{job_id}/history")
+async def zcc_fleet_history_save(job_id: str):
+    """Keep a counts-only snapshot of a finished run (or import) in the
+    fleet history of its tenant label: no user, host name, device ID or
+    site. The same run saved twice is kept once. No tenant call."""
+    import zcc_fleet_history as zh
+    res = _fleet_result(job_id)
+    try:
+        snap = zh.entry(res)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    tenant = str(res.get("tenant_label") or "tenant")
+    hist = await asyncio.to_thread(zh.record, tenant, snap)
+    return {"tenant": zh.tenant_key(tenant), "history": hist, "trend": zh.trend(hist), "keep": zh.HISTORY_KEEP}
+
+
 @app.get("/api/zcc/fleet/{job_id}/diff")
 async def zcc_fleet_diff(job_id: str, a: str = "", b: str = ""):
     """Side-by-side settings and the JSON diff of two app profiles of a
@@ -9962,22 +10082,34 @@ async def zcc_fleet_diff(job_id: str, a: str = "", b: str = ""):
 
 
 @app.get("/api/zcc/fleet/{job_id}/export")
-async def zcc_fleet_export(job_id: str, what: str = "plan", counts_only: bool = False, format: str = "csv"):
+async def zcc_fleet_export(job_id: str, what: str = "plan", counts_only: bool = False, format: str = "csv", page: str = "a4"):
     """The remediation plan, the device table or the summary of a finished
-    run as CSV (csv_safe), or everything as one Excel workbook (format=xlsx:
-    summary, versions, operating systems, stale devices, devices, alerts,
-    plan; `what` is then ignored). counts_only leaves every user and host
-    name out (the CSV device table is then refused; the workbook leaves the
-    device sheet empty and counts the stale devices per platform)."""
+    run as CSV (csv_safe), everything as one Excel workbook (format=xlsx:
+    summary, versions, version health, profile and forwarding health, last
+    seen, sites, history, operating systems, stale devices, devices,
+    alerts, plan; `what` is then ignored), or the page as a PDF report
+    (format=pdf, page a4 or letter; always counts only). counts_only leaves
+    every user and host name out (the CSV device table is then refused; the
+    workbook leaves the device sheet empty, counts the stale devices per
+    platform and merges sites under three registered devices)."""
     import zcc_fleet
+    import zcc_fleet_history
     res = _fleet_result(job_id)
     fmt = (format or "csv").lower()
-    if fmt == "xlsx":
+    if fmt in ("xlsx", "pdf"):
         import report_exports
-        stem, data = await asyncio.to_thread(zcc_fleet.export_xlsx, res, counts_only)
-        return _attachment(data, report_exports.XLSX, f"{stem}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx")
+        hist = await asyncio.to_thread(zcc_fleet_history.load, str(res.get("tenant_label") or "tenant"))
+        ts = datetime.now().strftime('%Y%m%d_%H%M')
+        if fmt == "pdf":
+            size = (page or "a4").upper()
+            if size not in ("A4", "LETTER"):
+                raise HTTPException(status_code=400, detail="page must be a4 or letter.")
+            stem, data = await asyncio.to_thread(zcc_fleet.export_pdf, res, hist, size)
+            return _attachment(data, report_exports.PDF, f"{stem}_{ts}.pdf")
+        stem, data = await asyncio.to_thread(zcc_fleet.export_xlsx, res, counts_only, hist)
+        return _attachment(data, report_exports.XLSX, f"{stem}_{ts}.xlsx")
     if fmt != "csv":
-        raise HTTPException(status_code=400, detail="format must be csv or xlsx.")
+        raise HTTPException(status_code=400, detail="format must be csv, xlsx or pdf.")
     try:
         stem, text = zcc_fleet.export_csv(res, (what or "").lower(), counts_only)
     except ValueError as e:

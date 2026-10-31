@@ -56,6 +56,8 @@ DEVICE_PAGE_SIZE = 5000         # the SDK's documented maximum for getDevices (o
 MAX_DEVICE_PAGES = 40           # 200 000 devices; beyond that the read says it is incomplete
 PAGE_PAUSE_SECONDS = 1.0        # pacing between device pages (ZCC's public API is rate limited per hour)
 MAX_CSV_BYTES = 40 * 1024 * 1024
+MAX_CSV_ROWS = MAX_DEVICE_PAGES * DEVICE_PAGE_SIZE   # as many rows as the device read may return
+MAX_CELL_CHARS = 200            # a kept cell is cut here (a host name, a version, a state)
 MAX_RESULT_DEVICES = 10000      # rows kept in the result for the page and the device export
 MAX_ALERT_ROWS = 500
 
@@ -294,7 +296,7 @@ REGISTRATION_LABELS = {"registered": "Registered", "unregistered": "Unregistered
 _ACTIVE = re.compile(r"^(on|active|enabled|connected|up|running|true|yes|1|healthy|online|ok|success\w*|authenticated|tunnel ?(up|connected))\b")
 _INACTIVE = re.compile(r"\b(off|inactive|disabled|disconnected|down|error\w*|fail\w*|false|no|0|stopped|unhealthy|offline|not running|"
                        r"not connected|not authenticated|unauthenticated|captive|blocked)\b")
-_NOT_APPLICABLE = re.compile(r"^(|n/?a|-|—|none|null|not applicable|not entitled|not licensed|not enabled for user|unknown)$")
+_NOT_APPLICABLE = re.compile(r"^(|n/?a|-|—|none|null|not applicable|not entitled|not licensed|not enabled|not enabled for user|unknown)$")
 
 
 def service_state(raw: Any) -> str:
@@ -312,29 +314,82 @@ def service_state(raw: Any) -> str:
     return "unknown"
 
 
+def _switched_off(raw: Any) -> bool:
+    """An "Enabled" cell that says no (false, no, 0, disabled, off)."""
+    return code_text(raw) in ("false", "no", "0", "disabled", "off", "n")
+
+
 def _norm_header(h: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(h or "").lower())
+
+
+def portal_columns(headers: Iterable[str]) -> Dict[str, Optional[str]]:
+    """The device columns of a Client Connector CSV (the service-status file
+    the API returns, or the Client Connector Portal's Enrolled Devices
+    exports) by keyword, first match wins. The SDK documents only that the
+    files start with "User","Device type"; the other names (UDID, Hostname,
+    Zscaler Client Connector Version, Policy Name, Registration State, OS
+    Version, Last Seen Connected to ZIA, Tunnel Version) are assumed from
+    the portal's exports, so each is matched loosely and an unmatched one
+    is simply not read."""
+    out: Dict[str, Optional[str]] = {k: None for k in ("user", "udid", "hostname", "platform", "os_version", "version", "registration",
+                                                         "last_seen", "policy", "tunnel")}
+    seen_any: List[str] = []
+    for h in headers:
+        n = _norm_header(h)
+        if not n:
+            continue
+        if out["udid"] is None and "udid" in n:
+            out["udid"] = h
+        elif out["hostname"] is None and any(k in n for k in ("hostname", "machinename", "devicename", "computername")):
+            out["hostname"] = h
+        elif out["user"] is None and n in ("user", "username", "userid", "enrolleduser", "useremail", "owner"):
+            out["user"] = h
+        elif out["platform"] is None and n in ("devicetype", "platform", "ostype", "type", "os"):
+            out["platform"] = h
+        elif out["os_version"] is None and n in ("osversion", "operatingsystemversion", "operatingsystem"):
+            out["os_version"] = h
+        elif out["version"] is None and (n in ("zccversion", "agentversion", "appversion", "version", "zappversion")
+                                         or ("clientconnector" in n and "version" in n)):
+            out["version"] = h
+        elif out["registration"] is None and ("registration" in n or n in ("devicestate", "state")):
+            out["registration"] = h
+        elif out["policy"] is None and n in ("policyname", "policy", "appprofile", "appprofilename", "profilename", "profile"):
+            out["policy"] = h
+        elif out["tunnel"] is None and "tunnelversion" in n:
+            out["tunnel"] = h
+        elif "lastseen" in n or "keepalive" in n:
+            seen_any.append(h)
+    # "Last Seen Connected to ZIA" first (the time the ghost and blind-spot rules use), then any last-seen column.
+    zia_seen = [h for h in seen_any if "zia" in _norm_header(h)]
+    plain = [h for h in seen_any if "lastseen" in _norm_header(h) and not re.search(r"zpa|zdx", _norm_header(h))]
+    out["last_seen"] = (zia_seen or plain or seen_any or [None])[0]
+    return out
 
 
 def service_columns(headers: Iterable[str]) -> Dict[str, Optional[str]]:
     """Which CSV column holds what. The SDK only shows that the file starts
     with "User","Device type"; the rest is matched by keyword: a column
-    naming the service (ZIA, ZPA, ZDX) with status/state/health (else the
-    bare service name), never a version, time or reason column."""
+    naming the service (ZIA, ZPA, ZDX) and its health, status, state or
+    service (in that order of preference; else the bare service name),
+    never a version, time or reason column. A "<service> Enabled" column
+    (assumed from the portal's Service Status export, which has
+    "ZIA Enabled" beside "ZIA Health") is kept apart as `<svc>_enabled`:
+    it is read as the state only when no health or status column exists."""
     hs = list(headers)
-    out: Dict[str, Optional[str]] = {"user": None, "udid": None, "hostname": None}
-    for h in hs:
-        n = _norm_header(h)
-        if out["udid"] is None and "udid" in n:
-            out["udid"] = h
-        elif out["hostname"] is None and any(k in n for k in ("hostname", "machinename", "devicename", "computername")):
-            out["hostname"] = h
-        elif out["user"] is None and n in ("user", "username", "userid", "enrolleduser", "useremail"):
-            out["user"] = h
+    out: Dict[str, Optional[str]] = {k: v for k, v in portal_columns(hs).items()}
     for svc in SERVICES:
         cands = [h for h in hs if svc in _norm_header(h) and not re.search(r"version|time|date|lastseen|reason|since|count", _norm_header(h))]
-        best = [h for h in cands if re.search(r"status|state|health|enabled|service", _norm_header(h))]
-        out[svc] = (best or cands or [None])[0]
+        enabled = next((h for h in cands if "enabled" in _norm_header(h)), None)
+        ranked = None
+        for word in ("health", "status", "state", "service"):
+            hit = [h for h in cands if word in _norm_header(h) and h != enabled]
+            if hit:
+                ranked = hit[0]
+                break
+        bare = [h for h in cands if h != enabled]
+        out[svc] = ranked or (bare[0] if bare else None) or enabled
+        out[f"{svc}_enabled"] = enabled if out[svc] != enabled else None
     return out
 
 
@@ -482,7 +537,10 @@ def parse_service_csv(text: str) -> Dict[str, Any]:
         for r in reader:
             if not r:
                 continue
-            rows.append({k: (r[i].strip() if i < len(r) else "") for k, i in idx.items()})
+            if len(rows) >= MAX_CSV_ROWS:
+                out["reason"] = f"The service status file has more than {MAX_CSV_ROWS} rows; it was not read."
+                return out
+            rows.append({k: (r[i].strip()[:MAX_CELL_CHARS] if i < len(r) else "") for k, i in idx.items()})
     except csv.Error:
         out["reason"] = "The service status file could not be parsed past a malformed line."
         return out
@@ -523,15 +581,23 @@ def normalize_devices(raw: List[Dict[str, Any]], service_rows: List[Dict[str, An
         user = str(_v(d, "user", "userName", "owner", default="") or "").strip()
         host = str(_v(d, "machineHostname", "hostname", "deviceName", "machineName", default="") or "").strip()
         uid = _hash(_v(d, "udid", default=""))
-        seen = parse_time(_v(d, "last_seen_time", "lastSeenTime", "lastSeen", default=None)) or parse_time(_v(d, "keepAliveTime", default=None))
-        age = None if seen is None else max(0.0, (now - seen).total_seconds())
         row = by_udid.get(uid) if uid else None
         if row is None and user and host:
             row = by_user_host.get((user.lower(), host.lower()))
         if row is None and user and len(by_user.get(user.lower(), [])) == 1 and devices_of.get(user.lower()) == 1:
             row = by_user[user.lower()][0]
+        # The device record's last-seen time, else its keep-alive, else the service status file's last-seen column
+        # ("Last Seen Connected to ZIA", assumed from the portal's export) for the same device.
+        seen = (parse_time(_v(d, "last_seen_time", "lastSeenTime", "lastSeen", default=None)) or parse_time(_v(d, "keepAliveTime", default=None))
+                or (parse_time(row.get("last_seen")) if row is not None else None))
+        age = None if seen is None else max(0.0, (now - seen).total_seconds())
         services = {s: ("unread" if row is None else service_state(row.get(s)) if row.get(s) is not None else "unread") for s in SERVICES}
         raw_services = {s: (str(row.get(s))[:40] if row is not None and row.get(s) is not None else None) for s in SERVICES}
+        for s in SERVICES:
+            # A "<service> Enabled" column saying no: the service is not turned on for this device (assumed portal
+            # semantics), so it is not counted as active or inactive. Listed as such under "How the service status was read".
+            if row is not None and _switched_off(row.get(f"{s}_enabled")):
+                services[s], raw_services[s] = "not_applicable", "not enabled"
         reg_raw = _v(d, "registrationState", "registration_state", default=None)
         out.append({
             "id": f"d{i + 1}", "user": user, "hostname": host, "platform": device_platform(d),
@@ -539,7 +605,8 @@ def normalize_devices(raw: List[Dict[str, Any]], service_rows: List[Dict[str, An
             "registration": registration(reg_raw), "registration_raw": str(reg_raw if reg_raw is not None else "")[:40],
             "last_seen": seen.isoformat() if seen else None, "seconds_since_seen": age,
             "hours_since_seen": None if age is None else round(age / 3600.0, 1),
-            "profile": str(_v(d, "policyName", "policy_name", default="") or "").strip(), "uid": uid,
+            "profile": str(_v(d, "policyName", "policy_name", default="") or "").strip()[:MAX_CELL_CHARS], "uid": uid,
+            "tunnel": str(_v(d, "tunnelVersion", "tunnel_version", default="") or "").strip()[:40],
             "services": services, "service_raw": raw_services,
         })
     return out
@@ -674,6 +741,7 @@ def fleet_kpis(devs: List[Dict[str, Any]], service_read: bool) -> Dict[str, Any]
             "newest": newest_versions(devs),
             "seen_24h": sum(1 for d in reg if is_recent(d)),
             "never_seen": sum(1 for d in reg if d["seconds_since_seen"] is None),
+            "quarantined": states.get("quarantined", 0),
             "services": services}
 
 
@@ -688,6 +756,307 @@ def service_values_seen(devs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 seen[(s, raw)] = seen.get((s, raw), 0) + 1
     return [{"service": SERVICE_LABELS[s], "value": v, "read_as": service_state(v), "devices": n}
             for (s, v), n in sorted(seen.items(), key=lambda kv: (kv[0][0], -kv[1]))][:60]
+
+
+# ── analysis: fleet depth (versions, profiles, last seen, sites) ─────
+BELOW_FLEET_POINTS = 10.0       # a group's active % this many points under the fleet's is flagged
+BELOW_FLEET_MIN_KNOWN = 5       # ... when at least this many of its devices have a known status
+MAX_MATRIX_ROWS = 80
+MAX_PROFILE_ROWS = 200
+MAX_SITES = 300
+SITE_MIN_COUNTS_ONLY = 3        # a counts-only export merges sites with fewer registered devices than this
+SITE_MAX_PREFIXES = 200
+SITE_MAX_LENGTH = 12
+SITE_DELIMITERS = ("-", "_", ".")
+SITE_MAX_SEGMENTS = 4
+NO_SITE = "(no site)"
+OTHER_SITE = "Other"
+SMALL_SITES = f"(sites with fewer than {SITE_MIN_COUNTS_ONLY} registered devices)"
+NO_PROFILE = "(no app profile)"
+NOT_REPORTED = "not reported"
+
+LAST_SEEN_BUCKETS: Tuple[Tuple[str, str, Optional[float], Optional[float]], ...] = (
+    # key, label, more than (days), at most (days): to the second, as the ghost and recent rules are.
+    ("under_1d", "Under 1 day", None, 1.0),
+    ("1_7d", "1 to 7 days", 1.0, 7.0),
+    ("7_30d", "7 to 30 days", 7.0, 30.0),
+    ("over_30d", "Over 30 days", 30.0, None),
+)
+LAST_SEEN_DEFINITION = ("Registered devices by the time between their last-seen time and the read: under 1 day is at most 24 hours; "
+                        "1 to 7 days is more than 24 hours and at most 7 days; 7 to 30 days is more than 7 and at most 30 days; over 30 "
+                        f"days is more than 30 days (a ghost is more than {GHOST_DAYS}); never seen has no last-seen time.")
+VERSION_HEALTH_DEFINITION = (f"Registered devices per platform and Client Connector version, with each service's active share among the "
+                             f"devices whose status is known (active or not active; not applicable and unreadable are left out). A cell is "
+                             f"flagged when it is {BELOW_FLEET_POINTS:g} or more points below the whole fleet's share for that service and at "
+                             f"least {BELOW_FLEET_MIN_KNOWN} of its devices have a known status.")
+PROFILE_HEALTH_DEFINITION = ("Registered devices per app profile (the policy name each device reports) and, through the forwarding profile "
+                             "the app profile links to, per forwarding profile, with each service's active share among the devices whose "
+                             "status is known. A device's forwarding profile is known only when its app profile was read from the tenant.")
+
+
+def _svc_counts(devs: List[Dict[str, Any]], service_read: bool) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for s in SERVICES:
+        act = sum(1 for d in devs if d["services"][s] == "active")
+        ina = sum(1 for d in devs if d["services"][s] == "inactive")
+        na = sum(1 for d in devs if d["services"][s] == "not_applicable")
+        out[s] = {"active": act, "inactive": ina, "not_applicable": na, "unknown": len(devs) - act - ina - na, "known": act + ina,
+                  "percent": round(100.0 * act / (act + ina), 1) if service_read and (act + ina) else None}
+    return out
+
+
+def _add_counts(into: Dict[str, Dict[str, Any]], more: Dict[str, Dict[str, Any]], service_read: bool) -> None:
+    for s in SERVICES:
+        for k in ("active", "inactive", "not_applicable", "unknown", "known"):
+            into[s][k] += more[s][k]
+        kn = into[s]["known"]
+        into[s]["percent"] = round(100.0 * into[s]["active"] / kn, 1) if service_read and kn else None
+
+
+def _below(row: Dict[str, Dict[str, Any]], fleet: Dict[str, Dict[str, Any]]) -> List[str]:
+    """The services whose active share in `row` is far enough below the fleet's to flag (see VERSION_HEALTH_DEFINITION)."""
+    out = []
+    for s in SERVICES:
+        r, f = row[s], fleet.get(s) or {}
+        if r["percent"] is None or f.get("percent") is None or r["known"] < BELOW_FLEET_MIN_KNOWN:
+            continue
+        if r["percent"] <= f["percent"] - BELOW_FLEET_POINTS:
+            out.append(s)
+    return out
+
+
+def _version_key(v: str) -> Tuple[int, Tuple[int, ...], str]:
+    t = version_tuple(v) if v != NOT_REPORTED else ()
+    return (0 if t else 1, tuple(-x for x in t), v)
+
+
+def version_health(devs: List[Dict[str, Any]], service_read: bool) -> Dict[str, Any]:
+    """The version x service matrix: registered devices per platform and
+    Client Connector version, each service's active share, and the cells
+    far enough below the fleet to flag. Pure."""
+    reg = [d for d in devs if d["registration"] == "registered"]
+    fleet = _svc_counts(reg, service_read)
+    per_plat: Dict[str, int] = {}
+    groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    for d in reg:
+        per_plat[d["platform"]] = per_plat.get(d["platform"], 0) + 1
+        groups.setdefault((d["platform"], d["version"] or NOT_REPORTED), []).append(d)
+    newest = newest_versions(devs)
+    rows = []
+    for (plat, ver), ds in groups.items():
+        svc = _svc_counts(ds, service_read)
+        rows.append({"platform": plat, "version": ver, "devices": len(ds),
+                     "share": round(100.0 * len(ds) / per_plat[plat], 1) if per_plat.get(plat) else None,
+                     "seen_24h": sum(1 for d in ds if is_recent(d)), "services": svc, "below_fleet": _below(svc, fleet),
+                     "newest": ver == newest.get(plat), "unsupported": ver != NOT_REPORTED and zcc_unsupported(plat, ver)})
+    order = {p: i for i, (p, _) in enumerate(sorted(per_plat.items(), key=lambda kv: (-kv[1], kv[0])))}
+    rows.sort(key=lambda r: (order.get(r["platform"], 99), _version_key(r["version"])))
+    return {"rows": rows[:MAX_MATRIX_ROWS], "truncated": len(rows) > MAX_MATRIX_ROWS, "fleet": fleet, "service_read": service_read,
+            "definition": VERSION_HEALTH_DEFINITION}
+
+
+def profile_health(devs: List[Dict[str, Any]], service_read: bool, profiles: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Health per app profile (the policy name each registered device
+    reports, per platform) and, through the forwarding profile each read
+    app profile links to, per forwarding profile. Pure."""
+    reg = [d for d in devs if d["registration"] == "registered"]
+    fleet = _svc_counts(reg, service_read)
+    by_key = {_profile_key(p.get("name"), p.get("platform")): p for p in profiles}
+    by_name: Dict[str, List[Dict[str, Any]]] = {}
+    for p in profiles:
+        by_name.setdefault(str(p.get("name") or "").strip().lower(), []).append(p)
+    groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    for d in reg:
+        groups.setdefault(((d["profile"] or "").strip().lower(), d["platform"]), []).append(d)
+    rows = []
+    for (name, plat), ds in groups.items():
+        p = by_key.get(_profile_key(name, plat))
+        if p is None and len(by_name.get(name, [])) == 1:
+            p = by_name[name][0]
+        svc = _svc_counts(ds, service_read)
+        rows.append({"name": ds[0]["profile"] or NO_PROFILE, "platform": plat, "devices": len(ds), "matched": p is not None,
+                     "forwarding_profile": (p or {}).get("forwarding_profile") if p else None,
+                     "score": (p or {}).get("score") if p else None, "seen_24h": sum(1 for d in ds if is_recent(d)),
+                     "ghosts": sum(1 for d in ds if is_ghost(d)), "services": svc, "below_fleet": _below(svc, fleet)})
+    rows.sort(key=lambda r: (-r["devices"], r["name"].lower(), r["platform"]))
+    fwd: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        key = r["forwarding_profile"] if r["matched"] and r["forwarding_profile"] else ("" if r["matched"] else None)
+        label = key if key else ("(no forwarding profile linked)" if key == "" else "(not known: app profile not read)")
+        g = fwd.setdefault(label, {"name": label, "known": key is not None and key != "", "app_profiles": 0, "devices": 0,
+                                   "seen_24h": 0, "services": _svc_counts([], service_read)})
+        g["app_profiles"] += 1
+        g["devices"] += r["devices"]
+        g["seen_24h"] += r["seen_24h"]
+        _add_counts(g["services"], r["services"], service_read)
+    frows = sorted(fwd.values(), key=lambda g: (not g["known"], -g["devices"], g["name"].lower()))
+    for g in frows:
+        g["below_fleet"] = _below(g["services"], fleet)
+    return {"app_profiles": rows[:MAX_PROFILE_ROWS], "truncated": len(rows) > MAX_PROFILE_ROWS, "forwarding_profiles": frows[:MAX_PROFILE_ROWS],
+            "config_read": bool(profiles), "fleet": fleet, "service_read": service_read, "definition": PROFILE_HEALTH_DEFINITION}
+
+
+def last_seen_bucket(dev: Dict[str, Any]) -> str:
+    s = dev.get("seconds_since_seen")
+    if s is None:
+        return "never"
+    for key, _label, low, high in LAST_SEEN_BUCKETS:
+        if (low is None or s > low * 86400) and (high is None or s <= high * 86400):
+            return key
+    return "over_30d"
+
+
+def last_seen_histogram(devs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Registered devices by how long before the read they were last seen
+    (LAST_SEEN_DEFINITION), overall and per platform. Pure."""
+    reg = [d for d in devs if d["registration"] == "registered"]
+    keys = [b[0] for b in LAST_SEEN_BUCKETS] + ["never"]
+    labels = {b[0]: b[1] for b in LAST_SEEN_BUCKETS}
+    labels["never"] = "Never seen"
+    counts = {k: 0 for k in keys}
+    per: Dict[str, Dict[str, int]] = {}
+    for d in reg:
+        b = last_seen_bucket(d)
+        counts[b] += 1
+        per.setdefault(d["platform"], {k: 0 for k in keys})[b] += 1
+    n = len(reg)
+    return {"buckets": [{"key": k, "label": labels[k], "devices": counts[k], "percent": round(100.0 * counts[k] / n, 1) if n else None}
+                        for k in keys],
+            "by_platform": dict(sorted(per.items(), key=lambda kv: -sum(kv[1].values()))), "registered": n, "definition": LAST_SEEN_DEFINITION}
+
+
+# ── sites: grouping by host name (no free regex: a prefix, a delimiter or a pick list) ──
+_SITE_PREFIX_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
+
+
+def site_rule(raw: Any) -> Dict[str, Any]:
+    """The operator's site grouping, checked: {"mode": "none"} (off);
+    {"mode": "prefix", "length": 1-12} (the first characters of the host
+    name); {"mode": "delimiter", "delimiter": "-", "_" or ".", "segments":
+    1-4} (the host name up to that many delimiters); {"mode": "list",
+    "prefixes": [...]} (up to 200 prefixes of letters, digits, '.', '_' and
+    '-', the longest that starts the host name wins; none is Other). Raises
+    ValueError with a plain reason. Never a regular expression: an
+    operator's pattern could hang the server (CWE-1333)."""
+    r = raw if isinstance(raw, dict) else {}
+    mode = str(r.get("mode") or "none").strip().lower()
+    if mode in ("", "none", "off"):
+        return {"mode": "none"}
+
+    def _int(key: str, lo: int, hi: int, default: int) -> int:
+        v = r.get(key, default)
+        if isinstance(v, bool):
+            raise ValueError(f"{key} must be a whole number from {lo} to {hi}.")
+        try:
+            n = int(str(v).strip())
+        except (TypeError, ValueError):
+            raise ValueError(f"{key} must be a whole number from {lo} to {hi}.")
+        if not lo <= n <= hi:
+            raise ValueError(f"{key} must be a whole number from {lo} to {hi}.")
+        return n
+    if mode == "prefix":
+        return {"mode": "prefix", "length": _int("length", 1, SITE_MAX_LENGTH, 2)}
+    if mode == "delimiter":
+        d = str(r.get("delimiter") or "-")
+        if d not in SITE_DELIMITERS:
+            raise ValueError(f"The delimiter must be one of {' '.join(SITE_DELIMITERS)}.")
+        return {"mode": "delimiter", "delimiter": d, "segments": _int("segments", 1, SITE_MAX_SEGMENTS, 1)}
+    if mode == "list":
+        raw_list = r.get("prefixes")
+        items = re.split(r"[\s,;]+", raw_list) if isinstance(raw_list, str) else list(raw_list or []) if isinstance(raw_list, (list, tuple)) else []
+        out: List[str] = []
+        for x in items:
+            x = str(x).strip()
+            if not x:
+                continue
+            if not _SITE_PREFIX_RE.fullmatch(x):
+                raise ValueError("Each site prefix is 1 to 32 letters, digits, '.', '_' or '-', starting with a letter or digit.")
+            if x.upper() not in (o.upper() for o in out):
+                out.append(x)
+            if len(out) > SITE_MAX_PREFIXES:
+                raise ValueError(f"At most {SITE_MAX_PREFIXES} site prefixes.")
+        if not out:
+            raise ValueError("List at least one site prefix, separated by commas or spaces.")
+        return {"mode": "list", "prefixes": out}
+    raise ValueError("Grouping must be none, prefix, delimiter or list.")
+
+
+def describe_site_rule(rule: Dict[str, Any]) -> str:
+    m = rule.get("mode")
+    if m == "prefix":
+        return f"the first {rule['length']} character{'s' if rule['length'] != 1 else ''} of the host name"
+    if m == "delimiter":
+        return (f"the host name up to its {'first' if rule['segments'] == 1 else 'number ' + str(rule['segments'])} "
+                f"'{rule['delimiter']}'")
+    if m == "list":
+        return f"the longest of {len(rule['prefixes'])} listed prefixes that starts the host name (none: {OTHER_SITE})"
+    return "no grouping"
+
+
+def site_of(hostname: Any, rule: Dict[str, Any]) -> str:
+    h = str(hostname or "").strip()
+    m = rule.get("mode")
+    if not h or m in (None, "none"):
+        return NO_SITE
+    if m == "prefix":
+        return h[:rule["length"]].upper() if len(h) >= rule["length"] else NO_SITE
+    if m == "delimiter":
+        parts = h.split(rule["delimiter"])
+        if len(parts) <= rule["segments"] or not all(parts[:rule["segments"]]):
+            return NO_SITE
+        return rule["delimiter"].join(parts[:rule["segments"]]).upper()
+    if m == "list":
+        hu = h.upper()
+        best = max((p for p in rule["prefixes"] if hu.startswith(p.upper())), key=len, default=None)
+        return best.upper() if best else OTHER_SITE
+    return NO_SITE
+
+
+def site_groups(devs: List[Dict[str, Any]], rule: Dict[str, Any], service_read: bool, *, counts_only: bool = False,
+                kept_of: Optional[int] = None) -> Dict[str, Any]:
+    """Devices per site (site_of), with registered, seen in 24 hours,
+    ghosts, quarantined, each service's active share and the versions in
+    use. counts_only merges the sites with fewer than SITE_MIN_COUNTS_ONLY
+    registered devices into one row, so a short site name cannot single
+    out a device. `kept_of` is the fleet's size when `devs` are only the
+    devices kept for the page. Pure."""
+    rule = site_rule(rule)   # idempotent on a checked rule; raises ValueError on anything else
+    out: Dict[str, Any] = {"rule": rule, "rule_text": describe_site_rule(rule), "groups": [], "truncated": False, "counts_only": counts_only,
+                           "counted": len(devs), "of": kept_of if kept_of is not None else len(devs)}
+    if rule["mode"] == "none":
+        return out
+    fleet = _svc_counts([d for d in devs if d["registration"] == "registered"], service_read)
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for d in devs:
+        groups.setdefault(site_of(d.get("hostname"), rule), []).append(d)
+
+    def row(name: str, ds: List[Dict[str, Any]]) -> Dict[str, Any]:
+        reg = [d for d in ds if d["registration"] == "registered"]
+        svc = _svc_counts(reg, service_read)
+        vers: Dict[str, int] = {}
+        for d in reg:
+            if d["version"]:
+                vers[d["version"]] = vers.get(d["version"], 0) + 1
+        top = max(vers.items(), key=lambda kv: (kv[1], version_tuple(kv[0])), default=(None, 0))[0]
+        return {"site": name, "devices": len(ds), "registered": len(reg), "seen_24h": sum(1 for d in reg if is_recent(d)),
+                "ghosts": sum(1 for d in reg if is_ghost(d)), "quarantined": sum(1 for d in ds if d["registration"] == "quarantined"),
+                "versions": len(vers), "top_version": top, "services": svc, "below_fleet": _below(svc, fleet)}
+    small: List[Dict[str, Any]] = []
+    rows = []
+    for name, ds in groups.items():
+        if counts_only and sum(1 for d in ds if d["registration"] == "registered") < SITE_MIN_COUNTS_ONLY:
+            small.extend(ds)
+            continue
+        rows.append(row(name, ds))
+    rows.sort(key=lambda r: (r["site"] in (NO_SITE, OTHER_SITE), -r["registered"], -r["devices"], r["site"]))
+    if len(rows) > MAX_SITES:
+        rest = [d for r in rows[MAX_SITES:] for d in groups[r["site"]]]
+        rows = rows[:MAX_SITES] + [row(f"(the other {len(rows) - MAX_SITES} sites)", rest)]
+        out["truncated"] = True
+    if small:
+        rows.append(row(SMALL_SITES, small))
+    out["groups"] = rows
+    return out
 
 
 # ── analysis: profiles ───────────────────────────────────────────────
@@ -961,10 +1330,14 @@ def _profile_key(name: Any, platform: Any) -> str:
 
 
 # ── the whole analysis ───────────────────────────────────────────────
-def analyze(cfg: Dict[str, Any], telemetry: Dict[str, Any], *, now: Optional[datetime] = None) -> Dict[str, Any]:
-    """Fleet KPIs, alerts, the profile heatmap and scores, PAC comparison
-    and the ranked remediation plan from what was read. Pure."""
+def analyze(cfg: Dict[str, Any], telemetry: Dict[str, Any], *, now: Optional[datetime] = None,
+            site: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Fleet KPIs, alerts, the profile heatmap and scores, PAC comparison,
+    the ranked remediation plan, the version x service matrix, health per
+    app and forwarding profile, the last-seen histogram and the site groups
+    (`site`: a site_rule; none by default) from what was read. Pure."""
     now = now or datetime.now(timezone.utc)
+    site = site_rule(site or {"mode": "none"})
     rs = cfg.get("read_status") or {}
     fwd_read = rs.get("forwarding_profiles") == "read"
     fwds = cfg.get("forwarding_profiles") or []
@@ -1053,7 +1426,13 @@ def analyze(cfg: Dict[str, Any], telemetry: Dict[str, Any], *, now: Optional[dat
         "errors": [_clean_reason(e) for e in cfg.get("errors") or []][:20],
         "profile_settings_ids": {p["pid"]: p["name"] for p in profiles},
         "definitions": {"seen_recent_hours": SEEN_RECENT_HOURS, "ghost_days": GHOST_DAYS, "multi_device_threshold": MULTI_DEVICE_THRESHOLD,
-                        "old_minor_releases": OLD_MINOR_RELEASES},
+                        "old_minor_releases": OLD_MINOR_RELEASES, "below_fleet_points": BELOW_FLEET_POINTS,
+                        "below_fleet_min_known": BELOW_FLEET_MIN_KNOWN, "site_min_counts_only": SITE_MIN_COUNTS_ONLY},
+        "source": "live", "service_read": service_read,
+        "version_health": version_health(devs, service_read) if have_devices else None,
+        "profile_health": profile_health(devs, service_read, profiles) if have_devices else None,
+        "last_seen": last_seen_histogram(devs) if have_devices else None,
+        "sites": site_groups(devs, site, service_read) if have_devices else None,
     }
 
 
@@ -1123,7 +1502,7 @@ def remediation_plan(profiles: List[Dict[str, Any]], alerts: Dict[str, Dict[str,
 
 # ── the run ───────────────────────────────────────────────────────────
 def run(client: Any, sdk: Any, *, log: Callable[[str], None], cancel: Any, label: str = "", sdk_reason: str = "",
-        now: Optional[datetime] = None) -> Dict[str, Any]:
+        now: Optional[datetime] = None, site: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Read, then analyse. Stop ends the run as stopped with no partial
     result. `sdk` None means no device telemetry (`sdk_reason` says why)."""
     try:
@@ -1139,7 +1518,7 @@ def run(client: Any, sdk: Any, *, log: Callable[[str], None], cancel: Any, label
         log("STOPPED — you clicked Stop; nothing more is read and no partial result is kept.")
         return {"stopped": STOPPED_REASON, "status": "stopped", "tenant_label": label}
     log("Analysing the fleet…")
-    out = analyze(cfg, telemetry, now=now)
+    out = analyze(cfg, telemetry, now=now, site=site)
     # Kept for the drift view; masked, never logged.
     out["profile_settings"] = {p["pid"]: mask_settings(_raw_for(a, cfg.get("raw_app_profiles") or []))
                                for p, a in zip(out["profiles"], cfg.get("app_profiles") or [])}
@@ -1148,6 +1527,19 @@ def run(client: Any, sdk: Any, *, log: Callable[[str], None], cancel: Any, label
         + f"{len(out['profiles'])} app profile(s); {len(out['plan'])} remediation item(s).")
     out["status"] = "done"
     out["tenant_label"] = label
+    return out
+
+
+def regroup_sites(result: Dict[str, Any], rule: Any) -> Dict[str, Any]:
+    """Group a finished run's devices by site again with another rule (no
+    tenant call) and keep it as the run's `sites`, which the exports use.
+    Counted over the devices kept for the page; when the run kept fewer
+    than it read, the answer says how many of how many."""
+    if result.get("kpis") is None:
+        raise ValueError("This run has no device list, so there is nothing to group by site.")
+    devs = result.get("devices") or []
+    out = site_groups(devs, site_rule(rule), bool(result.get("service_read")), kept_of=result.get("devices_total") or len(devs))
+    result["sites"] = out
     return out
 
 
@@ -1160,13 +1552,186 @@ def diff_from_result(result: Dict[str, Any], a: str, b: str) -> Dict[str, Any]:
     return diff_profiles(settings[a], settings[b], a_name=names.get(a, a), b_name=names.get(b, b))
 
 
+# ── fleet depth in the exports (Excel sheets and the PDF) ─────────────
+def svc_text(v: Optional[Dict[str, Any]]) -> str:
+    """One service cell: '87.5% (35 of 40)', or why there is no share."""
+    if not v:
+        return "not read"
+    if v.get("percent") is None:
+        return "not read" if v.get("known") else "no known status"
+    return f"{v['percent']}% ({v['active']} of {v['known']})"
+
+
+def _flag(row: Dict[str, Any], s: str) -> str:
+    return " - below the fleet" if s in (row.get("below_fleet") or []) else ""
+
+
+def version_rows(result: Dict[str, Any]) -> List[List[Any]]:
+    vh = result.get("version_health") or {}
+    out = []
+    for r in vh.get("rows") or []:
+        notes = [x for x, on in (("newest on the platform", r.get("newest")), ("unsupported", r.get("unsupported"))) if on]
+        out.append([r["platform"], r["version"], r["devices"], "" if r.get("share") is None else r["share"], r["seen_24h"]]
+                   + [svc_text(r["services"][s]) + _flag(r, s) for s in SERVICES] + ["; ".join(notes)])
+    return out
+
+
+VERSION_COLUMNS = ["Platform", "Client Connector version", "Registered devices", "% of platform", "Seen in 24 hours", "ZIA active",
+                   "ZPA active", "ZDX active", "Note"]
+PROFILE_COLUMNS = ["App profile", "Platform", "Registered devices", "Forwarding profile", "Profile score", "Seen in 24 hours",
+                   "Ghosts", "ZIA active", "ZPA active", "ZDX active"]
+FORWARDING_COLUMNS = ["Forwarding profile", "App profiles", "Registered devices", "Seen in 24 hours", "ZIA active", "ZPA active", "ZDX active"]
+SITE_COLUMNS = ["Site", "Device records", "Registered", "Seen in 24 hours", "Ghosts", "Quarantined", "Versions", "Most common version",
+                "ZIA active", "ZPA active", "ZDX active"]
+
+
+def profile_rows(result: Dict[str, Any]) -> List[List[Any]]:
+    ph = result.get("profile_health") or {}
+    return [[r["name"], r["platform"], r["devices"],
+             r["forwarding_profile"] or ("not linked" if r["matched"] else "not known"), "" if r.get("score") is None else r["score"],
+             r["seen_24h"], r["ghosts"]] + [svc_text(r["services"][s]) + _flag(r, s) for s in SERVICES]
+            for r in ph.get("app_profiles") or []]
+
+
+def forwarding_rows(result: Dict[str, Any]) -> List[List[Any]]:
+    ph = result.get("profile_health") or {}
+    return [[g["name"], g["app_profiles"], g["devices"], g["seen_24h"]] + [svc_text(g["services"][s]) + _flag(g, s) for s in SERVICES]
+            for g in ph.get("forwarding_profiles") or []]
+
+
+def site_table(result: Dict[str, Any], counts_only: bool) -> Optional[Dict[str, Any]]:
+    """The run's site groups for an export: counts_only merges the small
+    sites (site_groups), so a short site name cannot single out a device.
+    None when no grouping is chosen."""
+    sites = result.get("sites") or {}
+    rule = sites.get("rule") or {"mode": "none"}
+    if rule.get("mode") in (None, "none") or result.get("kpis") is None:
+        return None
+    if counts_only and not sites.get("counts_only"):
+        devs = result.get("devices") or []
+        sites = site_groups(devs, rule, bool(result.get("service_read")), counts_only=True,
+                            kept_of=result.get("devices_total") or len(devs))
+    return sites
+
+
+def site_rows(sites: Dict[str, Any]) -> List[List[Any]]:
+    return [[g["site"], g["devices"], g["registered"], g["seen_24h"], g["ghosts"], g["quarantined"], g["versions"], g["top_version"] or ""]
+            + [svc_text(g["services"][s]) + _flag(g, s) for s in SERVICES] for g in sites.get("groups") or []]
+
+
+def _sites_note(sites: Dict[str, Any]) -> str:
+    n = f"Grouped by {sites.get('rule_text')}."
+    if sites.get("counted") is not None and sites.get("of") and sites["counted"] < sites["of"]:
+        n += f" Counted over the first {sites['counted']} of {sites['of']} devices kept for the page."
+    if sites.get("counts_only"):
+        n += f" Sites with fewer than {SITE_MIN_COUNTS_ONLY} registered devices are counted together."
+    return n
+
+
+def history_rows(history: List[Dict[str, Any]]) -> List[List[Any]]:
+    out = []
+    for e in history:
+        s = e.get("services") or {}
+        out.append([e["at"], "CSV import" if e.get("source") == "import" else "Read from the tenant", e["devices"], e.get("registered"),
+                    e.get("seen_24h"), e.get("never_seen"), e.get("quarantined")]
+                   + [("" if not s.get(x) or s[x].get("percent") is None else s[x]["percent"]) for x in SERVICES]
+                   + [(e.get("alerts") or {}).get(k) for k in ("blind_spot", "bypass_risk", "ghost", "unsupported_version")])
+    return out
+
+
+HISTORY_COLUMNS = ["Read at (UTC)", "Source", "Device records", "Registered", "Seen in 24 hours", "Never seen", "Quarantined",
+                   "ZIA active %", "ZPA active %", "ZDX active %", "Blind spots", "Bypass risk", "Ghost devices", "Unsupported releases"]
+
+
+def export_pdf(result: Dict[str, Any], history: Optional[List[Dict[str, Any]]] = None, page_size: str = "A4") -> Tuple[str, bytes]:
+    """(filename stem, PDF bytes): the fleet page as a printable report.
+    Counts only: no user, host name or device ID is ever in it (alerts are
+    counted, sites with fewer than SITE_MIN_COUNTS_ONLY registered devices
+    are counted together). Built with pdf_writer (WinAnsi text only)."""
+    import pdf_writer
+    label = str(result.get("tenant_label") or "tenant")
+    doc = pdf_writer.PdfDocument(title=f"Client Connector fleet: {label}", page_size=page_size,
+                                 footer=f"Zscaler Made Easy - Client Connector fleet - {label} - counts only",
+                                 subject="Client Connector fleet health")
+    doc.heading("Client Connector fleet")
+    doc.paragraph(f"{label}. Read {str(result.get('read_at') or '')[:16].replace('T', ' ')} UTC. "
+                  + ("Imported from the portal's CSV exports." if result.get("source") == "import" else "Read-only, from the tenant's API."),
+                  size=9, grey=0.3)
+    doc.paragraph(str(result.get("banner") or ""), size=9)
+    doc.paragraph("Counts only: this report names no user and no device.", size=9, grey=0.3)
+    k = result.get("kpis")
+    doc.heading("The fleet at a glance", 2)
+    if not k:
+        doc.paragraph("No device figure: no enrolled devices could be read (unknown, not zero).")
+    else:
+        pairs = [("Device records", k["devices"]), ("Registered", k["registered"]), ("Seen in 24 hours", k["seen_24h"]),
+                 ("Never seen", k["never_seen"]), ("Quarantined", k.get("quarantined", 0))]
+        for s in SERVICES:
+            v = (k.get("services") or {}).get(s) or {}
+            pairs.append((f"{SERVICE_LABELS[s]} active", "not available" if v.get("percent") is None else f"{v['percent']}% ({v.get('note')})"))
+        sc = result.get("scores") or {}
+        pairs.append(("Score, equal weight", "not available" if sc.get("equal_weight") is None else sc["equal_weight"]))
+        pairs.append(("Score, device weighted", "not available" if sc.get("device_weighted") is None else sc["device_weighted"]))
+        doc.key_values(pairs)
+    doc.heading("Alerts", 2)
+    doc.table(["Alert", "Count", "Definition"],
+              [[a.get("label", key), a["count"] if a.get("evaluated") else (a.get("why_not") or "not evaluated"), a.get("definition", "")]
+               for key in result.get("alert_order") or [] for a in [(result.get("alerts") or {}).get(key) or {}]], widths=[2, 1.4, 7])
+    if k:
+        doc.heading("Service health by Client Connector version", 2)
+        doc.paragraph(VERSION_HEALTH_DEFINITION, size=8, grey=0.3)
+        rows = version_rows(result)
+        if rows:
+            doc.table(VERSION_COLUMNS, rows, widths=[1.2, 1.6, 1, 1, 1, 1.9, 1.9, 1.9, 1.6], size=7)
+        else:
+            doc.paragraph("No registered device.")
+        ph = result.get("profile_health") or {}
+        doc.heading("Health per app profile", 2)
+        doc.paragraph(PROFILE_HEALTH_DEFINITION, size=8, grey=0.3)
+        rows = profile_rows(result)
+        if rows:
+            doc.table(PROFILE_COLUMNS, rows, widths=[2, 1, 1, 1.6, 0.9, 1, 0.9, 1.8, 1.8, 1.8], size=7)
+        else:
+            doc.paragraph("No registered device.")
+        if ph.get("forwarding_profiles"):
+            doc.heading("Health per forwarding profile", 2)
+            doc.table(FORWARDING_COLUMNS, forwarding_rows(result), widths=[2.4, 1, 1, 1, 1.9, 1.9, 1.9], size=7)
+        ls = result.get("last_seen") or {}
+        doc.heading("When devices were last seen", 2)
+        doc.paragraph(LAST_SEEN_DEFINITION, size=8, grey=0.3)
+        doc.table(["Last seen", "Registered devices", "% of registered"],
+                  [[b["label"], b["devices"], "" if b["percent"] is None else b["percent"]] for b in ls.get("buckets") or []], widths=[3, 2, 2])
+        sites = site_table(result, True)
+        if sites:
+            doc.heading("Sites", 2)
+            doc.paragraph(_sites_note(sites), size=8, grey=0.3)
+            doc.table(SITE_COLUMNS, site_rows(sites), widths=[1.6, 0.9, 0.9, 0.9, 0.8, 0.9, 0.8, 1.3, 1.7, 1.7, 1.7], size=7)
+    if history:
+        doc.heading("History", 2)
+        doc.paragraph(f"{len(history)} saved snapshot{'s' if len(history) != 1 else ''} of this tenant's fleet, oldest first.", size=8, grey=0.3)
+        doc.table(HISTORY_COLUMNS[:10], [r[:10] for r in history_rows(history)], size=6.5)
+    plan = result.get("plan") or []
+    doc.heading("Remediation plan", 2)
+    if plan:
+        doc.table(["Rank", "What", "Devices", "Fix"],
+                  [[x["rank"], x["title"], "unknown" if x["devices"] is None else x["devices"], x["fix"]] for x in plan[:60]],
+                  widths=[0.6, 3.4, 0.9, 5.2], size=7)
+        if len(plan) > 60:
+            doc.paragraph(f"The first 60 of {len(plan)} items; the Excel export has all of them.", size=8, grey=0.3)
+    else:
+        doc.paragraph("Nothing to fix was found.")
+    return "zcc_fleet_report", doc.to_bytes()
+
+
 # ── exports ───────────────────────────────────────────────────────────
 def _csv_rows(text: str) -> List[List[str]]:
     return list(csv.reader(io.StringIO(text)))
 
 
-def export_xlsx(result: Dict[str, Any], counts_only: bool) -> Tuple[str, bytes]:
-    """(filename stem, workbook bytes): Summary, Versions, Operating systems,
+def export_xlsx(result: Dict[str, Any], counts_only: bool, history: Optional[List[Dict[str, Any]]] = None) -> Tuple[str, bytes]:
+    """(filename stem, workbook bytes): Summary, Versions, Version health,
+    Profile health, Forwarding health, Last seen, Sites (when grouped),
+    History (the tenant's saved snapshots, when given), Operating systems,
     Stale devices, Devices, Alerts and Plan, the figures the page shows.
     With counts_only no sheet names a user or a host: the stale devices are
     counted per platform and the device sheet says why it is empty. Built
@@ -1188,6 +1753,22 @@ def export_xlsx(result: Dict[str, Any], counts_only: bool) -> Tuple[str, bytes]:
                 vs.append([plat, v, n, v == (k.get("newest") or {}).get(plat)])
         if not k.get("versions"):
             vs.append(["No registered device reports a Client Connector version."])
+    if k:
+        vh = wb.add_sheet("Version health", columns=VERSION_COLUMNS, rows=version_rows(result))
+        vh.append([VERSION_HEALTH_DEFINITION])
+        ph = wb.add_sheet("Profile health", columns=PROFILE_COLUMNS, rows=profile_rows(result))
+        ph.append([PROFILE_HEALTH_DEFINITION])
+        wb.add_sheet("Forwarding health", columns=FORWARDING_COLUMNS, rows=forwarding_rows(result))
+        ls = wb.add_sheet("Last seen", columns=["Last seen", "Registered devices", "% of registered"],
+                          rows=[[b["label"], b["devices"], "" if b["percent"] is None else b["percent"]]
+                                for b in (result.get("last_seen") or {}).get("buckets") or []])
+        ls.append([LAST_SEEN_DEFINITION])
+        sites = site_table(result, counts_only)
+        if sites:
+            st = wb.add_sheet("Sites", columns=SITE_COLUMNS, rows=site_rows(sites))
+            st.append([_sites_note(sites)])
+    if history:
+        wb.add_sheet("History", columns=HISTORY_COLUMNS, rows=history_rows(history))
     os_ = wb.add_sheet("Operating systems", columns=["Platform", "OS version", "Registered devices"])
     if not k:
         os_.append([no_devices])

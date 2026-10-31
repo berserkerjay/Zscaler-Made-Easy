@@ -340,7 +340,7 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 78,
+            "fixed": 82,
             "accepted": 4,
             "records": [
               "c6-zcc-zdx",
@@ -350,6 +350,7 @@
               "w7-admin-zpa-zcc-zdx",
               "w7-federal-compliance",
               "w7-fix-selected",
+              "w7-fleet-plus",
               "w7-migrate-tui-plugins",
               "w7-net-files",
               "w7-rank-inherit",
@@ -468,7 +469,7 @@
     }
   ],
   "counts": {
-    "findings": 670,
+    "findings": 674,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -482,27 +483,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 170,
+        "fixed": 171,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 374,
+        "fixed": 376,
         "accepted": 3
       },
       "info": {
         "open": 1,
-        "fixed": 64,
+        "fixed": 65,
         "accepted": 38
       }
     },
     "checks": {
-      "pass": 502,
+      "pass": 521,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 10475
+    "tests_added": 10541
   },
   "findings": [
     {
@@ -4070,6 +4071,22 @@
       "commit": "",
       "reason": "",
       "slug": "w7-admin-zpa-zcc-zdx",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-FLEET-PLUS-01",
+      "title": "A service-status file with both \"ZIA Enabled\" and \"ZIA Health\" was read by the Enabled column when it came first, so an enabled but inactive service counted as active",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-682",
+      "asvs": "V11.1.4",
+      "wcag": "",
+      "fix": "zcc_fleet.service_columns prefers health, status, state, then service; Enabled is kept apart and an Enabled=false service is not applicable",
+      "test": "tests/test_zcc_fleet_plus.py::test_service_columns_prefer_health_and_fall_back_to_enabled",
+      "commit": "9dd7377",
+      "reason": "",
+      "slug": "w7-fleet-plus",
       "area": "functionality",
       "sub_area": "builders"
     },
@@ -9786,6 +9803,38 @@
       "sub_area": "builders"
     },
     {
+      "id": "W7-FLEET-PLUS-02",
+      "title": "The offline SDK client had no get_request_executor, so the sample tenant's fleet could never read a service status (always 'partly read')",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V11.1.4",
+      "wcag": "",
+      "fix": "OfflineSdkClient.get_request_executor (as the SDK's OneAPI client); the sample tenant serves a service-status CSV",
+      "test": "tests/test_zcc_fleet_plus.py::test_the_sample_tenant_fleet_now_has_service_status",
+      "commit": "9dd7377",
+      "reason": "",
+      "slug": "w7-fleet-plus",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-FLEET-PLUS-03",
+      "title": "A device record without a last-seen time counted as never seen although the service-status file had its last-seen time",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V11.1.4",
+      "wcag": "",
+      "fix": "normalize_devices falls back to the service row's last-seen column for the same device",
+      "test": "tests/test_zcc_fleet_plus.py::test_last_seen_falls_back_to_the_service_status_file",
+      "commit": "0942b30",
+      "reason": "",
+      "slug": "w7-fleet-plus",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "W7-FS-02",
       "title": "The security policy list write methods (add_urls_to_blacklist, replace_whitelist, ...) were not on the shared-path guard's list, so a module could have called them outside pack_ops unnoticed",
       "severity": "low",
@@ -11018,6 +11067,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7-FLEET-PLUS-04",
+      "title": "The new-marks browser tests were bound to the 2026-10-28 marks on the Path analyzer and failed as soon as a newer release rotated them out",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "tests/test_new_marks.py injects probe features for the two marked releases and reads the expected dates from CHANGELOG.md",
+      "test": "tests/test_new_marks.py::test_the_star_opens_what_is_new_and_the_item_opens_nothing",
+      "commit": "8c0b6d2",
+      "reason": "",
+      "slug": "w7-fleet-plus",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "W7-FS-03",
       "title": "The new-marks browser test was tied to the 2026-10-28 marks (#tab-list, #paProto), so any newer release broke its whole fixture",
       "severity": "info",
@@ -12238,6 +12303,37 @@
       "checks": 8,
       "findings": 4,
       "tests_added": 39
+    },
+    {
+      "slug": "w7-fleet-plus",
+      "area": "Client Connector fleet depth (zcc_fleet, zcc_fleet_import, zcc_fleet_history, /api/zcc/fleet/*, static/report_fleet.html, static/zcc_fleet.js): version x service matrix, profile health, last seen, sites, history and trends, portal CSV import, PDF and Excel exports",
+      "title": "Fleet depth built and checked against fixtures and the sample tenant: semantics at each boundary, untrusted CSV and history input, counts-only exports, the UI in Chrome",
+      "standards": [
+        "ASVS V11.1.4",
+        "ASVS V12.1.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.3.10",
+        "ASVS V5.3.3",
+        "ASVS V8.3.4",
+        "CWE-1236",
+        "CWE-1333",
+        "CWE-20",
+        "CWE-359",
+        "CWE-400",
+        "CWE-409",
+        "CWE-682",
+        "CWE-732",
+        "CWE-754",
+        "CWE-79",
+        "WCAG 2.2 SC 1.1.1",
+        "WCAG 2.2 SC 1.3.1",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 2.1.1"
+      ],
+      "checks": 19,
+      "findings": 4,
+      "tests_added": 66
     },
     {
       "slug": "w7-mcp-skill",

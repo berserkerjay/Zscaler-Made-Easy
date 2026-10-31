@@ -459,6 +459,19 @@ what you get, what to do next.
   per person (`zcc_otp.py`). Shown once with a Copy button and hidden
   after 60 seconds; never stored, logged or cached; the audit log records
   who asked, when and for which device, never a password.
+  It also shows service health (ZIA, ZPA and ZDX active) per Client
+  Connector version, flagging a version 10 or more points below the fleet,
+  and per app and forwarding profile; a quarantined tile; a last-seen
+  histogram (under 1 day, 1 to 7, 7 to 30, over 30 days, never); and sites
+  grouped from host names by a prefix length, a delimiter or a list of
+  prefixes (never a free pattern). *Save to history* keeps a counts-only
+  snapshot per tenant on this computer (owner-only file, 60 per tenant; no
+  user, host, device ID or site), with a trend chart, each read's change
+  and a compare of any two. Without the device permission, the Client
+  Connector Portal's Device Details and Service Status CSV exports can be
+  imported instead (no sign-in; untrusted files: size, row, column and
+  cell caps, bounded decompression). *Report (PDF)* prints the page,
+  counts only; the Excel workbook gains the new tables and the history.
   Its **Install command builder** writes the MSI, EXE or macOS install
   command and a .bat or .command script for a chosen app profile (its
   policy token is read only when ZCC is in scope); tokens and passwords

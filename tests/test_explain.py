@@ -260,7 +260,8 @@ def test_the_bulk_changes_explainer_names_every_builder(label):
 
 
 @pytest.mark.parametrize("key,phrases", [
-    ("fleet", ["install command"]),                                                  # report_fleet.html: Install command builder
+    ("fleet", ["install command", "service health by client connector version", "last seen", "sites", "history",
+               "csv exports", "pdf report"]),                                          # report_fleet.html sections (2026-10-31 too)
     ("advanced", ["secure by design", "upstream contract check", "app updates"]),    # report_advanced.html sections
     ("live", ["forwarding profiles", "pac files"]),                                  # report_live.html inventory
     ("pov", ["runbook", "test kit", "report"]),                                      # report_pov.html tabs

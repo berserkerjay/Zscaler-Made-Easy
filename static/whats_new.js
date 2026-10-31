@@ -490,6 +490,63 @@ window.WHATS_NEW = {
       "what": "Export from tenant as Terraform: ZIA, ZPA, Cloud & Branch Connector and Client Connector objects in scope as workspaces for the official providers, with import blocks to adopt the tenant without recreating anything, or as a clone with every rule disabled.",
       "changelog": ["Export from tenant as Terraform (whole tenant)", "Adopt or clone", "Keep each rule's state", "References, not ids", "No secrets, no surprises"],
       "marks": [{ "page": "/report/exports", "at": "#exTenantTf" }]
+    },
+    {
+      "id": "fleet-import", "release": "2026-10-31", "label": "Import the portal's CSV exports",
+      "what": "No device permission? Import the Device Details and Service Status exports from the Client Connector Portal and see the fleet without the API.",
+      "changelog": ["Import the portal's CSV exports"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openFleetTab()\"]" },
+        { "page": "/report/fleet", "at": "#zfImportH" }
+      ]
+    },
+    {
+      "id": "fleet-version-health", "release": "2026-10-31", "label": "Service health by version",
+      "what": "ZIA, ZPA and ZDX active per Client Connector version, with the versions far below the fleet flagged.",
+      "changelog": ["Service health by version"],
+      "marks": [
+        { "page": "/report/fleet", "at": "#zfVerH", "shown": "after a read" }
+      ]
+    },
+    {
+      "id": "fleet-profile-health", "release": "2026-10-31", "label": "Health per app and forwarding profile",
+      "what": "ZIA, ZPA and ZDX active per app profile and per forwarding profile, with the devices on each.",
+      "changelog": ["Health per app and forwarding profile"],
+      "marks": [
+        { "page": "/report/fleet", "at": "#zfProfHealthH", "shown": "after a read" }
+      ]
+    },
+    {
+      "id": "fleet-last-seen", "release": "2026-10-31", "label": "Last-seen histogram",
+      "what": "How long ago each registered device was last seen: under 1 day, 1 to 7 days, 7 to 30 days, over 30 days, never.",
+      "changelog": ["Last-seen histogram"],
+      "marks": [
+        { "page": "/report/fleet", "at": "#zfSeenH", "shown": "after a read" }
+      ]
+    },
+    {
+      "id": "fleet-sites", "release": "2026-10-31", "label": "Site grouping",
+      "what": "Devices counted per site, from the first letters of the host name, the part before a separator, or a list of site prefixes.",
+      "changelog": ["Site grouping"],
+      "marks": [
+        { "page": "/report/fleet", "at": "#zfSiteH", "shown": "after a read" }
+      ]
+    },
+    {
+      "id": "fleet-history", "release": "2026-10-31", "label": "Fleet history and trends",
+      "what": "Save each read (counts only, on this computer), follow the trend of ZIA, ZPA and ZDX and compare any two reads.",
+      "changelog": ["Fleet history and trends"],
+      "marks": [
+        { "page": "/report/fleet", "at": "#zfHistH", "shown": "after a read" }
+      ]
+    },
+    {
+      "id": "fleet-pdf", "release": "2026-10-31", "label": "Fleet PDF report",
+      "what": "The fleet page as a PDF report, counts only, beside the Excel and CSV exports.",
+      "changelog": ["Fleet PDF report"],
+      "marks": [
+        { "page": "/report/fleet", "at": "#zfExpPdf" }
+      ]
     }
   ]
 };
