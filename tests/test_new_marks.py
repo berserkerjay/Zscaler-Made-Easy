@@ -358,7 +358,7 @@ const hoverAt = async js => {
   await until(() => ev(`(() => { const t = document.getElementById('hhTip'); return !!t && !t.hidden; })()`), 'the help', 2000).catch(() => null);
   return ev(`(() => { const t = document.getElementById('hhTip'); if (!t || t.hidden) return null; const first = t.querySelector('p'); return { first: first.className, text: first.textContent, all: t.textContent }; })()`);
 };
-out.hover = { item: await hoverAt(`document.getElementById('tab-list')`), tab: await hoverAt(STAR('#tab-list')), heading: await hoverAt(STAR('#paFlowRefH')) };
+out.hover = { item: await hoverAt(`document.getElementById('paFlowRefH')`), heading: await hoverAt(STAR('#paFlowRefH')) };
 await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
 await ev(`(window.HoverHelp.hide(), true)`);
 // Keyboard: focus alone opens nothing; Enter opens it.
@@ -373,23 +373,24 @@ await frame();
 out.focus = await ev(`(() => { const t = document.getElementById('hhTip'); const b = document.activeElement; const s = getComputedStyle(b); return { focusOnly: ${focusOnly}, open: !!t && !t.hidden, text: t ? t.textContent : '', ring: s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0, w: b.getBoundingClientRect().width, h: b.getBoundingClientRect().height, expanded: b.getAttribute('aria-expanded') }; })()`);
 await ev(`(window.HoverHelp.hide(), true)`);
 out.headingName = await axName('#paFlowRefH');
-// An item with both: * then ?, each its own button.
-out.both = await ev(`(() => { const el = document.getElementById('paProto'), ms = window.HoverHelp.marks().filter(m => m.__hhFor === el); return ms.map(m => m.getAttribute('data-hh-mark') + ':' + (m.getAttribute('aria-label') || '')); })()`);
-
-// An older release is not marked; the next release pushes the oldest set out.
+// An older release is not marked; the next release pushes the oldest set out
+// (#paFlowRefH belongs to the oldest marked release, OLDEST below).
 out.rotate = await ev(`(() => {
   const W = window.WhatsNew, H = window.HoverHelp;
   const has = sel => { const e = document.querySelector(sel); H.scan(); return !!e && (e.hasAttribute('data-wn-new') || H.marks().some(m => m.__hhFor === e && m.getAttribute('data-hh-mark') === 'new')); };
   W.manifest.releases['2026-10-26'] = 'older';
   W.manifest.features.push({ id: 'older-probe', release: '2026-10-26', label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
-  const before = { older: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH') };
-  W.manifest.releases['2026-10-30'] = 'next';
-  W.manifest.features.push({ id: 'next-probe', release: '2026-10-30', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
+  const before = { older: has('#paRun'), live: has('#paFlowRefH') };
+  W.manifest.releases['2099-12-31'] = 'next';
+  W.manifest.features.push({ id: 'next-probe', release: '2099-12-31', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
-  const after = { next: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH'), tabName: document.getElementById('tab-list').textContent.trim(), proto: document.getElementById('paProto').getAttribute('aria-label') };
+  const after = { next: has('#paRun'), live: has('#paFlowRefH'), headingName: document.getElementById('paFlowRefH').textContent.trim(), proto: document.getElementById('paProto').getAttribute('aria-label') };
   return { before, after };
 })()`);
+// An item with both: * then ?, each its own button.
+await open('/');
+out.both = await ev(`(() => { const el = document.querySelector('button[onclick="openPathAnalyzerTab()"]'), ms = window.HoverHelp.marks().filter(m => m.__hhFor === el); return ms.map(m => m.getAttribute('data-hh-mark') + ':' + (m.getAttribute('aria-label') || '')); })()`);
 
 // The marks and the legend keep AA contrast: both themes, glass on and off.
 const PAINT = `(() => {
@@ -467,19 +468,27 @@ def test_each_page_with_marks_shows_the_legend_and_no_errors(marks_browser, page
     assert rec["errors"] == [], rec["errors"]
 
 
+def _feature_of(page, at):
+    """The manifest feature that marks `at` on `page` (the browser tour's fixed items follow the manifest, not a hard-coded release)."""
+    return next(f for f, mk in _marks() if mk["page"] == page and mk["at"] == at)
+
+
+OLDEST = _feature_of("/report/path", "#paFlowRefH")
+
+
 def test_the_star_opens_what_is_new_and_the_item_opens_nothing(marks_browser):
-    """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of a tab or a heading opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
+    """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of a heading opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
     h = marks_browser["hover"]
     assert h["item"] is None, h["item"]
-    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith("New in the 2026-10-28 update: Test a list"), h["tab"]
-    assert h["heading"] and h["heading"]["text"].startswith("New in the 2026-10-29 update: The result shows as a live flow"), h["heading"]
+    assert h["heading"] and h["heading"]["first"] == "hh-new", h["heading"]
+    assert h["heading"]["text"].startswith(f"New in the {OLDEST['release']} update: {OLDEST['what'][:30]}"), h["heading"]
 
 
 def test_the_star_works_from_the_keyboard(marks_browser):
     """WCAG 2.2 SC 2.1.1 · SC 2.4.7 · SC 2.5.8 · SC 3.2.1: focus on the * opens nothing by itself; Enter opens it; it has a visible ring and a 24px target; the heading's name says it is new."""
     f = marks_browser["focus"]
     assert f["focusOnly"] is False, "focus alone opens nothing"
-    assert f["open"] and f["text"].startswith("New in the 2026-10-29 update") and f["expanded"] == "true", f
+    assert f["open"] and f["text"].startswith(f"New in the {OLDEST['release']} update") and f["expanded"] == "true", f
     assert f["ring"], "a visible focus ring"
     assert f["w"] >= 24 and f["h"] >= 24, f
     assert "New in this version" in marks_browser["headingName"], marks_browser["headingName"]
@@ -493,11 +502,12 @@ def test_an_item_with_both_marks_has_the_star_then_the_help(marks_browser):
 
 
 def test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out(marks_browser):
-    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-10-30 release is listed, the 2026-10-28 marks go."""
+    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a newer release is listed, the oldest marked release's marks go."""
     before, after = marks_browser["rotate"]["before"], marks_browser["rotate"]["after"]
-    assert before == {"older": False, "tab": True, "live": True}, before
-    assert after["next"] and after["live"] and not after["tab"], after
-    assert after["tabName"] == "Test a list" and not str(after["proto"]).endswith("(new)"), after
+    assert OLDEST["release"] == min(MAN["releases"]) and "2026-10-26" < OLDEST["release"]
+    assert before == {"older": False, "live": True}, before
+    assert after["next"] and not after["live"], after
+    assert after["headingName"] and "*" not in after["headingName"] and not str(after["proto"]).endswith("(new)"), after
 
 
 @pytest.mark.parametrize("combo", ["dark on", "dark off", "light on", "light off"])
@@ -525,7 +535,8 @@ def test_no_sideways_scroll_at_320px(marks_browser, page):
     """WCAG 2.2 SC 1.4.10 (Reflow): at 320px the marks and the legend stay on screen and the page never scrolls sideways."""
     rec = marks_browser["narrow"][page]
     assert rec["overflow"] <= 0 and rec["off"] == [], rec
-    assert rec["marks"] >= 1
+    if page in _load_marks():   # a page whose marks all belong to an older release has none to keep on screen
+        assert rec["marks"] >= 1
 
 
 def test_placing_the_marks_settles(marks_browser):
