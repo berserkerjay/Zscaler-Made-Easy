@@ -638,7 +638,7 @@ def test_an_ai_guard_undo_plan_asks_for_its_phrase_and_refuses_a_blank_one(aig, 
 
 ao.load_plugins()
 ALL_TYPES = list(ao.types())
-EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard"],
+EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard", "insights"],
               "channels": {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "cloud_app_control", "ssl_inspection")},
               "from_page": True}
 # The Scope page keys that put each product in scope.
@@ -834,6 +834,7 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zcc_profile_delete": "deletes profiles only; creates and enables nothing",
     "zdx_probe_delete": "deletes apps and probes (or turns them off) only",
     "zpa_prefix_delete": "deletes the prefixed objects only; creates and enables nothing",
+    "cloud_app_sanction": "changes an app's sanction label only (the operator picks the state per app); creates and enables no rule",
 }
 
 

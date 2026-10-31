@@ -27,8 +27,8 @@ What is verified and what is assumed
 Verified in zscaler-sdk-python 1.11.3:
   zia.shadow_it_report.list_apps()           GET /cloudApplications/lite: the
                                              application list (id, name)
-  zia.shadow_it_report.bulk_update(state, application_ids=[...])
-                                             PUT /cloudApplications/bulkUpdate
+  shadow_it_report bulk update (through pack_ops.update, kind
+                cloud_app_sanction)          PUT /cloudApplications/bulkUpdate
                                              {sanctionedState: SANCTIONED |
                                              UN_SANCTIONED, applicationIds}
   zins.shadow_it.get_apps(..., filter_by=ShadowITAppsFilterBy(application=

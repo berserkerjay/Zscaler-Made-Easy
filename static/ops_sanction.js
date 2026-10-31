@@ -20,6 +20,10 @@
     while (Math.abs(v) >= 1024 && i < u.length - 1) { v /= 1024; i++; }
     return `${v.toLocaleString(undefined, { maximumFractionDigits: i ? 1 : 0 })} ${u[i]}`;
   }
+  function errs(H, res) {
+    const rows = Object.entries((res && res.errors) || {});
+    return rows.length ? `<div class="bp-card warn"><div class="t">Could not be read</div><ul>${rows.map(([k, v]) => `<li>${H.E(k)}: ${H.E(v)}</li>`).join('')}</ul></div>` : '';
+  }
   function visible(apps, z) {
     const f = z.filter.trim().toLowerCase();
     return apps.filter(a => (!f || String(a.name).toLowerCase().includes(f) || String(a.application_category || '').toLowerCase().includes(f))
@@ -35,7 +39,7 @@
   }
   function render(res, where, S, H) {
     const E = H.E, z = st(S), apps = res.apps || [], shown = visible(apps, z);
-    where.innerHTML = `${H.errorsHtml(res)}
+    where.innerHTML = `${errs(H, res)}
       <p class="df-hint">Every cloud application whose current state ZIA Insights reports (last 30 days), riskiest first. ${E(res.unknown || 0)} more application(s) in the tenant have no known state and cannot be changed here (no exact Undo); change those in the ZIA Admin Portal.</p>
       <div class="bp-card warn" role="note"><div class="t">Tenant-wide change</div><div>${E(res.tenant_wide || '')}</div></div>
       <div class="op-row"><fieldset class="op-inline" id="sanTo"><legend>Mark the picked apps as</legend>

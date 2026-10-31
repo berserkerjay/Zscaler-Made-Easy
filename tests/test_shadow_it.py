@@ -493,7 +493,7 @@ def test_the_form_script_labels_its_controls_escapes_tenant_text_and_registers_t
     html_part = js[js.index("function rows("):js.index("function spec(")]
     for expr in re.findall(r"\$\{([^}]*)\}", html_part):
         e = expr.strip()
-        assert (e.startswith(("E(", "H.E(", "rows(", "H.errorsHtml(", "MAX", "z.pick.size", "shown.length", "apps.length"))
+        assert (e.startswith(("E(", "H.E(", "rows(", "errs(", "MAX", "z.pick.size", "shown.length", "apps.length"))
                 or "checked" in e or "st-" in e or e.startswith("a.risk_index == null")), e
     assert not re.search(r"#[0-9a-fA-F]{3,6}\b", js), "colours come from the theme"
 
