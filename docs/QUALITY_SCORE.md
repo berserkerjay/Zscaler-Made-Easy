@@ -30,9 +30,9 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
 | high | 0 | 13 | 0 |
-| medium | 0 | 158 | 0 |
-| low | 0 | 337 | 0 |
-| info | 1 | 48 | 22 |
+| medium | 0 | 159 | 0 |
+| low | 0 | 338 | 0 |
+| info | 1 | 49 | 22 |
 
 ### Regression
 
@@ -463,6 +463,7 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | UI-01 | With the sample tenant open, Run assessment on the Scope page asked for a vanity domain, client ID and secret and sent the user back to Connect: the sample could not be assessed from the sidebar | medium | CWE-684 | V11.1.1 | fixed | UI and accessibility | static/dashboard.js: the sample tenant or an opened snapshot needs no sign-in fields and counts as signed in (the rule missingSignInFields already had) | tests/test_sample_tenant_browser.py::test_the_sample_tenant_runs_the_assessment_from_the_scope_page |
 | UI-11 | The bundled reference pages failed text contrast: 268 elements on first view (light scheme) across the three framework pages, the Framework Machine and the Data Security Architect, as low as 1.98:1, more on the other tabs | medium | — | WCAG 2.2 SC 1.4.3 | fixed | UI and accessibility | static/reference/reference_a11y.js, served with every reference page, moves each failing colour's lightness (same hue) until it reaches AA, measured at rest | tests/test_accessibility.py::test_text_contrast_meets_aa_in_both_themes |
 | UI-12 | Reference pages were not keyboard operable in places: the channel toggles and stat cards were mouse-only (the portfolio matrix stayed dimmed for keyboard users) and 24 scrolling regions (the architect timelines, the framework figure, the playbook) could not be reached | medium | — | WCAG 2.2 SC 2.1.1 | fixed | UI and accessibility | the layer makes click-only elements buttons (Enter, Space, aria-pressed, focus kept after a redraw) and scrolling regions focusable and named | tests/test_accessibility.py::test_nothing_is_clickable_only_with_a_mouse |
+| W8-FWD-01 | The app read none of the ZIA forwarding and traffic path resources (forwarding control, proxy, ZPA and dedicated IP gateways, data centres, GRE VIPs, IPv6, NAT control, Virtual Service Edges, DNS gateways) and assessed none of them | medium | CWE-1059 | V1.14.6 | fixed | Traffic analysis | Ten FWD checks in the ZIA platform scope, a Forwarding control step in the Path analyzer, the reads in the sample tenant and snapshots. | tests/test_zia_forwarding.py::test_the_sample_tenant_answers_every_forwarding_read_and_shows_its_gaps |
 | C6-ASSESSMENT-07 | Client read and write errors were not passed through the secret mask (exception text echoing the client secret) | low | CWE-532 | V7.1.1 | fixed | Traffic analysis | Every error path uses Client._safe | tests/test_c6_assessment.py::test_read_error_masks_the_client_secret |
 | C6-ASSESSMENT-08 | Saved JSON report written with the process umask (world-readable) though it describes the tenant's security posture | low | CWE-732 | V8.3.4 | fixed | Traffic analysis | Written with os.open(..., 0o600) and fchmod over an existing file | tests/test_c6_assessment.py::test_saved_report_is_owner_only |
 | C6-ASSESSMENT-09 | CLI default report name built from org_name could hold ../ or a drive path | low | CWE-22 | V12.3.1 | fixed | Traffic analysis | report_basename keeps \[A-Za-z0-9_-\] only | tests/test_c6_assessment.py::test_report_basename_cannot_traverse |
@@ -603,6 +604,7 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | UI-16 | 'Download CSV' on the GenAI and Data Security Portfolio framework pages (and the embedded Copilot readiness page) linked pov-use-cases.csv, which the app does not serve (404), and fetched it on load | low | CWE-1059 | V1.1.1 | fixed | UI and accessibility | the button downloads the catalogue the page embeds, as the AI security framework page already did; nothing is fetched | tests/test_reference.py::test_no_reference_document_links_or_fetches_a_file_that_is_not_served |
 | UI-17 | The Connect step scrolled sideways at 320 px when the checkout's branch name is long: the Update app branch list could not shrink below its longest option | low | — | WCAG 2.2 SC 1.4.10 | fixed | UI and accessibility | guide.css lets the branch label wrap and the list shrink to the line | tests/test_connect_reflow.py::test_connect_step_never_scrolls_sideways |
 | UI-19 | One click on 'Update now' (Advanced settings) or 'Update app' (the dashboard card) fetched and pulled new code, switched the install's branch, stashed local edits and installed packages, with no confirmation and no audit record (seen when the click sweep pressed it: the checkout moved to main and the locked msgpack 1.2.3 was installed) | low | CWE-778 | V7.1.3 | fixed | UI and accessibility | both buttons say what happens and ask first; POST /api/app/update records an app_update audit event (who, branch, builds, result); the API is unchanged | tests/test_app_update.py::test_an_app_update_is_recorded_in_the_audit_log |
+| W8-FWD-03 | The new-marks browser tour and the 320px test were tied to the 2026-10-28 marks, so any new release broke them | low | CWE-1164 | V1.14.6 | fixed | Traffic analysis | The * then ? probe is found from the current marks; the 320px pages are those carrying a mark; the rotation probes the newest two releases. | tests/test_new_marks.py::test_an_item_with_both_marks_has_the_star_then_the_help |
 | C6-ASSESSMENT-16 | 4.6 listed duplicate SSL rule names in set order (non-deterministic finding text) | info | CWE-1023 | V1.14.1 | fixed | Traffic analysis | Sorted | tests/test_c6_assessment.py::test_duplicate_ssl_rule_names_are_listed_in_a_stable_order |
 | C6-CHECKS-21 | AUTO-SDK-01/02 raised AttributeError on a client without token/exp | info | CWE-755 | V7.4.1 | fixed | Traffic analysis | getattr with default | tests/test_c6_checks.py::test_automation_checks_on_a_client_without_token_fields_do_not_crash |
 | C6-PATH-19 | data_flow.load_packs opened each pack's policy file without closing it | info | CWE-775 | V1.11.3 | fixed | Traffic analysis | Read with a context manager | tests/test_c6_path.py::test_the_pack_library_is_read_with_every_file_closed |
@@ -627,6 +629,7 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | REVIEW-UI-09 | docs/OVERVIEW.md implied the score's tests part was always shown; it needs a recorded docs/qa/test_run.json | info | CWE-1059 | — | fixed | UI and accessibility | docs/OVERVIEW.md names docs/qa/test_run.json, how to write it, No score yet and every cap | tests/test_quality_score.py::test_the_overview_says_the_tests_part_needs_a_recorded_run |
 | UI-08 | The Word report's headings and cover labels were in Title Case (interface guide: sentence case) | info | — | WCAG 2.2 SC 3.2.4 | fixed | UI and accessibility | sentence case for the 13 fixed headings and 3 cover labels | tests/test_export_integrity.py::test_the_word_report_headings_use_sentence_case |
 | UI-09 | Four glyphs stayed colour emoji (Flow animator, Beacon, Pause, Export Terraform): icons.js had no symbol for them | info | — | WCAG 2.2 SC 3.2.4 | fixed | UI and accessibility | film, satellite and pause symbols added and the four glyphs mapped; a table test scans every page and script | tests/test_icons.py::test_every_emoji_in_a_page_has_a_symbol |
+| W8-FWD-02 | The Scope page's ZIA platform count said 33 checks while the registry had 37 | info | CWE-1059 | V1.14.6 | fixed | Traffic analysis | The count and its help text now say 47 (37 plus the ten FWD checks). | tests/test_zia_forwarding.py::test_the_checks_are_registered_under_zia_platform_with_plain_titles |
 
 ### Records
 
@@ -665,6 +668,7 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | sbd-input | Secure by Design: untrusted input | Everything a user, a file or a tenant can feed the app: PAC evaluator, Test a list, file imports, identity search, URL builders, tenant strings in every renderer | 21 | 11 | 250 |
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
+| w8-zia-forwarding | zia-forwarding | ZIA forwarding and traffic path: FWD.* checks and the Path analyzer's Forwarding control step | 15 | 3 | 42 |
 
 ## Standards covered by tests
 

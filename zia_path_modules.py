@@ -18,7 +18,12 @@ not read and turns every ZIA step into one ordered pipeline:
   3. DNS Control: the firewall DNS rules, for the lookup of the hostname;
   4. Cloud App Control and URL filtering, as data_flow.trace decides them;
   5. Sandbox: the sandbox rules, for files on the decrypted path;
-  6. File Type Control and Web DLP, as data_flow.trace decides them.
+  6. File Type Control and Web DLP, as data_flow.trace decides them;
+  7. Forwarding control: the ZIA forwarding rule that sends allowed traffic
+     on (direct, proxy chaining, ZPA, a dedicated egress IP, or dropped),
+     with the gateway it relies on, a NAT control rewrite, IPv6 and the data
+     centre exclusions in force (zia_forwarding). HTTP 404 there means not
+     licensed: the step is "not applicable", never an error.
 
 SSL inspection is a modifier, not a step that can be passed or failed on
 its own here: it decides what the later modules can see (the full URL and
@@ -40,13 +45,16 @@ unknown criterion on the deciding rule. The overall result says
 "definite" or "conditional" and why.
 
 Reads (read): only the sections the Scope page puts in scope (the
-`atp`, `firewall`, `dns` and `sandbox` keys of data_flow.PATH_SECTIONS,
+`atp`, `firewall`, `dns`, `sandbox` and `fwdctl` keys of data_flow.PATH_SECTIONS,
 in scope when ZIA platform is ticked), through the assessment client,
 whose session is paced for ZIA's read limit (zia_rate.attach); Stop is
 honoured between every request. Every endpoint is in zscaler-sdk-python
 1.11.3 (zia/atp_policy.py, zia/security_policy_settings.py,
 zia/cloud_firewall_rules.py, zia/cloud_firewall.py,
-zia/cloud_firewall_dns.py, zia/sandbox_rules.py). Read-only.
+zia/cloud_firewall_dns.py, zia/sandbox_rules.py, and for Forwarding
+control zia/forwarding_control.py, proxies.py, zpa_gateway.py,
+dedicated_ip_gateways.py, nat_control_policy.py, dns_gatways.py,
+ipv6_config.py, traffic_datacenters.py). Read-only.
 """
 from __future__ import annotations
 

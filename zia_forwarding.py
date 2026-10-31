@@ -43,7 +43,9 @@ Every path, service, method and field above is in zscaler-sdk-python
 mark a Cloud or Branch Connector rule (anything other than FORWARDING,
 for example EC_RDR, EC_DNS, EC_SELF), the DNS gateway failure behaviour
 other than FAIL_RET_ERR (the SDK's only example), and that the times on
-a data centre exclusion are epoch seconds (milliseconds are accepted).
+a data centre exclusion are epoch seconds (milliseconds are accepted),
+and what a proxy gateway with no secondary proxy and failClosed false does
+while its proxy is down (taken as: the traffic is not chained).
 Nothing here reads a credential: a proxy gateway or proxy is described
 by name only, never by certificate.
 """

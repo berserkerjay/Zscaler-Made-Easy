@@ -275,7 +275,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 120,
+            "fixed": 123,
             "accepted": 3,
             "records": [
               "c6-assessment",
@@ -283,7 +283,8 @@
               "c6-path",
               "c6-posture",
               "c6-zpa",
-              "func-path"
+              "func-path",
+              "w8-zia-forwarding"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 582,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -450,27 +451,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 158,
+        "fixed": 159,
         "accepted": 0
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 338,
         "accepted": 0
       },
       "info": {
         "open": 1,
-        "fixed": 48,
+        "fixed": 49,
         "accepted": 22
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 318,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8644
   },
   "findings": [
     {
@@ -3576,6 +3577,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W8-FWD-01",
+      "title": "The app read none of the ZIA forwarding and traffic path resources (forwarding control, proxy, ZPA and dedicated IP gateways, data centres, GRE VIPs, IPv6, NAT control, Virtual Service Edges, DNS gateways) and assessed none of them",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.6",
+      "wcag": "",
+      "fix": "Ten FWD checks in the ZIA platform scope, a Forwarding control step in the Path analyzer, the reads in the sample tenant and snapshots.",
+      "test": "tests/test_zia_forwarding.py::test_the_sample_tenant_answers_every_forwarding_read_and_shows_its_gaps",
+      "commit": "e7a9677, 7acddc3",
+      "reason": "",
+      "slug": "w8-zia-forwarding",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -8970,6 +8987,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W8-FWD-03",
+      "title": "The new-marks browser tour and the 320px test were tied to the 2026-10-28 marks, so any new release broke them",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.6",
+      "wcag": "",
+      "fix": "The * then ? probe is found from the current marks; the 320px pages are those carrying a mark; the rotation probes the newest two releases.",
+      "test": "tests/test_new_marks.py::test_an_item_with_both_marks_has_the_star_then_the_help",
+      "commit": "88facab",
+      "reason": "",
+      "slug": "w8-zia-forwarding",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -9736,6 +9769,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W8-FWD-02",
+      "title": "The Scope page's ZIA platform count said 33 checks while the registry had 37",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.6",
+      "wcag": "",
+      "fix": "The count and its help text now say 47 (37 plus the ten FWD checks).",
+      "test": "tests/test_zia_forwarding.py::test_the_checks_are_registered_under_zia_platform_with_plain_titles",
+      "commit": "88facab",
+      "reason": "",
+      "slug": "w8-zia-forwarding",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     }
   ],
   "records": [
@@ -10634,6 +10683,20 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w8-zia-forwarding",
+      "area": "zia-forwarding",
+      "title": "ZIA forwarding and traffic path: FWD.* checks and the Path analyzer's Forwarding control step",
+      "standards": [
+        "ASVS 4.0.3 L2 V1.1, V1.14, V4.1, V5.1, V7.4, V8.3",
+        "CWE-20, CWE-200, CWE-285, CWE-400, CWE-636, CWE-670, CWE-693, CWE-754, CWE-1188",
+        "WSTG ATHZ-02, CONF-01, INPV-01, BUSL-01",
+        "WCAG 2.2 SC 1.3.1, SC 3.3.2"
+      ],
+      "checks": 15,
+      "findings": 3,
+      "tests_added": 42
     }
   ],
   "standards": {
