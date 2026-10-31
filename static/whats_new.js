@@ -98,7 +98,7 @@ window.WHATS_NEW = {
     {
       "id": "zwa-close-false-positives", "release": "2026-10-31", "label": "Close as false positives",
       "what": "Close as false positives: close a noisy rule's or destination's open Workflow Automation incidents through Bulk changes, with the typed phrase and your name in each incident's note.",
-      "changelog": ["Close as false positives"],
+      "changelog": ["Close as false positives", "Close DLP incidents as false positives"],
       "marks": [
         { "page": "/report/health", "at": "a.dh-close", "shown": "after the report, on a noisy rule or destination" }
       ]

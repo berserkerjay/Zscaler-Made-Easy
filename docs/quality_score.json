@@ -471,7 +471,7 @@
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8647
+    "tests_added": 8648
   },
   "findings": [
     {
@@ -10744,7 +10744,7 @@
       ],
       "checks": 8,
       "findings": 5,
-      "tests_added": 45
+      "tests_added": 46
     }
   ],
   "standards": {
@@ -10998,7 +10998,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 58,
+    "wstg": 59,
     "slsa": [
       "SLSA v1.0",
       "SLSA v1.0 Build L2",

@@ -115,5 +115,5 @@
    "reason": "The key is taken only from the server's AIGUARD_API_KEY environment variable, never typed into a page, shown, logged or saved; without it nothing is sent and the page says where to set it"
   }
  ],
- "tests_added": 45
+ "tests_added": 46
 }
