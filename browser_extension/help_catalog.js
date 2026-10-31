@@ -4225,6 +4225,11 @@ window.HELP_CATALOG = {
     "input": "Optional. Up to 12 letters, digits, - or _, starting with a letter or digit, like ACME.",
     "effect": "local"
    },
+   "#zsbHashes": {
+    "what": "The files to block in Cloud Sandbox, by their MD5 hash. A blocked hash stops that file for every user once the change is activated.",
+    "input": "Required. One MD5 hash per line (32 characters, 0-9 and a-f), up to 100; anything after the hash on the line is its comment. SHA-256 is not accepted.",
+    "effect": "local"
+   },
    "#aigProfile": {
     "what": "Picks the compliance profile the detection policy looks for.",
     "input": "Required. HIPAA, HITRUST, PCI DSS, GDPR, CJIS, FERPA, SOX or General.",

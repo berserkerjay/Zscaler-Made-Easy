@@ -103,6 +103,10 @@ _OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$
 _VOLATILE = re.compile(r"(modified|lastseen|last_seen|lastsync|updated|creation|created)(time|at|date|_time|_at)?$|^(modifiedBy|lastModifiedBy)$", re.I)
 
 
+# Settings objects the sample replaces whole on a PUT (anything else not modelled is refused).
+_SETTINGS_PUT = frozenset({"/zia/api/v1/behavioralAnalysisAdvancedSettings"})
+
+
 class OfflineError(Exception):
     """A refusal to show as it is; `status` is the HTTP status to answer."""
 
@@ -310,6 +314,16 @@ class OfflineStore:
                 items.append(obj)
                 self.writes += 1
                 return 200, copy.deepcopy(obj)
+            if method == "PUT" and path in _SETTINGS_PUT and entry is not None and isinstance(body, dict):
+                # A settings object replaced whole (the Cloud Sandbox hash list: sandbox.add_hash_to_custom_list).
+                entry["body"] = copy.deepcopy(body)
+                count = self._lookup(path + "/fileHashCount")
+                if count is not None and isinstance(count.get("body"), dict) and isinstance(body.get("md5HashValueList"), list):
+                    used = len(body["md5HashValueList"])
+                    total = int(count["body"].get("blockedFileHashesCount") or 0) + int(count["body"].get("remainingFileHashes") or 0)
+                    count["body"] = {"blockedFileHashesCount": used, "remainingFileHashes": max(0, total - used)}
+                self.writes += 1
+                return 200, copy.deepcopy(body)
             item, coll, idx = self._item(path)
             if method in ("PUT", "PATCH") and item is not None:
                 new = dict(item)

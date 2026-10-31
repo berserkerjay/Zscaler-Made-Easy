@@ -826,6 +826,7 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zpa_policies": "rules over segments created disabled decide nothing until a segment is enabled",
     "zdx_probes": "probes measure only; they never allow or block traffic",
     "ssl_certificate_move": "moves the intermediate certificate; asks its typed phrase every time (always=True)",
+    "zia_sandbox_hashes": "a blocked file hash is the change asked for (a block list has no monitor mode); asks its typed phrase every time",
     "rule_state": "the operator picks ENABLED or DISABLED explicitly, per operation",
     "reorder": "changes order only; no rule is created or enabled",
     "url_categories": "custom URL category content; no rule is created or enabled",

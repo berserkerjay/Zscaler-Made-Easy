@@ -1084,6 +1084,10 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(zia.forwarding_control.update_rule, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "url_app_settings":
         return call(zia.url_filtering.update_url_and_app_settings, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "sandbox_hashes":
+        # The whole Cloud Sandbox custom hash list (PUT /behavioralAnalysisAdvancedSettings): ops_zia_sandbox
+        # sends the list as re-read right before, with only its own hashes added or removed.
+        return call(zia.sandbox.add_hash_to_custom_list, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind in AIGUARD_KINDS:
         return _aiguard_write(zia, kind, "update", oid, op="update", name=name, log=log, kw=payload)
     if kind == "policy" and channel in ADMIN_RULE_SERVICES:
