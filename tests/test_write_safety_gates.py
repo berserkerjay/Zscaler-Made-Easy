@@ -450,6 +450,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/sync-jobs/{jid}/enabled"): "a sync job's schedule (local)",
     ("POST", "/api/sync-jobs/{jid}/run"): "reads source and targets, files plans in the change queue (local); never writes a tenant",
     ("POST", "/api/path-analyzer/zpa-identity"): "reads (ZPA IdPs, SAML attributes, one SCIM user's groups)",
+    ("POST", "/api/tenant-terraform/start"): "reads the tenant into Terraform files (tenant_terraform); writes nothing",
     ("POST", "/api/console-index"): "reads (extension allow-list)",
     ("POST", "/api/workspace/notes"): "local notes",
     ("DELETE", "/api/workspace/notes"): "local notes",

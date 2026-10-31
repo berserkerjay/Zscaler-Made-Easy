@@ -409,6 +409,14 @@
     get: 'The plugin\'s table and notes. Nothing on the page changes a tenant.',
     next: 'Ask the admin who approved the plugin what its table means; revoke the plugin in Advanced settings to remove the page at once.',
   };
+  X.team = {
+    group: 'Close the gaps', name: 'Team server', href: '/report/team',
+    what: 'On a team server (ZSCALER_TEAM_MODE=1, off by default), administrators manage the accounts, their roles (viewer, operator, approver, administrator) and what each person or SCIM group may do on each tenant profile: read, plan, apply or approve. Everyone signs in with their own account or through SSO.',
+    why: 'Several people can share one install without sharing one token: each sees and changes only the tenants granted to them, and every change keeps its four-eyes approval and its audit entry with the person\'s name.',
+    when: 'When more than one person uses the same install; only administrators see this page.',
+    get: 'The accounts with their roles and sign-in state, the grants per tenant profile, the SCIM token and the store key, each change written to the audit log.',
+    next: 'Grant the least each person needs (read first), keep at least two administrators, and review the grants when someone changes role.',
+  };
   X.help = {
     group: 'Start', name: 'What does everything do?', href: '/help',
     what: 'This page: every function of the app explained in plain English, in the order you will need them on a first engagement.',
@@ -457,7 +465,7 @@
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
-      '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate', '/report/plugin': 'plugin',
+      '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate', '/report/plugin': 'plugin', '/report/team': 'team',
       '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
   }
@@ -508,7 +516,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
-    'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'plugin', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
+    'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'plugin', 'team', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
     'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

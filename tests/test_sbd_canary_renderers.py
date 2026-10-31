@@ -283,6 +283,7 @@ URL_SINK_REVIEWED = {
     ("static/pov.js", "/^https:\\/\\//i.test(String(l.url || '')) ? String(l.url) : '#'"): "the test kit's links (constants in pov.py, EICAR_LINKS and the other kit lists), linked only when https, else '#'",
     ("static/simple.js", "a.href"): "fixAction()'s app path for a finding's fix",
     ("static/ui_auth.js", "ssoStatus.sso_login_url || '/api/auth/sso/login'"): "the server's fixed SSO path (/api/auth/sso/login)",
+    ("static/ui_auth.js", "status.sso_login_url || '/login'"): "the server's fixed sign-in paths (/api/auth/sso/login, or the team server's /login)",
     ("static/zcc_fleet.js", "url"): "URL.createObjectURL of the downloaded export",
     ("static/fleet_dns.js", "url"): "URL.createObjectURL of the DNS records file built in the page",
     ("static/net_ranges.js", "url"): "URL.createObjectURL of the downloaded allowlist",

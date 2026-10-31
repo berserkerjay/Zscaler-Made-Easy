@@ -190,6 +190,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/zscaler-ranges/build": SESSION,
     "POST /api/zscaler-ranges/download": SESSION,
     "GET /api/m365-endpoints": SESSION,                 # Microsoft's public endpoint list kept on this server
+    "GET /api/tenant-terraform/catalogue": SESSION,
     "POST /api/migrate/export": SESSION,
     "GET /api/scope/prerequisites": SESSION,
     "POST /api/report/docx": SESSION,
@@ -335,6 +336,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/path-analyzer/compare/start": READ,
     "GET /api/path-analyzer/compare/{job_id}/export": READ,
     "POST /api/path-analyzer/test-from-here": READ,     # one destination, explicit click, rate-limited (path_probe)
+    "POST /api/tenant-terraform/start": READ,           # reads the tenant into Terraform files; writes nothing
 
     # ── prepare a change, or edit the app's own notes about a tenant ──
     "POST /api/remediation/plan": PLAN,
