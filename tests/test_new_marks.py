@@ -58,6 +58,10 @@ EXCLUDED = {
     # On every control of every page: it has no single place to mark, and
     # every mark's own pop-up is this help.
     "Help on hover": "on every control; each mark's pop-up is it",
+    # Team server (2026-10-31): a dialog shown only before an idle sign-out,
+    # a server rule with no new control, and what is not built.
+    "Still there?": "a dialog that appears only before an idle sign-out: no control to mark",
+    "Not built in": "says what the change does not add",
     # Static analysis (SAST): test and CI tooling, no page or control.
     "bandit, offline, in every test run": "a test-run gate (tests/test_sast.py, make sast), not a page",
     "CodeQL in CI": "a GitHub Actions workflow, outside the app",

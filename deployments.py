@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import safe_files
+import store_crypto
 
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LIMIT = 200
@@ -45,7 +46,7 @@ def _read() -> Dict[str, Any]:
         return {"version": 1, "deployments": []}
     try:
         with open(p, "r", encoding="utf-8") as f:
-            data = json.load(f) or {}
+            data = store_crypto.load_json(f) or {}
     except Exception:
         return {"version": 1, "deployments": []}
     # A file of another shape (hand-edited, truncated, an older layout) is
@@ -67,7 +68,7 @@ def _write(data: Dict[str, Any]) -> None:
     fd, tmp = tempfile.mkstemp(prefix=".deployments-", dir=d)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=1)
+            store_crypto.dump_json(data, f, indent=1)
         try:
             os.chmod(tmp, 0o600)
         except OSError:

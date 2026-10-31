@@ -184,6 +184,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "#dlpTeamLink": {
+    "what": "Opens the Team server page: who you are, what you may do on each tenant profile, and for an administrator the accounts and access.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#dlpSsoBar a": {
     "what": "Opens your company sign-in page to sign in to this app again.",
     "input": "Nothing to type. Just click it.",
@@ -8092,6 +8097,165 @@ window.HELP_CATALOG = {
     "what": "Opens the extension settings: the app address and the console badges.",
     "input": "Nothing to type. Just click it.",
     "effect": "nav"
+   }
+  },
+  "/login": {
+   "#lgUser": {
+    "what": "Your user name on this team server.",
+    "input": "Required. The name an administrator gave you, often your email address.",
+    "effect": "local"
+   },
+   "#lgPass": {
+    "what": "Your password on this team server. It is sent once to this server and never kept in the page.",
+    "input": "Required. At least 12 characters. Too many wrong ones lock the account for a while.",
+    "effect": "local"
+   },
+   "#lgGo": {
+    "what": "Signs you in to this team server with your user name and password. It does not touch any tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#lgSsoBtn": {
+    "what": "Signs you in through your organisation's identity provider instead of a password.",
+    "input": "Nothing to type. Just click it. Your identity provider may ask you to sign in there.",
+    "effect": "nav"
+   }
+  },
+  "/report/team": {
+   "#tmRefresh": {
+    "what": "Loads the accounts, access and settings again.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmSignOut": {
+    "what": "Signs you out of this team server and ends your session.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmPwCur": {
+    "what": "Your current password, to prove it is you.",
+    "input": "Required to change your password.",
+    "effect": "local"
+   },
+   "#tmPwNew": {
+    "what": "The password you want from now on. Every session of yours ends, so you sign in again.",
+    "input": "Required. At least 12 characters; a few words work well. Not your user name.",
+    "effect": "local"
+   },
+   "#tmPwGo": {
+    "what": "Changes your own password on this server. It changes nothing in any tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "select[data-role]": {
+    "what": "This person's role: the most they may ever do. Their sessions end so the new role applies at once.",
+    "input": "Pick one: viewer (read), operator (read, plan, apply), approver (read, approve) or administrator. You cannot demote yourself.",
+    "effect": "local"
+   },
+   "button[data-act=\"off\"]": {
+    "what": "Turns this account off: it cannot sign in, and its sessions end. Nothing is deleted.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "button[data-act=\"on\"]": {
+    "what": "Turns this account back on.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "button[data-act=\"unlock\"]": {
+    "what": "Unlocks an account locked after too many wrong passwords.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "button[data-act=\"pw\"]": {
+    "what": "Sets a new password for this account. Its sessions end; tell the person the new password in person.",
+    "input": "At least 12 characters.",
+    "effect": "local"
+   },
+   "button[data-act=\"del\"]": {
+    "what": "Deletes this account and the access it was given. Its sessions end. The audit log keeps what it did.",
+    "input": "Nothing to type. Just click it. You are asked to confirm.",
+    "effect": "local"
+   },
+   "#tmNuName": {
+    "what": "The new account's user name.",
+    "input": "Required. Letters, digits and . _ @ + -, up to 100 characters; an email address works and matches an SSO sign-in.",
+    "effect": "local"
+   },
+   "#tmNuEmail": {
+    "what": "The new account's email, used to match an SSO sign-in.",
+    "input": "Optional. An email address.",
+    "effect": "local"
+   },
+   "#tmNuRole": {
+    "what": "The new account's role: the most it may ever do.",
+    "input": "Pick one: viewer, operator, approver or administrator.",
+    "effect": "local"
+   },
+   "#tmNuPass": {
+    "what": "The new account's first password.",
+    "input": "Optional. At least 12 characters. Leave blank for someone who signs in through SSO only.",
+    "effect": "local"
+   },
+   "#tmNuGo": {
+    "what": "Adds the account. It may do nothing until you give it access below.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmGrWho": {
+    "what": "Who gets the access: one account, or a group (groups come from SCIM provisioning).",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#tmGrProf": {
+    "what": "Which tenant profile the access is for, or every tenant profile.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#tmGrActs input": {
+    "what": "What they may do there. Read sees the tenant and its reports; plan prepares changes; apply changes the tenant; approve decides on someone else's change. Their role still caps it.",
+    "input": "Tick any. Untick all to take the access away.",
+    "effect": "local"
+   },
+   "#tmGrGo": {
+    "what": "Saves this access. It takes effect on their next click.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmScimNew": {
+    "what": "Makes a new SCIM bearer token for your identity provider to add, change and remove accounts and groups. It is shown once; the one before stops working.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmScimRevoke": {
+    "what": "Revokes the SCIM token, so provisioning stops until you make a new one.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmShKind": {
+    "what": "Picks what to share: one of your POV templates or one of your saved deploy plans.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#tmShItem": {
+    "what": "Picks which template or saved plan to share. Only its owner or an administrator may change who it is shared with.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#tmShWho input": {
+    "what": "Ticks the people and groups it is shared with. A shared plan still opens only for people who may read its tenant profile.",
+    "input": "Tick any. Untick all to keep it to yourself.",
+    "effect": "local"
+   },
+   "#tmShGo": {
+    "what": "Saves who this template or plan is shared with. It changes nothing in any tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmStoreRotate": {
+    "what": "Makes a new key for the app's encrypted stores, encrypts every store again with it, then forgets the old key. Only when store encryption is on.",
+    "input": "Nothing to type. You are asked to confirm.",
+    "effect": "local"
    }
   }
  }

@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import safe_files
+import store_crypto
 
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 _LOCK = threading.Lock()
@@ -82,7 +83,7 @@ def _read() -> Dict[str, Any]:
         return {"version": 1, "profiles": {}}
     try:
         with open(p, "r", encoding="utf-8") as f:
-            data = json.load(f) or {}
+            data = store_crypto.load_json(f) or {}
     except Exception:
         return {"version": 1, "profiles": {}}
     if not isinstance(data, dict):
@@ -189,7 +190,7 @@ def _write(data: Dict[str, Any]) -> None:
     fd, tmp = tempfile.mkstemp(prefix=".profiles-", dir=d)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=1)
+            store_crypto.dump_json(data, f, indent=1)
         try:
             os.chmod(tmp, 0o600)
         except OSError:
@@ -220,7 +221,7 @@ def _forget_in_last_good(path: str, data: Dict[str, Any]) -> None:
     lg = path + ".last-good"
     try:
         with open(lg, "r", encoding="utf-8") as f:
-            old = json.load(f)
+            old = store_crypto.load_json(f)
     except (OSError, ValueError):
         return
     if not (_plain_secrets(old) - _plain_secrets(data)):
@@ -603,7 +604,7 @@ def save_snapshot(text: str, entry: Dict[str, Any], profile_id: str = "") -> Dic
         data = _read()
         pid = profile_id if profile_id in data["profiles"] else ""
         safe_files.private_makedirs(snapshots_dir())
-        safe_files.write_private_atomic(snapshot_path(sid), text)
+        safe_files.write_private_atomic(snapshot_path(sid), store_crypto.seal_text(text))
         ref = {k: entry.get(k) for k in _SNAPSHOT_FIELDS}
         ref.update(profile_id=pid, bytes=len(text.encode("utf-8")))
         if pid:
@@ -630,9 +631,13 @@ def read_snapshot(snapshot_id: str, limit: int) -> bytes:
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(path, flags)
         with os.fdopen(fd, "rb") as f:
-            raw = f.read(limit + 1)
+            raw = f.read(2 * limit + 64)
     except OSError:
         raise ValueError("The snapshot file is missing.")
+    try:
+        raw = store_crypto.open_bytes(raw)   # a sealed snapshot (DLP_CHECK_STORE_ENCRYPTION) is opened here
+    except store_crypto.StoreLocked as e:
+        raise ValueError(str(e))
     if len(raw) > limit:
         raise ValueError("The snapshot file is too large.")
     return raw

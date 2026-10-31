@@ -62,6 +62,7 @@ PAGES = {
     "/report/self-heal": "report_self_heal.html", "/report/path": "report_path.html", "/report/pov": "report_pov.html",
     "/report/sslflow": "report_sslflow.html", "/report/sslcoverage": "report_ssl_coverage.html",
     "/report/plugin": "report_plugin.html",
+    "/report/team": "report_team.html", "/login": "login.html",
 }
 
 

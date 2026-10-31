@@ -399,6 +399,91 @@ window.WHATS_NEW = {
         { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"ip_group_edit\"]" },
         { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"atp_list_edit\"]" }
       ]
+    },
+    {
+      "id": "team-server",
+      "release": "2026-10-31",
+      "label": "Team server",
+      "what": "The team server page: who you are and what you may do on each tenant profile, and for an administrator the accounts, roles and access per tenant profile.",
+      "changelog": [
+        "Team server",
+        "Four-eyes with real people"
+      ],
+      "marks": [
+        {
+          "page": "/report/team",
+          "at": "#tmMeH"
+        },
+        {
+          "page": "/report/team",
+          "at": ".rp-hero h1"
+        }
+      ]
+    },
+    {
+      "id": "team-sign-in",
+      "release": "2026-10-31",
+      "label": "Sign in",
+      "what": "Each person signs in with their own account on a team server, with lockout after wrong passwords, or through SSO.",
+      "changelog": [
+        "Sign in"
+      ],
+      "marks": [
+        {
+          "page": "/login",
+          "at": "#lgGo"
+        }
+      ]
+    },
+    {
+      "id": "team-scim",
+      "release": "2026-10-31",
+      "label": "SCIM provisioning",
+      "what": "Your identity provider adds and removes accounts and groups through SCIM 2.0, with a token shown once.",
+      "changelog": [
+        "SCIM 2.0"
+      ],
+      "marks": [
+        {
+          "page": "/report/team",
+          "at": ".rp-hero h1"
+        }
+      ]
+    },
+    {
+      "id": "team-https",
+      "release": "2026-10-31",
+      "label": "HTTPS built in",
+      "what": "HTTPS with your certificate, a self-signed one or Let's Encrypt, store encryption with key rotation, and FIPS mode.",
+      "changelog": [
+        "HTTPS built in",
+        "Encryption at rest and FIPS mode"
+      ],
+      "marks": [
+        {
+          "page": "/report/team",
+          "at": ".rp-hero h1"
+        }
+      ]
+    },
+    {
+      "id": "team-share",
+      "release": "2026-10-31",
+      "label": "Share templates and plans",
+      "what": "Your POV templates and saved deploy plans are yours; share them with people and groups.",
+      "changelog": [
+        "Shared templates and saved plans"
+      ],
+      "marks": [
+        {
+          "page": "/report/team",
+          "at": "#tmShareH"
+        },
+        {
+          "page": "/report/team",
+          "at": "#tmShKind"
+        }
+      ]
     }
   ]
 };

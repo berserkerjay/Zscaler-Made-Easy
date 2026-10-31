@@ -198,6 +198,11 @@ def _parse(raw: bytes, shape: Optional[Callable[[Any], bool]] = None) -> Tuple[b
     if not raw.strip():
         return False, "the file is empty (a write that never finished)"
     try:
+        import store_crypto
+        raw = store_crypto.open_bytes(raw)   # a sealed store (DLP_CHECK_STORE_ENCRYPTION) is checked as what it holds
+    except Exception as e:  # noqa: BLE001 - a sealed store whose key is missing or whose tag fails is not readable
+        return False, f"the file is encrypted and cannot be opened here ({str(e)[:80]})"
+    try:
         data = json.loads(raw.decode("utf-8"))
     except UnicodeDecodeError:
         return False, "the file is not text"

@@ -254,9 +254,17 @@ def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None,
                 job.cancel.set()
                 job.log(STOPPED_BEFORE_START)
 
+    # Team mode (team_server): the job is the starter's, bound to the tenant
+    # profile the request named, and runs with the request's team context so
+    # what it stores (a report, a filtered audit read) is bound the same way.
+    import team_server
+    team_server.bind(job.id)
+    team_ctx = team_server.capture()
+
     def _run() -> None:
         final = FAILED
         _here.job = job
+        team_token = team_server.restore(team_ctx) if team_ctx else None
         try:
             result = fn(job.log, job.cancel)
             with job.lock:
@@ -273,6 +281,8 @@ def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None,
             job.log(f"The run stopped with an error: {job.error}")
         finally:
             _here.job = None
+            if team_token is not None:
+                team_server.reset(team_token)
             with job.lock:
                 first = not job.ending
                 job.ending = True
