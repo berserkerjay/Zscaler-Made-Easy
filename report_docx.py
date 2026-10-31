@@ -94,6 +94,12 @@ def _parse_detail_for_bp(detail: str):
 # check's section AND label, so a single entry covers many checks.
 _BP_FALLBACKS = [
     # (match-substring, best-practice text, help-center URL)
+    ("zia — forwarding",
+     "Forward traffic to ZIA by default; keep DIRECT, proxy chaining, ZPA and "
+     "dedicated IP forwarding for named destinations, each gateway with a "
+     "fallback in another data centre (secondary proxy, secondary VIP, "
+     "secondary resolver, two Virtual Service Edge nodes).",
+     "https://help.zscaler.com/zia/about-forwarding-control"),
     ("ssl",
      "Decrypt and inspect TLS traffic for everything except a documented "
      "exempt list (banking, healthcare, certain government domains). "
@@ -205,6 +211,11 @@ def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
 # (label + section + check_id).
 _REMEDIATION_PATHS = [
     # (match-substring, admin-portal path, API hint or None)
+    ("zia — forwarding",
+     "ZIA Admin → Policy → Forwarding Control (rules), and Administration → "
+     "Proxies and Gateways, ZPA Gateways, Dedicated IP, Data Center Exclusion, "
+     "GRE Tunnels, IPv6 Configuration, Virtual Service Edges, DNS Gateways",
+     "GET /zia/forwardingRules, /zia/proxyGateways, /zia/greTunnels (read-only here)"),
     ("ssl",
      "ZIA Admin → Policy → SSL Inspection → Add Rule (or edit Default Rule). "
      "Set Action = Inspect, attach URL categories to inspect, add exempt URL list.",
