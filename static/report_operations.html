@@ -14,7 +14,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Bulk</span> changes</h1>
-      <p>Enable or disable many rules at once, put a policy's rules in a new order, move URLs between custom URL categories, and move ZPA domains between application segments. Every change is previewed item by item from the tenant as it is now, applied only in write mode after you confirm the exact plan, checked again right before each write, read back, recorded and reversible with Undo.</p>
+      <p>Enable or disable many rules at once, put a policy's rules in a new order, move URLs between custom URL categories, move ZPA domains between application segments, and change settings on many ZPA segments at once. Every change is previewed item by item from the tenant as it is now, applied only in write mode after you confirm the exact plan, checked again right before each write, read back, recorded and reversible with Undo.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -237,7 +237,8 @@
     (async function loadBuilders() {
       let list = [];
       try { const r = await fetch('/api/operations/plugins', { cache: 'no-store' }); if (r.ok) list = (await r.json()).plugins || []; } catch (e) { list = []; }
-      const box = $('opBuildKinds'), loaded = new Set();
+      const box = $('opBuildKinds'), main = document.querySelector('fieldset.op-kinds:not(#opBuildKinds)'), loaded = new Set();
+      let built = 0;
       list.forEach(p => {
         if (!/^[a-z][a-z0-9_]{1,40}$/.test(p.type) || !/^[a-z][a-z0-9_]{1,40}$/.test(p.family)) return;
         FAMILY[p.type] = p.family;
@@ -245,7 +246,8 @@
         lab.className = 'op-kind';
         lab.innerHTML = `<input type="radio" name="opKind" value="${E(p.type)}"><span><strong>${E(p.label)}</strong><span class="df-hint">${E(p.hint)}</span></span>`;
         lab.querySelector('input').addEventListener('change', e => onKind(e.target));
-        box.appendChild(lab);
+        // A type that changes what exists (group "Change existing") sits with the first four; builders under Build new.
+        if (p.group === 'Change existing' && main) main.appendChild(lab); else { box.appendChild(lab); built++; }
         // One script serves several types (ops_zpa.js has four): load each once.
         if (/^ops_[a-z0-9_]{1,40}\.js$/.test(p.script || '') && !loaded.has(p.script)) {
           loaded.add(p.script);
@@ -254,12 +256,12 @@
           document.body.appendChild(sc);
         }
       });
-      box.hidden = !list.length;
+      box.hidden = !built;
       // ?build=<type> (a finding's or another page's link) picks that
       // builder once, for every registered type: it only selects the form.
       // A ?fix= hand-off picks its own operation, so it wins.
       const q = new URLSearchParams(location.search), want = q.get('build') || '';
-      const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && box.querySelector(`input[name="opKind"][value="${want}"]`);
+      const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && document.querySelector(`input[name="opKind"][value="${want}"]`);
       if (pick && !pick.checked) { pick.checked = true; onKind(pick); }
     })();
 
