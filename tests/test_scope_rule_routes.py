@@ -525,6 +525,11 @@ FACTORIES = {"_build_sdk_client", "_build_client", "_raw_client"}
 # Routes that reach a client factory but are not the scope rule's to gate,
 # each with why (CISA Secure by Design: every exception is written down).
 EXEMPT: Dict[str, str] = {
+    "POST /api/rule-csv/export": ("reads one policy the operator picked, refused before sign-in unless that policy is in scope "
+                                  "(_ops_scope: test_rule_csv.py::test_export_needs_the_policy_in_scope_before_sign_in)"),
+    "POST /api/sync-jobs/{jid}/run": ("reads each profile only for what its saved Scope page selection puts in scope (a target without the "
+                                      "policy is never signed in to: test_sync_jobs.py); the job's groups were checked against the Scope page "
+                                      "when it was saved"),
     "POST /api/tenant/check": "sign-in test only: lists and counts nothing (tenant_check docstring)",
     "POST /api/remediation/execute": ("one remediation of a check the operator picked: a live fix is refused before sign-in unless its rule policy is "
                                       "in scope (test_c6_admin_ops.py); a dry run plans without reading"),
