@@ -288,7 +288,10 @@ console.log(JSON.stringify({ now, next, bad, real: W.releases(), words: W.words(
 # appear after a read or in a dialog: "shown" in the manifest).
 BROWSER_PAGES = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/report/fleet",
                  "/report/motion", "/report/live", "/simple"]
-NARROW = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/simple"]
+# The narrow tour visits the pages below that have a mark showing without a
+# tenant in the current manifest (a release rotation changes which ones do).
+NARROW = [p for p in ("/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/simple")
+          if any(mk["page"] == p and not mk.get("shown") for _f, mk in _marks())]
 
 
 def _load_marks():
@@ -350,6 +353,15 @@ out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObser
   setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
 // The * is its own trigger: pointing at it opens "New in the <date> update"; pointing at the item opens nothing.
 await open('/report/path');
+// The tab and protocol marks come from a probe in the older of the two marked
+// releases, so the tour does not depend on which features a release has.
+out.probeRelease = await ev(`(() => {
+  const W = window.WhatsNew, older = Object.keys(W.manifest.releases).sort()[0];
+  W.manifest.features.push({ id: 'tab-probe', release: older, label: 'Test a list', what: 'Test a list: a probe of the tour.', changelog: [],
+                             marks: [{ page: '/report/path', at: '#tab-list' }, { page: '/report/path', at: '#paProto' }] });
+  W.apply(); window.HoverHelp.scan(); return older;
+})()`);
+await frame();
 const hoverAt = async js => {
   const r = await ev(`(() => { const e = ${js}; e.scrollIntoView({ block: 'center', behavior: 'instant' }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
@@ -384,8 +396,9 @@ out.rotate = await ev(`(() => {
   W.manifest.features.push({ id: 'older-probe', release: '2026-10-26', label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
   const before = { older: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH') };
-  W.manifest.releases['2026-10-30'] = 'next';
-  W.manifest.features.push({ id: 'next-probe', release: '2026-10-30', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
+  // A release newer than every one listed pushes the oldest marked set out.
+  W.manifest.releases['2099-12-31'] = 'next';
+  W.manifest.features.push({ id: 'next-probe', release: '2099-12-31', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
   const after = { next: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH'), tabName: document.getElementById('tab-list').textContent.trim(), proto: document.getElementById('paProto').getAttribute('aria-label') };
   return { before, after };
@@ -471,7 +484,9 @@ def test_the_star_opens_what_is_new_and_the_item_opens_nothing(marks_browser):
     """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of a tab or a heading opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
     h = marks_browser["hover"]
     assert h["item"] is None, h["item"]
-    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith("New in the 2026-10-28 update: Test a list"), h["tab"]
+    older = marks_browser["probeRelease"]
+    assert older == sorted(MAN["releases"])[0], older
+    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith(f"New in the {older} update: Test a list"), h["tab"]
     assert h["heading"] and h["heading"]["text"].startswith("New in the 2026-10-29 update: The result shows as a live flow"), h["heading"]
 
 
@@ -493,10 +508,11 @@ def test_an_item_with_both_marks_has_the_star_then_the_help(marks_browser):
 
 
 def test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out(marks_browser):
-    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-10-30 release is listed, the 2026-10-28 marks go."""
+    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a newer release is listed, the oldest marked set goes and the newer one stays."""
     before, after = marks_browser["rotate"]["before"], marks_browser["rotate"]["after"]
     assert before == {"older": False, "tab": True, "live": True}, before
-    assert after["next"] and after["live"] and not after["tab"], after
+    # The tab probe and the live-flow heading are both in the oldest marked release.
+    assert after["next"] and not after["live"] and not after["tab"], after
     assert after["tabName"] == "Test a list" and not str(after["proto"]).endswith("(new)"), after
 
 

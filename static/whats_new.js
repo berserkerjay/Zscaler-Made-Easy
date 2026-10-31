@@ -36,7 +36,7 @@ window.WHATS_NEW = {
       "changelog": ["ZPA admin and RBAC audit", "ZPA admins and second factor", "SSO-only admin sign-in", "Full-access and read-only roles", "ZPA API keys",
                     "Break-glass accounts", "Microtenant admins", "Provisioning keys", "Privileged Remote Access credentials and approvals"],
       "marks": [
-        { "page": "/", "at": "#scopeField input.scope-cb[value=\"rbac\"]" }
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"rbac\"]", "shown": "on the Scope assessment step" }
       ]
     },
     {

@@ -283,9 +283,23 @@ def _epoch(v):
 
 
 def _role_classes(role):
-    """{class: FULL|VIEW_ONLY|NONE} of a ZPA role, as readiness reads it."""
-    import readiness
-    return readiness._zpa_classes(role)
+    """{class: FULL|VIEW_ONLY|NONE} of a ZPA role (bounded): its
+    classPermissionGroups[].classPermissions[] with classType.friendlyName and
+    permission.type (models/role_controller.py). Not readiness, which only
+    displays what it reads from the unverified token."""
+    out = {}
+    groups = role.get("classPermissionGroups") if isinstance(role.get("classPermissionGroups"), list) else []
+    for g in groups[:100]:
+        perms = g.get("classPermissions") if isinstance(g, dict) and isinstance(g.get("classPermissions"), list) else []
+        for c in perms[:200]:
+            if not isinstance(c, dict):
+                continue
+            ct = c.get("classType") if isinstance(c.get("classType"), dict) else {}
+            perm = c.get("permission") if isinstance(c.get("permission"), dict) else {}
+            name, t = str(ct.get("friendlyName") or ct.get("name") or "")[:80], perm.get("type")
+            if name and t in ("FULL", "VIEW_ONLY", "NONE"):
+                out[name] = t
+    return out
 
 
 def _role_kind(role):
