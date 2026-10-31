@@ -1370,7 +1370,6 @@ ZWA_WINDOW_DAYS = 30
 ZWA_TRIAGE_DAYS = 7
 ZWA_FP_PCT = 40
 ZWA_FP_MIN = 10
-_ZWA_CACHE = {}
 _ZWA_REF = " Ref: https://help.zscaler.com/workflow-automation/about-dlp-incidents"
 
 
@@ -1380,8 +1379,11 @@ def _zwa_incidents(cl):
     import time
     from datetime import datetime, timedelta, timezone
     import detection_health as dh
-    key = id(cl)
-    hit = _ZWA_CACHE.get(key)
+    # Kept on the client of this run only (never keyed by id(): a later run's client could reuse the id).
+    try:
+        hit = vars(cl).get("_zme_zwa_incidents")
+    except TypeError:
+        hit = None
     if hit and time.time() - hit[0] < 120:
         return hit[1], hit[2]
     post = getattr(cl, "post_read", None)
@@ -1401,8 +1403,10 @@ def _zwa_incidents(cl):
         out.extend(dh.normalize_incident(x, dh.DEFAULTS["not_real"]) for x in leaves)
         if len(leaves) < 100:
             break
-    _ZWA_CACHE.clear()
-    _ZWA_CACHE[key] = (time.time(), out, why)
+    try:
+        vars(cl)["_zme_zwa_incidents"] = (time.time(), out, why)
+    except TypeError:
+        pass
     return out, why
 
 

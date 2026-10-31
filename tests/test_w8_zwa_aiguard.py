@@ -46,7 +46,6 @@ def _isolated(monkeypatch):
         raise AssertionError("a test opened a network connection")
     monkeypatch.setattr(socket.socket, "connect", _no_network)
     monkeypatch.setattr(socket, "create_connection", _no_network)
-    full._ZWA_CACHE.clear()
 
 
 def _sample():
@@ -433,6 +432,21 @@ def test_incident_checks_read_nothing_when_workflow_automation_is_another_produc
     cl = _raw(channels={"workflow_automation": {"choice": "alternative"}, "web_dlp": {"choice": "zscaler"}})
     r = _results([x for x in full.DLP_EXTRA_REG if x[0].startswith("ZWA")], cl)
     assert all(v.status == "INFO" for v in r.values()) and "/zwa/dlp/v1/incidents/search" in cl.refused
+
+
+def test_incident_reads_are_cached_per_client_never_across_runs():
+    """ASVS V8.1.1 · CWE-524 · CWE-488 · WSTG-SESS-01: the incident list a run reads is kept on that run's client only; a new client reads again."""
+    calls = []
+
+    class Raw:
+        def post(self, ep, body=None):
+            calls.append(ep)
+            return {"incidents": []}, 200
+    a, b = channel_scope.ScopedClient(Raw(), WA), channel_scope.ScopedClient(Raw(), WA)
+    full._zwa_incidents(a)
+    full._zwa_incidents(a)
+    full._zwa_incidents(b)
+    assert len(calls) == 2 and "_zme_zwa_incidents" in vars(a) and "_zme_zwa_incidents" in vars(b)
 
 
 def test_post_read_accepts_only_the_listed_read_searches():
