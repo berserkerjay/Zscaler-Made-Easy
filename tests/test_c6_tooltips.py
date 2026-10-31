@@ -61,6 +61,7 @@ PAGES = {
     "/report/shadow": "report_shadow.html", "/report/posture": "report_posture.html",
     "/report/self-heal": "report_self_heal.html", "/report/path": "report_path.html", "/report/pov": "report_pov.html",
     "/report/sslflow": "report_sslflow.html", "/report/sslcoverage": "report_ssl_coverage.html",
+    "/report/aiguard": "report_aiguard.html",
 }
 
 

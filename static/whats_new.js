@@ -22,8 +22,8 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score",
-    "2026-10-28": "Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition"
+    "2026-10-31": "The whole platform, assessed: deeper Workflow Automation incidents and AI Guard",
+    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score"
   },
   "skipped": {
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
@@ -150,6 +150,39 @@ window.WHATS_NEW = {
         { "page": "/", "at": "button[onclick=\"openAdvancedTab()\"]" },
         { "page": "/report/advanced", "at": "a.rp-btn[href=\"#quality\"]" },
         { "page": "/report/advanced", "at": "#advQsH" }
+      ]
+    },
+    {
+      "id": "aiguard-page", "release": "2026-10-31", "label": "AI Guard page",
+      "what": "The AI Guard page: its detection policies, policy match rules, LLM applications and credential names (never a key), read only when AI Guard is ticked.",
+      "changelog": ["AI Guard page"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openAiGuardTab()\"]" },
+        { "page": "/report/aiguard", "at": ".rp-hero h1" }
+      ]
+    },
+    {
+      "id": "aiguard-test-prompt", "release": "2026-10-31", "label": "Test a prompt",
+      "what": "Test a prompt: send one made-up prompt from a fixed list to AI Guard and see what each detector did. Nothing you type is ever sent.",
+      "changelog": ["Test a prompt"],
+      "marks": [
+        { "page": "/report/aiguard", "at": "#agTestH" }
+      ]
+    },
+    {
+      "id": "zwa-incidents-in-depth", "release": "2026-10-31", "label": "Incidents in depth",
+      "what": "Incidents in depth on the FP/TP detection ratio page: one Workflow Automation incident's details, triggers, change history and tickets (metadata only), and the Workflow Automation audit log.",
+      "changelog": ["Incidents in depth"],
+      "marks": [
+        { "page": "/report/health", "at": "#zwaH" }
+      ]
+    },
+    {
+      "id": "zwa-close-false-positives", "release": "2026-10-31", "label": "Close as false positives",
+      "what": "Close as false positives: close a noisy rule's or destination's open Workflow Automation incidents through Bulk changes, with the typed phrase and your name in each incident's note.",
+      "changelog": ["Close as false positives"],
+      "marks": [
+        { "page": "/report/health", "at": "a.dh-close", "shown": "after the report, on a noisy rule or destination" }
       ]
     }
   ]
