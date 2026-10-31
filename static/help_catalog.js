@@ -4330,6 +4330,171 @@ window.HELP_CATALOG = {
     "input": "Pick one. You type the profile's name to confirm when you apply.",
     "effect": "local"
    },
+   "#reType": {
+    "what": "Picks the kind of rule to create, edit, copy or delete. The form below shows only the fields that kind of rule has.",
+    "input": "Pick one. The number is how many rules of that kind the tenant has.",
+    "effect": "local"
+   },
+   "input[name=\"reMode\"]": {
+    "what": "Picks what to do: create a new rule, edit one, make a copy of one, or delete one.",
+    "input": "Tick one. Nothing is written until you preview and apply.",
+    "effect": "local"
+   },
+   "#reFilter": {
+    "what": "Narrows the rule list below to rules whose name has these words.",
+    "input": "Optional. Type part of a rule's name.",
+    "effect": "local"
+   },
+   "#reRule": {
+    "what": "Picks the rule to edit, copy or delete. The Default rule, predefined rules and read-only rules are listed but not changed here.",
+    "input": "Pick one rule from the list.",
+    "effect": "local"
+   },
+   "#reCacType": {
+    "what": "Picks the Cloud App Control application type the new rule belongs to, such as Webmail or File sharing.",
+    "input": "Required for Cloud App Control. Pick one.",
+    "effect": "local"
+   },
+   "#rePlace": {
+    "what": "Picks where the new rule goes in the policy: the top, the bottom (above the Default rule), an order number, or right below a rule. The preview shows the order and the admin rank it gets.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#rePlaceOrder": {
+    "what": "The order number the new rule takes; 1 is the top. A number past the end puts it last.",
+    "input": "A whole number from 1.",
+    "effect": "local"
+   },
+   "#rePlaceBelow": {
+    "what": "Picks the rule the new rule goes right below.",
+    "input": "Pick one rule from the list.",
+    "effect": "local"
+   },
+   "#reEnabled": {
+    "what": "Creates the rule enabled, so it applies to users as soon as ZIA activates. It is off by default: the rule then changes nothing until you enable it.",
+    "input": "Tick it to create the rule enabled; you then type a confirmation when you apply.",
+    "effect": "local"
+   },
+   "#reState": {
+    "what": "Keeps the rule's state, or enables or disables it with the edit.",
+    "input": "Pick one. Enabling needs a typed confirmation when you apply.",
+    "effect": "local"
+   },
+   "#reDupName": {
+    "what": "Names the copy. The copy keeps every other setting, sits right below the rule and is created disabled.",
+    "input": "Required. Up to 31 characters (127 for Web DLP), no angle brackets or control characters.",
+    "effect": "local"
+   },
+   "input[name=\"reObj\"]": {
+    "what": "Picks which objects to list and change: cloud application instances or tenancy restriction profiles.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"reObjMode\"]": {
+    "what": "Picks whether to create a new object or edit one the tenant has.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#reObjPick": {
+    "what": "Picks the object to edit. Its current values fill the form below.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"text\"]": {
+    "what": "Names the rule or object (the label in the first column says which).",
+    "input": "Required. Up to the length the third column gives, no angle brackets or control characters.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"longtext\"]": {
+    "what": "A description kept with the rule or object, shown in the ZIA Admin Portal.",
+    "input": "Optional. Up to 255 bytes of plain text.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"enum\"]": {
+    "what": "Picks one value for the field named in the first column, such as the rule's action.",
+    "input": "Pick one. The values are the ones the Zscaler SDK accepts.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"ssl_action\"]": {
+    "what": "Picks what SSL inspection does: inspect (decrypt), do not inspect, or block.",
+    "input": "Pick one. Inspect uses TLS 1.2 or later; an edit that keeps the action keeps its other settings.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"enums\"]": {
+    "what": "Ticks the values the rule applies to for the field named in the first column; none ticked means every one.",
+    "input": "Tick any.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"refs\"]": {
+    "what": "Picks, by name, the tenant's objects the rule applies to for the field named in the first column; none picked means any.",
+    "input": "Optional unless marked required. Ctrl or Cmd picks several.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"names\"]": {
+    "what": "Picks, by name, the categories or applications the rule applies to for the field named in the first column.",
+    "input": "Optional unless marked required. Ctrl or Cmd picks several.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"ref\"]": {
+    "what": "Picks one of the tenant's objects by name, such as the gateway a forwarding rule uses.",
+    "input": "Pick one, or none.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"addrs\"]": {
+    "what": "Lists the addresses the rule applies to: IP addresses, ranges, CIDR blocks or (for destinations) domains.",
+    "input": "One per line, such as 10.0.0.0/8, 10.0.0.1-10.0.0.9 or *.example.com.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"countries\"]": {
+    "what": "Lists the destination countries the rule applies to.",
+    "input": "One per line: a two-letter code such as US, or COUNTRY_US.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"enums_free\"]": {
+    "what": "Lists the Zscaler file types the rule applies to.",
+    "input": "One per line, such as FTCATEGORY_ZIP.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"cac_actions\"]": {
+    "what": "Lists the Cloud App Control actions the rule takes, such as blocking uploads.",
+    "input": "One per line, such as BLOCK_FILE_SHARE_UPLOAD. ZIA refuses an action the application does not support.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"bool\"]": {
+    "what": "Turns the setting named in the first column on or off.",
+    "input": "Tick for yes.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"flag01\"]": {
+    "what": "Turns the setting named in the first column on or off.",
+    "input": "Tick for yes.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"int\"]": {
+    "what": "A number for the field named in the first column, such as a port or a size.",
+    "input": "A whole number in the range the third column gives.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"ports\"]": {
+    "what": "The segment's ports for this protocol. A port taken away cuts access on it.",
+    "input": "Ports and ranges, separated by commas, such as 443, 8000-8080.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"lines\"]": {
+    "what": "Lists the items of the tenancy restriction, such as tenant IDs or domains.",
+    "input": "One per line, no spaces.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"identifiers\"]": {
+    "what": "Lists what identifies this cloud application instance: a URL, a referring URL or a keyword.",
+    "input": "One per line: URL, REFURL or KEYWORD, a space, then the value.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"host\"]": {
+    "what": "The proxy's address: where ZIA forwards the traffic it chains.",
+    "input": "An IP address or a host name such as proxy.example.com.",
+    "effect": "local"
+   },
    "input[name=\"zdxTpl\"]": {
     "what": "Picks a ZDX template. It fills in the apps and probes below.",
     "input": "Tick one: Best practice, Microsoft 365 or Start empty.",

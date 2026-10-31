@@ -14,7 +14,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Bulk</span> changes</h1>
-      <p>Enable or disable many rules at once, put a policy's rules in a new order, move URLs between custom URL categories, and move ZPA domains between application segments. Every change is previewed item by item from the tenant as it is now, applied only in write mode after you confirm the exact plan, checked again right before each write, read back, recorded and reversible with Undo.</p>
+      <p>Enable or disable many rules at once, put a policy's rules in a new order, move URLs between custom URL categories, move ZPA domains between application segments, and create, edit, copy or delete one rule (Build new, Edit a rule). Every change is previewed item by item from the tenant as it is now, applied only in write mode after you confirm the exact plan, checked again right before each write, read back, recorded and reversible with Undo.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -30,7 +30,7 @@
         <h2 class="df-h" id="opH1">1. Pick the operation</h2>
         <fieldset class="op-kinds">
           <legend class="sr-only">Operation</legend>
-          <label class="op-kind"><input type="radio" name="opKind" value="rule_state" checked><span><strong>Enable or disable rules</strong><span class="df-hint">Up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control and the four DLP channels; one field (the state) per operation.</span></span></label>
+          <label class="op-kind"><input type="radio" name="opKind" value="rule_state" checked><span><strong>Enable or disable rules</strong><span class="df-hint">Up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control, the four DLP channels, DNS Control and IPS; one field (the state) per operation.</span></span></label>
           <label class="op-kind"><input type="radio" name="opKind" value="reorder"><span><strong>Reorder a policy</strong><span class="df-hint">Put one policy's rules in the order you want; the fewest rules move, the Default, predefined and read-only rules never move, and only the order changes.</span></span></label>
           <label class="op-kind"><input type="radio" name="opKind" value="url_categories"><span><strong>URL category change</strong><span class="df-hint">Add, remove, move or copy URLs on custom URL categories (or into a new one), with the rules in scope that use each category.</span></span></label>
           <label class="op-kind"><input type="radio" name="opKind" value="zpa_domains"><span><strong>ZPA segment domains</strong><span class="df-hint">Move or copy domains between application segments, or clone a segment with its settings, with the domain and port overlap check. Needs ZPA ticked on the Scope page.</span></span></label>
@@ -497,6 +497,9 @@
         <div class="df-hint">Plan ${E(String(p.plan_hash).slice(0, 16))}… · ${E(p.tenant_label)} · ${E(p.writes)} write${p.writes === 1 ? '' : 's'}${p.needs_activation ? ', then one ZIA activation' : ''}</div>
         ${listCard('Blocked', p.blockers, 'risk')}${listCard('Check before applying', p.warnings, 'warn')}${listCard('How this is applied', p.notes, 'info')}
         ${impact}${order}<h3 class="op-h">Items</h3>${itemsTable(p.items || [], 'Planned items')}`;
+      // A builder may add its own part to the preview (the rule editor's plain sentence and fields).
+      const plugPlan = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[p.type];
+      if (plugPlan && typeof plugPlan.plan === 'function') plugPlan.plan(p, $('opPlan'), H);
     }
 
     // ── Step 4: apply ──

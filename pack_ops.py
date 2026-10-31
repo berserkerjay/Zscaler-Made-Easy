@@ -927,7 +927,10 @@ def _audited(action: str) -> Callable[[Callable[..., Outcome]], Callable[..., Ou
 # add_rule / update_rule / delete_rule) and the Advanced Threat Protection
 # settings (zia/atp_policy.py update_atp_settings, PUT
 # /cyberThreatProtection/advancedThreatSettings).
-ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules", "sandbox": "sandbox_rules", "dns": "cloud_firewall_dns"}
+# Bulk changes and the rule editor (admin_ops, ops_rule_editor) add IPS
+# rules (zia/cloud_firewall_ips.py: add_rule / update_rule / delete_rule).
+ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules", "sandbox": "sandbox_rules", "dns": "cloud_firewall_dns",
+                       "ips": "cloud_firewall_ips"}
 ADMIN_KINDS = ("url_category", "zpa_segment", "atp_settings")  # and the ZPA builder kinds in ZPA_KINDS below
 # ZDX probe setup (ops_zdx): for these kinds the first argument is the ZDX
 # configuration API (ops_zdx.ZdxApi), not client.zia. ZDX has no activation,
@@ -960,6 +963,27 @@ def _aiguard_write(aig, kind: str, verb: str, *args: Any, op: str, name: str, lo
     svc = aig.policies if kind == "aiguard_policy" else aig.policy_match_rules
     method = getattr(svc, f"{verb}_{'policy' if kind == 'aiguard_policy' else 'rule'}")
     return call(method, *args, op=op, kind=kind, name=name, log=log, kw=kw)
+
+
+# The rule editor's object forms (ops_zia_objects): cloud application
+# instances and tenancy restriction profiles (zscaler-sdk-python 1.11.3
+# zia/cloud_app_instances.py add_ / update_ / delete_cloud_app_instances,
+# zia/tenancy_restriction_profile.py add_ / update_ / delete_restriction_profile).
+ZIA_OBJECT_KINDS: Dict[str, Tuple[str, Dict[str, str]]] = {
+    "cloud_app_instance": ("cloud_app_instances", {"add": "add_cloud_app_instances", "update": "update_cloud_app_instances",
+                                                   "delete": "delete_cloud_app_instances"}),
+    "tenancy_profile": ("tenancy_restriction_profile", {"add": "add_restriction_profile", "update": "update_restriction_profile",
+                                                        "delete": "delete_restriction_profile"}),
+}
+
+
+def _zia_object_write(zia, kind: str, verb: str, *args: Any, op: str, name: str, log: Optional[Callable[[str], None]] = None,
+                      kw: Optional[Dict[str, Any]] = None) -> Outcome:
+    svc_name, methods = ZIA_OBJECT_KINDS[kind]
+    fn = getattr(getattr(zia, svc_name, None), methods[verb], None)
+    if not callable(fn):
+        return Outcome(False, error=f"{svc_name}.{methods[verb]} is not available in the installed zscaler-sdk-python")
+    return call(fn, *args, op=op, kind=kind, name=name, log=log, kw=kw, zia=zia)
 
 
 def _admin_rule_service(zia, channel: Optional[str]):
@@ -1037,6 +1061,8 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
         return call(zia.cloud_firewall.add_ip_destination_group, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "forwarding_rule":
         return call(zia.forwarding_control.add_rule, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind in ZIA_OBJECT_KINDS:
+        return _zia_object_write(zia, kind, "add", op="create", name=name, log=log, kw=payload)
     if kind in AIGUARD_KINDS:
         return _aiguard_write(zia, kind, "add", op="create", name=name, log=log, kw=payload)
     if kind == "policy" and channel in ADMIN_RULE_SERVICES:
@@ -1082,6 +1108,10 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(zia.cloud_firewall.update_ip_destination_group, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "forwarding_rule":
         return call(zia.forwarding_control.update_rule, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "zia_proxy":
+        return call(zia.proxies.update_proxy, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind in ZIA_OBJECT_KINDS:
+        return _zia_object_write(zia, kind, "update", oid, op="update", name=name, log=log, kw=payload)
     if kind == "url_app_settings":
         return call(zia.url_filtering.update_url_and_app_settings, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind in AIGUARD_KINDS:
@@ -1151,6 +1181,8 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
         return call(zia.cloud_firewall.delete_ip_destination_group, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "forwarding_rule":
         return call(zia.forwarding_control.delete_rule, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind in ZIA_OBJECT_KINDS:
+        return _zia_object_write(zia, kind, "delete", oid, op="delete", name=name, log=log)
     if kind in AIGUARD_KINDS:
         return _aiguard_write(zia, kind, "delete", oid, op="delete", name=name, log=log)
     if kind == "policy" and channel in ADMIN_RULE_SERVICES:

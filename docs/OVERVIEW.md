@@ -532,7 +532,8 @@ what you get, what to do next.
   product owner's decision.
 - **Bulk changes** — many changes as one reviewed plan: enable or
   disable up to 100 rules (URL filtering, SSL inspection, Cloud Firewall,
-  Cloud App Control, File Type Control and the four DLP channels), put one
+  Cloud App Control, File Type Control, the four DLP channels, DNS Control
+  and IPS; DNS and IPS when ZIA platform is ticked), put one
   policy's rules in a new order with the fewest moves (the Default,
   predefined and read-only rules never move), add, remove, move or copy
   URLs on custom URL categories (with the rules in scope that use each
@@ -546,6 +547,33 @@ what you get, what to do next.
   records the change with an Undo that is itself previewed. Cloud
   application sanction is not offered: the SDK cannot read an
   application's current state.
+  Under **Build new**, **Edit a rule** (`ops_rule_editor.py`, forms in
+  `rule_editor.py`) creates, edits, duplicates or deletes one URL
+  filtering, Cloud Firewall, SSL inspection, forwarding control, Inline
+  Web DLP, DNS Control, IPS, File Type Control, Sandbox or Cloud App
+  Control rule. Each rule type has a form with only the fields its SDK
+  model has, every value checked, and the tenant's categories, groups,
+  departments, users, locations, labels, time intervals, network
+  services, IP groups, applications, gateways and DLP engines picked by
+  name. The preview says in one sentence what the rule will do, for whom,
+  at which order and admin rank, and lists every field before and after.
+  Placement follows Admin Ranking: when it is on, a new rule takes the
+  rank of the rule it sits above (going last, of the rule just above it);
+  off, unknown or out of scope, rank 7. New rules and copies arrive
+  disabled unless *Create it enabled* is ticked; a copy sits right below
+  its source at its rank. An edit sends the rule back as read with only
+  the changed fields. A change that is live at once needs the typed
+  phrase, a delete needs DELETE and the rule's name. Undo deletes a
+  created rule (only while it is as created), puts back each changed
+  field (only while it holds what was set) or re-creates a deleted rule
+  with the same fields, order, rank and state. The same section has
+  **Edit a ZPA application segment** (its settings and ports, or enable
+  or disable it; ZPA applies at once, so a change to an enabled segment
+  needs the typed phrase), **Cloud app instances and tenancy
+  restrictions** (browse them read-only, create or edit one) and **Proxy
+  chaining** (create or edit a proxy; the SDK cannot create a proxy
+  gateway, so the preview lists the portal steps for the gateway, its
+  root certificate and the forwarding rule) (`ops_zia_objects.py`).
   Under **Build new** the same page builds Client Connector profiles
   (needs ZCC ticked): pick Windows or macOS, a forwarding profile (best
   practice: tunnel on every network type, the listening-proxy redirect,

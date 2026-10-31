@@ -109,6 +109,39 @@ window.WHATS_NEW = {
         { "page": "/report/advanced", "at": "a.rp-btn[href=\"#quality\"]" },
         { "page": "/report/advanced", "at": "#advQsH" }
       ]
+    },
+    {
+      "id": "rule-editor", "release": "2026-10-31", "label": "Edit a rule",
+      "what": "Edit a rule on Bulk changes: create, edit, duplicate or delete one ZIA rule with a form per rule type, a plain-language preview, its placement and rank, and Undo.",
+      "changelog": ["Edit a rule", "Create it enabled", "Create a rule", "Duplicate a rule", "Delete a rule"],
+      "marks": [
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"rule_edit\"]", "shown": "under Build new" },
+        { "page": "/report/operations", "at": "#reType", "shown": "after Read from the tenant in Edit a rule" }
+      ]
+    },
+    {
+      "id": "dns-ips-state", "release": "2026-10-31", "label": "DNS and IPS rules",
+      "what": "Enable or disable rules now covers DNS Control and IPS rules.",
+      "changelog": ["Enable or disable DNS and IPS rules"],
+      "marks": [{ "page": "/report/operations", "at": "#opPolicy", "shown": "after Read from the tenant in Enable or disable rules" }]
+    },
+    {
+      "id": "zpa-segment-edit", "release": "2026-10-31", "label": "Edit a ZPA application segment",
+      "what": "Edit one ZPA application segment's settings and ports, or enable or disable it.",
+      "changelog": ["Edit a ZPA application segment"],
+      "marks": [{ "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"zpa_segment_edit\"]", "shown": "under Build new" }]
+    },
+    {
+      "id": "app-objects", "release": "2026-10-31", "label": "Cloud app instances and tenancy restrictions",
+      "what": "Browse cloud application instances and tenancy restriction profiles, and create or edit one.",
+      "changelog": ["Cloud app instances and tenancy restrictions"],
+      "marks": [{ "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"app_object_edit\"]", "shown": "under Build new" }]
+    },
+    {
+      "id": "proxy-chaining", "release": "2026-10-31", "label": "Proxy chaining",
+      "what": "Create or edit a proxy for proxy chaining, see the gateways that use it and the portal steps a gateway needs.",
+      "changelog": ["Proxy chaining"],
+      "marks": [{ "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"proxy_chain_edit\"]", "shown": "under Build new" }]
     }
   ]
 };
