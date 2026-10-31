@@ -488,9 +488,9 @@
     const RANK_STATE = { on: ['Admin ranking on', 'st-ok'], off: ['Admin ranking off', ''], unknown: ['Admin ranking not known', 'st-warn'], out_of_scope: ['Admin ranking not read', 'st-warn'] };
     function rankCard(rp) {
       if (!rp || !(rp.rules || []).length) return '';
-      const [label, cls] = RANK_STATE[rp.state] || RANK_STATE.unknown;
+      const [label, cls] = Object.prototype.hasOwnProperty.call(RANK_STATE, rp.state) ? RANK_STATE[rp.state] : RANK_STATE.unknown;
       return `<h3 class="op-h" id="opRankH">Admin rank of the rules this change places</h3>
-        <div class="op-summary"><span class="df-chip ${cls}">${E(label)}</span><span class="df-hint">${E(rp.describe || '')}</span></div>
+        <div class="op-summary"><span class="df-chip ${E(cls)}">${E(label)}</span><span class="df-hint">${E(rp.describe || '')}</span></div>
         <div class="df-tablewrap"><table class="df-table op-rank" aria-labelledby="opRankH"><caption class="sr-only">Admin rank per rule</caption>
           <thead><tr><th scope="col">Rule</th><th scope="col">Policy</th><th scope="col">Rank</th><th scope="col">Order</th><th scope="col">Why</th></tr></thead>
           <tbody>${rp.rules.map(r => `<tr><td>${E(r.name)}</td><td>${E(r.policy)}</td><td>${r.before != null && r.before !== r.rank ? `${E(r.before)} → ` : ''}${E(r.rank)}${r.assumed ? ' <span class="df-by">assumed</span>' : ''}</td>
