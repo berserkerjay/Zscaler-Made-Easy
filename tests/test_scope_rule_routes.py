@@ -396,6 +396,13 @@ ROUTES: List[Route] = [
     Route("/api/operations/preview", {"operation": {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}},
           partial=ZCC, out=ZCC_OUT),
     Route("/api/zcc/install", {"app_profile_id": "21"}, partial=ZCC, out=ZCC_OUT),
+    # ZDX cloud path and score analysis (zdx_insights); Client Connector device details and disable reasons (zcc_devices)
+    Route("/api/zdx/cloudpath", {"app_id": "3002", "host": "billing.example.com"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/zdx/analysis/status", {"analysis_id": "90001"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/zdx/analysis/start", {"app_id": "3002", "confirm": True, "confirm_text": "START ANALYSIS"}, partial=None),   # a write: refused before sign-in only
+    Route("/api/zdx/analysis/stop", {"analysis_id": "90001", "confirm": True}, partial=None),   # a write: refused before sign-in only
+    Route("/api/zcc/device-details", {"udid": "LKF-WIN-0001"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/zcc/disable-reasons", partial=ZCC, out=ZCC_OUT),
     # The ZPA builder (ops_zpa): plugin types and their pick lists on the same routes
     Route("/api/operations/objects", {"family": "zpa_objects"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/operations/preview/start", {"operation": {"type": "zpa_policies", "prefix": "pov1", "access": True}}, partial=ZPA, out=ZPA_OUT),
