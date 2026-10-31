@@ -112,8 +112,10 @@ def rbac_zia_password_expiry(cl):
         return R(R.INFO, f"Admin password expiry settings could not be read (HTTP {c}).")
     enabled = d.get("passwordExpirationEnabled", d.get("password_expiration_enabled"))
     days = d.get("passwordExpiryDays", d.get("password_expiry_days"))
+    # Only a real true/false counts: a masked "(set)" or any other text is no evidence.
+    enabled = enabled if isinstance(enabled, bool) else None
     try:
-        days = int(days) if days is not None and not isinstance(days, bool) else None
+        days = int(days) if isinstance(days, (int, str)) and not isinstance(days, bool) else None
     except (TypeError, ValueError):
         days = None
     sso = " Admins who sign in through SSO follow the IdP's password policy instead."
