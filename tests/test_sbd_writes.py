@@ -933,6 +933,9 @@ DEFAULT_OFF: Dict[str, Any] = {
     "atp_list_edit": "the security policy list content asked for; it acts at activation, so the typed phrase is asked every time",
     "cloud_app_sanction": "changes an app's sanction label only (the operator picks the state per app); creates and enables no rule",
     "zwa_close_false_positives": "closes incidents as false positives only; creates or enables no rule; asks its typed phrase every time",
+    "zid_group_members": "adds or removes the people the operator typed in one group; creates no group, role or rule",
+    "zcc_app_profile_state": "the operator picks on or off explicitly, per profile, and types the profile's name",
+    "zcc_app_profile_settings": "changes only the allowlisted settings the operator set, each shown before and after; creates nothing",
 }
 
 

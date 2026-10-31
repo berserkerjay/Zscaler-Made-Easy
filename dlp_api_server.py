@@ -11287,6 +11287,194 @@ async def zcc_otp_show(req: ZccOtpRequest, request: Request):
     return JSONResponse(out, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 
+# ── ZDX cloud path and score analysis; Client Connector device details and disable reasons (2026-10-31) ──
+ZDX_CLOUDPATH_WHAT = "The ZDX cloud path"
+ZDX_RCA_WHAT = "A ZDX score analysis"
+ZCC_DEVICE_WHAT = "Client Connector device details"
+ZCC_DISABLE_WHAT = "The Client Connector disable-reason report"
+
+
+class ZdxCloudpathRequest(ScopedTenantCredsRequest):
+    """The ZDX application to show the measured path of (app_id), or, with
+    no app_id, the destination the Path analyzer traced (host) to suggest one.
+    Read only when ZDX is ticked on the Scope page (else 400 before sign-in)."""
+    app_id: str = ""
+    host: str = ""
+
+
+@app.post("/api/zdx/cloudpath")
+async def zdx_cloudpath(req: ZdxCloudpathRequest):
+    """The cloud-path overlay of the Path analyzer page (zdx_insights): the
+    applications ZDX monitors with the one suggested for the host, and with
+    app_id the path ZDX measured to it, leg by leg. Read-only; no device or
+    person is named; private hop addresses are masked."""
+    import zdx_insights
+    _require_in_scope(req, "zdx", ZDX_CLOUDPATH_WHAT)   # user rule 1: nothing read out of scope
+    host = str(req.host or "")[:253]
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="The classic ZIA API sign-in has no ZDX API; sign in with a OneAPI API client.")
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    try:
+        out = await asyncio.to_thread(zdx_insights.apps, sdk, host)
+        if req.app_id:
+            out["path"] = await asyncio.to_thread(zdx_insights.cloudpath, sdk, req.app_id)
+    except zdx_insights.InsightError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        _close_quietly(sdk)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+class ZdxRcaRequest(ScopedTenantCredsRequest):
+    """A ZDX score analysis: the application (app_id), optionally the device
+    (device_id; else the app picks one) and the hours to look back for a
+    start; the analysis_id for status and stop. Starting and stopping need
+    write mode, a writer, the assessor's name and confirm=true; starting
+    also needs the typed phrase START ANALYSIS (confirm_text)."""
+    app_id: str = ""
+    device_id: str = ""
+    hours: int = 2
+    analysis_id: str = ""
+    confirm: bool = False
+    confirm_text: str = ""
+
+
+def _zdx_sdk_creds(req: Any) -> Dict[str, str]:
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="The classic ZIA API sign-in has no ZDX API; sign in with a OneAPI API client.")
+    return creds
+
+
+@app.post("/api/zdx/analysis/start")
+async def zdx_analysis_start(req: ZdxRcaRequest, request: Request):
+    """Start a ZDX score analysis (root cause) of one application on one
+    device (zdx_insights.start_analysis). ZDX runs it; nothing in the
+    configuration changes, but it is still an action on the tenant: all four
+    write gates hold first (write mode, a writer, the assessor, confirm=true
+    and the typed phrase START ANALYSIS), out of scope is a 400, and the
+    per-tenant rate limit is a 429, all before sign-in. Audited with the actor."""
+    import zdx_insights
+    _require_in_scope(req, "zdx", ZDX_RCA_WHAT)   # user rule 1: nothing read out of scope
+    by = _require_tenant_write(req, confirmed=req.confirm, what=ZDX_RCA_WHAT)
+    if not _security.typed_phrase_matches(req.confirm_text, zdx_insights.CONFIRM_PHRASE):
+        raise HTTPException(status_code=400, detail=f"Type {zdx_insights.CONFIRM_PHRASE} to start a ZDX score analysis.")
+    creds = _zdx_sdk_creds(req)
+    why = zdx_insights.rate_check(_tenant_key(creds))
+    if why:   # refused before signing in, so a burst never reaches the tenant
+        raise HTTPException(status_code=429, detail=why)
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    actor = _actor(request) or ""
+    try:
+        out = await asyncio.to_thread(lambda: zdx_insights.start_analysis(
+            sdk, req.app_id, tenant_key=_tenant_key(creds), device_id=req.device_id, hours=int(req.hours or 2), actor=actor, assessor=by))
+    except zdx_insights.RateLimited as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except zdx_insights.InsightError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        _close_quietly(sdk)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/zdx/analysis/status")
+async def zdx_analysis_status(req: ZdxRcaRequest):
+    """Read a ZDX score analysis back (read-only; only when ZDX is ticked).
+    The answer is bounded and scrubbed of personal and secret fields."""
+    import zdx_insights
+    _require_in_scope(req, "zdx", ZDX_RCA_WHAT)   # user rule 1: nothing read out of scope
+    creds = _zdx_sdk_creds(req)
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    try:
+        out = await asyncio.to_thread(zdx_insights.analysis_status, sdk, req.analysis_id)
+    except zdx_insights.InsightError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        _close_quietly(sdk)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/zdx/analysis/stop")
+async def zdx_analysis_stop(req: ZdxRcaRequest, request: Request):
+    """Stop a running ZDX score analysis (zdx_insights.stop_analysis): write
+    mode, a writer, the assessor and confirm=true hold first. Audited."""
+    import zdx_insights
+    _require_in_scope(req, "zdx", ZDX_RCA_WHAT)   # user rule 1: nothing read out of scope
+    by = _require_tenant_write(req, confirmed=req.confirm, what="Stopping a ZDX score analysis")
+    creds = _zdx_sdk_creds(req)
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    actor = _actor(request) or ""
+    try:
+        out = await asyncio.to_thread(lambda: zdx_insights.stop_analysis(sdk, req.analysis_id, actor=actor, assessor=by))
+    except zdx_insights.InsightError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        _close_quietly(sdk)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+class ZccDeviceRequest(ScopedTenantCredsRequest):
+    """One enrolled device's id (UDID), as the Client Connector Portal shows it."""
+    udid: str = ""
+
+
+@app.post("/api/zcc/device-details")
+async def zcc_device_details(req: ZccDeviceRequest):
+    """One device's service state (zcc_devices.device_details): services on
+    and healthy, versions, strict enforcement, anti-tampering, device trust.
+    Identifiers are hidden; one-time passwords are never read into the
+    answer. Read only when ZCC is ticked (400 before sign-in otherwise)."""
+    import zcc_devices
+    _require_in_scope(req, "zcc", ZCC_DEVICE_WHAT)   # user rule 1: nothing read out of scope
+    if not zcc_devices.UDID_RE.match(str(req.udid or "").strip()):
+        raise HTTPException(status_code=400, detail="Type the device id (UDID) as the Client Connector Portal shows it.")
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="The classic ZIA API sign-in has no Client Connector API; sign in with a OneAPI API client.")
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    try:
+        out = await asyncio.to_thread(zcc_devices.device_details, sdk, req.udid)
+    except zcc_devices.DeviceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        _close_quietly(sdk)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+class ZccDisableReasonsRequest(ScopedTenantCredsRequest):
+    """format: json (the counts) or csv (the same counts as a download)."""
+    format: str = "json"
+
+
+@app.post("/api/zcc/disable-reasons")
+async def zcc_disable_reasons(req: ZccDisableReasonsRequest):
+    """Why and how often Client Connector was switched off, as counts per
+    reason, device type and service (zcc_devices): no user or device is
+    listed. JSON, or a CSV download (format=csv) made safe for spreadsheets.
+    Read only when ZCC is ticked (400 before sign-in otherwise)."""
+    import zcc_devices
+    fmt = str(req.format or "json").lower()
+    if fmt not in ("json", "csv"):
+        raise HTTPException(status_code=400, detail="format must be json or csv.")
+    _require_in_scope(req, "zcc", ZCC_DISABLE_WHAT)   # user rule 1: nothing read out of scope
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="The classic ZIA API sign-in has no Client Connector API; sign in with a OneAPI API client.")
+    client = _build_client(req)
+    try:
+        counts = await asyncio.to_thread(zcc_devices.disable_reasons, client)
+    except zcc_devices.DeviceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        _close_quietly(client)
+    if fmt == "csv":
+        name = f"zcc_disable_reasons_counts_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        return Response(content=zcc_devices.disable_reasons_csv(counts), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f"attachment; filename={name}", "Cache-Control": "no-store"})
+    return JSONResponse(counts, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/report/view")
 async def report_view_page():
     """Standalone tab that mirrors a tool dialog (see static/report_view.html)."""

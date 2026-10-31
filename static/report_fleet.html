@@ -219,6 +219,24 @@
         <div class="zf-status" id="zfOtpStatus" role="status" aria-live="polite"></div>
         <div id="zfOtpOut" hidden></div>
       </section>
+      <section class="zf-sec" id="zfDevice" aria-labelledby="zfDeviceH">
+        <h2 id="zfDeviceH">One device's details</h2>
+        <p class="zf-dim">Type a device id (UDID) from the Client Connector Portal to see which services run on it and whether they are healthy, its versions, strict enforcement, anti-tampering and device trust. Identifiers are hidden and the device's one-time passwords are never read into the answer. Reads only; needs ZCC ticked on the Scope page.</p>
+        <div class="zf-row">
+          <label>Device id (UDID) <input type="search" id="zfDevUdid" maxlength="128" aria-label="Device id (UDID)" autocomplete="off" spellcheck="false"></label>
+          <button type="button" class="rp-btn primary" id="zfDevShow">Show the details</button>
+        </div>
+        <div class="zf-status" id="zfDevOut" role="status" aria-live="polite"></div>
+      </section>
+      <section class="zf-sec" id="zfDisable" aria-labelledby="zfDisableH">
+        <h2 id="zfDisableH">Why Client Connector was switched off</h2>
+        <p class="zf-dim">Counts from Client Connector's disable-reason report: per reason, device type and service, how many times it was switched off and by how many people. No user or device is listed. Reads only; needs ZCC ticked on the Scope page.</p>
+        <div class="zf-row">
+          <button type="button" class="rp-btn primary" id="zfDisShow">Show the counts</button>
+          <button type="button" class="rp-btn" id="zfDisCsv">Download the counts (CSV)</button>
+        </div>
+        <div class="zf-status" id="zfDisOut" role="status" aria-live="polite"></div>
+      </section>
     </main>
   </div>
   <script src="/static/icons.js"></script>
@@ -229,6 +247,7 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/zcc_fleet.js"></script>
   <script src="/static/fleet_dns.js"></script>
+  <script src="/static/zcc_device.js"></script><!-- one device's details and the disable-reason counts -->
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
 </body>

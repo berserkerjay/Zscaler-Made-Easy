@@ -75,19 +75,19 @@ window.WHATS_NEW = {
       "what": "The result shows as a live flow. It stays still under reduced motion, pauses when the tab is hidden, and is said in words too.",
       "changelog": ["Live motion"],
       "marks": [
-        { "page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]" },
-        { "page": "/report/path", "at": "#paFlowRefH" },
-        { "page": "/report/path", "at": "#paFlowH", "shown": "after Analyze" },
-        { "page": "/report/path", "at": "#plFlowH", "shown": "after a list is tested" },
-        { "page": "/report/motion", "at": "#tpH" },
-        { "page": "/report/dataflow", "at": "#dfMotionTitle" },
-        { "page": "/report/sslflow", "at": "#sfWalkTitle", "shown": "after a read" },
-        { "page": "/report/sslcoverage", "at": "#hRiver", "shown": "after a read" },
-        { "page": "/report/zpa", "at": "#zoFlowH", "shown": "after a read" },
-        { "page": "/report/zpa", "at": "#zpWalkH", "shown": "after Diagnose" },
-        { "page": "/report/insights", "at": "#tiFlowH", "shown": "after a read" },
-        { "page": "/report/live", "at": "#lfLanesH" },
-        { "page": "/report/bypass", "at": "#bpFlowH", "shown": "after a read" }
+        {"page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]"},
+        {"page": "/report/path", "at": "#paFlowRefH"},
+        {"page": "/report/path", "at": "#paFlowH", "shown": "after Analyze"},
+        {"page": "/report/path", "at": "#plFlowH", "shown": "after a list is tested"},
+        {"page": "/report/motion", "at": "#tpH"},
+        {"page": "/report/dataflow", "at": "#dfMotionTitle"},
+        {"page": "/report/sslflow", "at": "#sfWalkTitle", "shown": "after a read"},
+        {"page": "/report/sslcoverage", "at": "#hRiver", "shown": "after a read"},
+        {"page": "/report/zpa", "at": "#zoFlowH", "shown": "after a read"},
+        {"page": "/report/zpa", "at": "#zpWalkH", "shown": "after Diagnose"},
+        {"page": "/report/insights", "at": "#tiFlowH", "shown": "after a read"},
+        {"page": "/report/live", "at": "#lfLanesH"},
+        {"page": "/report/bypass", "at": "#bpFlowH", "shown": "after a read"}
       ]
     },
     {
@@ -95,9 +95,9 @@ window.WHATS_NEW = {
       "what": "The Liquid Glass look: see-through, blurred bars, cards, dialogs and buttons, with a switch in Advanced settings to turn it off.",
       "changelog": ["Liquid Glass"],
       "marks": [
-        { "page": "/", "at": "button[onclick=\"openAdvancedTab()\"]" },
-        { "page": "/report/advanced", "at": "a.rp-btn[href=\"#appearance\"]" },
-        { "page": "/report/advanced", "at": "#advGlass" }
+        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
+        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#appearance\"]"},
+        {"page": "/report/advanced", "at": "#advGlass"}
       ]
     },
     {
@@ -105,9 +105,9 @@ window.WHATS_NEW = {
       "what": "The quality and security score for this app, built from every QA record, the standards each test covers and the last full test run.",
       "changelog": ["Quality and security score"],
       "marks": [
-        { "page": "/", "at": "button[onclick=\"openAdvancedTab()\"]" },
-        { "page": "/report/advanced", "at": "a.rp-btn[href=\"#quality\"]" },
-        { "page": "/report/advanced", "at": "#advQsH" }
+        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
+        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#quality\"]"},
+        {"page": "/report/advanced", "at": "#advQsH"}
       ]
     },
     {
@@ -777,6 +777,46 @@ window.WHATS_NEW = {
       "changelog": ["Close as false positives", "Close DLP incidents as false positives"],
       "marks": [
         { "page": "/report/health", "at": "a.dh-close", "shown": "after the report, on a noisy rule or destination" }
+      ]
+    },
+    {
+      "id": "zdx-cloud-path", "release": "2026-10-31", "label": "ZDX cloud path",
+      "what": "The path ZDX measured to an application, leg by leg, next to the predicted path: time, loss, hops and tunnel. No device or person is named.",
+      "changelog": ["ZDX cloud path"],
+      "marks": [
+        {"page": "/report/path", "at": "#zdxCpH"}
+      ]
+    },
+    {
+      "id": "zdx-score-analysis", "release": "2026-10-31", "label": "ZDX score analysis",
+      "what": "A ZDX score analysis of one application on one device, to find why it is slow. It needs the write gates and the phrase START ANALYSIS, and is rate-limited.",
+      "changelog": ["ZDX score analysis"],
+      "marks": [
+        {"page": "/report/path", "at": "#zdxRcaH", "shown": "after opening the ZDX panel"}
+      ]
+    },
+    {
+      "id": "builders-zid-zcc-live", "release": "2026-10-31", "label": "Group members and live app profile changes",
+      "what": "New Bulk changes operations: ZIdentity group members, and turning Client Connector app profiles on or off or changing their DNS and tunnel settings.",
+      "changelog": ["ZIdentity group members", "Client Connector app profiles on or off", "Client Connector app profile settings"],
+      "marks": [
+        {"page": "/report/operations", "at": "#opBuildKinds > legend", "shown": "after the builders load"}
+      ]
+    },
+    {
+      "id": "zcc-device-details", "release": "2026-10-31", "label": "Device details",
+      "what": "One Client Connector device's service state by its device id: services, versions, strict enforcement, anti-tampering and trust. Ids stay hidden.",
+      "changelog": ["Device details"],
+      "marks": [
+        {"page": "/report/fleet", "at": "#zfDeviceH"}
+      ]
+    },
+    {
+      "id": "zcc-disable-reasons", "release": "2026-10-31", "label": "Disable-reason counts",
+      "what": "How often Client Connector was switched off, per reason, device type and service, on screen or as a CSV. No user or device is listed.",
+      "changelog": ["Disable-reason counts"],
+      "marks": [
+        {"page": "/report/fleet", "at": "#zfDisableH"}
       ]
     }
   ]

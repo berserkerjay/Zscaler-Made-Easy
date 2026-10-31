@@ -370,6 +370,14 @@ what you get, what to do next.
   rows, applying goes through Bulk changes' four gates, re-read, read-back
   and Undo, and afterwards *Prove it* tests the same rows again and says
   which now do what was expected.
+  The **ZDX panel** (ZDX ticked) shows the path ZDX measured to a ZDX
+  application from a device that probes it, leg by leg (device, network
+  exit, Zscaler service edge, application) with time, loss, hops and the
+  tunnel, without naming the device and with private hops hidden
+  (`zdx_insights.py`). It also starts a ZDX score analysis (root cause) on
+  one device: no setting changes, but it needs write mode, a writer, the
+  assessor's name and START ANALYSIS, and starts are rate-limited per tenant
+  (one every 5 minutes, 6 an hour) and audited.
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the
@@ -571,6 +579,13 @@ what you get, what to do next.
   1123 labels; renames, duplicate enrolments and collisions are listed. No
   second tenant read, no DNS server contacted, nothing applied; hostnames
   are never logged.
+  **One device's details** (`zcc_devices.py`) reads, by its device id, which
+  services run on a device and whether they are healthy, its versions,
+  strict enforcement, anti-tampering and device trust; identifiers are
+  hidden and its one-time passwords never reach the answer. **Why Client
+  Connector was switched off** counts the disable-reason report per reason,
+  device type and service (times and people, no names), on screen or as a
+  spreadsheet-safe CSV. Both only when ZCC is in scope.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
   decides, whether the traffic is decrypted, and whether inline DLP can
   see it. Where: opened from Traffic flow & gaps.
@@ -921,6 +936,18 @@ what you get, what to do next.
   its paths are assumed and the page says so; the `/zdx/v1` prefix, the
   request routing and the bodies sent as given are verified against the
   SDK (`ops_zdx.py`).
+  its paths are assumed and the page says so (`ops_zdx.py`).
+  Three more types change live settings the same way (preview, plan hash,
+  re-read before each write, read-back, Undo): **ZIdentity group members**
+  (`ops_zid.py`, ZIdentity ticked) adds or removes people in one group by
+  sign-in name, never listing the directory, refuses dynamic groups and
+  warns about groups the identity provider syncs; **Turn Client Connector
+  app profiles on or off** and **Change a Client Connector app profile's
+  DNS and tunnel settings** (`ops_zcc_live.py`, ZCC ticked) take effect on
+  devices at once, so the profile's name is always typed; the settings are
+  an allowlist (split DNS, DNS exclusions first, the DNS search order, the
+  DNS route exclusion, large UDP DNS answers, DNS through the UDP proxy,
+  the packet tunnel exclusions) and never a password.
   Under **Build new** (also linked from the ZPA analysis page as *Build ZPA
   objects*, ZPA ticked on the Scope page), the **ZPA builder** makes a
   proof-of-value ZPA set-up through the same preview, gates, read-back and

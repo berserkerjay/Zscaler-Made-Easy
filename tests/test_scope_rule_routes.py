@@ -222,6 +222,7 @@ ZTW = page(["ztw"])
 ZTB = page(["ztb"])                                          # Other products: Zero Trust Branch only
 ZMS = page(["zms"])                                          # Other products: Microsegmentation only
 ZWA = page(["dlp"], workflow_automation="zscaler")           # DLP ticked, Workflow Automation on Zscaler (incident drill-down, audit log)
+ZIDENTITY = page(["zidentity"])
 
 # What each partial selection leaves out: a read naming any of these is out of scope.
 OTHER_DLP = ("endpoint_dlp_rules", "outbound_email_dlp_rules", "casb_dlp_rules", "saas_security_api", "casb_tenant",
@@ -244,6 +245,7 @@ OTHER_OUT = ("zia.", "/zia/", "zpa.", "/zpa/", "zcc.", "/zcc/", "zins.", "zwa.",
 ZTB_OUT = OTHER_OUT + ("/easm/", "/bi/", "/zcell/", "/zms/")
 ZMS_OUT = OTHER_OUT + ("/ztb/", "/easm/", "/bi/", "/zcell/")
 ZWA_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "aiguard.", "get_incident_evidence", "get_incident_transactions")
+ZIDENTITY_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zdx.", "/zdx/", "zins.", "zwa.")
 AUTOMATION_OUT = ("zia.", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "/zia/webDlpRules", "/zia/urlFilteringRules")
 
 
@@ -465,6 +467,20 @@ ROUTES: List[Route] = [
     # One device's one-time passwords (zcc_otp): a sensitive read, ZCC only.
     Route("/api/zcc/otp", {"assessor": "QA tester", "user": "jdoe@acme.example", "device": "LT-1", "confirm_text": "SHOW OTP LT-1"},
           partial=ZCC, out=ZCC_OUT, ok=404),
+    # ZDX cloud path and score analysis (zdx_insights); Client Connector device details and disable reasons (zcc_devices)
+    Route("/api/zdx/cloudpath", {"app_id": "3002", "host": "billing.example.com"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/zdx/analysis/status", {"analysis_id": "90001"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/zdx/analysis/start", {"app_id": "3002", "confirm": True, "confirm_text": "START ANALYSIS"}, partial=None),   # a write: refused before sign-in only
+    Route("/api/zdx/analysis/stop", {"analysis_id": "90001", "confirm": True}, partial=None),   # a write: refused before sign-in only
+    Route("/api/zcc/device-details", {"udid": "LKF-WIN-0001"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/zcc/disable-reasons", partial=ZCC, out=ZCC_OUT),
+    # ZIdentity group members (ops_zid) and Client Connector live changes (ops_zcc_live): plugin families on the same engine
+    Route("/api/operations/objects", {"family": "zid_groups"}, partial=ZIDENTITY, out=ZIDENTITY_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zid_group_members", "group": "g-33", "add": ["a@example.com"]}},
+          partial=ZIDENTITY, out=ZIDENTITY_OUT),
+    Route("/api/operations/objects", {"family": "zcc_app_profile_live"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/preview/start", {"operation": {"type": "zcc_app_profile_state", "targets": [{"id": "1", "platform": "windows", "to": "off"}]}},
+          partial=ZCC, out=ZCC_OUT),
     # The ZPA builder (ops_zpa): plugin types and their pick lists on the same routes
     Route("/api/operations/objects", {"family": "zpa_objects"}, partial=ZPA, out=ZPA_OUT),
     # Day-to-day admin (ops_zpa_admin, ops_zcc_admin, ops_zdx_trace): the picker, previews, lookups and the deep trace follow

@@ -13,6 +13,7 @@ Import and append to REG to run a full platform assessment.
 """
 
 # Reuse the Result class and helpers from the main engine
+import re
 from dlp_assessment_full_auto import (R, _ls, _fv, _names, _enabled, _truthy, _cac_live, _cac_rules_all_types, _tenancy,
                                       _ssl_enabled, _ssl_action, _SSL_INSPECT, _SSL_DNI)
 
@@ -2415,6 +2416,124 @@ def ins_3(cl):
                      "active SaaS Security API tenant.", data)
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# ZCC — bypass breadth: process-based and custom IP-based apps (2026-10-31)
+# ═══════════════════════════════════════════════════════════════════════
+# SDK 1.11.3 (verified): process_based_apps.get_process_based_apps  GET /zcc/papi/public/v1/process-based-apps   {appIdentities: [{appName, fileNames, filePaths, matchingCriteria}]}
+#                        custom_ip_base_apps.get_custom_ip_base_apps GET /zcc/papi/public/v1/custom-ip-based-apps {customAppContracts: [{appName, appDataBlob[{proto, port, ipaddr, fqdn}], appDataBlobV6}]}
+
+# Programs whose traffic, once bypassed, carries anything a user or malware sends.
+_BROAD_PROCESSES = {"powershell.exe", "pwsh.exe", "pwsh", "cmd.exe", "python.exe", "pythonw.exe", "python", "python3", "wscript.exe",
+                    "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "bash", "sh", "zsh", "node.exe", "node", "java.exe",
+                    "javaw.exe", "java", "chrome.exe", "msedge.exe", "firefox.exe", "iexplore.exe", "safari", "google chrome",
+                    "curl.exe", "curl", "wget", "wget.exe", "svchost.exe", "explorer.exe", "ssh", "ssh.exe"}
+_BROAD_PATHS = re.compile(r"^(?:[a-z]:\\?|[a-z]:\\users\\?|[a-z]:\\program files(?: \(x86\))?\\?|/|/applications/?|/usr/?|/usr/bin/?|/users/?)$", re.I)
+
+
+def _zcc_list(d, key):
+    if isinstance(d, dict) and isinstance(d.get(key), list):
+        return [x for x in d[key] if isinstance(x, dict)]
+    return [x for x in _ls(d) if isinstance(x, dict)] if not isinstance(d, dict) else []
+
+
+def process_bypass_reasons(app):
+    """Why one process-based bypass app is broad (a list of plain reasons, empty when it is narrow)."""
+    why = []
+    names = [str(x).strip() for x in (app.get("fileNames") or []) if str(x).strip()][:200] if isinstance(app.get("fileNames"), list) else []
+    paths = [str(x).strip() for x in (app.get("filePaths") or []) if str(x).strip()][:200] if isinstance(app.get("filePaths"), list) else []
+    if any("*" in n or "?" in n for n in names) or any("*" in p for p in paths):
+        why.append("a wildcard matches any program")
+    hits = sorted({n.lower() for n in names if n.lower() in _BROAD_PROCESSES})
+    if hits:
+        why.append("bypasses a shell, script engine, browser or remote tool (" + ", ".join(hits[:5]) + ")")
+    if any(_BROAD_PATHS.match(p.rstrip()) for p in paths):
+        why.append("a whole drive or system folder is bypassed")
+    return why
+
+
+def zcc_27(cl):
+    """Process-based bypass apps — breadth"""
+    d, c = cl.get("/zcc/process-based-apps")
+    if c == 404:
+        return R(R.INFO, "Not applicable: process-based apps are not available on this tenant (the feature may not be licensed or enabled).")
+    if c in (401, 403):
+        return R(R.INFO, "Process-based apps API not accessible on this role.")
+    if c not in (200, 204):
+        return R(R.INFO, f"Process-based apps returned HTTP {c}.")
+    apps = _zcc_list(d, "appIdentities")
+    if not apps:
+        return R(R.PASS, "No process-based bypass app is defined: no program's traffic skips Client Connector.")
+    broad = [(str(a.get("appName") or a.get("id"))[:80], process_bypass_reasons(a)) for a in apps]
+    broad = [(n, w) for n, w in broad if w]
+    if broad:
+        detail = "; ".join(f"{n}: {', '.join(w)}" for n, w in broad[:10])
+        return R(R.FAIL, f"{len(broad)} of {len(apps)} process-based bypass app(s) are broad — {detail}. "
+                         "Why it matters: everything these programs send leaves the device without inspection, so a script, a browser or "
+                         "malware run through them carries data past every DLP and threat control. "
+                         "Best Practice: bypass a program by its full path (and signature where the portal offers it), never by wildcard, and never "
+                         "a shell, script engine, browser or remote-access tool; prefer a destination bypass for the one service that breaks "
+                         "(Client Connector Portal > App Profiles > Bypass > Process-based applications).",
+                 {"broad": len(broad), "apps": len(apps)})
+    return R(R.PASS, f"{len(apps)} process-based bypass app(s), each narrow (named programs, no wildcard, no shell or browser).",
+             {"broad": 0, "apps": len(apps)})
+
+
+def _every_port(port):
+    p = str(port or "").strip().replace(" ", "")
+    return p in ("", "*", "any", "all", "0-65535", "1-65535", "0", "0-0")
+
+
+def ip_bypass_reasons(app):
+    """Why one custom IP-based bypass app is broad."""
+    import ipaddress
+    why = set()
+    rows = []
+    for key in ("appDataBlob", "appDataBlobV6"):
+        if isinstance(app.get(key), list):
+            rows.extend(x for x in app[key][:500] if isinstance(x, dict))
+    for r in rows:
+        raw = str(r.get("ipaddr") or "").strip()
+        if not raw:
+            continue
+        try:
+            net = ipaddress.ip_network(raw, strict=False)
+        except ValueError:
+            continue
+        limit = 16 if net.version == 4 else 48
+        if net.prefixlen == 0:
+            why.add("the whole internet (" + str(net) + ")")
+        elif net.prefixlen < limit:
+            why.add(f"a range wider than /{limit} ({net})")
+        elif _every_port(r.get("port")) and not str(r.get("proto") or "").strip() and net.prefixlen < (24 if net.version == 4 else 64):
+            why.add(f"every port and protocol to {net}")
+    return sorted(why)
+
+
+def zcc_28(cl):
+    """Custom IP-based bypass apps — breadth"""
+    d, c = cl.get("/zcc/custom-ip-based-apps")
+    if c == 404:
+        return R(R.INFO, "Not applicable: custom IP-based apps are not available on this tenant (the feature may not be licensed or enabled).")
+    if c in (401, 403):
+        return R(R.INFO, "Custom IP-based apps API not accessible on this role.")
+    if c not in (200, 204):
+        return R(R.INFO, f"Custom IP-based apps returned HTTP {c}.")
+    apps = _zcc_list(d, "customAppContracts")
+    if not apps:
+        return R(R.PASS, "No custom IP-based bypass app is defined.")
+    broad = [(str(a.get("appName") or a.get("id"))[:80], ip_bypass_reasons(a)) for a in apps]
+    broad = [(n, w) for n, w in broad if w]
+    if broad:
+        detail = "; ".join(f"{n}: {', '.join(w[:3])}" for n, w in broad[:10])
+        return R(R.FAIL, f"{len(broad)} of {len(apps)} custom IP-based bypass app(s) are broad — {detail}. "
+                         "Why it matters: traffic to these addresses leaves the tunnel uninspected; a wide range or every port turns one "
+                         "exception into a way around the whole security stack. "
+                         "Best Practice: list the exact host addresses, protocol and port the application needs (a /24 or narrower), and "
+                         "review the list every quarter (Client Connector Portal > App Profiles > Bypass > Custom IP-based applications).",
+                 {"broad": len(broad), "apps": len(apps)})
+    return R(R.PASS, f"{len(apps)} custom IP-based bypass app(s), each limited to narrow ranges or named ports.", {"broad": 0, "apps": len(apps)})
+
+
 PLATFORM_REG = [
     # ZIA — Firewall
     ("FW.1", "ZIA — Firewall", "Firewall rules", fw_1),
@@ -2561,6 +2680,8 @@ PLATFORM_REG = [
     ("ZTW.6", "ZTW — Cloud & Branch Connector", "Connector locations: firewall and IPS on", ztw_6),
     ("ZTW.7", "ZTW — Cloud & Branch Connector", "Connector admins and roles", ztw_7),
     ("ZTW.8", "ZTW — Cloud & Branch Connector", "Provisioning API keys rotated", ztw_8),
+    ("ZCC.27", "ZCC — Mobile Portal",    "Process-based bypass apps — breadth",  zcc_27),
+    ("ZCC.28", "ZCC — Mobile Portal",    "Custom IP-based bypass apps — breadth", zcc_28),
 ]
 PLATFORM_REG = PLATFORM_REG + THREAT_SAAS_REG   # threat protection and SaaS Security hygiene (above)
 PLATFORM_REG = guard_registry(PLATFORM_REG)

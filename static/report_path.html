@@ -119,6 +119,28 @@
         <div class="df-hint">Every analysis follows this order. With ZPA in scope, ZPA is checked first (application segment, bypass, client forwarding and access policy): a destination ZPA carries never reaches ZIA. Otherwise the path starts from a <strong>candidate Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose (for a workload, the Cloud or Branch Connector forwarding rules), then the PAC file, evaluated for the destination but never run, then the ZIA modules: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control and URL filtering, SSL inspection (which decides what the later modules can see), Sandbox, File Type Control and Web DLP, then Forwarding control (how ZIA sends allowed traffic on: direct, proxy chaining, ZPA, a dedicated egress IP, or dropped). Traffic that is not web is decided by the Cloud Firewall (and DNS Control for its lookup). Endpoint DLP, SaaS Security API and Email DLP are separate inventories, not tested on this path. This is a configuration prediction: it does not prove that every stage executed for a real transaction.</div>
         <div id="paFrameworkBody"></div>
       </details>
+      <details class="pa-framework" id="zdxCp">
+        <summary id="zdxCpH">ZDX: the measured cloud path and its root cause (optional)</summary>
+        <div class="df-hint">The analysis above predicts the path from the configuration. ZDX measures it: from a device that probes the application to the network exit, to the Zscaler service edge and to the application, with the time and the loss on each leg. Needs ZDX ticked on the Scope page. No device or person is named; private addresses are hidden.</div>
+        <div class="rp-bar zdx-bar">
+          <button type="button" class="rp-btn" id="zdxCpLoad">Load ZDX applications</button>
+          <label class="df-ctl"><span class="lbl">ZDX application</span><select id="zdxCpApp" aria-label="ZDX application to show the cloud path of" disabled><option value="">Load the applications first</option></select></label>
+          <button type="button" class="rp-btn primary" id="zdxCpShow" disabled>Show the cloud path</button>
+        </div>
+        <div id="zdxCpOut" role="status" aria-live="polite"></div>
+        <h3 class="df-h" id="zdxRcaH">Find the root cause: a ZDX score analysis</h3>
+        <div class="df-hint">ZDX analyses the application on one device over the last hours and says what made the score drop. It changes nothing in the configuration, but it is an action on the tenant: it needs write mode, your permission to change the tenant, the assessor's name and the typed phrase START ANALYSIS. One start per tenant every 5 minutes.</div>
+        <div class="rp-bar zdx-bar">
+          <label class="df-ctl"><span class="lbl">Device id (optional)</span><input type="text" id="zdxRcaDev" inputmode="numeric" maxlength="20" placeholder="picked for you" aria-label="ZDX device id, digits only (optional)" autocomplete="off"></label>
+          <label class="df-ctl"><span class="lbl">Look back</span><select id="zdxRcaHours" aria-label="Hours to analyse"><option value="1">1 hour</option><option value="2" selected>2 hours</option><option value="4">4 hours</option><option value="8">8 hours</option><option value="24">24 hours</option></select></label>
+          <label class="df-ctl"><span class="lbl">Assessor's name</span><input type="text" id="zdxRcaWho" maxlength="80" aria-label="The assessor's name" autocomplete="name"></label>
+          <label class="df-ctl"><span class="lbl">Type START ANALYSIS</span><input type="text" id="zdxRcaPhrase" maxlength="40" aria-label="Type START ANALYSIS to confirm" autocomplete="off" spellcheck="false"></label>
+          <button type="button" class="rp-btn" id="zdxRcaStart" disabled>Start the analysis</button>
+          <button type="button" class="rp-btn" id="zdxRcaStatus" disabled>Read the result</button>
+          <button type="button" class="rp-btn" id="zdxRcaStop" disabled>Stop the analysis</button>
+        </div>
+        <div id="zdxRcaOut" role="status" aria-live="polite"></div>
+      </details>
       <div id="paBody">
         <div class="pa-intro" id="paHow">
           <div class="pa-intro-t">How it works</div>
@@ -200,6 +222,7 @@
   <script src="/static/flow_anim.js"></script><!-- the live path and the list flow (one motion engine) -->
   <script src="/static/path_list.js"></script>
   <script src="/static/category_lookup.js"></script>
+  <script src="/static/zdx_cloudpath.js"></script><!-- ZDX: the measured cloud path and the score analysis -->
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>
