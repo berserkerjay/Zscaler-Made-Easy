@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Guard — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .ag-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .ag-page .rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .ag-page .df-tablewrap { max-width: 100%; }
+  .ag-page .df-table td { vertical-align: top; overflow-wrap: anywhere; }
+  .ag-sec { margin-top: 1.2rem; }
+  .ag-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; margin: 0.5rem 0; }
+  .ag-row .df-ctl { min-width: 0; max-width: 100%; }
+  .ag-row select { max-width: 100%; min-width: 0; }
+  .ag-prompt { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.6rem 0.8rem; margin: 0.5rem 0; font-size: 0.9rem; max-width: 90ch; overflow-wrap: anywhere; }
+  .ag-yes { color: var(--fail); font-weight: 600; } .ag-ok { color: var(--pass); } .ag-dim { color: var(--dim); }
+  .ag-page :is(.df-hint, .ag-prompt) { min-width: 0; overflow-wrap: anywhere; }
+  .ag-page button:focus-visible, .ag-page select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page ag-page sh-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">AI</span> Guard</h1>
+      <p>What Zscaler AI Guard checks in the prompts people send to GenAI apps and the answers they get: its detection policies, the rules that pick a policy, the LLM applications and their credentials (names only, never a key). <strong>Test a prompt</strong> sends one made-up prompt from a fixed list and shows what each detector did. Nothing is changed in your Zscaler.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="agTenantWrap" hidden><span class="lbl">Tenant</span><select id="agTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="agRun">Read</button>
+      <a class="rp-btn" href="/report/operations?build=aiguard_detection_policy">Build a detection policy</a>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div class="pa-intro">
+        <div class="pa-intro-t">How it works</div>
+        <ol class="pa-steps">
+          <li><strong>Tick AI Guard on the Scope page.</strong> AI Guard is reached only with a OneAPI (ZIdentity) API client. Nothing else is read.</li>
+          <li><strong>Read.</strong> The policies, rules, applications and credential names are read once. The assessment scores the same configuration (checks AIG.1 to AIG.6).</li>
+          <li><strong>Test a prompt</strong> to see the policy at work. Only the made-up prompts listed are ever sent; on a live tenant it needs the server's AI Guard API key.</li>
+        </ol>
+      </div>
+      <div id="agBody"></div>
+      <section class="ag-sec" aria-labelledby="agTestH">
+        <h2 class="df-h" id="agTestH">Test a prompt</h2>
+        <div class="ag-row">
+          <label class="df-ctl"><span class="lbl">Made-up prompt</span><select id="agPrompt" aria-label="Made-up prompt to send"></select></label>
+          <label class="df-ctl"><span class="lbl">Direction</span><select id="agDir" aria-label="Prompt to the model or the model's answer"><option value="IN">Prompt to the model (IN)</option><option value="OUT">Model's answer (OUT)</option></select></label>
+          <label class="df-ctl"><span class="lbl">Detection policy</span><select id="agPolicy" aria-label="Detection policy to test against"><option value="">The one AI Guard picks</option></select></label>
+          <button type="button" class="rp-btn primary" id="agTest">Test the prompt</button>
+        </div>
+        <div class="ag-prompt" id="agPromptText"></div>
+        <div id="agKey" class="df-hint"></div>
+        <div id="agTestOut" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script src="/static/aiguard_page.js"></script>
+</body>
+</html>
