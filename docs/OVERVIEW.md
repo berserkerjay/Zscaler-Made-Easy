@@ -349,12 +349,20 @@ what you get, what to do next.
   only, not the whole traffic log, and says so.
 - **Traffic insights** — what the tenant's traffic actually did over a
   time window (up to 92 days), from ZIA Insights: web traffic allowed and
-  blocked and by location, the cloud applications in use (Shadow IT), SaaS
-  security by application, firewall traffic by action, and the users with
-  the most security incidents (on screen only, never exported). Needs ZIA
-  Insights ticked on the Scope page and a OneAPI API client. It says
-  plainly what Insights cannot answer: traffic by URL category, per user,
-  per policy rule or to one host.
+  blocked and by location, web threats by class and super-category, the
+  cloud applications in use (Shadow IT), SaaS security by application,
+  firewall traffic by action, location and network service, security
+  incidents by location, IoT and unmanaged device counts (now: that query
+  takes no time window), and the users with the most security incidents
+  (on screen only, never exported). Needs ZIA Insights ticked on the Scope
+  page and a OneAPI API client. It says plainly what Insights cannot
+  answer: traffic by URL category, per user, per policy rule or to one host.
+- **Shadow IT and SaaS checks** (in the assessment, only with ZIA Insights
+  ticked) — from the Shadow IT applications of the last 30 days: high-risk
+  unsanctioned apps that still carry traffic (INS.1), high-risk apps with no
+  sanction decision (INS.2) and sanctioned SaaS apps with traffic but no
+  SaaS Security API tenant (INS.3), N/A without traffic or a CASB
+  subscription. Application aggregates only.
 - **SSL coverage** — how much web traffic is not inspected, why, and what
   to change. Causes from configuration (SSL inspection rules that do not
   decrypt, the default rule, certificate-pinned exemptions and, with ZCC
@@ -522,9 +530,14 @@ what you get, what to do next.
   write mode, the assessor's name and your confirmation (typed above ten
   changes), re-reads each object right before its write and skips any
   item someone changed meanwhile, activates ZIA once, reads back, and
-  records the change with an Undo that is itself previewed. Cloud
-  application sanction is not offered: the SDK cannot read an
-  application's current state.
+  records the change with an Undo that is itself previewed. **Sanction or
+  unsanction cloud apps** (ZIA platform and ZIA Insights ticked) marks up
+  to 100 cloud applications Sanctioned or Unsanctioned: each app's state,
+  risk and traffic come from ZIA Insights (the SDK's application list has
+  no state), the typed phrase is always asked because the change is
+  tenant-wide, an app that moved since the preview is skipped, and Undo
+  puts each app back as it was; an app whose state cannot be read is not
+  changed.
   Under **Build new** the same page builds Client Connector profiles
   (needs ZCC ticked): pick Windows or macOS, a forwarding profile (best
   practice: tunnel on every network type, the listening-proxy redirect,
