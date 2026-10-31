@@ -106,9 +106,11 @@
                     <label class="df-ctl"><span class="lbl">Provider namespace</span><input type="text" id="exTfNs" maxlength="200" placeholder="zscaler" autocomplete="off" spellcheck="false"></label>
                     <label class="df-ctl"><span class="lbl">ZPA microtenant ID</span><input type="text" id="exTfMt" maxlength="20" inputmode="numeric" placeholder="parent tenant" autocomplete="off"></label>
                   </div>
-                  <label><input type="checkbox" id="exTfKeep"> Clone: keep each rule's state (on or off) instead of disabling it</label>
-                  <label><input type="checkbox" id="exTfPersonal"> Include objects that hold email addresses (alert subscriptions, PRA approvals)</label>
-                  <fieldset class="ex-colgrid" id="exTfTypes"><legend>Object types (untick to leave one out)</legend><span class="df-hint" id="exTfTypesNote">Loading the object types…</span></fieldset>
+                  <fieldset class="ex-pick"><legend class="sr-only">Clone and personal data</legend>
+                    <label><input type="checkbox" id="exTfKeep"> Clone: keep each rule's state (on or off) instead of disabling it</label>
+                    <label><input type="checkbox" id="exTfPersonal"> Include objects that hold email addresses (alert subscriptions, PRA approvals)</label>
+                  </fieldset>
+                  <div id="exTfTypes"><p class="df-hint">Object types: untick one to leave it out.</p><span class="df-hint" id="exTfTypesNote">Loading the object types…</span></div>
                 </details>
                 <div class="df-hint">Read-only. Only what the Scope page ticks is read: DLP or ZIA platform for ZIA, ZPA, Cloud &amp; Branch Connector, ZCC. No secret is ever written: pre-shared keys, passwords and private keys become sensitive variables you fill in. Users are not exported; predefined objects are looked up by name. Each workspace's README lists what was not exported and why.</div>
               </td>
@@ -494,12 +496,13 @@
         const d = await r.json();
         note.remove();
         Object.entries(d.products || {}).forEach(([p, types]) => {
-          const h = document.createElement('div'); h.className = 'df-by'; h.textContent = TF_PRODUCTS[p] || p; box.appendChild(h);
+          const fs = document.createElement('fieldset'); fs.className = 'ex-colgrid';
+          const lg = document.createElement('legend'); lg.textContent = TF_PRODUCTS[p] || p; fs.appendChild(lg); box.appendChild(fs);
           types.forEach(t => {
             const lab = document.createElement('label');
             const cb = document.createElement('input'); cb.type = 'checkbox'; cb.name = 'exTfType'; cb.value = t.key; cb.checked = true;
             const sp = document.createElement('span'); sp.textContent = `${t.label} (needs ${t.needs})`;
-            lab.appendChild(cb); lab.appendChild(sp); box.appendChild(lab);
+            lab.appendChild(cb); lab.appendChild(sp); fs.appendChild(lab);
           });
         });
       } catch (e) {

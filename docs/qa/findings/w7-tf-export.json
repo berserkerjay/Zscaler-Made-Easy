@@ -79,7 +79,7 @@
    "status": "fixed",
    "fix": "the export's mask keeps true/false values and a short list of non-secret provider arguments; every other secret-named value is still masked",
    "test": "tests/test_tenant_terraform.py::test_every_type_is_read_through_the_sdk_and_written_as_its_resource",
-   "commit": "pending"
+   "commit": "2734d57"
   },
   {
    "id": "TF-02",
@@ -90,7 +90,7 @@
    "status": "accepted",
    "fix": "listed under not covered with the reason",
    "test": "tests/test_tenant_terraform.py::test_the_catalogue_covers_the_three_providers_as_promised",
-   "commit": "pending"
+   "commit": "2734d57"
   }
  ],
  "tests_added": 114

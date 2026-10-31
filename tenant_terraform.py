@@ -723,12 +723,28 @@ def plan(scopes: Any, channels: Any, opts: Dict[str, Any], *, include_personal: 
     return {"read": read, "not_in_scope": nis, "left_out": left}
 
 
+_POLICY_WORDS = {"url_filtering": "DLP or ZIA platform", "file_type_control": "DLP or ZIA platform", "firewall": "ZIA platform",
+                 "ssl_inspection": "SSL inspection marked Zscaler", "cloud_app_control": "Cloud App Control marked Zscaler"}
+
+
+def _needs(t: Dict[str, Any]) -> str:
+    """The Scope page tick a type needs, in the page's words."""
+    kind, val = t["gate"]
+    if kind == "scope":
+        return _GATE_WORDS.get(val, val)
+    if kind == "any":
+        return "ZIA platform or DLP"
+    if kind == "policy":
+        return _POLICY_WORDS.get(val, "its policy in scope")
+    return f"DLP, {_CHANNEL_WORDS.get(val, val)} marked Zscaler"
+
+
 def catalogue() -> Dict[str, Any]:
     """The types per product, for the page and the docs."""
     out: Dict[str, Any] = {}
     for p in PRODUCTS:
         out[p] = [{"key": t["key"], "label": t["label"], "resource": t["resource"], "personal": t["personal"],
-                   "gate": t["gate"][0], "needs": _GATE_WORDS.get(t["gate"][1], t["gate"][1])} for t in TYPES if t["product"] == p]
+                   "gate": t["gate"][0], "needs": _needs(t)} for t in TYPES if t["product"] == p]
     return {"products": out, "labels": PRODUCT_LABELS, "not_covered": [{"product": p, "what": w, "why": y} for p, w, y in NOT_COVERED],
             "providers": {p: {"source": f"{DEFAULT_NAMESPACE}/{p}", "version": PROVIDERS[p]["version"]} for p in PRODUCTS}}
 
