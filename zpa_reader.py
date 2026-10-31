@@ -15,8 +15,25 @@ What is read (zscaler-sdk-python `client.zpa.*`, each list method answers
   posture_profiles.list_posture_profiles
   trusted_networks.list_trusted_networks
   machine_groups.list_machine_groups
-  policies.list_rules(t)                 t in access, timeout, client_forwarding, inspection, isolation
+  servers.list_servers                   application servers (/server)
+  app_protection.list_profiles           AppProtection inspection profiles (/inspectionProfile)
+  app_protection.list_custom_controls    AppProtection custom controls (/inspectionControls/custom)
+  private_cloud.list_private_clouds      Private Cloud sites (/privateCloud)
+  private_cloud_group.list_cloud_groups  Private Cloud Controller groups (/privateCloudControllerGroup)
+  private_cloud_controller.list_cloud_controllers   Private Cloud Controllers (/privateCloudController)
+  branch_connector_group.list_branch_connector_groups / branch_connectors.list_branch_connectors
+  cloud_connector_groups.list_cloud_connector_groups / cloud_connector_controller.list_cloud_connectors
+  business_continuity.list_business_continuity_settings   one page, no query parameters (the SDK takes none)
+  policies.list_rules(t)                 t in access, timeout, client_forwarding, inspection, isolation,
+                                         redirection, credential, capabilities, clientless (browser protection)
   scim_groups.list_scim_groups(idp_id)   only for the IdPs the access rules name in SCIM_GROUP conditions
+
+The policy-group model (policy_group*) is not read: it is not documented
+well enough to analyze yet.
+
+Business continuity settings carry SAML private keys and certificates
+(zscaler/zpa/models/business_continuity.py); only the switches and timers
+below are kept, never a key, certificate or metadata value.
 
 The SDK returns one page per call (oneapi_response: "The initial call to
 the API returns only one page"), so every list is read page by page with
@@ -55,7 +72,11 @@ STOPPED_REASON = ("You clicked Stop before the ZPA read finished, so it was aban
                   "from the tenant and no partial result is shown.")
 
 POLICY_TYPES = (("access", "access policy"), ("timeout", "timeout policy"), ("client_forwarding", "client forwarding policy"),
-                ("inspection", "inspection (AppProtection) policy"), ("isolation", "isolation policy"))
+                ("inspection", "inspection (AppProtection) policy"), ("isolation", "isolation policy"),
+                # SDK PolicySetControllerAPI.POLICY_MAP keys: REDIRECTION_POLICY, CREDENTIAL_POLICY,
+                # CAPABILITIES_POLICY, CLIENTLESS_SESSION_PROTECTION_POLICY.
+                ("redirection", "redirection policy"), ("credential", "privileged credential policy"),
+                ("capabilities", "privileged capabilities policy"), ("clientless", "browser protection policy"))
 
 # (key, label, service attribute, list method)
 COLLECTIONS = (
@@ -71,6 +92,26 @@ COLLECTIONS = (
     ("posture_profiles", "posture profiles", "posture_profiles", "list_posture_profiles"),
     ("trusted_networks", "trusted networks", "trusted_networks", "list_trusted_networks"),
     ("machine_groups", "machine groups", "machine_groups", "list_machine_groups"),
+    ("servers", "application servers", "servers", "list_servers"),
+    ("inspection_profiles", "inspection profiles", "app_protection", "list_profiles"),
+    ("custom_controls", "inspection custom controls", "app_protection", "list_custom_controls"),
+    ("private_clouds", "Private Cloud sites", "private_cloud", "list_private_clouds"),
+    ("private_cloud_groups", "Private Cloud Controller groups", "private_cloud_group", "list_cloud_groups"),
+    ("private_cloud_controllers", "Private Cloud Controllers", "private_cloud_controller", "list_cloud_controllers"),
+    ("branch_connector_groups", "Branch Connector groups", "branch_connector_group", "list_branch_connector_groups"),
+    ("branch_connectors", "Branch Connectors", "branch_connectors", "list_branch_connectors"),
+    ("cloud_connector_groups", "Cloud Connector groups", "cloud_connector_groups", "list_cloud_connector_groups"),
+    ("cloud_connectors", "Cloud Connectors", "cloud_connector_controller", "list_cloud_connectors"),
+)
+# What only ZPA analysis needs (read when `extended`): the Path analyzer and
+# Device posture read the rest and skip these, so their reads stay as short.
+EXTENDED_KEYS = frozenset({"servers", "inspection_profiles", "custom_controls", "private_clouds", "private_cloud_groups",
+                           "private_cloud_controllers", "branch_connector_groups", "branch_connectors", "cloud_connector_groups",
+                           "cloud_connectors", "business_continuity"})
+EXTENDED_POLICIES = frozenset({"redirection", "credential", "capabilities", "clientless"})
+# Lists whose SDK method takes no query parameters: one call, no paging.
+SINGLE_CALL = (
+    ("business_continuity", "business continuity settings", "business_continuity", "list_business_continuity_settings"),
 )
 
 # Connector and Private Service Edge status (controlChannelStatus), as
@@ -377,6 +418,19 @@ def normalize_rule(r: Dict[str, Any], index: int, policy: str) -> Dict[str, Any]
             "conditions": conds,
             "server_group_ids": _ref_ids(get(r, "appServerGroups")),
             "connector_group_ids": _ref_ids(get(r, "appConnectorGroups")),
+            # Redirection rules name Private Service Edge groups (PolicySetControllerV1.serviceEdgeGroups).
+            "service_edge_group_ids": _ref_ids(get(r, "serviceEdgeGroups")),
+            "service_edge_group_names": {x["id"]: x["name"][:200] for x in _refs(get(r, "serviceEdgeGroups")) if x["name"]},
+            "inspection_profile_id": as_str(get(r, "zpnInspectionProfileId")),
+            "inspection_profile_name": as_str(get(r, "zpnInspectionProfileName")),
+            "isolation_profile_id": as_str(get(r, "zpnIsolationProfileId")),
+            # Privileged capabilities (CAPABILITIES_POLICY): privilegedCapabilities.capabilities,
+            # e.g. CLIPBOARD_COPY, FILE_DOWNLOAD, INSPECT_FILE_UPLOAD, RECORD_SESSION
+            # (SDK add_capabilities_rule_v2). None when the rule carries no such block.
+            "capabilities": _capabilities(get(r, "privilegedCapabilities")),
+            # Credential rules (CREDENTIAL_POLICY) name a credential or a credential pool by
+            # reference only; the credential itself is never read.
+            "credential": _one_ref(get(r, "credential")), "credential_pool": _one_ref(get(r, "credentialPool")),
             "microtenant_id": as_str(get(r, "microtenantId")),
             "description": as_str(get(r, "description"))[:300],
             # The generic guard (rule_fields, module "zpa"): a non-empty field
@@ -384,6 +438,110 @@ def normalize_rule(r: Dict[str, Any], index: int, policy: str) -> Dict[str, Any]
             # neutral (extranet, browser posture, or a field a newer API
             # adds) makes the rule conditional, never a definite match.
             "unknown_fields": [{"field": o["field"], "label": o["label"], "why": o["why"]} for o in rule_fields.other_fields(r, "zpa")][:20]}
+
+
+def _capabilities(v: Any) -> Optional[List[str]]:
+    if not isinstance(v, dict):
+        return None
+    caps = get(v, "capabilities")
+    return sorted({as_str(c).upper() for c in _items(caps) if as_str(c)})[:50] if caps is not None else []
+
+
+def _one_ref(v: Any) -> Optional[Dict[str, str]]:
+    if isinstance(v, dict) and as_str(v.get("id")):
+        return {"id": as_str(v.get("id")), "name": as_str(v.get("name"))[:200]}
+    return None
+
+
+# AppProtection actions (SDK add_profile docstring: PASS, BLOCK or REDIRECT).
+# PASS lets the request through and logs it, so a profile whose every known
+# action is PASS only monitors. Global actions are "<CONTROLS>:<ACTION>"
+# strings (globalControlActions, e.g. "PREDEFINED:PASS"; the shape is
+# assumed from the values ZPA shows, the SDK types them only as strings).
+INSPECTION_ACTIONS = ("PASS", "BLOCK", "REDIRECT")
+_CONTROL_LISTS = ("predefinedControls", "customControls", "threatlabzControls", "websocketControls",
+                  "predefinedADPControls", "predefinedApiControls")
+
+
+def _name(x: Dict[str, Any]) -> str:
+    """An object's name (else its id), capped: names are tenant text."""
+    return (as_str(get(x, "name")) or as_str(get(x, "id")))[:300]
+
+
+def normalize_inspection_profile(p: Dict[str, Any]) -> Dict[str, Any]:
+    actions: List[str] = []
+    for g in _items(get(p, "globalControlActions")):
+        word = as_str(g).upper().rsplit(":", 1)[-1]
+        if word in INSPECTION_ACTIONS:
+            actions.append(word)
+    custom_ids: List[str] = []
+    for key in _CONTROL_LISTS:
+        for c in _items(get(p, key)):
+            if not isinstance(c, dict):
+                continue
+            word = as_str(get(c, "action")).upper()
+            if word in INSPECTION_ACTIONS:
+                actions.append(word)
+            if key == "customControls" and as_str(c.get("id")):
+                custom_ids.append(as_str(c.get("id")))
+    found = sorted(set(actions))
+    return {"id": as_str(get(p, "id")), "name": _name(p),
+            "paranoia_level": as_str(get(p, "paranoiaLevel")), "actions": found,
+            "monitor_only": (found == ["PASS"]) if found else None,
+            "custom_control_ids": custom_ids}
+
+
+def normalize_custom_control(c: Dict[str, Any]) -> Dict[str, Any]:
+    return {"id": as_str(get(c, "id")), "name": _name(c),
+            "action": as_str(get(c, "action")).upper(), "default_action": as_str(get(c, "defaultAction")).upper(),
+            "severity": as_str(get(c, "severity")).upper(), "control_type": as_str(get(c, "controlType")).upper(),
+            "profiles": _refs(get(c, "associatedInspectionProfileNames"))}
+
+
+def normalize_server(x: Dict[str, Any]) -> Dict[str, Any]:
+    return {"id": as_str(get(x, "id")), "name": _name(x),
+            "address": as_str(get(x, "address"))[:300], "enabled": as_bool(get(x, "enabled")) is not False,
+            "server_group_ids": _ref_ids(get(x, "appServerGroupIds"))}
+
+
+def normalize_business_continuity(x: Dict[str, Any]) -> Dict[str, Any]:
+    """Only switches and timers: the settings also carry SAML private keys,
+    certificates and IdP metadata, which are never kept."""
+    return {"id": as_str(get(x, "id")),
+            "backup_enabled": as_bool(get(x, "backupEnabled")),
+            "switch_time_enabled": as_bool(get(x, "switchTimeEnabled")),
+            "max_down_time": as_str(get(x, "maxAllowedDownTime"))[:20],
+            "max_down_time_unit": as_str(get(x, "maxAllowedDownTimeUnit"))[:20],
+            "new_user_support": as_bool(get(x, "newUserSupport")),
+            "use_existing_idp": as_bool(get(x, "useExistingIdp"))}
+
+
+def normalize_private_cloud(x: Dict[str, Any]) -> Dict[str, Any]:
+    return {"id": as_str(get(x, "id")), "name": _name(x),
+            "enabled": as_bool(get(x, "enabled")) is not False, "fire_drill_enabled": as_bool(get(x, "fireDrillEnabled")),
+            "controller_group_ids": _ref_ids(get(x, "siteControllerGroupIds"))}
+
+
+def normalize_private_cloud_group(g: Dict[str, Any]) -> Dict[str, Any]:
+    return {"id": as_str(get(g, "id")), "name": _name(g),
+            "enabled": as_bool(get(g, "enabled")) is not False, "site_id": as_str(get(g, "siteId")),
+            "site_name": as_str(get(g, "siteName")), "location": as_str(get(g, "location"))[:200]}
+
+
+def normalize_private_cloud_controller(c: Dict[str, Any]) -> Dict[str, Any]:
+    raw, up = _status(c)
+    return {"id": as_str(get(c, "id")), "name": _name(c),
+            "enabled": as_bool(get(c, "enabled")) is not False,
+            "group_id": as_str(get(c, "privateCloudControllerGroupId")), "status_raw": raw, "connected": up,
+            "current_version": as_str(get(c, "currentVersion")), "expected_version": as_str(get(c, "expectedVersion"))}
+
+
+def normalize_edge_connector(c: Dict[str, Any], group_key: str) -> Dict[str, Any]:
+    """A Branch or Cloud Connector as ZPA lists it (no status field in the
+    SDK models): name, switch and group only; enrollment certificates,
+    fingerprints and IP ACLs are not kept."""
+    return {"id": as_str(get(c, "id")), "name": _name(c),
+            "enabled": as_bool(get(c, "enabled")) is not False, "group_id": as_str(get(c, group_key))}
 
 
 def order_rules(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -529,9 +687,12 @@ def customer_id_problem(client: Any) -> Optional[str]:
 
 
 def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optional[threading.Event] = None,
-         pace: Optional[float] = None) -> Dict[str, Any]:
+         pace: Optional[float] = None, extended: bool = True) -> Dict[str, Any]:
     """Read the ZPA configuration once (see the module docstring). Returns
-    the normalized snapshot; raises Stopped when Stop is clicked."""
+    the normalized snapshot; raises Stopped when Stop is clicked. Without
+    `extended` the lists only ZPA analysis uses (EXTENDED_KEYS,
+    EXTENDED_POLICIES) are not read: they are absent from the snapshot's
+    collections, so anything that needs them says "not read"."""
     def _log(line: str) -> None:
         if log:
             log(line)
@@ -565,6 +726,8 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
         return items
 
     for key, label, svc_name, method in COLLECTIONS:
+        if not extended and key in EXTENDED_KEYS:
+            continue
         svc = getattr(zpa, svc_name, None)
         fn = getattr(svc, method, None) if svc is not None else None
         if not callable(fn):
@@ -575,8 +738,24 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
         if snap["collections"][key]["read"] is False:
             raw_lists.pop(key, None)
 
+    for key, label, svc_name, method in SINGLE_CALL if extended else ():
+        svc = getattr(zpa, svc_name, None)
+        fn = getattr(svc, method, None) if svc is not None else None
+        if not callable(fn):
+            snap["collections"][key] = {"label": label, "read": False, "count": 0, "complete": False,
+                                        "error": "not available in this SDK version"}
+            continue
+        # One call (max_pages=1); the SDK method takes no paging parameters.
+        raw_lists[key] = one(key, label, lambda q, _fn=fn: _fn(), 1) or []
+        if snap["collections"][key]["read"] is False:
+            raw_lists.pop(key, None)
+        else:
+            snap["collections"][key]["complete"] = True
+
     policies = getattr(zpa, "policies", None)
     for ptype, label in POLICY_TYPES:
+        if not extended and ptype in EXTENDED_POLICIES:
+            continue
         fn = getattr(policies, "list_rules", None) if policies is not None else None
         key = f"policy:{ptype}"
         if not callable(fn):
@@ -592,7 +771,14 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
             "saml_attributes": lambda x: dict(normalize_simple(x, "idpId", "samlName", "userAttribute"), idp_name=as_str(get(x, "idpName"))),
             "posture_profiles": lambda x: normalize_simple(x, "postureUdid", "platform"),
             "trusted_networks": lambda x: normalize_simple(x, "networkId"),
-            "machine_groups": lambda x: normalize_simple(x)}
+            "machine_groups": lambda x: normalize_simple(x),
+            "servers": normalize_server, "inspection_profiles": normalize_inspection_profile,
+            "custom_controls": normalize_custom_control, "business_continuity": normalize_business_continuity,
+            "private_clouds": normalize_private_cloud, "private_cloud_groups": normalize_private_cloud_group,
+            "private_cloud_controllers": normalize_private_cloud_controller,
+            "branch_connector_groups": lambda x: normalize_simple(x), "cloud_connector_groups": lambda x: normalize_simple(x),
+            "branch_connectors": lambda x: normalize_edge_connector(x, "branchConnectorGroupId"),
+            "cloud_connectors": lambda x: normalize_edge_connector(x, "edgeConnectorGroupId")}
     for key, fn in norm.items():
         if key in raw_lists:
             snap[key] = [fn(x) for x in raw_lists[key]]
@@ -624,7 +810,9 @@ def readable(snap: Dict[str, Any]) -> bool:
 def summary(snap: Dict[str, Any]) -> Dict[str, Any]:
     """Counts per collection, for the page header."""
     out = {}
-    for k in ("segments", "segment_groups", "server_groups", "connector_groups", "connectors", "service_edge_groups", "idps"):
+    for k in ("segments", "segment_groups", "server_groups", "connector_groups", "connectors", "service_edge_groups", "idps",
+              "servers", "inspection_profiles", "custom_controls", "private_cloud_groups", "private_cloud_controllers",
+              "branch_connector_groups", "branch_connectors", "cloud_connector_groups", "cloud_connectors"):
         v = snap.get(k)
         out[k] = None if v is None else len(v)
     out["rules"] = {k: len(v) for k, v in (snap.get("policies") or {}).items()}

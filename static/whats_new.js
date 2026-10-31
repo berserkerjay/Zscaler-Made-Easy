@@ -666,6 +666,17 @@ window.WHATS_NEW = {
       "what": "The pack library says why the PCI-only Endpoint DLP pack was retired and which packs cover endpoints now.",
       "changelog": ["Why the Endpoint DLP pack is gone"],
       "marks": [{ "page": "/report/advanced", "at": "#advRetired > strong" }]
+    },
+    {
+      "id": "zpa-policy-completeness", "release": "2026-10-31", "label": "ZPA policy completeness",
+      "what": "ZPA analysis reads every ZPA policy type and checks inspection, client forwarding bypasses, Privileged Remote Access, redirection, unmanaged-device isolation, business continuity and Branch and Cloud Connectors; the assessment has six new ZPA checks.",
+      "changelog": ["Every ZPA policy type is read", "AppProtection inspection", "Client forwarding bypass", "Privileged Remote Access",
+                    "Redirection", "Unmanaged-device access", "Infrastructure in the diagnostics", "Six new assessment checks"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openZpaTab()\"]" },
+        { "page": "/report/zpa", "at": ".rp-hero h1" },
+        { "page": "/report/zpa", "at": "#zpRun" }
+      ]
     }
   ]
 };

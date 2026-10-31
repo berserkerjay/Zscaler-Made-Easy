@@ -1039,7 +1039,15 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                          "serviceEdge", "idp", "samlAttribute", "postureProfile", "trustedNetwork", "machineGroup",
                                          "policySet/rules/ACCESS_POLICY", "policySet/rules/TIMEOUT_POLICY",
                                          "policySet/rules/policyType/CLIENT_FORWARDING_POLICY", "policySet/rules/policyType/INSPECTION_POLICY",
-                                         "policySet/rules/policyType/ISOLATION_POLICY")]
+                                         "policySet/rules/policyType/ISOLATION_POLICY",
+                                         # ZPA policy completeness: the other policy types, AppProtection and the
+                                         # infrastructure behind the ZPA diagnostics (zpa_reader.COLLECTIONS).
+                                         "policySet/rules/policyType/REDIRECTION_POLICY", "policySet/rules/policyType/CREDENTIAL_POLICY",
+                                         "policySet/rules/policyType/CAPABILITIES_POLICY",
+                                         "policySet/rules/policyType/CLIENTLESS_SESSION_PROTECTION_POLICY",
+                                         "inspectionProfile", "inspectionControls/custom", "server", "businessContinuitySettings",
+                                         "privateCloud", "privateCloudControllerGroup", "privateCloudController",
+                                         "branchConnectorGroup", "branchConnector", "cloudConnectorGroup", "cloudConnector")]
     # ZPA administration, for the RBAC checks: read only with RBAC ticked (and
     # ZPA, which the service guard requires). Saved scrubbed: no password,
     # client secret, token or provisioning-key value is ever in the file.
@@ -1078,7 +1086,9 @@ def capture_plan(scopes: Iterable[str]) -> List[str]:
     out = [ep for tags, ep in CAPTURE if sc & set(tags)]
     if "zcc" in sc:
         out.append("/zcc/webPolicies")
-    return out
+    # An endpoint two parts need (the ZPA builders' catalogue and the RBAC
+    # checks, say) is read once.
+    return list(dict.fromkeys(out))
 
 
 def _paths_for(ep: str) -> List[str]:
@@ -1153,7 +1163,17 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
     return {"responses": responses, "counts": counts, "unread": unread, "stopped": False}
 
 
+# ZPA lists read in one call: the SDK's list method takes no paging parameters.
+_ZPA_SINGLE = {"/zpa/businessContinuitySettings"}
+
+
 def _read_zpa(guard: Any, ep: str) -> Tuple[Any, int]:
+    if ep in _ZPA_SINGLE:
+        body, code = guard.get(ep)
+        if code not in (200, 204):
+            return body, code
+        rows = _items(body) or []
+        return {"list": rows, "totalPages": "1", "totalCount": str(len(rows))}, 200
     rows: List[Any] = []
     for page in range(1, MAX_LIST_PAGES + 1):
         body, code = guard.get(ep, {"page": page, "pagesize": 500})

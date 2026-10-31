@@ -293,8 +293,8 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 143,
-            "accepted": 4,
+            "fixed": 145,
+            "accepted": 5,
             "records": [
               "c6-assessment",
               "c6-checks",
@@ -307,6 +307,7 @@
               "w7-path-extras",
               "w7-zpa-identity",
               "w8-zia-governance",
+              "w8-zpa-policy",
               "w8-zpa-rbac"
             ]
           },
@@ -473,7 +474,7 @@
     }
   ],
   "counts": {
-    "findings": 687,
+    "findings": 690,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -487,27 +488,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 175,
+        "fixed": 176,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 384,
+        "fixed": 385,
         "accepted": 3
       },
       "info": {
         "open": 0,
         "fixed": 66,
-        "accepted": 39
+        "accepted": 40
       }
     },
     "checks": {
-      "pass": 557,
+      "pass": 568,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 10866
+    "tests_added": 10889
   },
   "findings": [
     {
@@ -1211,6 +1212,22 @@
       "commit": "",
       "reason": "Sample data, not this feature: renaming the field in sample_tenant.py changes fleet health's ghost and blind-spot answers on the sample, which other pages' tests pin; the device pick shows it honestly as unknown",
       "slug": "w7-path-extras",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W8-ZPA-03",
+      "title": "The policy-group model (policy_group, policy_group_rule, policy_group_set) is not read",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "Left out on purpose until the model is documented; the reader's docstring and a test say so.",
+      "test": "tests/test_zpa_policy_completeness.py::test_every_policy_type_and_new_list_is_read_with_list_methods_only",
+      "commit": "ac75d3f",
+      "reason": "",
+      "slug": "w8-zpa-policy",
       "area": "functionality",
       "sub_area": "traffic_analysis"
     },
@@ -4283,6 +4300,22 @@
       "commit": "e2eb71d",
       "reason": "",
       "slug": "w7-zpa-identity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W8-ZPA-01",
+      "title": "Only five of the SDK's ZPA policy types were read: redirection, privileged credential and capabilities, and browser protection policies were never assessed",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "zpa_reader reads every policy type the SDK's PolicySetControllerAPI.POLICY_MAP lists except the portal, VPN and SIEM policies; ten templates and six assessment checks judge them.",
+      "test": "tests/test_zpa_policy_completeness.py::test_every_policy_type_and_new_list_is_read_with_list_methods_only",
+      "commit": "ac75d3f",
+      "reason": "",
+      "slug": "w8-zpa-policy",
       "area": "functionality",
       "sub_area": "traffic_analysis"
     },
@@ -10415,6 +10448,22 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W8-ZPA-02",
+      "title": "A server group listing its servers only through the application server list was called empty (ZPA-SV-01) and served by 0 servers in a diagnosis",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V11.1.4",
+      "wcag": "",
+      "fix": "Servers are counted from the group, else from the application server list (each server names its groups).",
+      "test": "tests/test_zpa_policy_completeness.py::test_a_server_group_listing_no_servers_counts_them_from_the_server_list",
+      "commit": "ac75d3f",
+      "reason": "",
+      "slug": "w8-zpa-policy",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "W8-ZPA-RBAC-01",
       "title": "Snapshot scrub masked tokenExpiryTimeInSec (a token lifetime, not a secret), so a token-lifetime check could never judge a snapshot or the sample",
       "severity": "low",
@@ -13225,6 +13274,20 @@
       "checks": 8,
       "findings": 6,
       "tests_added": 59
+    },
+    {
+      "slug": "w8-zpa-policy",
+      "area": "zpa-policy",
+      "title": "ZPA policy completeness: every ZPA policy type, AppProtection and the infrastructure behind the diagnostics",
+      "standards": [
+        "ASVS 4.0.3 L2 V1.4, V1.14, V4.1, V5.1, V7.1, V7.4, V8.3",
+        "OWASP Top 10 2021 A01, A04, A05",
+        "WSTG ATHZ-02, ATHZ-03, CONF-01, CONF-05, ERRH-01, INFO-05, INPV-12",
+        "CWE-200, CWE-284, CWE-312, CWE-693, CWE-754, CWE-778, CWE-1164, CWE-1188"
+      ],
+      "checks": 11,
+      "findings": 3,
+      "tests_added": 23
     },
     {
       "slug": "w8-zpa-rbac",
