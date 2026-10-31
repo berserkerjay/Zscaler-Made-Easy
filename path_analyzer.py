@@ -208,7 +208,8 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
             cancel: Any = None, context: Optional[Dict[str, Any]] = None, lookup: Optional[Dict[str, Any]] = None,
             protocol: Optional[str] = None, port: Optional[int] = None,
             packs: Optional[List[Dict[str, Any]]] = None,
-            identity: Any = None, device: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            identity: Any = None, device: Optional[Dict[str, Any]] = None,
+            manual: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The live analysis. `scope` (data_flow.path_scope: the Scope page's
     ticked scopes and the channels marked Zscaler) is required, and only
     the parts of the tenant in it are read; every other hop says "not in
@@ -231,7 +232,11 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     `device` (path_device: a device picked from the Client Connector
     Portal) replaces the platform with the device's, follows the app
     profile the Portal reports for it, and adds the result's `device`
-    block (what applied and why, what is unknown)."""
+    block (what applied and why, what is unknown). `manual` (path_manual.
+    parse: pasted PAC text, VPN gateways, Z-Tunnel 2.0 lists) adds the
+    result's `manual_inputs` block; in its "merge" mode the inputs are
+    added to every app profile read and the whole trace is a what-if.
+    Neither the inputs nor the merged profiles are kept with the read."""
     _log = log or (lambda m: None)
 
     def _stopped() -> Stopped:
@@ -329,6 +334,12 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
         zcc_t, dctx = path_device.apply_device(zcc, device)
         _log("Using the device you picked: " + (f"the app profile the Client Connector Portal reports for it ({dctx['profile']['name']})."
                                                  if dctx.get("profile") else "its platform; its app profile is chosen as for any device (see The device)."))
+    merged = None
+    if manual and manual.get("mode") == "merge":
+        import path_manual
+        zcc_t, merged = path_manual.apply(zcc_t, manual)
+        _log(f"What-if: your manual inputs are added to the {merged['profiles']} app profile(s) read"
+             + (", and the pasted PAC replaces the linked one" if manual.get("pac_text") else "") + ". Nothing is written.")
     _log("Tracing the path hop by hop…")
     t = trace(rd, network, platform, zcc_t, zia_t, load_packs() if packs is None else packs, scope=scope, context=context)
     zm = zia_path_modules.evaluate(t, d, traffic, zia_t, lk, context)
@@ -359,6 +370,17 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     if device:
         out["device"] = path_device.describe(device, dctx, t, network)
         verdict["impacts"] = list(verdict.get("impacts") or []) + out["device"]["impacts"]
+    if manual:
+        import path_manual
+        out["manual_inputs"] = path_manual.evaluate(manual, d, traffic, rd["pac_url"])
+        if merged is not None:
+            out["manual_inputs"]["merged"] = merged
+            verdict["hypothetical"] = True
+            verdict["headline"] = "What-if (your manual inputs added): " + verdict["headline"]
+            assumptions.insert(0, "What-if: the manual inputs you typed are added to every app profile read"
+                               + (" and the pasted PAC replaces the linked PAC" if manual.get("pac_text") else "")
+                               + "; they are not in the tenant.")
+        assumptions += path_manual.ASSUMED
     # Recent traffic to this destination: only when ZIA Insights is in
     # scope, and never faked. Z-Insights cannot filter by host or domain,
     # so this says so without asking the tenant anything.

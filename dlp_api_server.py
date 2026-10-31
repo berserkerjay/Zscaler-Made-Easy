@@ -11915,6 +11915,7 @@ async def path_analyzer_batch_start(req: PathBatchRequest, request: Request):
     import pack_jobs
     hosts, stats, skipped = _batch_hosts(req)
     scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
+    _path_manual(getattr(req, "whatif_bypass", None), scope)   # a bad what-if input is refused before sign-in too
     creds = _tenant_creds(req)
     snapshot = _kept_path_read(req.report_id, scope, creds, req.platform)
     client = await asyncio.to_thread(_build_client, req)
@@ -13127,6 +13128,9 @@ class PathAnalyzerRequest(MigrateRequest):
     workload: Dict[str, Any] = {}  # ip, tags, workload_group, connector_group (workload_path.workload_input)
     zpa_report_id: str = ""        # the ZPA read to reuse
     ztw_report_id: str = ""        # the Cloud & Branch Connector read to reuse
+    # What-if inputs (path_manual.parse, checked before sign-in): pasted PAC
+    # text and manual VPN gateways and Z-Tunnel 2.0 lists, evaluated, never run.
+    whatif_bypass: Dict[str, Any] = {}
 
     @field_validator("protocol", mode="before")
     @classmethod
@@ -13358,7 +13362,8 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
         _log(f"In scope, from {scope['source']}: {scope['summary']}")
     try:
         out = path_analyzer.analyze(client, req.destination, req.network, req.platform, scope=scope, snapshot=snapshot, log=_log, cancel=cancel,
-                                    protocol=req.protocol or None, port=req.port, identity=req.identity, device=device)
+                                    protocol=req.protocol or None, port=req.port, identity=req.identity, device=device,
+                                    manual=_path_manual(getattr(req, "whatif_bypass", None), scope))
     except path_analyzer.Stopped as e:
         return {"stopped": str(e), "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
     if cancel is not None and cancel.is_set():
@@ -13383,6 +13388,24 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
     out["tenant_label"] = label
     out["logs"] = logs
     return out
+
+
+PATH_MANUAL_MERGE_NOT_IN_SCOPE = ("Adding your manual inputs to the tenant's app profiles needs Client Connector in scope: on the Scope page "
+                                  "tick ZCC, or evaluate the inputs on their own. Nothing was read.")
+
+
+def _path_manual(raw: Any, scope: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """The Path analyzer's manual what-if inputs (path_manual.parse), checked
+    before sign-in: 400 in words for a bad one, and for "merge" while
+    Client Connector is not in scope."""
+    import path_manual
+    try:
+        m = path_manual.parse(raw)
+    except path_manual.ManualError as e:
+        raise HTTPException(status_code=400, detail=f"{e} Nothing was read.")
+    if m and m["mode"] == "merge" and scope is not None and "zcc" not in (scope.get("read") or []):
+        raise HTTPException(status_code=400, detail=PATH_MANUAL_MERGE_NOT_IN_SCOPE)
+    return m
 
 
 def _kept_path_read(report_id: str, scope: Dict[str, Any], creds: Dict[str, str], platform: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -13970,6 +13993,9 @@ def _path_inputs(req: PathAnalyzerRequest) -> Dict[str, Any]:
     if source == "device" and not scope["read"] and not zpa_on:
         raise HTTPException(status_code=400, detail=PATH_NOTHING)
     zid = _path_zpa_identity(req.identity, zpa_on)
+    manual = _path_manual(req.whatif_bypass, scope)
+    if manual and source != "device":
+        raise HTTPException(status_code=400, detail="Manual Client Connector and PAC inputs apply to traffic from a user device, not from a workload. Nothing was read.")
     if req.device and source != "device":
         raise HTTPException(status_code=400, detail="A picked device applies to traffic from a user device, not from a workload. Nothing was read.")
     if req.device and "zcc" not in sc:
@@ -13992,7 +14018,7 @@ def _path_inputs(req: PathAnalyzerRequest) -> Dict[str, Any]:
     zid_lookup = source == "device" and zpa_on and not zpa_problem and zpa_identity.needs_lookup(zid)
     return {"source": source, "pdest": pdest, "d": d, "w": w, "scope": scope, "zpa_on": zpa_on, "zpa_problem": zpa_problem, "device": device,
             "creds": creds, "label": tenant_auth.record_label(creds), "zia_kept": _kept_path_read(req.report_id, scope, creds) if scope["read"] else None,
-            "zpa_kept": zpa_kept, "ztw_kept": ztw_kept, "zid": zid, "zid_lookup": zid_lookup,
+            "zpa_kept": zpa_kept, "ztw_kept": ztw_kept, "zid": zid, "zid_lookup": zid_lookup, "manual": manual,
             "need_sdk": (zpa_on and not zpa_problem and (zpa_kept is None or zid_lookup)) or (source == "workload" and ztw_kept is None)}
 
 
@@ -14129,6 +14155,14 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
         if inp.get("device") and not res.get("device"):
             import path_device   # ZIA was not traced (ZPA carries it): the device's facts, no profile applied
             res["device"] = path_device.describe(inp["device"], None, None, req.network)
+        if inp.get("manual") and not res.get("manual_inputs"):
+            import path_analyzer   # ZIA was not traced (ZPA carries it, or no ZIA part is in scope): the inputs on their own
+            import path_manual
+            import zia_path_modules
+            traffic = zia_path_modules.traffic_context(pd, req.protocol, req.port)
+            res["manual_inputs"] = path_manual.evaluate(inp["manual"], pd, traffic, path_analyzer.pac_url(pd, traffic))
+            if inp["manual"]["mode"] == "merge":
+                res["manual_inputs"]["merged_note"] = "ZIA was not traced on this path, so the inputs are shown on their own."
         v = res.get("verdict") or {}
         v["not_in_scope"] = list(v.get("not_in_scope") or []) + zpa_not_in_scope
         _log(f"Verdict: {v.get('headline', '')}")
