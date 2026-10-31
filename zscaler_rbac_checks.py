@@ -233,7 +233,8 @@ _NOT_LICENSED = (400, 404, 405)
 
 def _zpa_rows(cl, ep, extra=None):
     """Every row of a ZPA list (paged, bounded), scrubbed of secret values.
-    (rows, HTTP status of the first page)."""
+    (rows, HTTP status). A page that fails after the first makes the whole
+    list unread: a check never judges a list cut short."""
     from offline_tenant import scrub
     rows, first = [], None
     for page in range(1, _ZPA_PAGES + 1):
@@ -243,7 +244,7 @@ def _zpa_rows(cl, ep, extra=None):
         if first is None:
             first = c
         if c not in (200, 204):
-            break
+            return [], c
         items = [x for x in _ls(d) if isinstance(x, dict)] if c == 200 else []
         rows.extend(scrub(items))
         try:

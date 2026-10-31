@@ -366,6 +366,21 @@ def test_paging_is_bounded():
     assert len(cl.reads) == 10 and len(rows) == 10
 
 
+def test_a_list_cut_short_is_not_judged():
+    """ASVS V11.1.2 · CWE-754 · WSTG-ERRH-01: when page 2 of the admin list fails, the check says it could not read the list instead of judging page 1 alone."""
+    # Arrange
+    def admins(params):
+        if params.get("page", 1) == 1:
+            return (_zpa([_admin(1), _admin(2)], pages=2), 200)
+        return ({"error": "busy"}, 503)
+    cl = Fake({rb.ZPA_ADMINS: admins})
+    # Act
+    r = rb.rbac_zpa_admin_mfa(cl)
+    rows, code = rb._zpa_rows(cl, rb.ZPA_ADMINS)
+    # Assert
+    assert r.status == R.INFO and "HTTP 503" in r.detail and (rows, code) == ([], 503)
+
+
 def test_no_zpa_rbac_check_writes():
     """ASVS V4.1.3 · CWE-284 · WSTG-CONF-06: the checks only call get(); a client without post/put/delete is enough."""
     # Arrange
