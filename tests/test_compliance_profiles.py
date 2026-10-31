@@ -82,8 +82,9 @@ def test_the_assumed_list_names_every_unverified_control():
 # ── Every rule mapped ───────────────────────────────────────────────────
 
 def test_every_catalog_rule_and_atp_setting_has_an_objective_or_a_reason_code():
-    """ASVS V1.14.1 · CWE-1059: every ZIA baseline catalog rule and ATP setting is in RULE_OBJECTIVES with a known objective or reason code."""
-    keys = {r["key"] for r in zb.CATALOG} | {"atp." + k for k, _ in zb.ATP_SETTINGS}
+    """ASVS V1.14.1 · CWE-1059: every ZIA baseline catalog rule, ATP setting and UCaaS one-click switch is in RULE_OBJECTIVES with a known objective or reason code."""
+    import ucaas_oneclick
+    keys = {r["key"] for r in zb.CATALOG} | {"atp." + k for k, _ in zb.ATP_SETTINGS} | {"ucaas." + k for k in ucaas_oneclick.KEYS}
     assert keys == set(cp.RULE_OBJECTIVES)
     for k, e in cp.RULE_OBJECTIVES.items():
         assert bool(e.get("objective")) != bool(e.get("reason")), k
@@ -101,6 +102,47 @@ def test_every_created_rule_maps_to_a_control_or_a_reason_code(profile, tier):
         assert r["controls"] or r["reason"] in cp.REASONS, (profile, r["name"])
     packs = [r for r in m["rows"] if r["source"].startswith("Policy pack")]
     assert packs and all(r["controls"] for r in packs), "a pack rule maps to detection controls once enabled"
+    import ucaas_oneclick
+    assert {r["key"] for r in m["rows"] if r["area"] == "UCaaS one-click"} == {"ucaas." + k for k in ucaas_oneclick.KEYS}
+
+
+@pytest.mark.parametrize("tier,on", [("balanced", True), ("strict", False)])
+def test_every_ucaas_one_click_switch_is_mapped_or_reasoned_either_way(tier, on):
+    """ASVS V1.14.1 · CWE-1059: each UCaaS one-click switch is a mapping row: on (calls break out uninspected) carries MEDIA_BREAKOUT and no control; off keeps the calls inspected and maps to the encrypted-visibility controls; the review row says the same."""
+    import ucaas_oneclick
+    # Arrange
+    rev = _review("FEDRAMP_MOD", tier=tier, areas=["firewall", "ucaas"])
+    # Act
+    rows = {r["key"]: r for r in cp.mapping("FEDRAMP_MOD", rev, packs=[])["rows"] if r["area"] == "UCaaS one-click"}
+    # Assert
+    assert set(rows) == {"ucaas." + k for k in ucaas_oneclick.KEYS}
+    for k, r in rows.items():
+        if on:
+            assert r["reason"] == "MEDIA_BREAKOUT" and not r["controls"] and r["action"] == "BREAKOUT", r
+        else:
+            assert r["controls"] and r["objective"] == "encrypted_visibility" and not r["reason"] and r["action"] == "INSPECT", r
+    for s in rev["ucaas"]:
+        assert s["profile"]["reason"] == ("MEDIA_BREAKOUT" if on else "")
+
+
+def test_a_ucaas_switch_with_no_entry_fails_the_mapping(monkeypatch):
+    """ASVS V1.14.1 · CWE-1059: a UCaaS switch missing from RULE_OBJECTIVES is an error, never a silent gap."""
+    monkeypatch.delitem(cp.RULE_OBJECTIVES, "ucaas.enableUcaasZoom")
+    with pytest.raises(cp.ProfileError, match="enableUcaasZoom"):
+        cp.mapping("FEDRAMP_MOD", _review("FEDRAMP_MOD"), packs=[])
+
+
+def test_the_compliance_pack_lists_the_ucaas_switches_picked_or_not():
+    """ASVS V1.14.1 · CWE-1059: the compliance pack's mapping has a row per UCaaS switch: mapped or MEDIA_BREAKOUT when the area is picked (the default), NOT_CREATED when it is not."""
+    import ucaas_oneclick
+    picked = cpk.build("HIPAA")
+    unpicked = cpk.build("HIPAA", {"type": zb.TYPE, "areas": ["url", "ssl"]})
+    want = {"ucaas." + k for k in ucaas_oneclick.KEYS}
+    rows_p = {r["key"]: r for r in picked["mapping"]["rows"] if r["key"].startswith("ucaas.")}
+    rows_u = {r["key"]: r for r in unpicked["mapping"]["rows"] if r["key"].startswith("ucaas.")}
+    assert set(rows_p) == want and set(rows_u) == want
+    assert all(r["reason"] == "MEDIA_BREAKOUT" for r in rows_p.values())   # HIPAA keeps the Balanced tier: switches on
+    assert all(r["reason"] == "NOT_CREATED" for r in rows_u.values())
 
 
 def test_a_rule_with_neither_a_control_nor_a_reason_fails_the_mapping(monkeypatch):

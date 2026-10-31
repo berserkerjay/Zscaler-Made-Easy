@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import compliance_profiles as cp
+import ucaas_oneclick
 
 FORMAT = "zme-compliance-pack"
 BANNER = ("SYNTHETIC TEST DATA - made by Zscaler Made Easy for a DLP test. Not real people, accounts or documents: "
@@ -54,7 +55,7 @@ class PackError(ValueError):
 
 def default_spec(profile_key: str) -> Dict[str, Any]:
     import ops_zia_baseline as zb
-    return {"type": zb.TYPE, "compliance_profile": profile_key, "areas": list(zb.DEFAULT_AREAS) + ["atp"]}
+    return {"type": zb.TYPE, "compliance_profile": profile_key, "areas": list(zb.DEFAULT_AREAS) + ["atp", "ucaas"]}
 
 
 def _applied_keys(rec: Dict[str, Any]) -> Dict[str, str]:
@@ -62,10 +63,10 @@ def _applied_keys(rec: Dict[str, Any]) -> Dict[str, str]:
     out: Dict[str, str] = {}
     for u in rec.get("items") or []:
         key = str(u.get("key") or "")
-        m = re.match(r"^zb:([a-z]+):([a-z0-9_.]+):", key) or re.match(r"^zb:(atp):([a-z_]+)$", key)
+        m = re.match(r"^zb:([a-z]+):([a-z0-9_.]+):", key) or re.match(r"^zb:(atp):([a-z_]+)$", key) or re.match(r"^zb:(ucaas):([A-Za-z0-9]+)$", key)
         if not m:
             continue
-        rk = m.group(2) if m.group(1) != "atp" else "atp." + m.group(2)
+        rk = m.group(2) if m.group(1) not in ("atp", "ucaas") else f"{m.group(1)}.{m.group(2)}"
         st = str(u.get("status") or "")
         if out.get(rk) != "applied":
             out[rk] = st
@@ -112,8 +113,19 @@ def build(profile_key: str, spec: Optional[Dict[str, Any]] = None, operation: Op
             r["on"] = r["on"] and st in ("applied", "noop")
         rows.append(r)
     atp = [dict(s) for s in rev["atp"]] if "atp" in areas else []
-    review = {"rules": rows, "atp": atp}
+    ucaas = [dict(s) for s in rev["ucaas"]] if "ucaas" in areas else []
+    review = {"rules": rows, "atp": atp, "ucaas": ucaas}
     mp = cp.mapping(pk, review)
+    if built is not None:
+        for r in mp["rows"]:
+            if r["key"].startswith("ucaas.") and built["applied"].get(r["key"]) not in ("applied", "noop"):
+                r["profile_note"] = "This switch was not set by the recorded run: the tenant keeps the value it had."
+    if "ucaas" not in areas:
+        for k, label, _ in ucaas_oneclick.SETTINGS:
+            m = cp._finish_map(pk, "", "NOT_CREATED", None, False)
+            mp["rows"].append({"source": "ZIA baseline", "area": "UCaaS one-click", "key": "ucaas." + k, "name": label,
+                               "title": f"UCaaS one-click: {label}", "action": "", "on": False, "created": False, "state": "setting", **m,
+                               "profile_note": "UCaaS one-click is not picked in this build: the tenant keeps its switches as they are."})
     if "atp" not in areas:
         for k, label in zb.ATP_SETTINGS:
             m = cp.map_rule(pk, "atp." + k, on=False)

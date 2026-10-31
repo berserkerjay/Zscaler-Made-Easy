@@ -859,6 +859,8 @@ def review(spec: Dict[str, Any]) -> Dict[str, Any]:
             r["profile"] = _profile_map(pk, r)
         for s in atp:
             s["profile"] = cp.map_rule(pk, "atp." + s["key"], action="BLOCK" if s["value"] else "ALLOW")
+        for s in ucaas:
+            s["profile"] = cp.map_ucaas(pk, s["key"], bool(s["value"]))
         out["compliance_profile"] = {"key": pk, "label": cp.PROFILES[pk]["label"],
                                      "tier_warning": cp.applies(pk, tier)["tier_warning"] if not n.get("framework") else ""}
     return out
