@@ -471,7 +471,7 @@
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8676
+    "tests_added": 8679
   },
   "findings": [
     {
@@ -10710,7 +10710,7 @@
       ],
       "checks": 9,
       "findings": 3,
-      "tests_added": 74
+      "tests_added": 77
     }
   ],
   "standards": {

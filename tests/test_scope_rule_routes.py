@@ -400,6 +400,11 @@ ROUTES: List[Route] = [
     Route("/api/operations/objects", {"family": "zpa_objects"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/operations/preview/start", {"operation": {"type": "zpa_policies", "prefix": "pov1", "access": True}}, partial=ZPA, out=ZPA_OUT),
     Route("/api/operations/preview", {"operation": {"type": "zpa_prefix_delete", "prefix": "pov1", "everything": True}}, partial=ZPA, out=ZPA_OUT),
+    # The POV build (pov_build): each part's own scope rule, before sign-in
+    Route("/api/pov/build/preview", {"parts": {"zia_baseline": {"type": "zia_baseline", "tier": "balanced", "prefix": "QA", "areas": ["url"]}}},
+          setup=_pov_for, partial=None),
+    Route("/api/pov/build/preview/start", {"parts": {"zpa_connector_group": {"type": "zpa_connector_group", "prefix": "QA"}}},
+          setup=_pov_for, partial=None),
     # Snapshots (offline_tenant): saving one, and comparing one with the live tenant
     Route("/api/tenant-profiles/snapshots/save/start"),
     Route("/api/tenant-profiles/snapshots/save/start", partial=ZPA, out=ZPA_OUT),
@@ -552,6 +557,9 @@ EXEMPT: Dict[str, str] = {
     "POST /api/proposals/{tenant}/{pid}/rollback": "a write: rolls an applied proposal back",
     "POST /api/operations/apply": "a write: write mode, confirm and plan_hash first, then the same scope gate as the preview (_ops_apply_gate)",
     "POST /api/operations/apply/start": "a write: as /api/operations/apply",
+    "POST /api/pov/build/apply/start": "a write: writer, confirm, plan_hash, the assessor and write mode first, then each part's scope rule as in the preview",
+    "POST /api/pov/build/undo/apply/start": "a write: as /api/pov/build/apply/start, over the build's recorded Undos",
+    "POST /api/pov/build/undo/preview/start": "plans a recorded build's Undos: each part's scope rule (_pov_build_scope) runs before a client is built (tests/test_pov_build.py)",
     "ON_EVENT startup": "the continuous evaluation timer: the same run as POST /api/digests/run (in ROUTES)",
 }
 

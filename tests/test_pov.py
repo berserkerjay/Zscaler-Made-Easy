@@ -407,7 +407,7 @@ def test_the_page_follows_the_report_page_structure_and_tab_pattern(app):
     html = app.get("/report/pov").text
     order = [html.index(f'/static/{s}"') for s in ("icons.js", "ui_auth.js", "report_theme.js", "safety_banner.js", "explain.js", "pov.js")]
     assert '<header class="hero rp-hero">' in html and '<nav class="rp-bar" aria-label="Page actions">' in html and "← Back to the assessment" in html
-    assert 'role="tablist"' in html and html.count('<button type="button" role="tab"') == 5 and html.count('role="tabpanel"') == 5
+    assert 'role="tablist"' in html and html.count('<button type="button" role="tab"') == 6 and html.count('role="tabpanel"') == 6
     assert 'role="status"' in html and 'aria-live' in html and order == sorted(order)
 
 

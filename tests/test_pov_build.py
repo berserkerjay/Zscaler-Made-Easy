@@ -472,3 +472,21 @@ def test_a_new_provisioning_key_is_handed_over_once_by_token_never_in_the_result
     got = ops_zpa.reveal(step["one_time_secrets"][0]["token"], actor=None)
     assert got and got["provisioning_key"] == key
     assert ops_zpa.reveal(step["one_time_secrets"][0]["token"], actor=None) is None
+
+
+def test_an_undo_whose_part_is_no_longer_in_scope_is_refused_before_sign_in(live):
+    """ASVS V4.1.3 · CWE-285 · WSTG-ATHZ-02: the Undo of a build plans only recorded parts, each through its scope rule: with ZPA unticked it is a 400 naming the part, before any client is built."""
+    # Arrange
+    c = live["c"]
+    raw = parts_for("zpa_connector_group")
+    p = c.post("/api/pov/build/preview", json=_body(live, parts=raw)).json()
+    c.post("/api/pov/build/apply/start", json=_body(live, parts=raw, plan_hash=p["plan_hash"], confirm=True, confirm_text=p["confirm_phrase"]))
+    bid = live["jobs"][-1].result["build_id"]
+    built = list(live["built"])
+    body = _body(live, build_id=bid)
+    body["scopes"] = ["dlp", "zia_extras"]
+    # Act
+    r = c.post("/api/pov/build/undo/preview/start", json=body)
+    # Assert
+    assert r.status_code == 400 and r.json()["detail"].startswith("ZPA App Connector group:"), r.text
+    assert live["built"] == built
