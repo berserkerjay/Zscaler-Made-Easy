@@ -86,6 +86,18 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "User Management",
             "Admin Roles",
             "Admin Users",
+            "Sandbox Settings",
+            "Custom IPS Signatures",
+            "Mobile Malware Protection",
+            "FTP Control",
+            "End User Notifications",
+            "Alerts (UEBA)",
+            "Custom File Types",
+            "Cloud App Risk Profiles",
+            "Adaptive Access Profiles",
+            "URL & Cloud App Control Advanced Settings",
+            "SaaS Security API (malware rules, tenants, quarantine templates)",
+            "Cloud-to-Cloud Incident Forwarding",
         ],
         "permissions_write": [],
         "endpoints_used": [
@@ -103,8 +115,17 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/cyberThreatProtection/maliciousUrls", "/zia/security/advanced", "/zia/sandboxRules",
             "/zia/networkServices", "/zia/networkServiceGroups", "/zia/networkApplicationGroups",
             "/zia/ipDestinationGroups", "/zia/ipSourceGroups",
+            # Threat protection and SaaS Security hygiene (zscaler_full_checks THR / UF / SAAS).
+            # The SaaS Security reads also need SaaS Security marked Zscaler on the Scope page.
+            "/zia/behavioralAnalysisAdvancedSettings", "/zia/behavioralAnalysisAdvancedSettings/fileHashCount",
+            "/zia/ipsSignatureRules", "/zia/mobileAdvanceThreatSettings", "/zia/ftpSettings", "/zia/eun",
+            "/zia/alertRuleConfiguration/uebaRules", "/zia/alertDefinitions", "/zia/customFileTypes",
+            "/zia/riskProfiles/lite", "/zia/adaptiveAccessProfiles", "/zia/advancedUrlFilterAndCloudAppSettings",
+            "/zia/advancedSettings", "/zia/casbMalwareRules/all", "/zia/quarantineTombstoneTemplate/lite",
+            "/zia/casbTenant/lite", "/zia/casbTenant/scanInfo", "/zia/cloudToCloudIR/lite",
         ],
-        "license_required": "Standard ZIA license.",
+        "license_required": "Standard ZIA license. Custom IPS signatures need Advanced Cloud Firewall; Mobile Malware Protection, "
+                            "SaaS Security API (malware scanning) and Cloud Sandbox are separate subscriptions: without them those checks say \"not licensed\".",
         "customer_id_needed": False,
     },
 

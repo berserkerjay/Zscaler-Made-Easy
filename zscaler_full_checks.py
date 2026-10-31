@@ -1058,6 +1058,460 @@ def zcc_20(cl):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# ZIA — THREAT PROTECTION AND SAAS SECURITY HYGIENE
+# ═══════════════════════════════════════════════════════════════════════
+# Every path below is verified against zscaler-sdk-python 1.11.3
+# (zscaler/zia/<module>.py and models/<module>.py); a field the SDK does
+# not model is marked "assumed". A 404 answer means the feature is not
+# licensed or not enabled on the tenant: the check says so as INFO (outside
+# the score), never as a failure. A 401/403 is "Not permitted" (guard_registry).
+
+_THREAT_REF = " Ref: https://help.zscaler.com/zia/policy-leading-practices-guide"
+_SAAS_REF = " Ref: https://help.zscaler.com/zia/about-saas-security-api"
+_NAME_MAX = 60
+_SHOW = 5
+
+
+def _nm(x, *keys):
+    """An object's name for a finding: the first non-empty of `keys`,
+    without control characters and capped (tenant text is untrusted)."""
+    for k in keys or ("name",):
+        v = _fv(x, k)
+        if v not in (None, ""):
+            s = "".join(ch for ch in str(v) if ch.isprintable())
+            return s[:_NAME_MAX] + ("…" if len(s) > _NAME_MAX else "")
+    return "?"
+
+
+def _few(names):
+    names = list(names)
+    return ", ".join(names[:_SHOW]) + (f" and {len(names) - _SHOW} more" if len(names) > _SHOW else "")
+
+
+def _unlicensed(what, c):
+    """INFO for a 404 (feature not licensed or not enabled), else None."""
+    if c == 404:
+        return R(R.INFO, f"{what} is not licensed or not enabled on this tenant (the API answered 404), so it is not assessed.")
+    return None
+
+
+def _one(cl, path):
+    """(dict body or None, code) of a settings object."""
+    d, c = cl.get(path)
+    return (d if c in (200, 204) and isinstance(d, dict) and not isinstance(d.get("error"), str) else None), c
+
+
+def thr_1(cl):
+    """Cloud Sandbox custom file hash list: no allow-listed hash skips the sandbox"""
+    # sandbox.get_behavioral_analysis: GET /behavioralAnalysisAdvancedSettings,
+    # md5HashValueList [{url (the MD5), urlComment, type CUSTOM_FILEHASH_DENY | CUSTOM_FILEHASH_ALLOW}].
+    d, c = _one(cl, "/zia/behavioralAnalysisAdvancedSettings")
+    na = _unlicensed("Cloud Sandbox", c)
+    if na:
+        return na
+    if d is None:
+        return R(R.INFO, f"The Cloud Sandbox file hash list is not readable (HTTP {c}); check it under Policy > Sandbox > Behavioral Analysis." + _THREAT_REF)
+    rows = [x for x in _ls(d.get("md5HashValueList") or []) if isinstance(x, dict)]
+    allow = [x for x in rows if str(_fv(x, "type") or "").upper() == "CUSTOM_FILEHASH_ALLOW"]
+    deny = [x for x in rows if str(_fv(x, "type") or "").upper() != "CUSTOM_FILEHASH_ALLOW"]
+    # sandbox.get_file_hash_count: GET .../fileHashCount; its field names are
+    # not modelled by the SDK (assumed: blockedFileHashesCount, remainingFileHashes).
+    q, qc = _one(cl, "/zia/behavioralAnalysisAdvancedSettings/fileHashCount")
+    tail = ""
+    try:
+        used, left = int((q or {}).get("blockedFileHashesCount")), int((q or {}).get("remainingFileHashes"))
+        if used + left > 0 and left / (used + left) < 0.1:
+            tail = f" The custom hash quota is nearly full ({used} used, {left} left): remove hashes that are now in Zscaler's own threat feeds."
+    except (TypeError, ValueError):
+        pass
+    why = " Why it matters: an allow-listed hash is never sent to the sandbox, so a file that was safe once and later trojanised passes unchecked."
+    if allow:
+        return R(R.WARN, f"{len(allow)} file hash(es) are allow-listed and skip Cloud Sandbox analysis ({len(deny)} blocked)." + why + tail
+                 + " Best Practice: keep the allow list empty or short, with a comment and an owner per hash; prefer a scoped Sandbox rule exception." + _THREAT_REF,
+                 data={"allowed": len(allow), "blocked": len(deny)})
+    if tail:
+        return R(R.WARN, f"{len(deny)} file hash(es) blocked by the Cloud Sandbox custom list." + tail + " Best Practice: review the list each quarter." + _THREAT_REF)
+    if deny:
+        return R(R.PASS, f"{len(deny)} known-bad file hash(es) are blocked by the Cloud Sandbox custom list and none is allow-listed.", data={"blocked": len(deny)})
+    return R(R.INFO, "The Cloud Sandbox custom hash list is empty. That is fine when nothing is known to be bad; add the MD5 of files your incident response "
+                     "confirms as malicious so they are blocked at once (Bulk changes > Sandbox file hashes adds them after a preview)." + _THREAT_REF)
+
+
+def thr_2(cl):
+    """Custom IPS signatures are valid and enabled"""
+    # ips_signature_rules.list_ips_signature_rules: GET /ipsSignatureRules
+    # (enabled, dynamicValidationRejected, disabledFromZSCM; SDK model).
+    r, c = _items(cl, "/zia/ipsSignatureRules")
+    na = _unlicensed("Custom IPS signatures (Advanced Cloud Firewall with IPS)", c)
+    if na:
+        return na
+    if c not in (200, 204):
+        return R(R.INFO, f"Custom IPS signatures are not readable (HTTP {c})." + _FW_BP)
+    live = [x for x in r if not _truthy(_fv(x, "deleted"))]
+    if not live:
+        return R(R.INFO, "No custom IPS signatures. Zscaler's own signatures protect every tenant; custom ones are optional, for threats your team tracks itself." + _FW_BP)
+    rejected = [_nm(x) for x in live if _truthy(_fv(x, "dynamicValidationRejected")) or _truthy(_fv(x, "disabledFromZSCM"))]
+    off = [_nm(x) for x in live if _fv(x, "enabled") is not None and not _truthy(_fv(x, "enabled"))]
+    if rejected:
+        return R(R.WARN, f"{len(rejected)} custom IPS signature(s) were rejected by Zscaler's validation or disabled by Zscaler: {_few(rejected)}. They detect nothing."
+                 " Why it matters: the team believes these threats are covered. Best Practice: fix the rule text (Validate in the portal) or delete the signature." + _FW_BP)
+    if off:
+        return R(R.WARN, f"{len(off)} of {len(live)} custom IPS signature(s) are disabled: {_few(off)}. Best Practice: enable them or delete the ones no longer needed, so the list says what is enforced." + _FW_BP)
+    return R(R.PASS, f"{len(live)} custom IPS signature(s), all enabled and accepted by validation.")
+
+
+_MOBILE_KEY = ("blockAppsWithMaliciousActivity", "blockAppsWithKnownVulnerabilities", "blockAppsSendingUnencryptedUserCredentials")
+_MOBILE_ALL = _MOBILE_KEY + ("blockAppsSendingLocationInfo", "blockAppsSendingPersonallyIdentifiableInfo", "blockAppsSendingDeviceIdentifier",
+                             "blockAppsCommunicatingWithAdWebsites", "blockAppsCommunicatingWithRemoteUnknownServers")
+_MOBILE_LABEL = {"blockAppsWithMaliciousActivity": "with malicious activity", "blockAppsWithKnownVulnerabilities": "with known vulnerabilities",
+                 "blockAppsSendingUnencryptedUserCredentials": "sending passwords unencrypted", "blockAppsSendingLocationInfo": "sending location",
+                 "blockAppsSendingPersonallyIdentifiableInfo": "sending personal data", "blockAppsSendingDeviceIdentifier": "sending the device id",
+                 "blockAppsCommunicatingWithAdWebsites": "talking to ad sites", "blockAppsCommunicatingWithRemoteUnknownServers": "talking to unknown servers"}
+
+
+def thr_3(cl):
+    """Mobile malware protection blocks malicious and leaky apps"""
+    # mobile_threat_settings.get_mobile_advanced_settings: GET /mobileAdvanceThreatSettings (SDK model fields).
+    d, c = _one(cl, "/zia/mobileAdvanceThreatSettings")
+    na = _unlicensed("Mobile Malware Protection", c)
+    if na:
+        return na
+    if d is None:
+        return R(R.INFO, f"Mobile Malware Protection settings are not readable (HTTP {c})." + _THREAT_REF)
+    key_off = [k for k in _MOBILE_KEY if not _truthy(_fv(d, k))]
+    other_off = [k for k in _MOBILE_ALL[3:] if _fv(d, k) is not None and not _truthy(_fv(d, k))]
+    plain = lambda ks: ", ".join(_MOBILE_LABEL.get(k, k) for k in ks)
+    if key_off:
+        return R(R.WARN, f"Mobile Malware Protection does not block apps: {plain(key_off)}. Why it matters: a phone app with known malware or one that sends passwords "
+                 "in clear text is a way into the organisation. Best Practice: block malicious, known-vulnerable and clear-text-credential apps for every mobile user." + _THREAT_REF)
+    if other_off:
+        return R(R.PASS, f"Mobile Malware Protection blocks malicious, vulnerable and clear-text-credential apps; privacy controls left off: {plain(other_off)} (a privacy choice, not a gap).")
+    return R(R.PASS, "Mobile Malware Protection blocks every app category it offers.")
+
+
+def thr_4(cl):
+    """FTP control: native FTP and FTP over HTTP are off or limited"""
+    # ftp_control_policy.get_ftp_settings: GET /ftpSettings (ftpOverHttpEnabled, ftpEnabled, urlCategories, urls; SDK model).
+    d, c = _one(cl, "/zia/ftpSettings")
+    na = _unlicensed("FTP Control", c)
+    if na:
+        return na
+    if d is None:
+        return R(R.INFO, f"FTP Control settings are not readable (HTTP {c})." + _THREAT_REF)
+    native, over_http = _truthy(_fv(d, "ftpEnabled")), _truthy(_fv(d, "ftpOverHttpEnabled"))
+    limited = bool(_names(_fv(d, "urlCategories")) or _ls(_fv(d, "urls") or []))
+    why = " Why it matters: FTP sends files without the inspection HTTPS gets, which makes it an easy way to take data out or bring malware in."
+    if native and not limited:
+        return R(R.WARN, "Native FTP is allowed to any site." + why + " Best Practice: turn native FTP off, or allow it only to the URL categories or sites the business needs." + _THREAT_REF)
+    if native or over_http:
+        return R(R.PASS, "FTP is " + ("allowed only to listed sites or categories" if native else "allowed over HTTP only") + ", so it is limited.")
+    return R(R.PASS, "Native FTP and FTP over HTTP are both off.")
+
+
+def thr_5(cl):
+    """End-user notifications explain blocks and offer a way to ask for review"""
+    # end_user_notification.get_eun_settings: GET /eun. The SDK has no model
+    # for it (its get_eun_settings names an undefined class); the camelCase
+    # field names follow the attributes its update docstring lists (assumed).
+    d, c = _one(cl, "/zia/eun")
+    if d is None:
+        return R(R.INFO, f"End-user notification settings are not readable (HTTP {c})." + _THREAT_REF)
+    gaps = []
+    if _fv(d, "displayReason") is not None and not _truthy(_fv(d, "displayReason")):
+        gaps.append("the reason for a block is not shown")
+    if not any(_fv(d, k) for k in ("supportEmail", "supportPhone")):
+        gaps.append("no IT support contact")
+    if str(_fv(d, "notificationType") or "DEFAULT").upper() == "DEFAULT" and not _fv(d, "orgPolicyLink"):
+        gaps.append("no link to the organisation's policy")
+    if _fv(d, "securityReviewEnabled") is not None and not _truthy(_fv(d, "securityReviewEnabled")):
+        gaps.append("users cannot ask for a review of a security block")
+    if gaps:
+        return R(R.WARN, "End-user notifications: " + "; ".join(gaps) + ". Why it matters: a block that says nothing becomes a help-desk ticket or a workaround."
+                 " Best Practice: show the reason, the company name, a support contact and the policy link, and turn on the review requests." + _THREAT_REF)
+    return R(R.PASS, "End-user notifications show the reason, a support contact and the policy, and users can ask for a review.")
+
+
+def thr_6(cl):
+    """Security alerts (UEBA) are defined and on"""
+    # security_ueba_alerts.list_alert_rule_configurations_ueba_rules:
+    # GET /alertRuleConfiguration/uebaRules; list_alert_definitions: GET
+    # /alertDefinitions (status; its values are not enumerated: "ENABLED" assumed).
+    # The webhooks list (it holds passwords and tokens) is never read.
+    r, c = _items(cl, "/zia/alertRuleConfiguration/uebaRules")
+    na = _unlicensed("Security alerts (UEBA)", c)
+    if na:
+        return na
+    defs, c2 = _items(cl, "/zia/alertDefinitions")
+    if c not in (200, 204) and c2 not in (200, 204):
+        return R(R.INFO, f"Security alert rules are not readable (HTTP {c})." + _THREAT_REF)
+    def on(x):
+        s = _fv(x, "status")
+        return not _truthy(_fv(x, "deleted")) and (s is None or str(s).upper() in ("ENABLED", "ACTIVE", "TRUE", "1"))
+    live = [x for x in r + defs if on(x)]
+    if not live:
+        return R(R.WARN, "No security alert rule is on. Why it matters: unusual behaviour (a user suddenly uploading far more, many blocks in a row) is only seen if someone looks."
+                 " Best Practice: turn on the UEBA alert rules and send them to the SOC by email or webhook." + _THREAT_REF)
+    return R(R.PASS, f"{len(live)} security alert rule(s) are on.")
+
+
+def thr_7(cl):
+    """Custom file types are defined for the files only your business uses"""
+    # custom_file_types.list_custom_file_types: GET /customFileTypes (name, extension; SDK model).
+    r, c = _items(cl, "/zia/customFileTypes")
+    na = _unlicensed("Custom file types", c)
+    if na:
+        return na
+    if c not in (200, 204):
+        return R(R.INFO, f"Custom file types are not readable (HTTP {c})." + _THREAT_REF)
+    if r:
+        return R(R.PASS, f"{len(r)} custom file type(s) defined (e.g. {_few(_nm(x) for x in r)}); use them in File Type Control and Sandbox rules.")
+    return R(R.INFO, "No custom file types. Zscaler recognises hundreds of file types; add a custom one only for an in-house format (by extension) you need to control.")
+
+
+def thr_8(cl):
+    """Browser Control blocks outdated browsers and warns users"""
+    # browser_control_settings.get_browser_control_settings: GET /browserControlSettings (SDK model fields).
+    d, c = _one(cl, "/zia/browserControlSettings")
+    if d is None:
+        return R(R.INFO, f"Browser Control settings are not readable (HTTP {c}).")
+    ref = " Ref: https://help.zscaler.com/zia/configuring-browser-control-policy"
+    blocked = [k for k in ("blockedChromeVersions", "blockedFirefoxVersions", "blockedSafariVersions", "blockedInternetExplorerVersions", "blockedOperaVersions")
+               if _ls(_fv(d, k) or [])]
+    gaps = []
+    if _truthy(_fv(d, "bypassAllBrowsers")):
+        gaps.append("every browser bypasses Browser Control")
+    elif _truthy(_fv(d, "allowAllBrowsers")) and not blocked:
+        gaps.append("every browser version is allowed, however old")
+    if _fv(d, "enableWarnings") is not None and not _truthy(_fv(d, "enableWarnings")):
+        gaps.append("users are not warned about a vulnerable browser or plug-in")
+    if gaps:
+        return R(R.WARN, "Browser Control: " + "; ".join(gaps) + ". Why it matters: an unpatched browser is the most common way malware gets onto a laptop."
+                 " Best Practice: block browser versions with known exploits, warn users about outdated plug-ins, and keep bypasses to named applications." + ref)
+    return R(R.PASS, "Browser Control is on: " + (f"old versions are blocked for {len(blocked)} browser(s)" if blocked else "it does not allow every browser") + " and users are warned.")
+
+
+def thr_9(cl):
+    """Domain fronting is blocked"""
+    # advanced_settings: blockDomainFrontingOnHostHeader, domainFrontingBypassUrlCategories (SDK model).
+    d, c = _one(cl, "/zia/advancedSettings")
+    if d is None:
+        return R(R.INFO, f"Advanced Settings are not readable (HTTP {c}); check domain fronting in the portal." + _POLICY_GUIDE)
+    bypass = _names(_fv(d, "domainFrontingBypassUrlCategories"))
+    if not _truthy(_fv(d, "blockDomainFrontingOnHostHeader")):
+        return R(R.WARN, "Domain fronting is not blocked. Why it matters: malware and evasion tools hide their real destination behind an allowed CDN name, so URL filtering sees the wrong site."
+                 " Best Practice: under Advanced Settings turn on blocking domain fronting when the HTTP host header differs from the TLS server name, with bypasses only for categories that need it." + _POLICY_GUIDE)
+    if len(bypass) > 5:
+        return R(R.WARN, f"Domain fronting is blocked, but {len(bypass)} URL categories bypass the block. Best Practice: keep the bypass to the few categories that need it." + _POLICY_GUIDE)
+    return R(R.PASS, "Domain fronting is blocked" + (f" ({len(bypass)} category bypass(es))." if bypass else "."))
+
+
+def thr_10(cl):
+    """Cloud app risk profiles are used by Cloud App Control"""
+    # risk_profiles.list_risk_profiles_lite: GET /riskProfiles/lite (id, profileName;
+    # SDK model). Cloud App Control rules reference one as cloudAppRiskProfile (cloudappcontrol model).
+    r, c = _items(cl, "/zia/riskProfiles/lite")
+    na = _unlicensed("Cloud app risk profiles", c)
+    if na:
+        return na
+    if c not in (200, 204):
+        return R(R.INFO, f"Cloud app risk profiles are not readable (HTTP {c})." + _THREAT_REF)
+    if not r:
+        return R(R.INFO, "No cloud app risk profiles. A risk profile (for example: no MFA, known data breach, weak TLS) lets one Cloud App Control rule block every risky app at once,"
+                         " including new ones. Best Practice: create one and use it in a Cloud App Control rule." + _THREAT_REF)
+    used = {str(_fv(_fv(x, "cloudAppRiskProfile") or {}, "id") or "") for x in _cac_live(_cac_rules_all_types(cl))}
+    unused = [_nm(x, "profileName", "name") for x in r if str(_fv(x, "id") or "") not in used]
+    if len(unused) == len(r):
+        return R(R.WARN, f"{len(r)} cloud app risk profile(s), but no enabled Cloud App Control rule uses one: {_few(unused)}. A profile does nothing until a rule uses it."
+                 " Best Practice: add a Cloud App Control rule that blocks or isolates apps matching the profile." + _THREAT_REF)
+    return R(R.PASS, f"{len(r) - len(unused)} of {len(r)} cloud app risk profile(s) are used by an enabled Cloud App Control rule.")
+
+
+def thr_11(cl):
+    """Adaptive access profiles (user and device risk) are available to policy"""
+    # adaptive_access_profiles.list_adaptive_access_profiles: GET /adaptiveAccessProfiles (id, name, deleted; SDK model).
+    r, c = _items(cl, "/zia/adaptiveAccessProfiles")
+    na = _unlicensed("Adaptive access", c)
+    if na:
+        return na
+    if c not in (200, 204):
+        return R(R.INFO, f"Adaptive access profiles are not readable (HTTP {c}).")
+    live = [x for x in r if not _truthy(_fv(x, "deleted"))]
+    if live:
+        return R(R.PASS, f"{len(live)} adaptive access profile(s) can tighten policy for a risky user or device.")
+    return R(R.INFO, "No adaptive access profiles. With them, a user or device whose risk rises (for example after many blocked threats) can be moved to a stricter policy automatically."
+                     " Define them in the Authentication Service (formerly ZIdentity) when that subscription is present.")
+
+
+def uf_5(cl):
+    """SafeSearch is enforced"""
+    # url_filtering.get_url_and_app_settings: GET /advancedUrlFilterAndCloudAppSettings (enforceSafeSearch, enableCIPACompliance; SDK model).
+    d, c = _one(cl, "/zia/advancedUrlFilterAndCloudAppSettings")
+    if d is None:
+        return R(R.INFO, f"URL and Cloud App Control advanced settings are not readable (HTTP {c}); check SafeSearch in the portal." + _POLICY_GUIDE)
+    if _truthy(_fv(d, "enableCIPACompliance")):
+        return R(R.PASS, "The CIPA Compliance rule is on; it enforces safe search results itself.")
+    if not _truthy(_fv(d, "enforceSafeSearch")):
+        return R(R.WARN, "SafeSearch is not enforced. Why it matters: image and video search results can show adult or malicious content even when the sites themselves are blocked."
+                 " Best Practice: turn on Enforce SafeSearch in URL & Cloud App Control advanced settings (it needs SSL inspection of the search engines)." + _POLICY_GUIDE)
+    return R(R.PASS, "SafeSearch is enforced for search engines.")
+
+
+def uf_6(cl):
+    """Newly registered domains and AI/ML content categorisation are on"""
+    d, c = _one(cl, "/zia/advancedUrlFilterAndCloudAppSettings")
+    if d is None:
+        return R(R.INFO, f"URL and Cloud App Control advanced settings are not readable (HTTP {c})." + _POLICY_GUIDE)
+    off = [lab for k, lab in (("enableNewlyRegisteredDomains", "block newly registered domains"), ("enableDynamicContentCat", "AI/ML dynamic content categorisation"),
+                              ("considerEmbeddedSites", "filtering of sites opened through translation services"))
+           if not _truthy(_fv(d, k))]
+    if _truthy(_fv(d, "enableCIPACompliance")):
+        return R(R.INFO, "The CIPA Compliance rule is on; Zscaler then handles newly registered domains and content categorisation itself.")
+    if "block newly registered domains" in off:
+        return R(R.WARN, "Off: " + ", ".join(off) + ". Why it matters: most phishing and malware sites are only days old, before any reputation list knows them."
+                 " Best Practice: turn these on in URL & Cloud App Control advanced settings." + _POLICY_GUIDE)
+    if off:
+        return R(R.WARN, "Off: " + ", ".join(off) + ". Best Practice: turn these on so uncategorised and translated pages are still filtered." + _POLICY_GUIDE)
+    return R(R.PASS, "Newly registered domains, dynamic content categorisation and translated sites are all handled.")
+
+
+def uf_7(cl):
+    """Microsoft 365 one-click configuration is on"""
+    # advanced_settings.enableOffice365 (SDK model); the URL settings' enableMsftO365
+    # is listed by the SDK's update docstring but not modelled (assumed).
+    d, c = _one(cl, "/zia/advancedSettings")
+    u, _ = _one(cl, "/zia/advancedUrlFilterAndCloudAppSettings")
+    if d is None and u is None:
+        return R(R.INFO, f"Advanced Settings are not readable (HTTP {c}); check Microsoft 365 one-click configuration in the portal." + _POLICY_GUIDE)
+    if _truthy(_fv(d or {}, "enableOffice365")) or _truthy(_fv(u or {}, "enableOffice365", "enableMsftO365")):
+        return R(R.PASS, "Microsoft 365 one-click configuration is on: Microsoft 365 traffic follows Microsoft's network guidance automatically.")
+    return R(R.WARN, "Microsoft 365 one-click configuration is off. Why it matters: without it, Teams calls and Outlook can be slowed by inspection Microsoft says to skip, and"
+             " admins add hand-made bypasses that drift. Best Practice: turn on the one-click Microsoft 365 configuration, then keep only the exceptions you need." + _POLICY_GUIDE)
+
+
+# ── SaaS Security (data at rest): read only when SaaS Security is on Zscaler
+def _active_tenants(cl):
+    d, c = cl.get("/zia/casbTenant/lite", {"activeOnly": "true"})
+    rows = [x for x in (_ls(d) if c in (200, 204) else []) if isinstance(x, dict) and not _truthy(_fv(x, "tenantDeleted"))]
+    return rows, c
+
+
+def _malware_rules(cl):
+    # casb_malware_rules.list_all_rules: GET /casbMalwareRules/all (type, state, action, cloudAppTenants; SDK model).
+    return _items(cl, "/zia/casbMalwareRules/all")
+
+
+def saas_1(cl):
+    """Every SaaS tenant has a malware scanning rule"""
+    rules, c = _malware_rules(cl)
+    na = _unlicensed("SaaS Security API malware scanning", c)
+    if na:
+        return na
+    if c not in (200, 204):
+        return R(R.INFO, f"SaaS Security malware rules are not readable (HTTP {c})." + _SAAS_REF)
+    tenants, tc = _active_tenants(cl)
+    if not tenants:
+        return R(R.INFO, "No active SaaS application tenant is onboarded, so there is nothing to scan for malware yet." + _SAAS_REF)
+    covered = {str(_fv(t, "id")) for r in rules if _enabled(r) for t in _ls(_fv(r, "cloudAppTenants") or []) if isinstance(t, dict)}
+    bare = [_nm(t, "tenantName") for t in tenants if str(_fv(t, "tenantId", "id")) not in covered]
+    if bare:
+        return R(R.WARN, f"{len(bare)} of {len(tenants)} SaaS tenant(s) have no enabled malware rule: {_few(bare)}. Why it matters: malware uploaded to a shared drive or mailbox spreads "
+                 "to everyone who opens it, and inline inspection never sees files shared inside the SaaS app. Best Practice: add a SaaS Security malware rule for each tenant." + _SAAS_REF,
+                 data={"uncovered": len(bare)})
+    return R(R.PASS, f"All {len(tenants)} active SaaS tenant(s) have an enabled malware rule.")
+
+
+def saas_2(cl):
+    """Malware found in SaaS is quarantined, with a tombstone"""
+    rules, c = _malware_rules(cl)
+    na = _unlicensed("SaaS Security API malware scanning", c)
+    if na:
+        return na
+    live = [r for r in rules if _enabled(r)]
+    if c not in (200, 204) or not live:
+        return R(R.INFO, "No enabled SaaS Security malware rule to review." + _SAAS_REF)
+    # Only OFLCASB_AVP_REPORT_MALWARE is named by the SDK; any action with QUARANTINE in it is assumed to quarantine.
+    report = [_nm(r) for r in live if "QUARANTINE" not in str(_fv(r, "action") or "").upper()]
+    tmpl, tcode = _items(cl, "/zia/quarantineTombstoneTemplate/lite")
+    no_tomb = [_nm(r) for r in live if "QUARANTINE" in str(_fv(r, "action") or "").upper() and not _fv(r, "casbTombstoneTemplate")]
+    if report:
+        return R(R.WARN, f"{len(report)} malware rule(s) only report what they find: {_few(report)}. The file stays shared until someone acts."
+                 " Best Practice: quarantine malware found at rest, with a tombstone file that tells the owner why." + _SAAS_REF)
+    if no_tomb:
+        return R(R.WARN, f"{len(no_tomb)} quarantine rule(s) leave no tombstone: {_few(no_tomb)}" + (f" ({len(tmpl)} template(s) exist)." if tmpl else " (no tombstone template exists).")
+                 + " Best Practice: attach a tombstone template so the file owner learns what happened instead of opening a ticket." + _SAAS_REF)
+    return R(R.PASS, f"{len(live)} malware rule(s) quarantine what they find, each with a tombstone.")
+
+
+def saas_3(cl):
+    """SaaS tenants are healthy and scanning"""
+    # saas_security_api.list_saas_scan_info: GET /casbTenant/scanInfo (tenantName,
+    # scanInfo {cur_scan_start_time, prev_scan_end_time, scan_reset_num}); CasbTenant reAuth (SDK models).
+    tenants, tc = _active_tenants(cl)
+    na = _unlicensed("SaaS Security API", tc)
+    if na:
+        return na
+    if not tenants:
+        return R(R.INFO, "No active SaaS application tenant is onboarded." + _SAAS_REF)
+    reauth = [_nm(t, "tenantName") for t in tenants if _truthy(_fv(t, "reAuth"))]
+    scans, sc = _items(cl, "/zia/casbTenant/scanInfo")
+    never = []
+    if sc in (200, 204):
+        by_id = {str(_fv(s, "tenantId")): s for s in scans}
+        for t in tenants:
+            info = _fv(by_id.get(str(_fv(t, "tenantId", "id"))) or {}, "scanInfo") or {}
+            if not (_fv(info, "prev_scan_end_time") or _fv(info, "cur_scan_start_time")):
+                never.append(_nm(t, "tenantName"))
+    if reauth:
+        return R(R.WARN, f"{len(reauth)} SaaS tenant(s) need to be authorised again: {_few(reauth)}. Nothing in them is scanned until then."
+                 " Best Practice: re-authorise the tenant under Administration > SaaS Application Tenants." + _SAAS_REF)
+    if never:
+        return R(R.WARN, f"{len(never)} SaaS tenant(s) show no completed or running scan: {_few(never)}. Best Practice: confirm a malware or DLP rule covers them and the scan has started." + _SAAS_REF)
+    return R(R.PASS, f"All {len(tenants)} active SaaS tenant(s) are authorised" + (" and scanning." if sc in (200, 204) else "."))
+
+
+def saas_4(cl):
+    """Cloud-to-cloud incident forwarding receivers are valid"""
+    # cloud_to_cloud_ir.list_cloud_to_cloud_ir_lite: GET /cloudToCloudIR/lite (id, name, status,
+    # lastValidationMsg {errorMsg, errorCode}; SDK model). The full list holds tenant
+    # credentials (tenantAuthorizationInfo) and is never read.
+    r, c = _items(cl, "/zia/cloudToCloudIR/lite")
+    na = _unlicensed("Cloud-to-cloud incident forwarding", c)
+    if na:
+        return na
+    if c not in (200, 204):
+        return R(R.INFO, f"Cloud-to-cloud incident receivers are not readable (HTTP {c})." + _SAAS_REF)
+    if not r:
+        return R(R.INFO, "No cloud-to-cloud incident receiver. DLP incidents then stay in the Zscaler console; a receiver (an S3 bucket, a Slack or Teams channel...) brings them to the team that acts on them.")
+    bad = [_nm(x) for x in r if _fv(_fv(x, "lastValidationMsg") or {}, "errorCode") not in (None, "", 0, "0", "NONE", "SUCCESS")]
+    if bad:
+        return R(R.WARN, f"{len(bad)} cloud-to-cloud incident receiver(s) failed their last validation: {_few(bad)}. Incidents sent to them are lost."
+                 " Best Practice: validate the receiver again and fix its credentials or destination." + _SAAS_REF)
+    return R(R.PASS, f"{len(r)} cloud-to-cloud incident receiver(s), none failing validation.")
+
+
+THREAT_SAAS_REG = [
+    ("THR.1", "ZIA — Security", "Sandbox file hash list", thr_1),
+    ("THR.2", "ZIA — Security", "Custom IPS signatures", thr_2),
+    ("THR.3", "ZIA — Security", "Mobile malware protection", thr_3),
+    ("THR.4", "ZIA — Security", "FTP control", thr_4),
+    ("THR.5", "ZIA — Security", "End-user notifications", thr_5),
+    ("THR.6", "ZIA — Security", "Security alerts (UEBA)", thr_6),
+    ("THR.7", "ZIA — Security", "Custom file types", thr_7),
+    ("THR.8", "ZIA — Security", "Browser Control", thr_8),
+    ("THR.9", "ZIA — Security", "Domain fronting blocked", thr_9),
+    ("THR.10", "ZIA — Security", "Cloud app risk profiles in use", thr_10),
+    ("THR.11", "ZIA — Security", "Adaptive access profiles", thr_11),
+    ("UF.5", "ZIA — URL Filtering", "SafeSearch enforced", uf_5),
+    ("UF.6", "ZIA — URL Filtering", "Newly registered domains and AI/ML categorisation", uf_6),
+    ("UF.7", "ZIA — URL Filtering", "Microsoft 365 one-click configuration", uf_7),
+    ("SAAS.1", "ZIA — SaaS Security", "SaaS tenants with a malware rule", saas_1),
+    ("SAAS.2", "ZIA — SaaS Security", "Malware quarantined with a tombstone", saas_2),
+    ("SAAS.3", "ZIA — SaaS Security", "SaaS tenants authorised and scanning", saas_3),
+    ("SAAS.4", "ZIA — SaaS Security", "Cloud-to-cloud incident receivers", saas_4),
+]
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # FULL PLATFORM REGISTRY
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -1158,4 +1612,5 @@ PLATFORM_REG = [
     ("ZCC.25", "ZCC — Mobile Portal",    "ZPA group entitlements",              zcc_25),
     ("ZCC.26", "ZCC — Mobile Portal",    "Web app service exclusions",          zcc_26),
 ]
+PLATFORM_REG = PLATFORM_REG + THREAT_SAAS_REG   # threat protection and SaaS Security hygiene (above)
 PLATFORM_REG = guard_registry(PLATFORM_REG)

@@ -17,7 +17,9 @@ What it covers, on purpose with the gaps an assessment should find:
   - ZIA: URL filtering, URL categories (one custom), SSL inspection with a
     broad do-not-decrypt exemption, Cloud Firewall (filtering, DNS, IPS),
     Cloud App Control per rule type, File Type Control, PAC files,
-    locations, advanced settings, admins and roles;
+    locations, advanced settings, admins and roles, the threat protection
+    settings (Sandbox hash list, IPS signatures, mobile, FTP, notifications,
+    alerts, risk profiles) and SaaS Security malware scanning;
   - Client Connector: app profiles per platform (one without strict
     enforcement and with a bypass), forwarding profiles (one leaves traffic
     direct on a trusted network), trusted networks, devices;
@@ -378,6 +380,50 @@ ZID_GROUPS = [{"id": "g-33", "name": "Finance Team", "source": "SCIM"}, {"id": "
 ZID_RESOURCE_SERVERS = [{"id": "rs-1", "name": "ZIA", "primaryAud": "https://api.zscaler.com"}]
 
 
+# Threat protection and SaaS Security hygiene (zscaler_full_checks THR / UF / SAAS),
+# shaped like the SDK 1.11.3 models (zscaler/zia/models/<module>.py). The
+# hashes are MD5s of made-up strings, not of any real file. Gaps on purpose:
+# native FTP open to any site, no security review requests, SafeSearch off,
+# an unused risk profile, two SaaS tenants without a malware rule, a malware
+# rule that only reports.
+SANDBOX_HASHES = {"md5HashValueList": [
+    {"url": "e9c5e36d0445fb6d6377143ad023feba", "urlComment": "IR-2026-014 loader (made up)", "type": "CUSTOM_FILEHASH_DENY"},
+    {"url": "a37ece551f269b16351c64133d9aa8a4", "urlComment": "IR-2026-019 macro (made up)", "type": "CUSTOM_FILEHASH_DENY"}]}
+SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK)
+IPS_SIGNATURES = [
+    {"id": 7101, "name": "LKF track freight-portal scanner", "ruleText": "alert tcp any any -> any 443 (msg:\"sample\"; sid:9000001;)",
+     "description": "Made-up signature", "category": "CUSTOM", "enabled": True, "deleted": False, "dynamicValidationRejected": False},
+    {"id": 7102, "name": "LKF legacy beacon", "ruleText": "alert tcp any any -> any any (msg:\"old\"; sid:9000002;)",
+     "description": "Made-up signature", "category": "CUSTOM", "enabled": False, "deleted": False, "dynamicValidationRejected": True}]
+MOBILE_THREAT = {"blockAppsWithMaliciousActivity": True, "blockAppsWithKnownVulnerabilities": True, "blockAppsSendingUnencryptedUserCredentials": True,
+                 "blockAppsSendingLocationInfo": False, "blockAppsSendingPersonallyIdentifiableInfo": True, "blockAppsSendingDeviceIdentifier": False,
+                 "blockAppsCommunicatingWithAdWebsites": False, "blockAppsCommunicatingWithRemoteUnknownServers": True}
+FTP_SETTINGS = {"ftpOverHttpEnabled": True, "ftpEnabled": True, "urlCategories": [], "urls": []}
+EUN_SETTINGS = {"notificationType": "DEFAULT", "displayReason": True, "displayCompName": True, "displayCompLogo": False,
+                "supportEmail": f"it-help@{DOMAIN}", "orgPolicyLink": f"https://intranet.{DOMAIN}/acceptable-use",
+                "urlCatReviewEnabled": True, "securityReviewEnabled": False, "webDlpReviewEnabled": True, "aupFrequency": "NEVER"}
+UEBA_RULES: List[Dict[str, Any]] = []
+ALERT_DEFINITIONS = [{"id": 8101, "alertName": "Upload volume spike", "status": "ENABLED", "severity": "HIGH", "interval": "DAILY", "trafficChangePercent": 300}]
+CUSTOM_FILE_TYPES = [{"id": 8201, "name": "Larkspur manifest", "description": "In-house shipping manifest", "extension": "lkm", "fileTypeId": 2001}]
+RISK_PROFILES = [{"id": 8301, "profileName": "High-risk SaaS"}]
+ADAPTIVE_ACCESS_PROFILES = [{"id": 8401, "name": "Elevated user risk", "type": "USER_RISK", "aapIndex": 1, "deleted": False}]
+URL_APP_SETTINGS = {"enableDynamicContentCat": True, "considerEmbeddedSites": True, "enforceSafeSearch": False, "enableUcaasZoom": True,
+                    "enableUcaasLogMeIn": False, "enableUcaasRingCentral": False, "enableUcaasWebex": True, "enableUcaasTalkdesk": False,
+                    "enableChatGptPrompt": False, "enableMicrosoftCoPilotPrompt": False, "enableGeminiPrompt": False, "enablePOEPrompt": False,
+                    "enableMetaPrompt": False, "enablePerPlexityPrompt": False, "blockSkype": False, "enableNewlyRegisteredDomains": True,
+                    "enableBlockOverrideForNonAuthUser": False, "enableCIPACompliance": False}
+CASB_MALWARE_RULES = [
+    {"id": 8501, "order": 1, "name": "Box malware scan", "type": "OFLCASB_AVP_FILE", "state": "ENABLED", "action": "OFLCASB_AVP_REPORT_MALWARE",
+     "cloudAppTenants": [{"id": 501, "name": "Larkspur Box"}]}]
+TOMBSTONE_TEMPLATES = [{"id": 8601, "name": "Larkspur quarantine notice", "description": "Tells the owner the file was quarantined"}]
+SAAS_SCAN_INFO = [
+    {"tenantName": "Larkspur Box", "tenantId": 501, "saasApplication": "BOX",
+     "scanInfo": {"cur_scan_start_time": 1793232000, "prev_scan_end_time": 1793145600, "scan_reset_num": 0}, "scanAction": "SCAN"},
+    {"tenantName": "Larkspur Google Workspace", "tenantId": 502, "saasApplication": "GOOGLE_DRIVE",
+     "scanInfo": {"cur_scan_start_time": 1793232000, "prev_scan_end_time": 1793145600, "scan_reset_num": 0}, "scanAction": "SCAN"}]
+C2C_RECEIVERS = [{"id": 8701, "name": "Larkspur DLP incident bucket", "status": "ACTIVE", "lastValidationMsg": {"errorMsg": "", "errorCode": ""}}]
+
+
 def responses() -> Dict[str, Any]:
     """Every answer of the sample tenant: {OneAPI path: JSON body}. A fresh
     deep copy each time, so changing one sample never changes another."""
@@ -429,6 +475,23 @@ def responses() -> Dict[str, Any]:
                                                                 "knownPhishingSitesBlocked": True, "suspectAdwareSpywareSitesBlocked": True},
         f"{ZIA}/cyberThreatProtection/malwareSettings": {"virusBlocked": True, "unwantedApplicationsBlocked": True, "trojanBlocked": True,
                                                          "wormBlocked": True, "ransomwareBlocked": True, "spywareBlocked": True},
+        # Threat protection and SaaS Security hygiene
+        f"{ZIA}/behavioralAnalysisAdvancedSettings": SANDBOX_HASHES,
+        f"{ZIA}/behavioralAnalysisAdvancedSettings/fileHashCount": SANDBOX_HASH_COUNT,
+        f"{ZIA}/ipsSignatureRules": IPS_SIGNATURES,
+        f"{ZIA}/mobileAdvanceThreatSettings": MOBILE_THREAT,
+        f"{ZIA}/ftpSettings": FTP_SETTINGS,
+        f"{ZIA}/eun": EUN_SETTINGS,
+        f"{ZIA}/alertRuleConfiguration/uebaRules": UEBA_RULES,
+        f"{ZIA}/alertDefinitions": ALERT_DEFINITIONS,
+        f"{ZIA}/customFileTypes": CUSTOM_FILE_TYPES,
+        f"{ZIA}/riskProfiles/lite": RISK_PROFILES,
+        f"{ZIA}/adaptiveAccessProfiles": ADAPTIVE_ACCESS_PROFILES,
+        f"{ZIA}/advancedUrlFilterAndCloudAppSettings": URL_APP_SETTINGS,
+        f"{ZIA}/casbMalwareRules/all": CASB_MALWARE_RULES,
+        f"{ZIA}/quarantineTombstoneTemplate/lite": TOMBSTONE_TEMPLATES,
+        f"{ZIA}/casbTenant/scanInfo": SAAS_SCAN_INFO,
+        f"{ZIA}/cloudToCloudIR/lite": C2C_RECEIVERS,
         # Client Connector (first candidate of each short endpoint, see dlp_assessment_full_auto._ZCC_MAP)
         f"{ZCC}/application-profiles": APP_PROFILES,
         f"{ZCC}/web/policy/listByCompany": APP_PROFILES,

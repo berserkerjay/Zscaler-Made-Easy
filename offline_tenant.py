@@ -961,7 +961,15 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                      "ipSourceGroups", "locations", "advancedSettings", "authSettings", "departments", "groups", "ruleLabels",
                                      "nssFeeds", "browserIsolation/profiles", "sandboxRules", "bandwidthClasses", "bandwidthControlRules",
                                      "tenancyRestrictionProfile", "cyberThreatProtection/advancedThreatSettings",
-                                     "cyberThreatProtection/malwareSettings")]
+                                     "cyberThreatProtection/malwareSettings",
+                                     # threat protection and SaaS Security hygiene (zscaler_full_checks THR / UF / SAAS);
+                                     # the SaaS Security ones pass the channel guard only when SaaS Security is on Zscaler
+                                     "behavioralAnalysisAdvancedSettings", "behavioralAnalysisAdvancedSettings/fileHashCount",
+                                     "ipsSignatureRules", "mobileAdvanceThreatSettings", "ftpSettings", "eun",
+                                     "alertRuleConfiguration/uebaRules", "alertDefinitions", "customFileTypes", "riskProfiles/lite",
+                                     "adaptiveAccessProfiles", "advancedUrlFilterAndCloudAppSettings", "browserControlSettings",
+                                     "casbMalwareRules/all", "quarantineTombstoneTemplate/lite", "casbTenant/scanInfo",
+                                     "cloudToCloudIR/lite")]
     + [(("zia_extras", "rbac"), f"/zia/{x}") for x in ("adminRoles", "adminUsers")]
     + [(("zcc",), f"/zcc/{x}") for x in ("forwardingProfiles", "trustedNetworks", "devices", "failOpenPolicy", "companyInfo", "pacFiles",
                                          "webAppService", "appBypass", "zpaEntitlements", "zdxEntitlements", "deviceGroups")]
