@@ -642,7 +642,8 @@ EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard"],
               "channels": {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "cloud_app_control", "ssl_inspection")},
               "from_page": True}
 # The Scope page keys that put each product in scope.
-PRODUCT_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "aiguard": ("aiguard",)}
+PRODUCT_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "aiguard": ("aiguard",),
+                "zwa": ("dlp",)}   # Workflow Automation incidents: DLP ticked (and the channel not another product)
 BUILTIN_PRODUCT = {"rule_state": "zia", "reorder": "zia", "url_categories": "zia", "zpa_domains": "zpa"}
 
 
@@ -834,6 +835,7 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zcc_profile_delete": "deletes profiles only; creates and enables nothing",
     "zdx_probe_delete": "deletes apps and probes (or turns them off) only",
     "zpa_prefix_delete": "deletes the prefixed objects only; creates and enables nothing",
+    "zwa_close_false_positives": "closes incidents as false positives only; creates or enables no rule; asks its typed phrase every time",
 }
 
 

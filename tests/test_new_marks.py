@@ -288,14 +288,15 @@ console.log(JSON.stringify({ now, next, bad, real: W.releases(), words: W.words(
 # appear after a read or in a dialog: "shown" in the manifest).
 BROWSER_PAGES = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/report/fleet",
                  "/report/motion", "/report/live", "/simple"]
-NARROW = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/simple"]
+NARROW_CANDIDATES = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/simple"]
 
 
 def _load_marks():
     """{page: [{at, releases}]}: one record per marked item (two features can share one)."""
     out = {}
     for f, mk in _marks():
-        if mk["page"] in BROWSER_PAGES and not mk.get("shown"):
+        # Only the releases the manifest keeps are marked; an older feature's entry stays in the list unmarked.
+        if mk["page"] in BROWSER_PAGES and not mk.get("shown") and f["release"] in MAN["releases"]:
             recs = out.setdefault(mk["page"], [])
             rec = next((r for r in recs if r["at"] == mk["at"]), None)
             if rec is None:
@@ -303,6 +304,9 @@ def _load_marks():
             elif f["release"] not in rec["releases"]:
                 rec["releases"].append(f["release"])
     return out
+
+
+NARROW = [p for p in NARROW_CANDIDATES if p in _load_marks()]
 
 
 DRIVER = CDP_PRELUDE + EVENTS + r"""
@@ -350,6 +354,16 @@ out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObser
   setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
 // The * is its own trigger: pointing at it opens "New in the <date> update"; pointing at the item opens nothing.
 await open('/report/path');
+// The probes below need a tab and a field with a * on this page: the 2026-10-28 marks they were written for
+// (Test a list, the protocol field) left the manifest when a newer release pushed them out, so they come back
+// here as probes, with three releases shown, and the mechanism is still exercised on them.
+await ev(`(() => { const W = window.WhatsNew; W.manifest.keep = 3; W.manifest.releases['2026-10-28'] = 'probe';
+  W.manifest.features.push({ id: 'probe-list', release: '2026-10-28', label: 'Test a list', changelog: [], marks: [{ page: '/report/path', at: '#tab-list' }],
+    what: 'Test a list: up to 250,000 destinations, each against what it was expected to do, with Fix selected handing off to Bulk changes.' },
+    { id: 'probe-proto', release: '2026-10-28', label: 'Any protocol and port', changelog: [], marks: [{ page: '/report/path', at: '#paProto' }],
+      what: 'Every ZIA module on the path, for web traffic or any protocol and port.' });
+  W.apply(); window.HoverHelp.scan(); return true; })()`);
+await frame();
 const hoverAt = async js => {
   const r = await ev(`(() => { const e = ${js}; e.scrollIntoView({ block: 'center', behavior: 'instant' }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
@@ -439,6 +453,9 @@ ws.close(); p.kill(); process.exit(0);
 @pytest.fixture(scope="module")
 def marks_browser(tmp_path_factory):
     return run_in_browser(tmp_path_factory.mktemp("new_marks"), DRIVER, json.dumps(_load_marks()), json.dumps(NARROW), timeout=240)
+
+
+# The narrow tour: the candidate pages that carry a mark of the releases the manifest keeps.
 
 
 def _browser_marks():
