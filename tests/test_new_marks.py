@@ -346,9 +346,14 @@ for (const [page, marks] of Object.entries(MARKS)) {
 
 // Once the marks are placed the page goes quiet: placing them never asks for another pass
 // (Advanced settings: a heading with a * and a ?, and a control with both).
+// On a busy machine the page may still be loading its own data at first: a 1.5 s window with no change
+// must come within 8 tries (a rescan loop never gives one); quiet is the last window's count.
 await open('/report/advanced');
-out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObserver(ms => { n += ms.length; }); mo.observe(document.body, { subtree: true, childList: true, attributes: true });
-  setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
+for (let i = 0; i < 8; i++) {
+  out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObserver(ms => { n += ms.length; }); mo.observe(document.body, { subtree: true, childList: true, attributes: true });
+    setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
+  if (out.quiet === 0) break;
+}
 // The * is its own trigger: pointing at it opens "New in the <date> update"; pointing at the item opens nothing.
 await open('/report/path');
 const hoverAt = async js => {
