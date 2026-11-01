@@ -5,6 +5,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-01
+
+### Fix selected changes the answer: URL filtering rules and ZPA
+- **URL filtering in Fix rows from Test a list.** Fix selected now also hands the URL filtering rows to *Fix rows from Test a list*, with the rule that decided them. They go into a custom URL category (an existing one or a new one), and then, under Then, the category goes onto an existing URL filtering rule whose action matches (Block or Allow) or onto a new URL filtering rule, created disabled and placed above the rule that decided the rows. The new rule covers every protocol and names no request method (every method, as the SDK documents), so the Path analyzer reads it as it will act. Undo takes the URLs and the category off again and deletes what the fix created. The URL category change still takes the same URLs on its own.
+- **The category alone changes nothing.** When no enabled URL filtering rule with the needed action names the category, or every such rule sits below the rule that decided the rows, the preview says the change alone does not change these rows, and what to do.
+- **ZPA rows open the ZPA change.** Rows ZPA carries are no longer left out of Fix selected: they open *ZPA segment domains*, one section per segment and purpose. A row that should be blocked is taken out of its segment (so ZIA's policy applies; a segment's last domain is never removed); a row that should be reachable goes to *Add typed domains to a segment*. Needs ZPA ticked on the Scope page.
+- **Add typed domains to a segment.** ZPA segment domains takes typed host names or wildcard domains (at most 500) into an existing application segment, and can remove picked domains from one. The overlap check, the re-read before the write, the read-back and Undo are those of move and copy.
+- **Place it above.** The ZPA builder's access rule can be placed just above a picked rule of the access policy (the Default rule is never offered): one bulk reorder after the rule is built, the order read again right before the write (a change since the preview is a conflict, and nothing moves). Undo deletes a rule the build created, or moves an existing one back where it was.
+
 ## 2026-10-31
 
 ### Path coverage: unread conditions never match, Category lookup, UCaaS one-click

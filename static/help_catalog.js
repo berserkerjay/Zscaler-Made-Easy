@@ -4611,7 +4611,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "input[name=\"opKind\"][value=\"zpa_domains\"]": {
-    "what": "Picks \"ZPA segment domains\". It moves or copies domains between application segments, or clones a segment.",
+    "what": "Picks \"ZPA segment domains\". It adds typed domains to an application segment, removes them, moves or copies domains between segments, or clones a segment. Fix selected picks it for rows ZPA carries.",
     "input": "Tick it to pick this operation. Needs ZPA ticked on the Scope page.",
     "effect": "local"
    },
@@ -4632,7 +4632,7 @@ window.HELP_CATALOG = {
    },
    "#lfArea": {
     "what": "Picks the area the pasted destinations are fixed in.",
-    "input": "Pick one: Cloud Firewall, DNS Control or Advanced Threat Protection lists.",
+    "input": "Pick one: Cloud Firewall, DNS Control, Advanced Threat Protection lists or URL filtering.",
     "effect": "local"
    },
    "#lfPurpose": {
@@ -4691,13 +4691,23 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "select[id^=\"lfRule\"]": {
-    "what": "Says which rule uses the group: none, a new rule, or an existing rule.",
+    "what": "Says which rule uses the group (or, for URL filtering, the category): none, a new rule, or an existing rule.",
     "input": "Pick one. A new rule is created disabled unless you tick it on.",
     "effect": "local"
    },
    "select[id^=\"lfAbove\"]": {
     "what": "Picks where the new rule goes: above this rule. The rule that decided the rows is suggested.",
     "input": "Optional. Leave it to put the rule last, above the Default rule.",
+    "effect": "local"
+   },
+   "input[id^=\"lfCatName\"]": {
+    "what": "Names the new custom URL category the URL filtering rows go into.",
+    "input": "Required for a new category. At most 255 characters, not the name of another category. Example: Fix allow partner sites",
+    "effect": "local"
+   },
+   "select[id^=\"lfCat\"]": {
+    "what": "Picks the custom URL category the URL filtering rows go into, or a new one. Alone it changes nothing: a URL filtering rule with the right action must name it, above the rule that decided the rows (pick it under Then).",
+    "input": "Pick an existing custom category or A new custom URL category.",
     "effect": "local"
    },
    "input[id^=\"lfOn\"]": {
@@ -5086,8 +5096,8 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#opZAct": {
-    "what": "Picks what to do: move domains, copy domains, or clone a segment.",
-    "input": "Required. Pick Move domains, Copy domains or Clone a segment.",
+    "what": "Picks what to do: add typed domains to a segment, remove domains from one, move or copy domains, or clone a segment.",
+    "input": "Required. Pick one. Fix selected picks Remove for ZPA rows that should be blocked, Add for rows that should be reachable.",
     "effect": "local"
    },
    "#opZSrc": {
@@ -5118,6 +5128,11 @@ window.HELP_CATALOG = {
    "#opZNew": {
     "what": "Adds more domains to the clone, besides the ones picked above.",
     "input": "Optional. One domain per line, like app.example.com.",
+    "effect": "local"
+   },
+   "#opZAdd": {
+    "what": "The domains to add to the segment. They take the segment's ports; one already in another segment on overlapping ports is left out, with where it is.",
+    "input": "Required for Add. One host name or wildcard domain per line, at most 500. Example: app.corp.example or *.corp.example",
     "effect": "local"
    },
    "input[data-aig-app]": {
@@ -5788,6 +5803,11 @@ window.HELP_CATALOG = {
    "#zbAccess": {
     "what": "Adds an access rule that allows the prefixed applications.",
     "input": "Tick it to add the rule.",
+    "effect": "local"
+   },
+   "#zbAbove": {
+    "what": "Puts the access rule just above this rule of the access policy. ZPA uses the first rule that matches, top down, so a rule above it that denies these users would win otherwise.",
+    "input": "Optional. Leave it to keep the rule at the end. The preview shows the move; Undo puts the order back.",
     "effect": "local"
    },
    "#zbTimeout": {

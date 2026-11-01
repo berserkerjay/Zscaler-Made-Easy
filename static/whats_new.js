@@ -22,14 +22,32 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders",
-    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score"
+    "2026-11-01": "Fix selected changes the answer: URL filtering rules and ZPA",
+    "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
   "features": [
+    {
+      "id": "fix-flow-url", "release": "2026-11-01", "label": "URL filtering in Fix rows from Test a list",
+      "what": "Fix selected puts URL filtering rows in a custom URL category and adds that category to a matching rule, or to a new disabled rule above the rule that decided them; the preview warns when the category alone changes nothing.",
+      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing"],
+      "marks": [{ "page": "/report/operations", "at": "select[aria-label=\"Custom URL category for the URLs\"]", "shown": "after Read from the tenant, with URL filtering rows" }]
+    },
+    {
+      "id": "zpa-typed-domains", "release": "2026-11-01", "label": "Add typed domains to a segment",
+      "what": "ZPA segment domains adds typed domains to an application segment or removes picked ones, and Fix selected opens it for rows ZPA carries.",
+      "changelog": ["Add typed domains to a segment", "ZPA rows open the ZPA change", "ZPA segment domains"],
+      "marks": [{ "page": "/report/operations", "at": "#opZAdd", "shown": "when Add typed domains is picked" }]
+    },
+    {
+      "id": "zpa-access-position", "release": "2026-11-01", "label": "Place it above",
+      "what": "The ZPA builder places its access rule just above a rule you pick in the access policy, and Undo puts the order back.",
+      "changelog": ["Place it above"],
+      "marks": [{ "page": "/report/operations", "at": "#zbAbove", "shown": "after Read from the tenant" }]
+    },
     {
       "id": "category-lookup", "release": "2026-10-31", "label": "Category lookup",
       "what": "Category lookup on the Path analyzer: a URL, host or category's ZIA categories and every rule that names them, in evaluation order.",
@@ -69,46 +87,6 @@ window.WHATS_NEW = {
       "what": "Shadowed rules finds a later firewall rule whose sites are all Microsoft 365 endpoints, hidden by the Office 365 One Click rule.",
       "changelog": ["Shadowed rules"],
       "marks": [{ "page": "/report/shadow", "at": ".rp-hero h1" }]
-    },
-    {
-      "id": "live-motion", "release": "2026-10-29", "label": "Live motion",
-      "what": "The result shows as a live flow. It stays still under reduced motion, pauses when the tab is hidden, and is said in words too.",
-      "changelog": ["Live motion"],
-      "marks": [
-        {"page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]"},
-        {"page": "/report/path", "at": "#paFlowRefH"},
-        {"page": "/report/path", "at": "#paFlowH", "shown": "after Analyze"},
-        {"page": "/report/path", "at": "#plFlowH", "shown": "after a list is tested"},
-        {"page": "/report/motion", "at": "#tpH"},
-        {"page": "/report/dataflow", "at": "#dfMotionTitle"},
-        {"page": "/report/sslflow", "at": "#sfWalkTitle", "shown": "after a read"},
-        {"page": "/report/sslcoverage", "at": "#hRiver", "shown": "after a read"},
-        {"page": "/report/zpa", "at": "#zoFlowH", "shown": "after a read"},
-        {"page": "/report/zpa", "at": "#zpWalkH", "shown": "after Diagnose"},
-        {"page": "/report/insights", "at": "#tiFlowH", "shown": "after a read"},
-        {"page": "/report/live", "at": "#lfLanesH"},
-        {"page": "/report/bypass", "at": "#bpFlowH", "shown": "after a read"}
-      ]
-    },
-    {
-      "id": "liquid-glass", "release": "2026-10-29", "label": "Liquid Glass",
-      "what": "The Liquid Glass look: see-through, blurred bars, cards, dialogs and buttons, with a switch in Advanced settings to turn it off.",
-      "changelog": ["Liquid Glass"],
-      "marks": [
-        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
-        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#appearance\"]"},
-        {"page": "/report/advanced", "at": "#advGlass"}
-      ]
-    },
-    {
-      "id": "quality-score", "release": "2026-10-29", "label": "Quality and security score",
-      "what": "The quality and security score for this app, built from every QA record, the standards each test covers and the last full test run.",
-      "changelog": ["Quality and security score"],
-      "marks": [
-        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
-        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#quality\"]"},
-        {"page": "/report/advanced", "at": "#advQsH"}
-      ]
     },
     {
       "id": "rule-editor", "release": "2026-10-31", "label": "Edit a rule",

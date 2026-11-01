@@ -345,7 +345,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 102,
+            "fixed": 105,
             "accepted": 12,
             "records": [
               "c6-zcc-zdx",
@@ -367,7 +367,8 @@
               "w8-shadow-it",
               "w8-zdx-zid-zcc",
               "w8-zia-threat-saas",
-              "w8-zwa-aiguard"
+              "w8-zwa-aiguard",
+              "w9-path-fix-flow"
             ]
           },
           "coverage": {
@@ -481,7 +482,7 @@
     }
   ],
   "counts": {
-    "findings": 713,
+    "findings": 716,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -495,12 +496,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 178,
+        "fixed": 179,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 393,
+        "fixed": 395,
         "accepted": 3
       },
       "info": {
@@ -510,12 +511,12 @@
       }
     },
     "checks": {
-      "pass": 646,
+      "pass": 653,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11297
+    "tests_added": 11318
   },
   "findings": [
     {
@@ -4501,6 +4502,22 @@
       "slug": "w8-cloud-connector",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-PF-01",
+      "title": "Fix selected for URL filtering rows only edited a custom URL category: when no rule with the needed action named it above the deciding rule, the change altered nothing and the preview did not say so",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.4.1",
+      "wcag": "",
+      "fix": "ops_list_fix.py url area (category plus rule sub-spec, _warn_no_rule), bulk_test.fix_handoff url section, static/ops_list_fix.js",
+      "test": "tests/test_ops_list_fix.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w9-path-fix-flow",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -10791,6 +10808,38 @@
       "sub_area": "builders"
     },
     {
+      "id": "W9-PF-02",
+      "title": "Test a list rows ZPA carries were excluded from Fix selected, so a private application handled wrongly could only be fixed by hand",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.4.1",
+      "wcag": "",
+      "fix": "bulk_test.fix_handoff zpa sections, the hand-off route's ZPA scope, report_operations.html picks ZPA segment domains; admin_ops zpa_domains add/remove; ops_zpa access_above",
+      "test": "tests/test_fix_flow_browser.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w9-path-fix-flow",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W9-PF-03",
+      "title": "A new URL filtering rule sent with every request method listed is read by the Path analyzer as conditional on the method, so the fix it proposed would not show as deciding",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-670",
+      "asvs": "V11.1.1",
+      "wcag": "",
+      "fix": "ops_list_fix sends no request_methods for a new URL rule (the SDK documents: if not specified, every method)",
+      "test": "tests/test_ops_list_fix.py::test_a_url_fix_creates_a_disabled_rule_above_the_deciding_rule_that_changes_the_verdict_once_enabled",
+      "commit": "",
+      "reason": "",
+      "slug": "w9-path-fix-flow",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13915,6 +13964,34 @@
       "checks": 8,
       "findings": 5,
       "tests_added": 46
+    },
+    {
+      "slug": "w9-path-fix-flow",
+      "area": "Builders: the fix flow (ops_list_fix.py url area, bulk_test.fix_handoff URL and ZPA sections, admin_ops zpa_domains add/remove, ops_zpa access rule position, the Bulk changes page)",
+      "title": "Fix selected writes the change that changes the answer: a custom URL category with the URL filtering rule that uses it, a warning when a category alone changes nothing, ZPA rows routed to the ZPA segment change, typed ZPA domains and the access rule's position",
+      "standards": [
+        "ASVS V1.4.1",
+        "ASVS V4.1.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V7.2.1",
+        "ASVS V11.1.1",
+        "ASVS V11.1.3",
+        "CWE-20",
+        "CWE-272",
+        "CWE-367",
+        "CWE-670",
+        "CWE-770",
+        "CWE-841",
+        "CWE-1059",
+        "CWE-1188",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 2.1.1",
+        "WCAG 2.2 SC 4.1.2"
+      ],
+      "checks": 7,
+      "findings": 3,
+      "tests_added": 21
     }
   ],
   "standards": {
