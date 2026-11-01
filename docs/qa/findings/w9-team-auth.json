@@ -1,0 +1,107 @@
+{
+ "area": "Team server sign-in: SAML 2.0 (signxml) set up on the Team server page or by the environment, passkeys (py_webauthn) alone or after the password, and an administrator's passkey requirement",
+ "title": "Wave 9: SAML 2.0 sign-in and passkeys for team servers, with the identity provider's metadata treated as untrusted input",
+ "files": [
+  "sso_saml.py",
+  "team_passkeys.py",
+  "team_server.py",
+  "team_api.py",
+  "team_routes.py",
+  "security.py",
+  "static/report_team.html",
+  "static/login.html"
+ ],
+ "standards": [
+  "ASVS 4.0.3 L2 V2.2, V2.8, V2.10, V3.2, V4.1, V5.1, V5.5, V7.2, V12.1, V14.1"
+ ],
+ "coverage": {
+  "before": 0.0,
+  "after": 100.0,
+  "how": "acceptance tests 1-5 of the spec each mapped to a test: tests/test_team_saml.py (assertion validation and signature wrapping), tests/test_team_passkeys.py (software authenticator), tests/test_team_signin_settings.py (page settings, metadata, second factor, required passkeys, lockout)"
+ },
+ "checks": [
+  {
+   "id": "W9-TA-C01",
+   "what": "An unsigned, wrongly signed, SHA-1, expired, wrong-audience, wrong-recipient, unsolicited or replayed assertion is refused; a signed one signs the mapped account in, with environment or page-saved settings",
+   "standard": "ASVS V2.10.1",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C02",
+   "what": "Oversized metadata and metadata with a DTD, an internal, external or parameter entity are refused before anything is expanded or fetched",
+   "standard": "ASVS V5.5.2",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C03",
+   "what": "A registered passkey signs in; a replayed challenge, a wrong origin or RP ID, no user verification or a counter that does not go up is refused",
+   "standard": "ASVS V2.8.1",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C04",
+   "what": "With require passkey on, a password-only sign-in of a local account gets no session; an account with a passkey needs its own passkey after the password",
+   "standard": "ASVS V2.2.3",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C05",
+   "what": "The new public routes (SAML ACS, metadata, login, finish; passkey options, login, enroll) are on the public route list and in team_routes; the administrator routes refuse every other role",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C06",
+   "what": "SAML cannot be turned on half set up; the local test makes no outbound call",
+   "standard": "ASVS V14.1.1",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W9-TA-01",
+   "title": "A locked account could still finish a SAML sign-in: the lockout was checked on password and passkey sign-in only",
+   "severity": "medium",
+   "cwe": "CWE-307",
+   "asvs": "V2.2.1",
+   "status": "fixed",
+   "fix": "The SAML finish step refuses a locked account (423)",
+   "test": "tests/test_team_signin_settings.py::test_a_locked_account_cannot_sign_in_with_saml",
+   "commit": "eb1760d"
+  },
+  {
+   "id": "W9-TA-02",
+   "title": "A passkey that failed to verify did not count towards the account's lockout, so a known credential could be retried without limit apart from the per-address limit",
+   "severity": "medium",
+   "cwe": "CWE-307",
+   "asvs": "V2.2.1",
+   "status": "fixed",
+   "fix": "team_server.record_failure counts a failed passkey like a wrong password; a right password no longer resets the count while a second factor is still due",
+   "test": "tests/test_team_signin_settings.py::test_failed_passkeys_lock_the_account_like_wrong_passwords",
+   "commit": "eb1760d"
+  },
+  {
+   "id": "W9-TA-03",
+   "title": "Refused SAML responses were not rate limited, so the assertion consumer service could be hammered with forged responses",
+   "severity": "low",
+   "cwe": "CWE-307",
+   "asvs": "V2.2.1",
+   "status": "fixed",
+   "fix": "A refused response counts towards the address's sign-in limit; over it the ACS answers 429 before parsing",
+   "test": "tests/test_team_signin_settings.py::test_refused_saml_responses_are_rate_limited_per_address",
+   "commit": "eb1760d"
+  },
+  {
+   "id": "W9-TA-04",
+   "title": "The assertion consumer service read its form body inside the route, outside the deny-by-default body readers the contract test enforces",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "team_api._saml_form reads the size-capped URL-encoded body (ASCII, at most ten fields)",
+   "test": "tests/test_api_contracts.py::test_no_endpoint_parses_its_body_by_hand",
+   "commit": "eb1760d"
+  }
+ ],
+ "tests_added": 27
+}
