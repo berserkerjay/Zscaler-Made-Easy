@@ -84,7 +84,7 @@ def _live_store():
     """A 'live tenant' for the save tests: the sample's answers plus a
     Client Connector profile whose exit password is a canary."""
     resp = {ot.normalize_path(p): {"status": 200, "body": b} for p, b in sample_tenant.responses().items()}
-    prof = resp["/zcc/papi/public/v1/application-profiles"]["body"]
+    prof = resp["/zcc/papi/public/v1/application-profiles"]["body"]["policies"]
     prof[0]["policyExtension"] = {"exitPass": CANARY_FIELD, "logoutPassword": CANARY_FIELD}
     prof[0]["uninstallPassword"] = CANARY_FIELD
     return ot.OfflineStore("snap-" + "0" * 16, "snapshot", resp, {"tenant_label": "acme (zscalerten)"})

@@ -9,7 +9,16 @@ opens a socket.
 
 `Tenant.fail_on` makes the n-th write (1-based) fail; `Tenant.before_write`
 runs a callback right before each write (a colleague changing an object
-meanwhile). `reads` and `writes` record what was asked."""
+meanwhile). `reads` and `writes` record what was asked; `calls` records the
+SDK keyword arguments of every write (what the real SDK would be given).
+
+ZPA policy rules: the list, get and delete calls take the policy type first
+and are routed by it; an add or update is stored the way ZPA would answer
+(app_connector_group_ids → app_connector_groups, the v1 condition blocks or,
+for a _v2 call, the blocks the SDK's own _create_conditions_v2 builds from the
+tuples). `Tenant.foreign_ips` are static IP addresses another organisation
+holds: check_static_ip refuses them (HTTP 409), as it refuses one the tenant
+already has. A Client Connector entitlement PUT updates the stored one."""
 from __future__ import annotations
 
 import copy
@@ -28,6 +37,8 @@ class Tenant:
         self.before_write: Optional[Callable[["Tenant", str, str], None]] = None
         self.activations = 0
         self.next_id = 5000
+        self.calls: List[Tuple[str, str, Dict[str, Any]]] = []
+        self.foreign_ips: set = set()
 
     def rows(self, key: str) -> List[Dict[str, Any]]:
         return self.data.setdefault(key, [])
@@ -82,6 +93,16 @@ class _Exec:
             return _Answer({"status": "ACTIVE"}), None
         if path == "/status":
             return _Answer({"status": "ACTIVE"}), None
+        zcc = {"/zcc/papi/public/v1/updateZpaGroupEntitlement": "zcc.zpa_entitlements",
+               "/zcc/papi/public/v1/updateZdxGroupEntitlement": "zcc.zdx_entitlements"}
+        if method == "PUT" and str(req["url"]) in zcc:
+            key = zcc[str(req["url"])]
+            body = {_snake(k): v for k, v in (req["body"] or {}).items()}
+            err = t._write("update", key, cb.BY_KEY[key]["label"], body)
+            if err:
+                return None, err
+            t.rows(key)[:1] = [body]
+            return _Answer(copy.deepcopy(body)), None
         key, rt = "zia.root_certificates", cb.BY_KEY["zia.root_certificates"]
         if path == rt["raw"] and method == "GET":
             t.reads.append(("list", key))
@@ -107,14 +128,69 @@ class _Exec:
         return None, f"HTTP 404 {path} not modelled"
 
 
+def _snake(k: str) -> str:
+    import re
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", str(k)).lower()
+
+
+_CAP_WORDS = {"clipboard_copy": "CLIPBOARD_COPY", "clipboard_paste": "CLIPBOARD_PASTE", "file_download": "FILE_DOWNLOAD",
+              "file_upload": "FILE_UPLOAD", "inspect_file_download": "INSPECT_FILE_DOWNLOAD", "inspect_file_upload": "INSPECT_FILE_UPLOAD",
+              "monitor_session": "MONITOR_SESSION", "record_session": "RECORD_SESSION", "share_session": "SHARE_SESSION"}
+
+
+def _zpa_rule_store(t: Dict[str, Any], kw: Dict[str, Any]) -> Dict[str, Any]:
+    """A ZPA rule as ZPA answers it, from the SDK call's keyword arguments."""
+    body = {k: copy.deepcopy(v) for k, v in kw.items() if k not in ("conditions", "app_connector_group_ids", "app_server_group_ids",
+                                                                   "service_edge_group_ids", "credential_id", "credential_pool_id",
+                                                                   "privileged_capabilities")}
+    if "app_connector_group_ids" in kw:
+        body["app_connector_groups"] = [{"id": str(i)} for i in kw["app_connector_group_ids"]]
+    if "app_server_group_ids" in kw:
+        body["app_server_groups"] = [{"id": str(i)} for i in kw["app_server_group_ids"]]
+    if "service_edge_group_ids" in kw:
+        body["service_edge_groups"] = [{"id": str(i)} for i in kw["service_edge_group_ids"]]
+    if kw.get("credential_id"):
+        body["credential"] = {"id": str(kw["credential_id"])}
+    if kw.get("credential_pool_id"):
+        body["credential_pool"] = {"id": str(kw["credential_pool_id"])}
+    if "privileged_capabilities" in kw:
+        body["privileged_capabilities"] = {"capabilities": sorted(_CAP_WORDS[k] for k, v in kw["privileged_capabilities"].items() if v)}
+    conds = kw.get("conditions") or []
+    if t["v2"]:
+        from zscaler.zpa.policies import PolicySetControllerAPI
+        built = PolicySetControllerAPI._create_conditions_v2(None, copy.deepcopy(conds))
+        blocks = []
+        for b in built:
+            ops = []
+            for o in b.get("operands") or []:
+                for v in o.get("values") or []:
+                    ops.append({"object_type": o["objectType"], "lhs": "id", "rhs": str(v)})
+                for ev in o.get("entryValues") or []:
+                    ops.append({"object_type": o["objectType"], "lhs": str(ev["lhs"]), "rhs": str(ev["rhs"])})
+            blocks.append({"operator": b.get("operator", "OR"), "negated": False, "operands": ops})
+    else:
+        for b in conds:
+            assert isinstance(b, dict), "the v1 calls are given dict blocks"
+        blocks = [{"operator": b.get("operator", "OR"), "negated": bool(b.get("negated")),
+                   "operands": [dict({"object_type": o["objectType"], "lhs": o["lhs"], "rhs": o["rhs"]},
+                                     **({"idp_id": o["idp_id"]} if o.get("idp_id") else {})) for o in b.get("operands") or []]}
+                  for b in conds]
+    body["conditions"] = blocks
+    body["policy_type"] = t["zpa_policy"]
+    return body
+
+
 class _Service:
     def __init__(self, tenant: Tenant, product: str, svc: str):
         self._t, self._product, self._svc = tenant, product, svc
         self._request_executor = _Exec(tenant)
         self._methods: Dict[str, Tuple[str, str]] = {}
+        self._policy: Dict[str, str] = {}
         for t in cb.TYPES:
             if t["product"] == product and t["svc"] == svc:
-                for role in ("ls", "get", "add", "upd", "rm"):
+                if t["zpa_policy"]:
+                    self._policy[t["zpa_policy"]] = t["key"]
+                for role in ("ls", "get", "add", "upd", "rm", "check"):
                     m = t[role]
                     if m and m != "raw":
                         self._methods.setdefault(m, (t["key"], role))
@@ -123,10 +199,26 @@ class _Service:
         if name.startswith("_") or name not in self._methods:
             raise AttributeError(name)
         key, role = self._methods[name]
-        return lambda *a, **kw: self._call(key, role, a, kw)
+        if self._policy and role in ("ls", "get", "rm"):
+            # policies.list_rules / get_rule / delete_rule take the policy type first
+            return lambda *a, **kw: self._call(self._policy[a[0]], role, a[1:], kw)
+        return lambda *a, **kw: self._call(key, role, a, kw, method=name)
 
-    def _call(self, key: str, role: str, a: Tuple[Any, ...], kw: Dict[str, Any]) -> Any:
+    def _call(self, key: str, role: str, a: Tuple[Any, ...], kw: Dict[str, Any], method: str = "") -> Any:
         tenant, t = self._t, cb.BY_KEY[key]
+        if role == "check":
+            ip = str(a[0])
+            if ip in tenant.foreign_ips or any(str(r.get("ip_address")) == ip for r in tenant.rows(key)):
+                return False, None, "HTTP 409 DUPLICATE_ITEM: the IP address already exists"
+            return True, None, None
+        if role in ("add", "upd"):
+            tenant.calls.append((method, key, copy.deepcopy(kw)))
+            if t["zpa_policy"]:
+                kw = _zpa_rule_store(t, kw)
+            elif t["app_kind"] and role == "add" and "common_apps_dto" in kw:
+                kw = dict(kw)
+                apps = [{k: v for k, v in x.items() if k != "app_types"} for x in kw.pop("common_apps_dto").get("apps_config") or []]
+                kw["pra_apps" if t["app_kind"] == "pra" else "inspection_apps"] = apps
         if role == "ls":
             tenant.reads.append(("list", key))
             if key not in tenant.data:
@@ -136,6 +228,8 @@ class _Service:
             out = rows
             if t["per_type"] and a:
                 out = [r for r in rows if r.get("type") == a[0]]
+            if t["per_idp"] and a:
+                out = [r for r in rows if str(r.get("idp_id")) == str(a[0])]
             return copy.deepcopy(out), None, None
         if role == "get" and t["singleton"]:
             tenant.reads.append(("get", key))

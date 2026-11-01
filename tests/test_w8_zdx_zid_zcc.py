@@ -452,7 +452,7 @@ def test_turning_an_app_profile_off_is_live_typed_read_back_and_undone(sample):
     _p2, r2 = _apply(client, r["inverse"], ZCC_SCOPE)
     # Assert
     assert p["confirm_phrase"] == "WINDOWS - CONTRACTORS" and r["status"] == "applied" and r["verification"]["confirmed"] == 1
-    assert r2["status"] == "applied" and sample.responses["/zcc/papi/public/v1/application-profiles"]["body"][2]["active"] == 1
+    assert r2["status"] == "applied" and sample.responses["/zcc/papi/public/v1/application-profiles"]["body"]["policies"][2]["active"] == 1
 
 
 def test_app_profile_settings_change_only_allowlisted_fields_and_never_a_password(sample):
@@ -477,7 +477,7 @@ def test_app_profile_settings_apply_read_back_and_undo(sample):
     items = {u["field"]: (u["before"], u["after"]) for u in p["items"]}
     assert items == {"enforce_split_dns": (0, 1), "packet_tunnel_exclude_list": ("10.0.0.0/8,192.0.2.0/24", "10.0.0.0/8")}
     assert r["verification"]["confirmed"] == 2 and r2["status"] == "applied"
-    pe = sample.responses["/zcc/papi/public/v1/application-profiles"]["body"][2]["policyExtension"]
+    pe = sample.responses["/zcc/papi/public/v1/application-profiles"]["body"]["policies"][2]["policyExtension"]
     assert pe["packetTunnelExcludeList"] == "10.0.0.0/8,192.0.2.0/24" and pe["enforceSplitDNS"] == 0
     assert "No password" in " ".join(p["notes"])
 

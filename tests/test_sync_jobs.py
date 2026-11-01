@@ -331,3 +331,172 @@ def test_the_boundary_takes_any_source_snapshot(env):
     with pytest.raises(ao.OperationError, match="empty source"):
         sync_jobs.target_plan({"policies": {"firewall": {"rows": []}}}, "firewall", tgt, ao.scope_for(["zia_extras"], {}), {"include_deletes": True},
                               lambda m: None)
+
+
+# ── restore-engine groups (#21): DNS, IPS, SSL, URL categories, Cloud App Control, DLP and the rest ──
+import config_backup as cb  # noqa: E402
+from config_fake import Client as CfgClient, Tenant as CfgTenant  # noqa: E402
+
+TEAM_A = [{"id": 1, "name": "Team A"}]
+RESTORE_SOURCE = {
+    "zia.rule_labels": [{"id": 1, "name": "Team A"}, {"id": 2, "name": "Team B"}],
+    "zia.firewall_dns_rules": [{"id": 201, "name": "DNS one", "order": 1, "state": "ENABLED", "action": "ALLOW", "labels": TEAM_A}],
+    "zia.firewall_ips_rules": [{"id": 202, "name": "IPS one", "order": 1, "state": "ENABLED", "action": "ALLOW", "labels": TEAM_A}],
+    "zia.ssl_inspection_rules": [{"id": 203, "name": "SSL one", "order": 1, "state": "ENABLED", "action": {"type": "DO_NOT_DECRYPT"}, "labels": TEAM_A}],
+    "zia.url_categories": [{"id": "CUSTOM_01", "configured_name": "Partners", "super_category": "USER_DEFINED", "urls": ["a.example"],
+                            "custom_category": True}],
+    "zia.cloud_app_instances": [{"id": 111, "name": "Corp Box", "instance_type": "BOX", "instance_identifiers": [{"instance_identifier": "corp.box.com"}]}],
+    "zia.cloud_app_control_rules": [{"id": 205, "name": "CAC one", "order": 1, "state": "ENABLED", "type": "WEBMAIL", "actions": ["ALLOW_WEBMAIL_VIEW"],
+                                     "labels": TEAM_A}],
+    "zia.dlp_dictionaries": [{"id": 61, "name": "Card numbers", "custom": True, "dictionary_type": "PATTERNS_AND_PHRASES",
+                              "patterns": [{"pattern": "4[0-9]{15}"}]}],
+    "zia.dlp_engines": [{"id": 71, "name": "Cards engine", "custom_dlp_engine": True, "engine_expression": "((D61.S > 2))"}],
+    "zia.web_dlp_rules": [{"id": 20, "name": "Cards to the web", "order": 1, "state": "ENABLED", "action": "BLOCK", "dlp_engines": [{"id": 71}],
+                           "labels": TEAM_A}],
+    "zia.ip_source_groups": [{"id": 301, "name": "Src", "ip_addresses": ["10.0.0.1"]}],
+    "zia.ip_destination_groups": [{"id": 302, "name": "Dst", "type": "DSTN_IP", "addresses": ["10.0.0.2"]}],
+    "zia.network_services": [{"id": 303, "name": "Svc", "type": "CUSTOM", "dest_tcp_ports": [{"start": 8080}]}],
+    "zia.network_service_groups": [{"id": 304, "name": "SvcG", "services": [{"id": 303}]}],
+    "zia.network_app_groups": [{"id": 305, "name": "AppG", "network_applications": ["DNS"]}],
+    "zia.time_intervals": [{"id": 306, "name": "Office hours", "start_time": 480, "end_time": 1080, "days_of_week": ["MON"]}],
+    "zia.workload_groups": [{"id": 101, "name": "Prod VMs", "expression": "tag:env=prod"}],
+    "zia.forwarding_rules": [{"id": 131, "name": "Direct to SaaS", "order": 1, "state": "ENABLED", "forward_method": "DIRECT", "labels": TEAM_A}],
+    "zia.bandwidth_classes": [{"id": 81, "name": "Video", "type": "BANDWIDTH_CAT_CUSTOM", "web_applications": ["YOUTUBE"]}],
+    "zia.bandwidth_control_rules": [{"id": 91, "name": "Cap video", "order": 1, "state": "ENABLED", "max_bandwidth": 20, "bandwidth_classes": [{"id": 81}],
+                                     "labels": TEAM_A}],
+    "zia.nat_control_rules": [{"id": 141, "name": "A one", "order": 1, "state": "ENABLED", "redirect_ip": "10.0.0.5", "labels": TEAM_A},
+                              {"id": 142, "name": "B one", "order": 2, "state": "ENABLED", "redirect_ip": "10.0.0.6", "labels": [{"id": 2, "name": "Team B"}]}],
+    "zia.sandbox_rules": [{"id": 401, "name": "Sandbox one", "order": 1, "state": "ENABLED", "ba_rule_action": "BLOCK", "labels": TEAM_A}],
+    "zia.tenancy_restriction_profiles": [{"id": 121, "name": "Only corp M365", "app_type": "MSLOGINSERVICES", "item_value": ["corp.example"]}],
+    "zia.file_type_rules": [{"id": 402, "name": "FTC one", "order": 1, "state": "ENABLED", "filtering_action": "BLOCK", "labels": TEAM_A}],
+    "zia.traffic_capture_rules": [{"id": 151, "name": "Capture DNS", "order": 1, "state": "ENABLED", "action": "CAPTURE", "labels": TEAM_A}],
+}
+RESTORE_GROUPS = [g for g, v in sync_jobs.GROUPS.items() if v["kind"] == "restore"]
+
+
+def _zia_lists():
+    return {t["key"]: [] for t in cb.TYPES if t["product"] == "zia" and not t["singleton"]}
+
+
+@pytest.fixture
+def renv(monkeypatch, tmp_path):
+    """A source and a target on the stateful configuration fake (tests/config_fake.py), as saved profiles."""
+    for k, v in {"DLPCHECK_CHANGE_QUEUE_FILE": "change_requests.json", "DLPCHECK_SYNC_JOBS_FILE": "sync_jobs.json", "DLP_CHECK_AUDIT": "audit.log",
+                 "DLP_CHECK_DEPLOYMENTS": "deployments.json", "DLP_CHECK_PROFILES": "tenant_profiles.json"}.items():
+        monkeypatch.setenv(k, str(tmp_path / v))
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+    monkeypatch.delenv("DLP_CHECK_FOUR_EYES", raising=False)
+    clients = {"src": CfgClient(CfgTenant(_zia_lists() | RESTORE_SOURCE)),
+               "tgt": CfgClient(CfgTenant(_zia_lists() | {"zia.rule_labels": [{"id": 8, "name": "Team A"}, {"id": 9, "name": "Team B"}]}))}
+    for pid in clients:
+        tenant_profiles.upsert({"name": pid.upper(), "cloud": "production", "vanity_domain": pid, "client_id": f"cid-{pid}-123456",
+                                "auth_method": "oneapi", "scopes": ["zia_extras", "dlp"], "channels": {"web_dlp": "zscaler"}},
+                               client_secret=SECRETS[pid], remember_secret=True, profile_id=pid)
+    deps = sync_jobs.Deps(build_client=lambda c: clients[c["vanity_domain"]], tenant_key=lambda c: (c["vanity_domain"], c["vanity_domain"].upper()))
+    return {"clients": clients, "deps": deps}
+
+
+@pytest.mark.parametrize("group", RESTORE_GROUPS)
+def test_each_restore_engine_group_files_a_clone_plan_and_writes_nothing(renv, group):
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-06: a sync job of each new group reads the source, keeps the read as a sync backup and files one pending restore plan per target in the four-eyes queue; neither tenant is written."""
+    job = sync_jobs.create_job(_job(name=f"Sync {group}", groups=[group]), by="alice@example.com")
+    run = sync_jobs.run_job(job["id"], trigger="manual", by="alice@example.com", deps=renv["deps"])
+    assert run["status"] == "planned" and len(run["filed"]) == 1, (run["errors"], run["targets"])
+    rec = change_queue.get(run["filed"][0])
+    op = rec["payload"]["operation"]
+    assert rec["status"] == "pending" and rec["kind"] == "admin_operation" and len(rec["plan_hash"]) == 64
+    assert op["type"] == "config_restore_zia" and op["target"] == "other" and op["target_profile_id"] == "tgt"
+    assert sorted(op["types"]) == sorted(sync_jobs.GROUPS[group]["types"]) and not op["keep_state"]
+    backup = cb.load_backup(op["source"]["backup"])
+    assert backup["meta"]["kind"] == "sync" and backup["meta"]["profile_id"] == job["id"]
+    tgt = renv["clients"]["tgt"].tenant
+    want = {cb.name_of(cb.BY_KEY[k], r) for k in op["types"] for r in RESTORE_SOURCE.get(k, []) if not tgt.by_name(k, cb.name_of(cb.BY_KEY[k], r))}
+    assert {i["name"] for i in rec["items"] if i["status"] == "add"} == want
+    assert rec["summary"]["add"] == len(want) and rec["summary"]["delete"] == 0
+    assert renv["clients"]["src"].tenant.writes == [] and renv["clients"]["tgt"].tenant.writes == []
+
+
+def test_an_approved_restore_group_plan_applies_through_the_engine_disabled_and_remapped(renv):
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-06: the operation a sync files re-plans to the same hash and applies through the Bulk changes engine: the rule arrives disabled, its label pointing at the target's own label, with an Undo."""
+    job = sync_jobs.create_job(_job(groups=["zia_dns"]), by="alice@example.com")
+    run = sync_jobs.run_job(job["id"], trigger="manual", by="alice@example.com", deps=renv["deps"])
+    rec = change_queue.get(run["filed"][0])
+    tgt = renv["clients"]["tgt"]
+    scope = sync_jobs.profile_scope(tenant_profiles.get("tgt", with_secret=True))
+    op = rec["payload"]["operation"]
+    assert ao.plan(tgt, op, scope=scope)["plan_hash"] == rec["plan_hash"]
+    r = ao.execute(tgt, op, plan_hash=rec["plan_hash"], scope=scope, writes_enabled=True, assessor="Bob Reviewer", tenant_label="TGT",
+                   confirm_text=rec["payload"]["confirm_phrase"] or "APPLY")
+    assert r["status"] == "applied", r.get("stopped")
+    rule = tgt.tenant.by_name("zia.firewall_dns_rules", "DNS one")
+    assert rule["state"] == "DISABLED" and rule["labels"] == [{"id": 8}] and r["inverse"]
+
+
+def test_a_restore_group_plan_changed_since_is_not_applied(renv):
+    """ASVS V11.1.3 · CWE-367 · WSTG-BUSL-04: when the target gains the object after the plan was filed, the approved operation re-plans to another hash, so the engine refuses it as stale."""
+    job = sync_jobs.create_job(_job(groups=["zia_nat"]), by="alice@example.com")
+    run = sync_jobs.run_job(job["id"], trigger="manual", by="alice@example.com", deps=renv["deps"])
+    rec = change_queue.get(run["filed"][0])
+    tgt = renv["clients"]["tgt"]
+    tgt.tenant.rows("zia.nat_control_rules").append({"id": 77, "name": "A one", "order": 1, "state": "ENABLED", "redirect_ip": "10.9.9.9"})
+    scope = sync_jobs.profile_scope(tenant_profiles.get("tgt", with_secret=True))
+    assert ao.plan(tgt, rec["payload"]["operation"], scope=scope)["plan_hash"] != rec["plan_hash"]
+    r = ao.execute(tgt, rec["payload"]["operation"], plan_hash=rec["plan_hash"], scope=scope, writes_enabled=True, assessor="Bob",
+                   tenant_label="TGT", confirm_text="APPLY")
+    assert r["status"] != "applied" and tgt.tenant.writes == []
+
+
+def test_a_restore_group_out_of_the_targets_scope_is_not_read(renv):
+    """ASVS V4.1.3 · CWE-285 · WSTG-ATHZ-02: a target whose saved Scope page lacks the group's types is reported as not in scope and never signed in to."""
+    tenant_profiles.upsert({"name": "TGT", "cloud": "production", "vanity_domain": "tgt", "client_id": "cid-tgt-123456", "auth_method": "oneapi",
+                            "scopes": ["zia_extras"]}, client_secret=SECRETS["tgt"], remember_secret=True, profile_id="tgt")
+    job = sync_jobs.create_job(_job(groups=["zia_dlp"]), by="alice@example.com")
+    run = sync_jobs.run_job(job["id"], trigger="manual", by="alice@example.com", deps=renv["deps"])
+    assert run["targets"][0]["status"] == "not_in_scope" and run["filed"] == []
+    assert renv["clients"]["tgt"].tenant.reads == []
+
+
+# ── the label selection (#23) ──────────────────────────────────────────
+def test_a_label_job_plans_and_deletes_only_rules_with_that_label(renv):
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-06: a job with label 'Team A' plans only the source's Team A rules, and with deletes on removes only the target's Team A rules the source lacks."""
+    renv["clients"]["tgt"].tenant.rows("zia.nat_control_rules").extend([
+        {"id": 50, "name": "A old", "order": 1, "state": "ENABLED", "redirect_ip": "10.1.1.1", "labels": [{"id": 8}]},
+        {"id": 51, "name": "B old", "order": 2, "state": "ENABLED", "redirect_ip": "10.1.1.2", "labels": [{"id": 9}]},
+        {"id": 52, "name": "No label", "order": 3, "state": "ENABLED", "redirect_ip": "10.1.1.3"}])
+    job = sync_jobs.create_job(_job(groups=["zia_nat"], label="Team A", include_deletes=True), by="alice@example.com")
+    run = sync_jobs.run_job(job["id"], trigger="manual", by="alice@example.com", deps=renv["deps"])
+    rec = change_queue.get(run["filed"][0])
+    assert {(i["status"], i["name"]) for i in rec["items"]} == {("add", "A one"), ("delete", "A old")}
+    assert rec["payload"]["operation"]["select"] == {"label": "Team A"} and rec["payload"]["confirm_phrase"]
+    assert renv["clients"]["tgt"].tenant.writes == []
+
+
+def test_a_label_selection_on_a_csv_group_plans_only_labelled_rules(env):
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-06: a Cloud Firewall sync with label 'Team A' plans the source's Team A rules only; deletes reach only the target's Team A rules."""
+    lab = {"id": 52, "name": "Team A"}
+    for pid, rule in (("src", {"id": 851, "order": 3, "rank": 7, "name": "Team rule new", "state": "ENABLED", "action": "ALLOW", "labels": [lab]}),
+                      ("tgt", {"id": 852, "order": 2, "rank": 7, "name": "Team rule old", "state": "ENABLED", "action": "ALLOW", "labels": [lab]})):
+        resp = env["stores"][pid][0].responses
+        resp["/zia/api/v1/ruleLabels"]["body"].append(dict(lab))
+        resp[FW_PATH]["body"].insert(1, rule)
+    job = sync_jobs.create_job(_job(label="Team A", include_deletes=True), by="alice@example.com")
+    run = sync_jobs.run_job(job["id"], trigger="manual", by="alice@example.com", deps=env["deps"])
+    rec = change_queue.get(run["filed"][0])
+    assert {(i["status"], i["name"]) for i in rec["items"]} == {("add", "Team rule new"), ("delete", "Team rule old")}
+    assert _writes(env, "tgt") == []
+
+
+@pytest.mark.parametrize("groups", [["zpa_access"], ["zia_firewall", "zpa_access"], ["zia_url_categories"], ["zia_tenancy"]])
+def test_a_label_on_a_group_without_rule_labels_is_refused(env, groups):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: ZPA access rules, URL categories and tenancy profiles carry no rule labels, so a job selecting them by label is refused before it is saved."""
+    with pytest.raises(sync_jobs.SyncError, match="no rule labels"):
+        sync_jobs.create_job(_job(groups=groups, label="Team A"), by="alice@example.com")
+    assert sync_jobs.list_jobs() == []
+
+
+def test_the_restore_groups_are_offered_with_whether_they_take_a_label(env):
+    """ASVS V1.14.1 · CWE-1059: the source list names each group, how it is planned and whether a label can select it."""
+    got = {g["id"]: g for g in sync_jobs.sources()["groups"]}
+    for g in ("zia_dns", "zia_ips", "zia_ssl", "zia_cloud_app_control", "zia_sandbox", "zia_dlp", "zia_file_type"):
+        assert got[g]["kind"] == "restore" and got[g]["labels"] is True, g
+    assert got["zia_url_categories"]["labels"] is False and got["zpa_access"]["labels"] is False and got["zia_firewall"]["kind"] == "csv"

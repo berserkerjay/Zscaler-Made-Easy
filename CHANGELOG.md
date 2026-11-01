@@ -38,6 +38,16 @@ lists what each batch of changes did, newest first.
 - **Reset a ZIdentity user's password or MFA.** A raw call to ZIdentity's public API (the Zscaler SDK has none), behind the named assessor and RESET and the login typed; it cannot be undone. A temporary password ZIdentity answers is shown once, to the person who applied, and is never kept, logged, audited or exported.
 - Toggling one Private Service Edge on or off is now covered by its own tests (payload, gates, a change since the preview, a failed write and Undo).
 
+### Restore breadth: wider backups, ZPA rules and Client Connector in restore, more sync groups
+- Backups now also read ZIA NAT and traffic capture rules and workload groups, ZPA user portals, PRA credentials (metadata only), SCIM attributes and groups (per identity provider), individual Private Service Edges and enrollment certificates (metadata only), and Client Connector admin users (by id, role and state, without user names), predefined and custom IP-based apps and process-based apps; the sample tenant and saved snapshots carry them too.
+- Restore and clone write forwarding rules, bandwidth classes and rules, workload groups, cloud app instances, tenancy restriction profiles and NAT and traffic capture rules, with every reference matched by name in the target; new rules arrive disabled.
+- ZPA policy rules (access, timeout, forwarding, isolation, inspection, redirection, credential, capabilities) restore with every condition operand remapped; a rule whose conditions cannot be sent exactly is left out with the reason. A new ZPA rule needs the explicit "keep each rule's state" tick, because the SDK cannot create it disabled.
+- Client Connector app profiles restore their non-secret fields only (passwords and the policy token are never sent), and ZPA and ZDX entitlements are put back with the same PUT Bulk changes uses; both are undoable and never cloned to another tenant.
+- A clone leaves locations, static IPs and GRE tunnels out and lists them as manual steps.
+- Creating them is off by default and reachable only through the API (no page control): a ZIA restore spec with `include_tenant_bound: true` plans static IPs (each checked with the target first), GRE tunnels and top-level locations that use only the target's own or newly added static IPs. The apply needs its own typed phrase (CREATE n TENANT-BOUND OBJECTS), stops if one appeared in the target since the preview, reads each back, and Undo deletes what it created. They are never updated or deleted otherwise.
+- The sample tenant's GRE tunnels and newer Client Connector app profile answer now read into a backup.
+- Scheduled sync keeps DNS Control, IPS, SSL inspection, URL category, Cloud App Control, DLP, network object, forwarding, bandwidth, NAT, Sandbox, tenancy, File Type Control and traffic capture groups in step through the restore engine: each run still only plans and files the change to the four-eyes queue. A rule label selects only rules carrying it (deletes too); a group without rule labels refuses a label.
+
 ## 2026-10-31
 
 ### Path coverage: unread conditions never match, Category lookup, UCaaS one-click

@@ -76,7 +76,8 @@ GONE = ("The offline tenant this page was using is no longer open (the server re
 KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard", "ztw",
                 "ztb", "easm", "zbi", "zcell", "zms")
 _PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw|aiguard|ztb|easm|bi|zcell|zms)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
-_CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/)[^/]+")
+# ZPA's user configuration service (SCIM groups: zpa/scim_groups.py) has no /admin segment: /zpa/userconfig/v1/customers/{id}/...
+_CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/|/zpa/userconfig/v[0-9]+/customers/)[^/]+")
 # The ZCell customer id in a Zero Trust Cellular path (zscaler/zcell/*.py:
 # /zcell/config/api/v1/customers/{id}/...) is keyed as {zcellCustomerId},
 # as the ZPA customer id is, so a snapshot opens with any id.
@@ -322,8 +323,14 @@ class OfflineStore:
                 items = _items(body)
                 # The platform is device_type on an app profile (zscaler/zcc/models/webpolicy.py), deviceType on older answers.
                 field = next((f for f in ("device_type", "deviceType") if items and all(isinstance(x, dict) and f in x for x in items)), None)
-                if dt not in (None, "") and isinstance(body, list) and field:
-                    body = [x for x in items if str(x.get(field)) == str(dt)]
+                if dt not in (None, "") and items is not None and field:
+                    kept = [x for x in items if str(x.get(field)) == str(dt)]
+                    if isinstance(body, list):
+                        body = kept
+                    else:   # an envelope ({"policies": [...]}) keeps its shape around the platform's rows
+                        items[:] = kept
+                        if "totalCount" in body:
+                            body["totalCount"] = len(kept)
                 return status, body
             item, _, _ = self._item(path)
             if item is not None:
@@ -1236,6 +1243,7 @@ _ZIA = ("zia_extras",)
 _WEB_POLICY = ("dlp", "zia_extras", "genai")
 PER_OBJECT_ZDX = "/zdx/:per-application-and-alert"
 PER_OBJECT_ZID = "/zid/:per-admin-and-group"
+PER_OBJECT_SCIM = "/zpa/:per-identity-provider"     # SCIM attributes and groups, read once per identity provider
 CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     [(_DLP, f"/zia/{x}") for x in ("dlpDictionaries", "dlpEngines", "dlpNotificationTemplates", "incidentReceiverServers", "icapServers",
                                    "webDlpRules", "endPointDlpRules", "emailDlpRules", "casbDlpRules/all", "casbTenant/lite")]
@@ -1318,6 +1326,12 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     # (ids only), each application's week of score and metrics, every admin's
     # entitlements and every group's member ids. See _capture_per_object.
     + [(("zdx",), "/zdx/alerts/historical"), (("zdx",), PER_OBJECT_ZDX), (("zidentity",), PER_OBJECT_ZID)]
+    # Configuration backups (config_backup.TYPES, 2026-11-01): ZIA traffic capture rules and workload groups,
+    # ZPA user portals and SCIM attributes and groups per identity provider, Client Connector admin users
+    # (a backup of a snapshot keeps them by id, without the user name).
+    + [(_ZIA, f"/zia/{x}") for x in ("trafficCaptureRules", "workloadGroups")]
+    # (PRA credentials stay with RBAC above: a snapshot reads them only with RBAC ticked.)
+    + [(("zpa",), "/zpa/userPortal"), (("zpa",), PER_OBJECT_SCIM), (("zcc",), "/zcc/adminUsers")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}
@@ -1408,6 +1422,9 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
             continue
         if ep in (PER_OBJECT_ZDX, PER_OBJECT_ZID):
             _capture_per_object(guard, ep, keep, counts, unread, stopped)
+            continue
+        if ep == PER_OBJECT_SCIM:
+            _capture_scim(guard, str(getattr(client, "customer_id", "") or ""), keep, counts, unread, stopped)
             continue
         if ep == "/zdx/alerts/historical":
             import zscaler_zdx_checks
@@ -1592,6 +1609,36 @@ def _capture_per_object(guard: Any, ep: str, keep: Callable[[str, Any], None], c
         if ok_id(g.get("id")):
             one(f"/zid/groups/{g['id']}/users", None, lambda b: {"records": [{"id": x.get("id")} for x in (_items(b) or [])
                                                                           if isinstance(x, dict) and x.get("id") not in (None, "")]})
+
+
+def _capture_scim(guard: Any, customer_id: str, keep: Callable[[str, Any], None], counts: Dict[str, int], unread: List[str],
+                  stopped: Callable[[], bool]) -> None:
+    """SCIM attributes and SCIM groups, once per identity provider (the SDK
+    lists them per IdP: zpa/scim_attributes.list_scim_attributes,
+    zpa/scim_groups.list_scim_groups). Attribute and group definitions only:
+    no user is read. SCIM groups are served by ZPA's user configuration
+    service, so their path is sent as it is, with the customer id."""
+    idps, code = _read_zpa(guard, "/zpa/idp")
+    rows = [x for x in _items(idps) or [] if isinstance(x, dict)] if code in (200, 204) else []
+    if code not in (200, 204):
+        counts["not_read"] += 1
+        unread.append(f"/zpa/idp: HTTP {code}")
+    cid_ok = bool(re.fullmatch(r"[0-9]{1,24}", customer_id))
+    for idp in rows[:MAX_PER_OBJECT]:
+        iid = str(idp.get("id") or "")
+        if stopped() or not re.fullmatch(r"[0-9]{1,24}", iid):
+            continue
+        eps = [f"/zpa/idp/{iid}/scimattribute"]
+        if cid_ok:
+            eps.append(f"raw:/zpa/userconfig/v1/customers/{customer_id}/scimgroup/idpId/{iid}")
+        for ep in eps:
+            body, code = _read_zpa(guard, ep)
+            if code in (200, 204):
+                keep(ep, body if code == 200 else [])
+                counts["answers"] += 1
+            else:
+                counts["not_read"] += 1
+                unread.append(f"{ep.removeprefix('raw:')}: HTTP {code}")
 
 
 def _read_zpa(guard: Any, ep: str) -> Tuple[Any, int]:
