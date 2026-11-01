@@ -22,14 +22,34 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders",
-    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score"
+    "2026-11-01": "More of the tenant read and scored",
+    "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
   "features": [
+    {
+      "id": "remaining-resources-scored", "release": "2026-11-01", "label": "More of the tenant scored",
+      "what": "New assessment checks: Endpoint DLP rules on empty resource groups, the ZPA link to ZIA, connector auto-delete and version profiles, user portals, partner integrations, traffic capture rules, time intervals and AI Guard provider credentials.",
+      "changelog": ["Remaining resources scored"],
+      "marks": [
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"zia_extras\"]", "shown": "on the Scope page" },
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"zpa\"]", "shown": "on the Scope page" },
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"aiguard\"]", "shown": "on the Scope page" }
+      ]
+    },
+    {
+      "id": "object-checks", "release": "2026-11-01", "label": "Empty and expired objects",
+      "what": "Checks for objects that cannot do their job: empty DNS application, workload and connector IP groups, incomplete header insertion profiles, full client-to-client IP ranges and expired isolation certificates.",
+      "changelog": ["Objects that cannot do their job"],
+      "marks": [
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"zia_extras\"]", "shown": "on the Scope page" },
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"zpa\"]", "shown": "on the Scope page" },
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"ztw\"]", "shown": "on the Scope page" }
+      ]
+    },
     {
       "id": "category-lookup", "release": "2026-10-31", "label": "Category lookup",
       "what": "Category lookup on the Path analyzer: a URL, host or category's ZIA categories and every rule that names them, in evaluation order.",
@@ -69,46 +89,6 @@ window.WHATS_NEW = {
       "what": "Shadowed rules finds a later firewall rule whose sites are all Microsoft 365 endpoints, hidden by the Office 365 One Click rule.",
       "changelog": ["Shadowed rules"],
       "marks": [{ "page": "/report/shadow", "at": ".rp-hero h1" }]
-    },
-    {
-      "id": "live-motion", "release": "2026-10-29", "label": "Live motion",
-      "what": "The result shows as a live flow. It stays still under reduced motion, pauses when the tab is hidden, and is said in words too.",
-      "changelog": ["Live motion"],
-      "marks": [
-        {"page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]"},
-        {"page": "/report/path", "at": "#paFlowRefH"},
-        {"page": "/report/path", "at": "#paFlowH", "shown": "after Analyze"},
-        {"page": "/report/path", "at": "#plFlowH", "shown": "after a list is tested"},
-        {"page": "/report/motion", "at": "#tpH"},
-        {"page": "/report/dataflow", "at": "#dfMotionTitle"},
-        {"page": "/report/sslflow", "at": "#sfWalkTitle", "shown": "after a read"},
-        {"page": "/report/sslcoverage", "at": "#hRiver", "shown": "after a read"},
-        {"page": "/report/zpa", "at": "#zoFlowH", "shown": "after a read"},
-        {"page": "/report/zpa", "at": "#zpWalkH", "shown": "after Diagnose"},
-        {"page": "/report/insights", "at": "#tiFlowH", "shown": "after a read"},
-        {"page": "/report/live", "at": "#lfLanesH"},
-        {"page": "/report/bypass", "at": "#bpFlowH", "shown": "after a read"}
-      ]
-    },
-    {
-      "id": "liquid-glass", "release": "2026-10-29", "label": "Liquid Glass",
-      "what": "The Liquid Glass look: see-through, blurred bars, cards, dialogs and buttons, with a switch in Advanced settings to turn it off.",
-      "changelog": ["Liquid Glass"],
-      "marks": [
-        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
-        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#appearance\"]"},
-        {"page": "/report/advanced", "at": "#advGlass"}
-      ]
-    },
-    {
-      "id": "quality-score", "release": "2026-10-29", "label": "Quality and security score",
-      "what": "The quality and security score for this app, built from every QA record, the standards each test covers and the last full test run.",
-      "changelog": ["Quality and security score"],
-      "marks": [
-        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
-        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#quality\"]"},
-        {"page": "/report/advanced", "at": "#advQsH"}
-      ]
     },
     {
       "id": "rule-editor", "release": "2026-10-31", "label": "Edit a rule",

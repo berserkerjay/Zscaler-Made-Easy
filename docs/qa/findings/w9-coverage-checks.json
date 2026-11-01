@@ -29,7 +29,10 @@
   "WSTG-ATHZ-02",
   "WSTG-ERRH-01",
   "SSDF PW.4.1",
-  "SSDF PW.8.2"
+  "SSDF PW.8.2",
+  "ASVS V2.10.4",
+  "CWE-697",
+  "CWE-798"
  ],
  "checks": [
   {
@@ -73,6 +76,12 @@
    "what": "Mutation proof: removing the metadata filter from the raw client and the SDK client makes both metadata tests fail",
    "standard": "SSDF PW.8.2",
    "result": "pass"
+  },
+  {
+   "id": "W9-CC-C04",
+   "what": "Six objects read until now only by backup and Terraform are scored (FW.11 DNS application groups, FW.12 workload groups, CA.6 HTTP header profiles, ZPA.25 client-to-client IP ranges, ZPA.26 isolation certificates, ZTW.9 connector IP groups): each path is the installed SDK's, each sample field is in the SDK model, each read is under its Scope key and in snapshots, and a missing or unreadable field is unknown, never a pass",
+   "standard": "SSDF PW.4.1",
+   "result": "pass"
   }
  ],
  "findings": [
@@ -108,6 +117,61 @@
    "fix": "left unchanged (outside this slice); B.17 reads and scores the resources",
    "test": "tests/test_w9_coverage_checks.py::test_b17_rule_on_an_empty_group_is_a_finding",
    "commit": "51cba5b"
+  },
+  {
+   "id": "W9-CC-04",
+   "severity": "medium",
+   "status": "fixed",
+   "asvs": "V5.1.3",
+   "cwe": "CWE-754",
+   "commit": "5434f93",
+   "title": "GOV.9 passed (\"No traffic capture rule\") on a 200 answer that was not a list of rules ({}, text, a number, true, a list of non-rules)",
+   "fix": "Only a real empty list (bare or in the list envelope) means no capture rule; any other shape, and an unreadable entry beside disabled rules, is unknown with the reason",
+   "test": "tests/test_w9_coverage_checks.py::test_gov9_a_malformed_answer_is_unknown_never_pass"
+  },
+  {
+   "id": "W9-CC-05",
+   "severity": "low",
+   "status": "fixed",
+   "asvs": "V7.4.1",
+   "cwe": "CWE-754",
+   "commit": "5434f93",
+   "title": "THR.12 dropped partner integrations with no disabled field from a pass without saying so",
+   "fix": "The result counts and names the partners with no enabled state as unknown, in a pass and in a finding; all of them missing is unknown",
+   "test": "tests/test_w9_coverage_checks.py::test_thr12_partners_without_a_state_are_counted_not_dropped"
+  },
+  {
+   "id": "W9-CC-06",
+   "severity": "medium",
+   "status": "fixed",
+   "asvs": "V7.4.1",
+   "cwe": "CWE-697",
+   "commit": "5434f93",
+   "title": "HLT.6 passed when ZPA listed no Default profile, and read a version field the SDK's CustomerVersionProfile model does not have (versions are per component in versionDetails), so a custom profile always passed",
+   "fix": "No Default profile, or a profile with no App Connector version in versionDetails, is unknown with the reason; the sample profiles carry versions so the comparison runs offline (the role name ASSISTANT is assumed)",
+   "test": "tests/test_w9_coverage_checks.py::test_hlt6_no_default_profile_listed_is_unknown_never_pass"
+  },
+  {
+   "id": "W9-CC-07",
+   "severity": "low",
+   "status": "fixed",
+   "asvs": "V2.10.4",
+   "cwe": "CWE-798",
+   "commit": "7bac6af",
+   "title": "The test canary key was written whole in the test source, so the tracked-file credential scan (test_secret_canaries) failed",
+   "fix": "The canary is built from two parts at run time",
+   "test": "tests/test_secret_canaries.py::test_no_tracked_file_carries_a_real_looking_credential"
+  },
+  {
+   "id": "W9-CC-08",
+   "severity": "low",
+   "status": "fixed",
+   "asvs": "V8.3.4",
+   "cwe": "CWE-312",
+   "commit": "7bac6af",
+   "title": "An isolation certificate's pem field could carry a private key pasted with the certificate, and a snapshot would have kept it",
+   "fix": "offline_tenant.scrub masks any text value holding a PRIVATE KEY block; ZPA.26 reads only the certificate's end of validity and shows nothing of the PEM",
+   "test": "tests/test_w9_coverage_checks.py::test_zpa26_never_shows_the_certificate_and_a_pasted_key_never_reaches_a_snapshot"
   }
  ],
  "tests_added": 112

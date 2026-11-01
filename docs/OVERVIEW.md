@@ -639,7 +639,12 @@ what you get, what to do next.
   it holds), user portals without an acceptable use policy and portal links
   on no enabled portal (ZPA.23, ZPA.24), partner integrations left disabled
   (THR.12), traffic capture rules left enabled (GOV.9) and time intervals
-  that name no day (FW.10).
+  that name no day (FW.10). Objects read before only for backup and
+  Terraform are scored too: empty DNS application groups (FW.11), workload
+  groups with no tag criteria (FW.12), HTTP header insertion profiles that
+  insert nothing (CA.6), full client-to-client IP ranges (ZPA.25), expired
+  or expiring isolation certificates (ZPA.26; only the end of validity is
+  read) and Cloud & Branch Connector IP groups with no address (ZTW.9).
 - **Digest — the evaluation loop** — when you click *Run the loop now*
   (or run `continuous_eval.py --once`) it re-reads the guidance sources
   and, for every profile that remembers its secret, only what that

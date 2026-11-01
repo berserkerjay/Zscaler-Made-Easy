@@ -294,7 +294,7 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 151,
+            "fixed": 156,
             "accepted": 7,
             "records": [
               "c6-assessment",
@@ -482,7 +482,7 @@
     }
   ],
   "counts": {
-    "findings": 716,
+    "findings": 721,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -496,12 +496,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 178,
+        "fixed": 180,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 394,
+        "fixed": 397,
         "accepted": 3
       },
       "info": {
@@ -511,7 +511,7 @@
       }
     },
     "checks": {
-      "pass": 653,
+      "pass": 654,
       "fixed": 317,
       "open": 11,
       "accepted": 16
@@ -4532,6 +4532,38 @@
       "commit": "342e67f",
       "reason": "",
       "slug": "w8-cloud-connector",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-04",
+      "title": "GOV.9 passed (\"No traffic capture rule\") on a 200 answer that was not a list of rules ({}, text, a number, true, a list of non-rules)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "Only a real empty list (bare or in the list envelope) means no capture rule; any other shape, and an unreadable entry beside disabled rules, is unknown with the reason",
+      "test": "tests/test_w9_coverage_checks.py::test_gov9_a_malformed_answer_is_unknown_never_pass",
+      "commit": "5434f93",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-06",
+      "title": "HLT.6 passed when ZPA listed no Default profile, and read a version field the SDK's CustomerVersionProfile model does not have (versions are per component in versionDetails), so a custom profile always passed",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-697",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "No Default profile, or a profile with no App Connector version in versionDetails, is unknown with the reason; the sample profiles carry versions so the comparison runs offline (the role name ASSISTANT is assumed)",
+      "test": "tests/test_w9_coverage_checks.py::test_hlt6_no_default_profile_listed_is_unknown_never_pass",
+      "commit": "5434f93",
+      "reason": "",
+      "slug": "w9-coverage-checks",
       "area": "functionality",
       "sub_area": "traffic_analysis"
     },
@@ -10840,6 +10872,54 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W9-CC-05",
+      "title": "THR.12 dropped partner integrations with no disabled field from a pass without saying so",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "The result counts and names the partners with no enabled state as unknown, in a pass and in a finding; all of them missing is unknown",
+      "test": "tests/test_w9_coverage_checks.py::test_thr12_partners_without_a_state_are_counted_not_dropped",
+      "commit": "5434f93",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-07",
+      "title": "The test canary key was written whole in the test source, so the tracked-file credential scan (test_secret_canaries) failed",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-798",
+      "asvs": "V2.10.4",
+      "wcag": "",
+      "fix": "The canary is built from two parts at run time",
+      "test": "tests/test_secret_canaries.py::test_no_tracked_file_carries_a_real_looking_credential",
+      "commit": "7bac6af",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-08",
+      "title": "An isolation certificate's pem field could carry a private key pasted with the certificate, and a snapshot would have kept it",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-312",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "offline_tenant.scrub masks any text value holding a PRIVATE KEY block; ZPA.26 reads only the certificate's end of validity and shows nothing of the PEM",
+      "test": "tests/test_w9_coverage_checks.py::test_zpa26_never_shows_the_certificate_and_a_pasted_key_never_reaches_a_snapshot",
+      "commit": "7bac6af",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13997,10 +14077,13 @@
         "WSTG-ATHZ-02",
         "WSTG-ERRH-01",
         "SSDF PW.4.1",
-        "SSDF PW.8.2"
+        "SSDF PW.8.2",
+        "ASVS V2.10.4",
+        "CWE-697",
+        "CWE-798"
       ],
-      "checks": 7,
-      "findings": 3,
+      "checks": 8,
+      "findings": 8,
       "tests_added": 112
     }
   ],
@@ -14283,7 +14366,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 65,
+    "wstg": 66,
     "slsa": [
       "SLSA v1.0",
       "SLSA v1.0 Build L2",
