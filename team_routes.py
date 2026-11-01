@@ -156,6 +156,11 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/offline/status": SESSION,
     "POST /api/offline/sample": SESSION,
     "POST /api/offline/leave": SESSION,
+    # (wave 9) a rehearsed plan applied to this browser's in-memory copy of the sample tenant or an opened snapshot; nothing reaches a tenant or a file
+    "POST /api/offline/simulate/operation": SESSION,
+    "POST /api/offline/simulate/pov-build": SESSION,
+    "POST /api/offline/simulation/discard": SESSION,
+    "POST /api/zia-baseline/selection": SESSION,   # saves or checks a baseline selection the page sends; reads and writes no tenant
     "POST /api/tenant-profiles/snapshots/open-file": SESSION,
     "GET /api/pack-library": SESSION,
     "POST /api/pack-library/preview": SESSION,
