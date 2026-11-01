@@ -131,7 +131,9 @@ def test_the_sample_tenant_answers_every_new_read_and_shows_its_gaps():
     _st, cl = sample()
     got = {cid: REAL[cid](cl) for cid in IDS}
     assert not [c for c, r in got.items() if "could not be read" in r.detail or "not readable" in r.detail], {c: r.detail[:90] for c, r in got.items()}
-    assert {c for c, r in got.items() if r.status == R.WARN} == {"FW.10", "THR.12", "GOV.9", "HLT.5", "AIG.7", "FW.11", "ZTW.9"}
+    # ZPA.23: the sample's enabled user portal (added for backups, fix/restore-breadth) has no acceptable use policy.
+    assert {c for c, r in got.items() if r.status == R.WARN} == {"FW.10", "THR.12", "GOV.9", "HLT.5", "AIG.7", "FW.11", "ZTW.9", "ZPA.23"}
+    assert "Larkspur apps" in got["ZPA.23"].detail
     assert {c for c, r in got.items() if r.status == R.PASS} >= {"HLT.6", "FW.12", "CA.6", "ZPA.25", "ZPA.26"}, {c: r.detail[:80] for c, r in got.items()}
     assert "Partner resolvers" in got["FW.11"].detail and "Retired DR subnets" in got["ZTW.9"].detail
     assert "Holiday change freeze" in got["FW.10"].detail and "Larkspur SD-WAN" in got["THR.12"].detail

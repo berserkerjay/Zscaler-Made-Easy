@@ -1221,11 +1221,8 @@ ZCC_PROCESS_APPS = {"appIdentities": [
     {"id": 6001, "appName": "Depot scanner agent", "fileNames": ["scanagent.exe"], "filePaths": ["C:\\Program Files\\Depot Scan\\"],
      "matchingCriteria": 1},
     {"id": 6002, "appName": "Contractor tools", "fileNames": ["powershell.exe", "python.exe", "*.exe"], "filePaths": [], "matchingCriteria": 1}]}
-# Configuration backups (2026-11-01): the remaining read-only types the backup catalogue reads.
-TRAFFIC_CAPTURE_RULES = [{"id": 1691, "name": "Capture depot scanner traffic", "order": 1, "rank": 7, "state": "DISABLED", "action": "CAPTURE",
-                          "description": "Packet capture for the handheld sync issue (turned on while troubleshooting)."}]
-ZIA_WORKLOAD_GROUPS = [{"id": 1701, "name": "Billing VMs", "description": "Freight billing workloads in the cloud",
-                        "expression": "tag:app=billing"}]
+# Configuration backups (2026-11-01): the remaining read-only types the backup catalogue reads
+# (traffic capture rules and workload groups: the coverage checks' TRAFFIC_CAPTURE_RULES and ZIA_WORKLOAD_GROUPS above).
 ZPA_USER_PORTALS = [{"id": "2991", "name": "Larkspur apps", "enabled": True, "domain": "apps.larkspur-freight.example",
                      "description": "Browser Access portal for depot staff", "userNotificationEnabled": False}]
 ZPA_SERVICE_EDGE_GROUPS = [{"id": "2995", "name": "Portland edge", "enabled": True, "location": "Portland, OR"}]
@@ -1470,8 +1467,8 @@ def responses() -> Dict[str, Any]:
         # Client Connector bypass apps
         f"{ZCC}/process-based-apps": ZCC_PROCESS_APPS,
         # Configuration backups (config_backup.TYPES, 2026-11-01): the remaining read-only types (user portals,
-        # service edges, Client Connector admin users and predefined IP-based apps are answered above)
-        f"{ZIA}/trafficCaptureRules": TRAFFIC_CAPTURE_RULES, f"{ZIA}/workloadGroups": ZIA_WORKLOAD_GROUPS,
+        # service edges, Client Connector admin users, predefined IP-based apps, traffic capture rules and
+        # workload groups are answered above)
         f"{ZPA1}/idp/2601/scimattribute": _zpa(ZPA_SCIM_ATTRIBUTES),
         f"{ZPA_USERCONFIG}/scimgroup/idpId/2601": _zpa(ZPA_SCIM_GROUPS),
     }
