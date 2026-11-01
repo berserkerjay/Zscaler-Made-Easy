@@ -23,8 +23,8 @@ directory's host (acme-v02.api.letsencrypt.org by default; every address
 the directory names must be on that same host) and api.cloudflare.com.
 Every answer is size-capped and parsed defensively. A certificate is
 renewed at start-up when it has fewer than 30 days left, and again while
-the server runs: a background check (every ZSCALER_ACME_CHECK_HOURS, 12 by
-default) renews it once fewer than 30 days are left and loads the new
+the server runs: a background check (every ZSCALER_ACME_CHECK_HOURS, 24 by
+default: daily) renews it once fewer than 30 days are left and loads the new
 certificate into the running server's TLS context, so new connections get
 it without a restart. A renewal that fails keeps serving the old
 certificate while it is valid, and says so (stderr and the audit log).
@@ -418,7 +418,7 @@ def ensure(*, session=None, log=print) -> Dict[str, Any]:
 
 
 # ── renewal while the server runs ───────────────────────────────────────
-CHECK_HOURS_DEFAULT = 12.0
+CHECK_HOURS_DEFAULT = 24.0   # daily
 _CONTEXTS: List[Any] = []          # the running server's ssl.SSLContext(s), registered at start-up
 _CONTEXTS_LOCK = threading.Lock()
 
