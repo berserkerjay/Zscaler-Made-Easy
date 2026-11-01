@@ -76,7 +76,7 @@ GONE = ("The offline tenant this page was using is no longer open (the server re
 KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard", "ztw",
                 "ztb", "easm", "zbi", "zcell", "zms")
 _PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw|aiguard|ztb|easm|bi|zcell|zms)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
-_CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/)[^/]+")
+_CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/|/zpa/cbiconfig/cbi/api/customers/)[^/]+")
 # The ZCell customer id in a Zero Trust Cellular path (zscaler/zcell/*.py:
 # /zcell/config/api/v1/customers/{id}/...) is keyed as {zcellCustomerId},
 # as the ZPA customer id is, so a snapshot opens with any id.
@@ -222,7 +222,9 @@ def scrub(value: Any, depth: int = 0) -> Any:
             if key.lower() in _NOT_SECRET and isinstance(v, (bool, int)):
                 out[key] = v
             elif (_SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or _OTP_KEY.search(key)
-                    or (isinstance(v, str) and _TOKEN_KEY.search(key) and not lifetime)):
+                    or (isinstance(v, str) and _TOKEN_KEY.search(key) and not lifetime)
+                    # A private key pasted into any text field (an isolation certificate's pem, say).
+                    or (isinstance(v, str) and "PRIVATE KEY-----" in v)):
                 out[key] = "(set)" if v not in (None, "", [], {}, False) else "(not set)"
             else:
                 out[key] = scrub(v, depth + 1)
@@ -1328,6 +1330,12 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     + [(("zpa",), f"/zpa/{x}") for x in ("connectorSchedule", "serviceEdgeSchedule", "visible/versionProfiles",
                                          "config/isZiaCloudConfigAvailable", "userPortal", "userportal/aup", "userPortalLink")]
     + [(("aiguard",), "/aiguard/v1/llm-provider-credentials")]
+    # Objects read until now only by backup and Terraform, now scored (FW.11, FW.12, CA.6,
+    # ZPA.25, ZPA.26, ZTW.9): DNS application groups, workload groups, HTTP header
+    # profiles, client-to-client IP ranges, isolation certificates, connector IP groups.
+    + [(_ZIA, f"/zia/{x}") for x in ("dnsApplicationGroups", "workloadGroups", "httpHeaderProfile", "httpHeaderActionProfile")]
+    + [(("zpa",), f"/zpa/{x}") for x in ("ipRanges", "cbiconfig/certificates")]
+    + [(("ztw",), "/ztw/api/v1/ipGroups")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}

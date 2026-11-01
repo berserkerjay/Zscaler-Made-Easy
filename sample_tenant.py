@@ -1020,6 +1020,44 @@ ZPA_VERSION_PROFILES = [
     {"id": "2", "name": "New Release", "description": "Early release.", "versionDetails": [{"role": "ASSISTANT", "version": "25.250.0"}]},
 ]
 
+# Objects scored since 2026-11-01 (FW.11, FW.12, CA.6, ZPA.25, ZPA.26, ZTW.9).
+# DNS application groups (zia/models/dns_application_groups.py): one was
+# never filled in, so FW.11 asks for review.
+DNS_APP_GROUPS = [{"id": 5701, "name": "Blocked DNS tunnelling tools", "description": "Resolvers abused for tunnelling.",
+                   "dnsApplications": ["DNS_TUNNEL_IODINE", "DNS_TUNNEL_DNSCAT2"]},
+                  {"id": 5702, "name": "Partner resolvers", "description": "Not filled in yet.", "dnsApplications": []}]
+# ZIA workload groups (zia/models/workload_groups.py): tagged.
+ZIA_WORKLOAD_GROUPS = [{"id": 5711, "name": "Billing workloads", "description": "Billing VPC.", "expression": "Vpc-id = vpc-0larkspur1",
+                        "expressionJson": {"operator": "AND", "expressionContainers": [
+                            {"tagType": "VPC", "operator": "AND",
+                             "tagContainer": {"operator": "AND", "tags": [{"key": "Vpc-id", "value": "vpc-0larkspur1"}]}}]}}]
+# HTTP header insertion (zia/models/http_header_control.py): the Microsoft 365
+# tenant restriction header, complete.
+HTTP_HEADER_PROFILES = [{"id": 5721, "name": "Microsoft 365 sign-in", "description": "Sign-in hosts.", "deleted": False,
+                         "profileReadyForUse": True, "httpHeaderProfileCriteria": [{"id": 1, "header": "Host", "operator": "CONTAINS"}]}]
+HTTP_HEADER_ACTION_PROFILES = [{"id": 5731, "name": "Tenant restrictions v1", "description": "Larkspur tenant only.", "deleted": False,
+                                "profileReadyForUse": True,
+                                "httpHeaderActionProfileKeys": [{"id": 1, "key": "Restrict-Access-To-Tenants", "value": "larkspur.example"}]}]
+# Client-to-client IP range (zpa/models/c2c_ip_ranges.py): addresses left.
+ZPA_C2C_RANGES = [{"id": "5741", "name": "Help desk reach-back", "enabled": True, "isDeleted": False, "ipRangeBegin": "100.64.0.1",
+                   "ipRangeEnd": "100.64.3.254", "subnetCidr": "100.64.0.0/22", "totalIps": "1020", "usedIps": "212", "availableIps": "808"}]
+# An isolation certificate (zpa/models/cbi_certificate.py): a made-up public
+# certificate valid from 2026-01-01 to 2036-01-01 (no private key anywhere).
+CBI_CERTIFICATES = [{"id": "5751", "name": "Larkspur isolation root", "isDefault": True, "pem": (
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIIBUjCB+qADAgECAgIQkjAKBggqhkjOPQQDAjAzMTEwLwYDVQQDDChMYXJrc3B1\n"
+    "ciBGcmVpZ2h0IElzb2xhdGlvbiBSb290IChzYW1wbGUpMB4XDTI2MDEwMTAwMDAw\n"
+    "MFoXDTM2MDEwMTAwMDAwMFowMzExMC8GA1UEAwwoTGFya3NwdXIgRnJlaWdodCBJ\n"
+    "c29sYXRpb24gUm9vdCAoc2FtcGxlKTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA\n"
+    "BIE6XdtDuAqpiW7mm1PTlDdatZ1aEjsqlsRy3foMZJFjnF6P76rjUOXmEIbr6/hq\n"
+    "Kbr2IcJzSfsVebtwh3UWQowwCgYIKoZIzj0EAwIDRwAwRAIgEWsJYBRVoSN5VXrw\n"
+    "CWihE6/0Ah58qJYVtmr7VU7R5BACIBxUIqVwQ5oTH6GXiS/N0bphLDIgfio+A/aR\n"
+    "LQNSRLAR\n"
+    "-----END CERTIFICATE-----\n")}]
+# Cloud & Branch Connector IP groups (ztw/models/ip_groups.py): one holds no address.
+ZTW_IP_GROUPS = [{"id": 5761, "name": "Billing subnets", "description": "Billing VPC.", "ipAddresses": ["10.40.0.0/24", "10.40.1.0/24"]},
+                 {"id": 5762, "name": "Retired DR subnets", "description": "Emptied after the move.", "ipAddresses": []}]
+
 # A made-up detector for "Test a prompt" on the sample: keyword rules only,
 # so the answer is the same every time. Never a real AI Guard verdict.
 _AIG_DETECT = (("prompt_injection", ("ignore all previous instructions", "developer mode", "system prompt")),
@@ -1389,6 +1427,13 @@ def responses() -> Dict[str, Any]:
         f"{ZPA1}/config/isZiaCloudConfigAvailable": True,
         f"{ZPA1}/userportal/aup": _zpa([]),
         f"{ZPA1}/userPortalLink": _zpa([]),
+        f"{ZIA}/dnsApplicationGroups": DNS_APP_GROUPS,
+        f"{ZIA}/workloadGroups": ZIA_WORKLOAD_GROUPS,
+        f"{ZIA}/httpHeaderProfile": HTTP_HEADER_PROFILES,
+        f"{ZIA}/httpHeaderActionProfile": HTTP_HEADER_ACTION_PROFILES,
+        f"{ZPA1}/v2/ipRanges": ZPA_C2C_RANGES,
+        "/zpa/cbiconfig/cbi/api/customers/{customerId}/certificates": CBI_CERTIFICATES,
+        f"{ZTW}/ipGroups": ZTW_IP_GROUPS,
         # ZIA DLP indexes (zia/dlp_resources.py: list_edm_schemas, list_dlp_idm_profiles)
         f"{ZIA}/dlpExactDataMatchSchemas": EDM_SCHEMAS,
         f"{ZIA}/idmprofile": IDM_PROFILES,

@@ -45,10 +45,11 @@ REAL["AIG.7"] = genai.aig_7
 GUARDED = {r[0]: r[3] for r in list(full.PLATFORM_REG) + list(full.DLP_EXTRA_REG) + list(genai.AIGUARD_REG)}
 # The Scope page key each check runs under.
 KEY = {"FW.10": "zia_extras", "THR.12": "zia_extras", "GOV.9": "zia_extras", "ZPA.22": "zpa", "ZPA.23": "zpa", "ZPA.24": "zpa",
-       "HLT.5": "zpa", "HLT.6": "zpa", "B.17": "dlp", "AIG.7": "aiguard"}
+       "HLT.5": "zpa", "HLT.6": "zpa", "B.17": "dlp", "AIG.7": "aiguard",
+       "FW.11": "zia_extras", "FW.12": "zia_extras", "CA.6": "zia_extras", "ZPA.25": "zpa", "ZPA.26": "zpa", "ZTW.9": "ztw"}
 NOW_MS = 1793491200000   # 2026-11-01T00:00:00Z, injected
 DAY = 86400 * 1000
-CANARY = "sk-CANARY-provider-key-0123456789abcdef"
+CANARY = "sk-" + "CANARY-provider-key-0123456789abcdef"   # split, so the committed source holds no key-shaped text
 
 
 class Fake:
@@ -72,6 +73,7 @@ def sample():
 @pytest.fixture(autouse=True)
 def fixed_clock(monkeypatch):
     monkeypatch.setattr(genai, "_now_ms", lambda: NOW_MS)
+    monkeypatch.setattr(full, "_now_s", lambda: NOW_MS / 1000)
 
 
 # ── Registered, unique, scoped, guarded ─────────────────────────────────
@@ -129,8 +131,9 @@ def test_the_sample_tenant_answers_every_new_read_and_shows_its_gaps():
     _st, cl = sample()
     got = {cid: REAL[cid](cl) for cid in IDS}
     assert not [c for c, r in got.items() if "could not be read" in r.detail or "not readable" in r.detail], {c: r.detail[:90] for c, r in got.items()}
-    assert {c for c, r in got.items() if r.status == R.WARN} == {"FW.10", "THR.12", "GOV.9", "HLT.5", "AIG.7"}
-    assert got["HLT.6"].status == R.PASS
+    assert {c for c, r in got.items() if r.status == R.WARN} == {"FW.10", "THR.12", "GOV.9", "HLT.5", "AIG.7", "FW.11", "ZTW.9"}
+    assert {c for c, r in got.items() if r.status == R.PASS} >= {"HLT.6", "FW.12", "CA.6", "ZPA.25", "ZPA.26"}, {c: r.detail[:80] for c, r in got.items()}
+    assert "Partner resolvers" in got["FW.11"].detail and "Retired DR subnets" in got["ZTW.9"].detail
     assert "Holiday change freeze" in got["FW.10"].detail and "Larkspur SD-WAN" in got["THR.12"].detail
     assert "Gemini pilot key" in got["AIG.7"].detail and "OpenAI production key" not in got["AIG.7"].detail
 
@@ -404,8 +407,10 @@ def test_the_sample_snapshot_of_ai_guard_keeps_names_and_dates_only():
 # ── 5. Scope: refused before anything is read ───────────────────────────
 
 ZPA_PATHS = ("/zpa/connectorSchedule", "/zpa/serviceEdgeSchedule", "/zpa/visible/versionProfiles", "/zpa/config/isZiaCloudConfigAvailable",
-             "/zpa/userportal/aup", "/zpa/userPortalLink")
-ZIA_PATHS = ("/zia/integrationPartners", "/zia/trafficCaptureRules", "/zia/timeIntervals")
+             "/zpa/userportal/aup", "/zpa/userPortalLink", "/zpa/ipRanges", "/zpa/cbiconfig/certificates")
+ZIA_PATHS = ("/zia/integrationPartners", "/zia/trafficCaptureRules", "/zia/timeIntervals", "/zia/dnsApplicationGroups", "/zia/workloadGroups",
+             "/zia/httpHeaderProfile", "/zia/httpHeaderActionProfile")
+ZTW_IP_GROUPS = "/ztw/api/v1/ipGroups"
 
 
 def test_nothing_ticked_is_refused_before_a_client_is_built(tenant):  # noqa: F811
@@ -420,11 +425,11 @@ def srv_app():
     return srv.app
 
 
-@pytest.mark.parametrize("path,key", [(p, "zpa") for p in ZPA_PATHS] + [("/aiguard/v1/llm-provider-credentials", "aiguard")])
+@pytest.mark.parametrize("path,key", [(p, "zpa") for p in ZPA_PATHS] + [("/aiguard/v1/llm-provider-credentials", "aiguard"), (ZTW_IP_GROUPS, "ztw")])
 def test_each_new_service_read_is_refused_when_its_key_is_unticked(path, key):
     """ASVS V4.1.3 · CWE-284 · WSTG-ATHZ-02: each new ZPA and AI Guard read is refused by the run's client, with no request sent, when its Scope page key is not ticked (acceptance 5)."""
     inner = Fake(default=([], 200))
-    others = [k for k in ("dlp", "zia_extras", "zpa", "zcc", "aiguard") if k != key]
+    others = [k for k in ("dlp", "zia_extras", "zpa", "zcc", "aiguard", "ztw") if k != key]
     sc = dlp_analysis.ScopedClient(inner, {c: {"choice": "zscaler"} for c in cs.CHANNELS}, others)
     body, code = sc.get(path)
     assert code == 0 and inner.reads == []
@@ -453,8 +458,9 @@ def test_every_read_is_in_required_api_access_and_the_snapshot_only_under_its_ke
         assert reads - used == set(), (cid, reads - used)
         plan = set(ot.capture_plan([KEY[cid]]))
         assert reads - plan == set(), (cid, reads - plan)
-    assert not set(ZPA_PATHS) & set(ot.capture_plan(["zia_extras", "dlp", "aiguard"]))
-    assert not set(ZIA_PATHS) & set(ot.capture_plan(["zpa", "dlp", "aiguard"]))
+    assert not set(ZPA_PATHS) & set(ot.capture_plan(["zia_extras", "dlp", "aiguard", "ztw"]))
+    assert not set(ZIA_PATHS) & set(ot.capture_plan(["zpa", "dlp", "aiguard", "ztw"]))
+    assert ZTW_IP_GROUPS not in ot.capture_plan(["zia_extras", "zpa", "dlp", "aiguard"])
     assert "/aiguard/v1/llm-provider-credentials" not in ot.capture_plan(["zia_extras", "zpa", "dlp"])
 
 
@@ -526,7 +532,7 @@ def test_thr12_partners_without_a_state_are_counted_not_dropped():
     assert r.status == R.WARN and "Mystery" in r.detail and "unknown" in r.detail, r.detail
 
 
-@pytest.mark.parametrize("cid", ["GOV.9", "THR.12"])
+@pytest.mark.parametrize("cid", ["GOV.9", "THR.12", "FW.11", "FW.12", "CA.6", "ZPA.25", "ZPA.26", "ZTW.9"])
 def test_a_feature_not_licensed_is_outside_the_score(cid):
     """ASVS V7.4.1 · CWE-754: a 404 (not licensed or not enabled) is INFO saying so, never a failure."""
     r = REAL[cid](Fake(default=({"code": "NOT_FOUND"}, 404)))
@@ -555,6 +561,13 @@ def test_tenant_names_in_findings_are_cleaned_and_capped():
     ("zpa.user_portal_aup", "list_user_portal_aup", "/userportal/aup"),
     ("zpa.user_portal_link", "list_portal_link", "/userPortalLink"),
     ("aiguard.llm_provider_credentials", "list_credentials", "/llm-provider-credentials"),
+    ("zia.dns_application_groups", "list_groups", "/dnsApplicationGroups"),
+    ("zia.workload_groups", "list_groups", "/workloadGroups"),
+    ("zia.http_header_control", "list_http_header_profiles", "/httpHeaderProfile"),
+    ("zia.http_header_control", "list_http_header_action_profiles", "/httpHeaderActionProfile"),
+    ("zpa.c2c_ip_ranges", "list_ip_ranges", "/ipRanges"),
+    ("zpa.cbi_certificate", "list_cbi_certificates", "/certificates"),
+    ("ztw.ip_groups", "list_ip_groups", "/ipGroups"),
 ])
 def test_every_path_is_the_one_the_sdk_calls(module, name, path):
     """SSDF PW.4.1 · CWE-1164: each path the new checks read is the one the installed SDK's method sends."""
@@ -562,7 +575,7 @@ def test_every_path_is_the_one_the_sdk_calls(module, name, path):
     cls = next(getattr(mod, c) for c in dir(mod) if c.endswith("API") and inspect.isclass(getattr(mod, c)) and getattr(mod, c).__module__ == mod.__name__)
     src = inspect.getsource(cls)
     fn = re.search(rf"def {name}\(.*?(?=\n    def |\Z)", src, re.S).group(0)
-    assert re.search(rf"\n\s*{re.escape(path)}\s*\n", fn), (module, name, path)
+    assert re.search(rf"(\n\s*|_endpoint\}}){re.escape(path)}\s*\n", fn), (module, name, path)
 
 
 SAMPLE_MODELS = [
@@ -575,6 +588,13 @@ SAMPLE_MODELS = [
     (f"{ZPA1}/serviceEdgeSchedule", "zpa.models.service_edge_schedule", "ServiceEdgeSchedule"),
     (f"{ZPA1}/visible/versionProfiles", "zpa.models.customer_version_profile", "CustomerVersionProfile"),
     ("/aiguard/v1/llm-provider-credentials", "aiguard.models.llm_provider_credentials", "LlmProviderCredentials"),
+    (f"{ZIA}/dnsApplicationGroups", "zia.models.dns_application_groups", "DnsApplicationGroups"),
+    (f"{ZIA}/workloadGroups", "zia.models.workload_groups", "WorkloadGroups"),
+    (f"{ZIA}/httpHeaderProfile", "zia.models.http_header_control", "HttpHeaderProfile"),
+    (f"{ZIA}/httpHeaderActionProfile", "zia.models.http_header_control", "HttpHeaderActionProfile"),
+    (f"{ZPA1}/v2/ipRanges", "zpa.models.c2c_ip_ranges", "IpRanges"),
+    ("/zpa/cbiconfig/cbi/api/customers/{customerId}/certificates", "zpa.models.cbi_certificate", "CBICertificate"),
+    ("/ztw/api/v1/ipGroups", "ztw.models.ip_groups", "IPGroups"),
 ]
 
 
@@ -593,3 +613,122 @@ def test_compliance_mapping_covers_the_new_checks():
     """ASVS V1.14.1 · CWE-1164: each new check maps to compliance controls (THR.12, HLT.5, HLT.6 and AIG.7 by their own entries, the others by their prefix)."""
     for cid in IDS:
         assert compliance_mapping.get_compliance_for_check(cid), cid
+
+
+# ── 8. Objects read only by backup and Terraform, now scored ────────────
+# FW.11 DNS application groups, FW.12 workload groups, CA.6 HTTP header
+# profiles, ZPA.25 client-to-client IP ranges, ZPA.26 isolation certificates,
+# ZTW.9 Cloud & Branch Connector IP groups.
+
+def _pem(days_left):
+    """A public certificate (no key kept) that ends `days_left` days after the injected date."""
+    import datetime as dt
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    key = ec.derive_private_key(424242, ec.SECP256R1())   # fixed, so nothing random decides the test
+    now = dt.datetime.fromtimestamp(NOW_MS / 1000, dt.timezone.utc)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test isolation root")])
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key()).serial_number(7)
+            .not_valid_before(now - dt.timedelta(days=400)).not_valid_after(now + dt.timedelta(days=days_left)).sign(key, hashes.SHA256()))
+    return cert.public_bytes(serialization.Encoding.PEM).decode("ascii")
+
+
+def _certs(*rows):
+    return {"/zpa/cbiconfig/certificates": (list(rows), 200)}
+
+
+ITEM8_ORACLES = [
+    ("FW.11", {"/zia/dnsApplicationGroups": ([{"name": "g", "dnsApplications": ["X"]}], 200)},
+     {"/zia/dnsApplicationGroups": ([{"name": "g", "dnsApplications": []}], 200)}),
+    ("FW.12", {"/zia/workloadGroups": ([{"name": "w", "expressionJson": {"expressionContainers": [
+        {"tagContainer": {"tags": [{"key": "App", "value": "billing"}]}}]}}], 200)},
+     {"/zia/workloadGroups": ([{"name": "w", "expression": "", "expressionJson": {"expressionContainers": []}}], 200)}),
+    ("CA.6", {"/zia/httpHeaderProfile": ([{"name": "p", "httpHeaderProfileCriteria": [{"header": "Host"}], "profileReadyForUse": True}], 200),
+              "/zia/httpHeaderActionProfile": ([{"name": "a", "httpHeaderActionProfileKeys": [{"key": "K", "value": "V"}]}], 200)},
+     {"/zia/httpHeaderProfile": ([], 200), "/zia/httpHeaderActionProfile": ([{"name": "a", "httpHeaderActionProfileKeys": []}], 200)}),
+    ("ZPA.25", {"/zpa/ipRanges": ([{"name": "r", "enabled": True, "totalIps": "100", "usedIps": "10", "availableIps": "90"}], 200)},
+     {"/zpa/ipRanges": ([{"name": "r", "enabled": True, "totalIps": "100", "usedIps": "100", "availableIps": "0"}], 200)}),
+    ("ZTW.9", {ZTW_IP_GROUPS: ([{"name": "g", "ipAddresses": ["10.0.0.0/24"]}], 200)},
+     {ZTW_IP_GROUPS: ([{"name": "g", "ipAddresses": []}], 200)}),
+]
+
+
+@pytest.mark.parametrize("cid,good,bad", ITEM8_ORACLES, ids=[o[0] for o in ITEM8_ORACLES])
+def test_item8_oracle_passes_the_good_tenant_and_flags_the_bad_one(cid, good, bad):
+    """ASVS V1.14.1 · CWE-1164 · SSDF PW.8.2: each new object check passes a tenant whose objects can do their job and asks for review on an empty or incomplete one, with the fix in plain words."""
+    ok, ko = REAL[cid](Fake(good)), REAL[cid](Fake(bad))
+    assert ok.status == R.PASS, ok.detail
+    assert ko.status == R.WARN and ("Best Practice:" in ko.detail or "Fix:" in ko.detail), ko.detail
+
+
+@pytest.mark.parametrize("cid,table", [
+    ("FW.11", {"/zia/dnsApplicationGroups": ([{"name": "g"}], 200)}),
+    ("FW.12", {"/zia/workloadGroups": ([{"name": "w"}], 200)}),
+    ("CA.6", {"/zia/httpHeaderProfile": ([{"name": "p"}], 200), "/zia/httpHeaderActionProfile": ([], 200)}),
+    ("CA.6", {"/zia/httpHeaderProfile": ([], 200), "/zia/httpHeaderActionProfile": ({"code": "x"}, 500)}),
+    ("ZPA.25", {"/zpa/ipRanges": ([{"name": "r", "enabled": True}], 200)}),
+    ("ZPA.25", {"/zpa/ipRanges": ([{"name": "r", "enabled": True, "totalIps": "many", "usedIps": "some"}], 200)}),
+    ("ZPA.26", _certs({"name": "c"})),
+    ("ZPA.26", _certs({"name": "c", "pem": "-----BEGIN CERTIFICATE-----\nbm90IGEgY2VydGlmaWNhdGUgYXQgYWxs\n-----END CERTIFICATE-----"})),
+    ("ZPA.26", _certs({"name": "c", "pem": "A" * (full._PEM_MAX + 1)})),
+    ("ZTW.9", {ZTW_IP_GROUPS: ([{"name": "g"}], 200)}),
+], ids=["fw11-no-list", "fw12-no-expression", "ca6-no-criteria", "ca6-one-unreadable", "zpa25-no-counts", "zpa25-junk-counts",
+        "zpa26-no-pem", "zpa26-junk-pem", "zpa26-huge-pem", "ztw9-no-list"])
+def test_item8_a_missing_or_unreadable_field_is_unknown_never_pass(cid, table):
+    """ASVS V7.4.1 · CWE-754 · CWE-20: an object whose list, counts or certificate is missing or cannot be read is unknown with the reason, never a pass."""
+    r = REAL[cid](Fake(table))
+    assert r.status == R.INFO and "Unknown" in r.detail, r.detail
+
+
+@pytest.mark.parametrize("days,status", [(-3, R.FAIL), (10, R.WARN), (200, R.PASS)])
+def test_zpa26_expired_and_expiring_isolation_certificates(days, status):
+    """ASVS V9.2.1 · CWE-298 · WSTG-CRYP-01: an expired isolation certificate fails, one ending within 30 days asks for review, a later one passes (the date is injected)."""
+    r = full.zpa_26(Fake(_certs({"name": "Isolation root", "isDefault": True, "pem": _pem(days)})))
+    assert r.status == status and (status == R.PASS or "Isolation root (default)" in r.detail), r.detail
+
+
+def test_zpa26_never_shows_the_certificate_and_a_pasted_key_never_reaches_a_snapshot():
+    """ASVS V8.3.4 · CWE-200 · CWE-312: no part of a certificate's PEM is shown in the result, and a private key pasted into the pem field is masked when a snapshot is saved."""
+    pem = _pem(-1)
+    r = full.zpa_26(Fake(_certs({"name": "c", "pem": pem})))
+    body = pem.splitlines()[1]
+    assert r.status == R.FAIL and body not in r.detail and "BEGIN" not in r.detail
+    pasted = pem + "-----BEGIN PRIVATE KEY-----\n" + CANARY + "\n-----END PRIVATE KEY-----\n"
+    kept = ot.scrub([{"name": "c", "pem": pasted, "isDefault": True}])
+    assert CANARY not in json.dumps(kept) and kept[0]["pem"] == "(set)" and kept[0]["name"] == "c"
+
+
+def test_ca6_a_profile_not_ready_is_flagged_and_a_deleted_one_ignored():
+    """ASVS V1.14.1 · CWE-1164: a header profile ZIA marks not ready for use asks for review; a deleted profile is left out."""
+    table = {"/zia/httpHeaderProfile": ([{"name": "Gone", "deleted": True, "httpHeaderProfileCriteria": []},
+                                         {"name": "Pending", "profileReadyForUse": False, "httpHeaderProfileCriteria": [{"header": "Host"}]}], 200),
+             "/zia/httpHeaderActionProfile": ([], 200)}
+    r = full.ca_6(Fake(table))
+    assert r.status == R.WARN and "Pending (header profile: not ready for use)" in r.detail and "Gone" not in r.detail, r.detail
+
+
+def test_zpa25_a_nearly_full_range_is_flagged_and_counts_are_derived():
+    """ASVS V1.14.1 · CWE-400: a range 90 % used asks for review; available addresses are worked out from total and used when not given; disabled ranges are left out."""
+    rows = [{"name": "Nearly", "enabled": True, "totalIps": 100, "usedIps": 95},
+            {"name": "Off", "enabled": False, "totalIps": 10, "usedIps": 10, "availableIps": 0}]
+    r = full.zpa_25(Fake({"/zpa/ipRanges": (rows, 200)}))
+    assert r.status == R.WARN and "Nearly (95 of 100 used)" in r.detail and "Off" not in r.detail, r.detail
+
+
+def test_item8_new_paths_resolve_to_the_sdk_base_paths():
+    """SSDF PW.4.1 · CWE-1164: the client-to-client ranges and isolation certificates resolve to the base paths the installed SDK builds (a /v2 segment of the customer base; the cbiconfig service base)."""
+    c2c = inspect.getsource(importlib.import_module("zscaler.zpa.c2c_ip_ranges"))
+    cbi = inspect.getsource(importlib.import_module("zscaler.zpa.cbi_certificate"))
+    assert 'f"/zpa/mgmtconfig/v1/admin/customers/{customer_id}/v2"' in c2c and 'f"/zpa/cbiconfig/cbi/api/customers/{customer_id}"' in cbi
+    assert A._resolve_ep("/zpa/ipRanges", "123") == "/zpa/mgmtconfig/v1/admin/customers/123/v2/ipRanges"
+    assert A._resolve_ep("/zpa/cbiconfig/certificates", "123") == "/zpa/cbiconfig/cbi/api/customers/123/certificates"
+    assert ot.normalize_path("/zpa/cbiconfig/cbi/api/customers/123/certificates") == "/zpa/cbiconfig/cbi/api/customers/{customerId}/certificates"
+
+
+def test_item8_checks_are_in_the_ztw_registry_and_the_others_in_their_sections():
+    """ASVS V1.14.1 · CWE-1164: each new check sits in the product section whose Scope key reads it (ZIA Firewall and Cloud Apps, ZPA App Access, Cloud & Branch Connector)."""
+    sections = {r[0]: r[1] for r in full.COVERAGE_REG}
+    assert sections["FW.11"] == sections["FW.12"] == "ZIA — Firewall" and sections["CA.6"] == "ZIA — Cloud Apps"
+    assert sections["ZPA.25"] == sections["ZPA.26"] == "ZPA — App Access" and sections["ZTW.9"].startswith("ZTW")

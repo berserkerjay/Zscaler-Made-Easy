@@ -292,6 +292,7 @@ CHECK_DOMAIN_MAP = {
     "HLT.5": ["zpa_zero_trust"],                 # disconnected connectors cleaned up
     "HLT.6": ["zpa_zero_trust"],                 # connector groups on a current version profile
     "AIG.7": ["ai_governance", "identity_admin"],   # LLM provider credentials rotated
+    "ZTW.9": ["firewall"],                       # connector IP groups that forwarding and DNS rules match on
 }
 
 

@@ -122,6 +122,9 @@ _ZPA_MAP = {
     # PRA credential pools are served by another service, not mgmtconfig
     # (zpa/pra_credential_pool.py: /zpa/waap-pra-config/v1/admin/customers/{id}/credential-pool).
     "credential-pool":                ("v1", "credential-pool", "waap-pra-config"),
+    # Client-to-client IP ranges sit under a /v2 segment of the v1 customer base
+    # (zpa/c2c_ip_ranges.py: {base}/v2/ipRanges).
+    "ipRanges":                       ("v1", "v2/ipRanges"),
 }
 
 # ZIdentity endpoints — from zscaler-sdk-python/zid/, served at
@@ -175,6 +178,10 @@ def _resolve_ep(ep, customer_id="", legacy=False):
         suffix = ep[5:]
         mapped = _ZID_MAP.get(suffix, suffix)
         return "/ziam/admin/api/v1/" + mapped
+    if ep.startswith("/zpa/cbiconfig/"):
+        # Cloud browser isolation has its own base (zpa/cbi_certificate.py and the other
+        # cbi_*.py: /zpa/cbiconfig/cbi/api/customers/{id}/...), with no admin segment.
+        return f"/zpa/cbiconfig/cbi/api/customers/{customer_id}/" + ep[len("/zpa/cbiconfig/"):]
     if ep.startswith("/zpa/"):
         version, suffix, *service = _ZPA_MAP.get(ep[5:], ("v1", ep[5:]))
         service = service[0] if service else "mgmtconfig"

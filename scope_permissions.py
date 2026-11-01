@@ -117,6 +117,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "Partner Integrations (read; names, types and enabled state only, THR.12)",
             "Traffic Capture Policy (read; GOV.9)",
             "Time Intervals (read; FW.10)",
+            "DNS Application Groups, Workload Groups, HTTP Header Profiles and HTTP Header Action Profiles (read; FW.11, FW.12, CA.6)",
         ],
         "permissions_write": [
             "Only with write mode on and a confirmed Bulk changes plan: User Management (users, groups, departments) and Hosted PAC Files",
@@ -157,6 +158,8 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/casbTenant/lite", "/zia/casbTenant/scanInfo", "/zia/cloudToCloudIR/lite",
             # Coverage checks (2026-11-01): partner integrations (metadata only), traffic capture rules, time intervals.
             "/zia/integrationPartners", "/zia/trafficCaptureRules", "/zia/timeIntervals",
+            # Objects scored since 2026-11-01 (FW.11, FW.12, CA.6).
+            "/zia/dnsApplicationGroups", "/zia/workloadGroups", "/zia/httpHeaderProfile", "/zia/httpHeaderActionProfile",
         ],
         "license_required": "Standard ZIA license. The NSS checks are N/A without an NSS or Cloud NSS subscription. Custom IPS signatures need Advanced Cloud Firewall; Mobile Malware Protection, "
                             "SaaS Security API (malware scanning) and Cloud Sandbox are separate subscriptions: without them those checks say \"not licensed\".",
@@ -192,6 +195,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "App Connector and Service Edge schedules (auto-delete), Version Profiles (HLT.5, HLT.6)",
             "ZIA cloud configuration availability (yes/no only; the configuration itself holds ZIA credentials and is never read, ZPA.22)",
             "User Portal Acceptable Use Policy and User Portal Links (ZPA.23, ZPA.24)",
+            "Client-to-client IP ranges and Cloud Browser Isolation certificates (read; only the certificate's end of validity is used, ZPA.25, ZPA.26)",
         ],
         "permissions_write": [],
         "endpoints_used": [
@@ -207,7 +211,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zpa/browserProtectionProfile", "/zpa/praPortal", "/zpa/praConsole", "/zpa/userPortal",
             # Coverage checks (2026-11-01).
             "/zpa/connectorSchedule", "/zpa/serviceEdgeSchedule", "/zpa/serviceEdge", "/zpa/visible/versionProfiles",
-            "/zpa/config/isZiaCloudConfigAvailable", "/zpa/userportal/aup", "/zpa/userPortalLink",
+            "/zpa/config/isZiaCloudConfigAvailable", "/zpa/userportal/aup", "/zpa/userPortalLink", "/zpa/ipRanges",
         ],
         "license_required": "ZPA subscription.",
         "customer_id_needed": True,
@@ -452,7 +456,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
     },
     "ztw": {
         "label": "Cloud & Branch Connector",
-        "description": "The Cloud & Branch Connector page and eight assessment checks (ZTW.1 to ZTW.8): connector groups and their connectors (redundancy, health, software versions), traffic forwarding rules (workload traffic sent DIRECT), forwarding gateways (fail closed), connector locations and templates (firewall and IPS), the activation status, admins, roles and provisioning API keys (counted; key values and provisioning URLs are never read into a result), and public cloud accounts. Also the Path analyzer's traffic from a workload: where a workload's traffic goes (ZIA, ZPA, direct, local switch, proxy chaining or drop).",
+        "description": "The Cloud & Branch Connector page and nine assessment checks (ZTW.1 to ZTW.9): connector groups and their connectors (redundancy, health, software versions), traffic forwarding rules (workload traffic sent DIRECT), forwarding gateways (fail closed), connector locations and templates (firewall and IPS), the activation status, admins, roles and provisioning API keys (counted; key values and provisioning URLs are never read into a result), and public cloud accounts, and IP groups that hold no address (ZTW.9). Also the Path analyzer's traffic from a workload: where a workload's traffic goes (ZIA, ZPA, direct, local switch, proxy chaining or drop).",
         "service": "Cloud & Branch Connector (ZTW)",
         "permissions_read": [
             "Cloud & Branch Connector (read) on the API client's role: connector groups, forwarding control, gateways, workload groups, IP groups, locations and location templates, activation status, admin management, API key management, public cloud accounts",
@@ -463,7 +467,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/ztw/api/v1/ipSourceGroups", "/ztw/api/v1/ipDestinationGroups", "/ztw/api/v1/gateways",
             "/ztw/api/v1/location", "/ztw/api/v1/locationTemplate", "/ztw/api/v1/ecAdminActivateStatus",
             "/ztw/api/v1/adminRoles", "/ztw/api/v1/adminUsers", "/ztw/api/v1/apiKeys",
-            "/ztw/api/v1/publicCloudAccountDetails", "/ztw/api/v1/publicCloudInfo",
+            "/ztw/api/v1/publicCloudAccountDetails", "/ztw/api/v1/publicCloudInfo", "/ztw/api/v1/ipGroups",
         ],
         "license_required": "Cloud Connector or Branch Connector subscription (without one the checks say not applicable).",
         "customer_id_needed": False,
