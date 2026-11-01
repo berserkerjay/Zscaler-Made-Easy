@@ -404,7 +404,7 @@ def test_aiguard_checks_find_the_samples_gaps():
     """ASVS V1.1.2 · CWE-1059 · SSDF PW.8.2: on the sample, AI Guard checks pass what is right and flag detect-only, no output detector, unencrypted prompts and an application with no credential."""
     r = _results(genai.AIGUARD_REG, _raw())
     assert {k: v.status for k, v in r.items()} == {"AIG.1": "PASS", "AIG.2": "PASS", "AIG.3": "REVIEW", "AIG.4": "REVIEW",
-                                                   "AIG.5": "REVIEW", "AIG.6": "REVIEW"}
+                                                   "AIG.5": "REVIEW", "AIG.6": "REVIEW", "AIG.7": "REVIEW"}
     assert all(("Fix" in v.detail or "Monitor first" in v.detail) for k, v in r.items() if v.status == "REVIEW")
 
 
@@ -421,10 +421,11 @@ def test_aiguard_checks_are_not_applicable_when_unlicensed_or_not_in_scope():
 
 def test_zwa_index_and_browser_checks_on_the_sample():
     """ASVS V1.1.2 · CWE-1059 · SSDF PW.8.2: Workflow Automation, EDM/IDM and ZPA Browser Access & PRA checks give the expected verdicts on the sample."""
-    r = _results(full.DLP_EXTRA_REG + full.PLATFORM_REG[-4:], _raw())
+    browser = [row for row in full.PLATFORM_REG if row[0].startswith("ZPA.BA")]   # by id: later checks are appended after them
+    r = _results(full.DLP_EXTRA_REG + browser, _raw())
     got = {k: v.status for k, v in r.items()}
     assert got == {"DLP.IDX1": "FAIL", "DLP.IDX2": "REVIEW", "DLP.IDX3": "REVIEW", "ZWA.1": "PASS", "ZWA.2": "REVIEW", "ZWA.3": "INFO",
-                   "ZWA.4": "PASS", "ZPA.BA1": "PASS", "ZPA.BA2": "INFO", "ZPA.BA3": "REVIEW", "ZPA.BA4": "REVIEW"}
+                   "ZWA.4": "PASS", "B.17": "INFO", "ZPA.BA1": "PASS", "ZPA.BA2": "INFO", "ZPA.BA3": "REVIEW", "ZPA.BA4": "REVIEW"}
     # ZPA.BA1 is PASS: the sample tenant's Browser Access segment (cloud8/zpa-policy) is reached by an access rule.
 
 
