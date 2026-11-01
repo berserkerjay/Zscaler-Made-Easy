@@ -3209,9 +3209,22 @@ def hlt_5(cl):
 OLD_VERSION_PROFILES = ("previous default",)
 
 
+# A profile's versions are per component in versionDetails [{role, version,
+# latestPlatform}] (zpa/models/customer_version_profile.py VersionDetails; the
+# profile itself has no version field). Assumed: App Connectors carry a role
+# naming the connector ("ASSISTANT", ZPA's internal name, or "CONNECTOR"); a
+# profile with no such entry has no version to compare (unknown).
+_CONNECTOR_ROLES = ("ASSISTANT", "CONNECTOR")
+
+
 def _ver(p):
-    parts = re.findall(r"\d+", str(_fv(p, "version") or ""))
-    return tuple(int(x) for x in parts[:4]) if parts else None
+    found = []
+    for d in _fv(p, "versionDetails") or []:
+        if isinstance(d, dict) and any(k in str(_fv(d, "role") or "").upper() for k in _CONNECTOR_ROLES):
+            parts = re.findall(r"\d+", str(_fv(d, "version") or ""))
+            if parts:
+                found.append(tuple(int(x) for x in parts[:4]))
+    return max(found) if found else None
 
 
 def hlt_6(cl):
@@ -3232,7 +3245,7 @@ def hlt_6(cl):
     by_id = {str(_fv(p, "id")): p for p in profs if _fv(p, "id") not in (None, "")}
     by_name = {str(_fv(p, "name") or "").strip().lower(): p for p in profs if _fv(p, "name")}
     default = by_name.get("default")
-    old, unknown = [], []
+    old, unknown, nocmp, noversion = [], [], [], []
     for g in live:
         pid, pname = _fv(g, "versionProfileId"), _fv(g, "versionProfileName")
         p = by_id.get(str(pid)) if pid not in (None, "") else None
@@ -3241,17 +3254,30 @@ def hlt_6(cl):
             unknown.append(_nm(g))
             continue
         name = str(_fv(p, "name") or "").strip().lower()
-        older = default is not None and p is not default and _ver(p) and _ver(default) and _ver(p) < _ver(default)
-        if name in OLD_VERSION_PROFILES or older:
+        if name in OLD_VERSION_PROFILES:
             old.append(f"{_nm(g)} ({_nm(p)})")
+        elif default is None:
+            # Nothing to compare with: the group's profile is neither old by name nor provably current.
+            nocmp.append(f"{_nm(g)} ({_nm(p)})")
+        elif p is default:
+            continue
+        elif _ver(p) and _ver(default):
+            if _ver(p) < _ver(default):
+                old.append(f"{_nm(g)} ({_nm(p)})")
+        else:
+            noversion.append(f"{_nm(g)} ({_nm(p)})")
+    why = [t for t, rows in (
+        (f"ZPA lists no Default profile to compare with, so the profile of {_few(nocmp)} could not be judged", nocmp),
+        (f"{_few(noversion)} follow a profile with no version to compare with Default's", noversion),
+        (f"the version profile of {_few(unknown)} is not in the profiles ZPA lists", unknown)) if rows]
+    unknown = unknown + nocmp + noversion
     if old:
         return R(R.WARN, f"{len(old)} of {len(live)} App Connector group(s) are held on an older version profile: {_few(old)}. Their connectors "
                  "upgrade later than the rest and keep fixed defects longer. Fix: move each group back to the Default profile unless a "
                  "documented reason holds it back, and check the connector versions afterwards (HLT.4 and the ZPA analysis)."
-                 + (f" Unknown profile for: {_few(unknown)}." if unknown else "") + _ZPA_GUIDE)
+                 + (f" Also unknown: {'; '.join(why)}." if why else "") + _ZPA_GUIDE)
     if unknown:
-        return R(R.INFO, f"Unknown: the version profile of {len(unknown)} App Connector group(s) is not in the profiles ZPA lists: {_few(unknown)}. "
-                 "Nothing was judged.")
+        return R(R.INFO, f"Unknown: {len(unknown)} of {len(live)} App Connector group(s) could not be judged: {'; '.join(why)}. Nothing was judged.")
     return R(R.PASS, f"All {len(live)} App Connector group(s) follow a current version profile.")
 
 
@@ -3273,13 +3299,15 @@ def thr_12(cl):
                          "or an SD-WAN's tunnels); connect one when the organisation uses such a product. Expiry is not in the API.")
     state = [x for x in r if _fv(x, "disabled") is not None]
     off = [_nm(x) + (f" ({_nm(x, 'type')})" if _fv(x, "type") else "") for x in state if _truthy(_fv(x, "disabled"))]
+    nostate = [_nm(x) for x in r if _fv(x, "disabled") is None]
+    left = (f" {len(nostate)} more say no enabled or disabled state and were left out (unknown): {_few(nostate)}." if nostate else "")
     if off:
         return R(R.WARN, f"{len(off)} of {len(r)} partner integration(s) are disabled: {_few(off)}. Whatever they fed ZIA (device posture, "
                  "SD-WAN tunnels, reporting) has stopped, and policy that relies on it acts on stale or missing signal."
-                 " Best Practice: re-enable each one the organisation still uses, or remove it." + _THREAT_REF)
+                 " Best Practice: re-enable each one the organisation still uses, or remove it." + left + _THREAT_REF)
     if not state:
         return R(R.INFO, f"Unknown: {len(r)} partner integration(s), but none says whether it is enabled. Nothing was judged.")
-    return R(R.PASS, f"{len(state)} partner integration(s), none disabled (expiry is not in the API).")
+    return R(R.PASS, f"{len(state)} of {len(r)} partner integration(s) checked, none disabled (expiry is not in the API).{left}")
 
 
 # Traffic capture actions that capture nothing (assumed: the SDK names no values;
@@ -3294,15 +3322,23 @@ def gov_9(cl):
     action, txnSampling, defaultRule, predefined; SDK model). A capture rule
     records the content of matching traffic, which can hold personal data;
     it belongs to a troubleshooting window, not to steady state."""
-    r, c = _items(cl, "/zia/trafficCaptureRules")
+    d, c = cl.get("/zia/trafficCaptureRules")
     na = _unlicensed("Traffic capture", c)
     if na:
         return na
     if c not in _OK:
         return R(R.INFO, f"The traffic capture rules could not be read (HTTP {c}).")
-    if not r:
+    # Only a real list (or ZIA's {"list": [...]}) is an answer: anything else is
+    # not "no rule", it is an answer this app cannot read.
+    rows = d if isinstance(d, list) else d.get("list") if isinstance(d, dict) else None
+    if not isinstance(rows, list):
+        return R(R.INFO, f"Unknown: the traffic capture rules answer is not a list ({type(d).__name__}), so whether a capture rule is on "
+                         "could not be established. Nothing was judged.")
+    r = [x for x in rows if isinstance(x, dict)]
+    odd = len(rows) - len(r)
+    if not rows:
         return R(R.PASS, "No traffic capture rule: no traffic content is being recorded.")
-    unknown = [_nm(x) for x in r if _fv(x, "state") is None]
+    unknown = [_nm(x) for x in r if _fv(x, "state") is None] + ([f"{odd} unreadable entr{'y' if odd == 1 else 'ies'}"] if odd else [])
     live = [x for x in r if str(_fv(x, "state") or "").upper() == "ENABLED"
             and str(_fv(x, "action") or "").upper() not in _NO_CAPTURE]
     if live:
@@ -3311,7 +3347,8 @@ def gov_9(cl):
                  "can include personal data, for as long as they stay on. Best Practice: enable a capture rule only for a dated "
                  "troubleshooting window, scoped to the users or locations concerned, then disable it." + _POLICY_GUIDE)
     if unknown:
-        return R(R.INFO, f"Unknown: {len(unknown)} traffic capture rule(s) state no enabled or disabled state: {_few(unknown)}. Nothing was judged.")
+        return R(R.INFO, f"Unknown: {len(unknown)} traffic capture rule(s) give no enabled or disabled state that could be read: {_few(unknown)}. "
+                 "Nothing was judged.")
     return R(R.PASS, f"{len(r)} traffic capture rule(s), none enabled to capture.")
 
 

@@ -1012,9 +1012,13 @@ TIME_INTERVALS = [{"id": 881, "name": "Work hours", "startTime": 480, "endTime":
 # was never turned on; the connector groups follow the Default profile.
 ZPA_CONNECTOR_SCHEDULE = {"id": "5601", "enabled": False, "deleteDisabled": False, "frequency": "days", "frequencyInterval": "5"}
 ZPA_SERVICE_EDGE_SCHEDULE = {"id": "5602", "enabled": True, "deleteDisabled": True, "frequency": "days", "frequencyInterval": "7"}
-ZPA_VERSION_PROFILES = [{"id": "0", "name": "Default", "description": "Current release."},
-                        {"id": "1", "name": "Previous Default", "description": "One release behind."},
-                        {"id": "2", "name": "New Release", "description": "Early release."}]
+# Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name).
+ZPA_VERSION_PROFILES = [
+    {"id": "0", "name": "Default", "description": "Current release.", "versionDetails": [{"role": "ASSISTANT", "version": "25.214.1"}]},
+    {"id": "1", "name": "Previous Default", "description": "One release behind.",
+     "versionDetails": [{"role": "ASSISTANT", "version": "25.160.3"}]},
+    {"id": "2", "name": "New Release", "description": "Early release.", "versionDetails": [{"role": "ASSISTANT", "version": "25.250.0"}]},
+]
 
 # A made-up detector for "Test a prompt" on the sample: keyword rules only,
 # so the answer is the same every time. Never a real AI Guard verdict.

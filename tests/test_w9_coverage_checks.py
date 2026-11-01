@@ -118,6 +118,8 @@ def test_missing_or_odd_data_never_passes_or_crashes(cid):
     for body in ([], {}, "text", 7, [1, "x", None], True):
         r = REAL[cid](Fake(default=(body, 200)))
         assert isinstance(r, R) and r.status in (R.PASS, R.WARN, R.INFO), (cid, body, r.status)
+        # Only a real empty list may pass: an answer of any other shape is unknown, never a pass.
+        assert body == [] or r.status != R.PASS, (cid, body, r.detail)
 
 
 # ── The sample tenant answers every new read ────────────────────────────
@@ -256,10 +258,10 @@ def test_hlt5_a_schedule_without_its_field_is_unknown():
     assert r.status == R.INFO and "Unknown" in r.detail
 
 
-PROFILES = {"/zpa/visible/versionProfiles": ({"list": [{"id": "0", "name": "Default", "version": "24.300.1"},
-                                                       {"id": "1", "name": "Previous Default", "version": "24.200.4"},
-                                                       {"id": "9", "name": "Pinned custom", "version": "23.100.0"},
-                                                       {"id": "2", "name": "New Release", "version": "24.400.0"}]}, 200)}
+PROFILES = {"/zpa/visible/versionProfiles": ({"list": [{"id": "0", "name": "Default", "versionDetails": [{"role": "ASSISTANT", "version": "24.300.1"}]},
+                                                       {"id": "1", "name": "Previous Default", "versionDetails": [{"role": "ASSISTANT", "version": "24.200.4"}]},
+                                                       {"id": "9", "name": "Pinned custom", "versionDetails": [{"role": "ASSISTANT", "version": "23.100.0"}]},
+                                                       {"id": "2", "name": "New Release", "versionDetails": [{"role": "ASSISTANT", "version": "24.400.0"}]}]}, 200)}
 
 
 @pytest.mark.parametrize("group,status", [
@@ -271,6 +273,29 @@ def test_hlt6_a_group_on_an_older_profile_is_a_finding(group, status):
     """ASVS V1.14.1 · CWE-1164: a connector group on Previous Default or on a profile older than Default is flagged; Default and New Release pass; an unresolvable profile is unknown (acceptance 3)."""
     r = full.hlt_6(Fake(dict(PROFILES, **{"/zpa/appConnectorGroup": ({"list": [group]}, 200)})))
     assert r.status == status, r.detail
+
+
+def test_hlt6_no_default_profile_listed_is_unknown_never_pass():
+    """ASVS V7.4.1 · CWE-754 · CWE-697: when ZPA lists no Default profile, a group on any profile not old by name cannot be compared, so the check is unknown with the reason, never a pass."""
+    profiles = {"/zpa/visible/versionProfiles": ({"list": [{"id": "9", "name": "Custom", "versionDetails": [{"role": "ASSISTANT", "version": "23.1.0"}]}]}, 200)}
+    r = full.hlt_6(Fake(dict(profiles, **{"/zpa/appConnectorGroup": ({"list": [{"name": "G", "versionProfileId": "9"}]}, 200)})))
+    assert r.status == R.INFO and "Unknown" in r.detail and "no Default profile" in r.detail, r.detail
+    old = dict(profiles, **{"/zpa/appConnectorGroup": ({"list": [{"name": "G", "versionProfileName": "Previous Default"}]}, 200)})
+    old["/zpa/visible/versionProfiles"] = ({"list": [{"id": "1", "name": "Previous Default"}]}, 200)
+    assert full.hlt_6(Fake(old)).status == R.WARN
+
+
+def test_hlt6_a_profile_without_a_version_is_unknown_never_pass():
+    """ASVS V7.4.1 · CWE-754: a group on a custom profile with no version to compare with Default's is unknown, never a pass; the sample's profiles carry versions so the comparison runs offline."""
+    profiles = {"/zpa/visible/versionProfiles": ({"list": [{"id": "0", "name": "Default", "versionDetails": [{"role": "ASSISTANT", "version": "24.300.1"}]}, {"id": "9", "name": "Custom"}]}, 200)}
+    r = full.hlt_6(Fake(dict(profiles, **{"/zpa/appConnectorGroup": ({"list": [{"name": "G", "versionProfileId": "9"}]}, 200)})))
+    assert r.status == R.INFO and "no version" in r.detail, r.detail
+    edge_only = {"/zpa/visible/versionProfiles": ({"list": [{"id": "0", "name": "Default", "versionDetails": [{"role": "ASSISTANT", "version": "24.3"}]},
+                                                            {"id": "9", "name": "Custom", "versionDetails": [{"role": "SERVICE_EDGE", "version": "1.0"}]}]}, 200)}
+    r = full.hlt_6(Fake(dict(edge_only, **{"/zpa/appConnectorGroup": ({"list": [{"name": "G", "versionProfileId": "9"}]}, 200)})))
+    assert r.status == R.INFO, r.detail   # another component's version is never compared with the connectors'
+    rows = sample_tenant.ZPA_VERSION_PROFILES
+    assert all(full._ver(p) for p in rows) and full._ver(rows[1]) < full._ver(rows[0])
 
 
 # ── 4. AI Guard provider credentials: metadata only (AIG.7) ─────────────
@@ -470,6 +495,35 @@ def test_a_missing_state_field_is_unknown_never_pass(cid, table):
     """ASVS V7.4.1 · CWE-754 · CWE-391: a rule, partner or interval that states no state or days is unknown with the reason, never a pass."""
     r = REAL[cid](Fake(table))
     assert r.status == R.INFO and "Unknown" in r.detail, r.detail
+
+
+@pytest.mark.parametrize("body", [{}, "text", 7, True, [1, "x", None], {"list": "x"}, {"rules": []}, None],
+                         ids=["dict", "text", "int", "bool", "junk-list", "list-not-a-list", "other-key", "none"])
+def test_gov9_a_malformed_answer_is_unknown_never_pass(body):
+    """ASVS V5.1.3 · CWE-20 · CWE-754: a 200 traffic capture answer that is not a list of rules is unknown with the reason, never "no capture rule"."""
+    r = full.gov_9(Fake({"/zia/trafficCaptureRules": (body, 200)}))
+    assert r.status == R.INFO and "Unknown" in r.detail, (body, r.status, r.detail)
+
+
+@pytest.mark.parametrize("body", [[], {"list": []}])
+def test_gov9_only_a_real_empty_list_means_no_capture_rule(body):
+    """ASVS V5.1.3 · CWE-20: an empty list (bare or in ZIA's list envelope) is the one answer that means no capture rule."""
+    assert full.gov_9(Fake({"/zia/trafficCaptureRules": (body, 200)})).status == R.PASS
+
+
+def test_gov9_unreadable_entries_beside_disabled_rules_are_unknown():
+    """ASVS V5.1.3 · CWE-20 · CWE-754: a disabled rule next to an entry that is not a rule is unknown (the entry could be an enabled rule), never a pass."""
+    r = full.gov_9(Fake({"/zia/trafficCaptureRules": ([{"name": "c", "state": "DISABLED", "action": "CAPTURE"}, "x"], 200)}))
+    assert r.status == R.INFO and "1 unreadable entry" in r.detail, r.detail
+
+
+def test_thr12_partners_without_a_state_are_counted_not_dropped():
+    """ASVS V7.4.1 · CWE-754 · CWE-391: a partner with no disabled field is never silently dropped: the result counts and names it as unknown, in a pass and in a finding."""
+    mixed = [{"name": "Edr", "disabled": False}, {"name": "Mystery"}]
+    r = full.thr_12(Fake({"/zia/integrationPartners": (mixed, 200)}))
+    assert r.status == R.PASS and "1 of 2" in r.detail and "1 more" in r.detail and "Mystery" in r.detail and "unknown" in r.detail, r.detail
+    r = full.thr_12(Fake({"/zia/integrationPartners": (mixed + [{"name": "Off", "disabled": True}], 200)}))
+    assert r.status == R.WARN and "Mystery" in r.detail and "unknown" in r.detail, r.detail
 
 
 @pytest.mark.parametrize("cid", ["GOV.9", "THR.12"])
