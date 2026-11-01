@@ -26,9 +26,7 @@ JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjYW5hcnkifQ.c2lnbmF0dXJlY2FuYXJ5"
 ANALYSIS_TOOLS = {"list_sources", "path_check", "test_list", "rule_precedence", "explain_dlp", "data_flow", "ssl_coverage",
                   "dlp_incidents", "traffic_summary", "zpa_path", "fleet_health", "snapshot_diff", "category_lookup",
                   "readiness", "compliance_map", "traffic_logs_summary", "ztw_summary", "zdx_summary", "timeline", "case_notes"}
-# add_case_note writes the app's local notes store (never the tenant): the one tool not marked read-only.
-NOTE_TOOLS = {"add_case_note"}
-ALL_TOOLS = ANALYSIS_TOOLS | NOTE_TOOLS | {"run_assessment", "run_section", "list_checks", "get_health"}
+ALL_TOOLS = ANALYSIS_TOOLS | {"run_assessment", "run_section", "list_checks", "get_health"}
 
 # One call per tenant-reading tool, with the smallest valid arguments.
 LIVE_CALLS = [
@@ -122,7 +120,7 @@ def test_the_server_lists_the_read_only_analysis_tools_and_no_write_tool():
     assert set(ts) == ALL_TOOLS
     for name, t in ts.items():
         ann = t.annotations
-        assert ann is not None and ann.read_only_hint is (name not in NOTE_TOOLS) and ann.destructive_hint is False, name
+        assert ann is not None and ann.read_only_hint is True and ann.destructive_hint is False, name
         assert not re.search(r"(^|_)(set|create|update|delete|remove|apply|deploy|write|fix|push)(_|$)", name), name
         props = set(schema(t).get("properties") or {})
         assert not props & {"client_id", "client_secret", "password", "api_key", "token", "username", "confirm", "write", "apply",

@@ -157,7 +157,8 @@ def test_mcp_tools_take_no_write_or_secret_argument():
     # The assessment tools and the read-only analysis tools (mcp_tools.py); none writes.
     assert set(tools) == {"get_health", "list_checks", "run_assessment", "run_section", "list_sources", "path_check", "test_list",
                           "rule_precedence", "explain_dlp", "data_flow", "ssl_coverage", "dlp_incidents", "traffic_summary", "zpa_path",
-                          "fleet_health", "snapshot_diff", "category_lookup", "readiness", "compliance_map"}
+                          "fleet_health", "snapshot_diff", "category_lookup", "readiness", "compliance_map",
+                          "traffic_logs_summary", "ztw_summary", "zdx_summary", "timeline", "case_notes"}
     assert all(t.annotations and t.annotations.read_only_hint is True for t in tools.values())
     assert not params & {"client_secret", "password", "api_key", "token", "confirm", "write", "apply", "assessor_confirm"}
 

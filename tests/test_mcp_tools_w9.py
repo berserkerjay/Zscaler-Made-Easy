@@ -13,7 +13,6 @@ import os
 
 import pytest
 
-import mcp_tools
 import offline_tenant
 
 TOOL_SCOPE = {"traffic_logs_summary": "insights", "ztw_summary": "ztw", "zdx_summary": "zdx", "timeline": "automation"}
@@ -105,16 +104,29 @@ def test_timeline_counts_the_apps_own_records_and_names_no_person(local):
     assert old["code"] == "bad_input"
 
 
-def test_case_notes_reads_and_adds_a_local_note_without_touching_the_tenant(local):
-    """ASVS V4.1.3 · V7.2.1 · CWE-284 · CWE-359: a case note is added to the app's local store as the AI assistant and read back; authors are counted; the sample tenant is unchanged; the audit names the assistant."""
+def test_case_notes_reads_a_local_note_without_touching_the_tenant(local):
+    """ASVS V4.1.3 · V7.2.1 · CWE-284 · CWE-359: a case note the admin added on the app's pages is read back from the local store; authors are counted, not named; the sample tenant is unchanged."""
+    # Arrange
+    import workspace_notes
+    tenant = call("case_notes", source="sample")["data"]["tenant"]
+    workspace_notes.apply(tenant, "rule", "rule:web:Block SSN", "add_comment", by="jane.admin@example.com", text="Check the SSN engine threshold")
     # Act
-    added = call("add_case_note", kind="rule", ref="rule:web:Block SSN", comment="Check the SSN engine threshold", source="sample")
     got = call("case_notes", source="sample")
     # Assert
-    assert added["data"]["added"] is True and got["data"]["total"] == 1 and got["data"]["authors"] == 1
+    assert got["data"]["total"] == 1 and got["data"]["authors"] == 1
     assert got["data"]["notes"][0]["comments"][0]["text"] == "Check the SSN engine threshold"
+    assert "jane.admin" not in json.dumps(got)
     assert offline_tenant.sample_store().writes == 0
-    assert mcp_tools.MCP_NOTE_AUTHOR in (local / "audit.log").read_text(encoding="utf-8")
+
+
+def test_the_assistant_cannot_add_a_case_note(local):
+    """ASVS V1.4.1 · V4.1.3 · CWE-841 · WSTG-ATHZ-02: the MCP server offers no tool that adds to the admin's notes (every tool is read-only); asking for one is refused and nothing is stored."""
+    # Arrange
+    import dlp_mcp_server
+    # Act / Assert
+    with pytest.raises(Exception):
+        asyncio.run(dlp_mcp_server.mcp.call_tool("add_case_note", {"kind": "rule", "ref": "r", "comment": "x", "source": "sample"}))
+    assert call("case_notes", source="sample")["data"]["total"] == 0
 
 
 @pytest.mark.parametrize("tool,args", [("traffic_logs_summary", {}), ("ztw_summary", {"source": "sample"}),
@@ -146,18 +158,18 @@ def test_the_changelog_says_which_assistant_tools_check_scope(local, monkeypatch
     assert "each tool that reads tenant data checks the server's scope first" in line and "case-notes tools work on the app's local notes" in line
 
 
-def test_the_new_tools_take_no_secret_or_scope_argument_and_the_note_tool_is_not_marked_read_only():
-    """ASVS V1.4.1 · CWE-841: the new tools take no credential, scope or write switch; only add_case_note (local notes) is not read-only, and none is destructive."""
+def test_the_new_tools_take_no_secret_or_scope_argument_and_are_read_only():
+    """ASVS V1.4.1 · CWE-841: the new tools take no credential, scope or write switch; every one is marked read-only and none is destructive."""
     # Arrange
     import dlp_mcp_server
     ts = {t.name: t for t in asyncio.run(dlp_mcp_server.mcp.list_tools())}
     # Act
-    new = {n: ts[n] for n in ("traffic_logs_summary", "ztw_summary", "zdx_summary", "timeline", "case_notes", "add_case_note")}
+    new = {n: ts[n] for n in ("traffic_logs_summary", "ztw_summary", "zdx_summary", "timeline", "case_notes")}
     # Assert
     for name, t in new.items():
         props = set((getattr(t, "input_schema", None) or getattr(t, "inputSchema", None) or {}).get("properties") or {})
         assert not props & {"client_secret", "password", "scopes", "channels", "confirm", "write"}, name
-        assert t.annotations.destructive_hint is False and t.annotations.read_only_hint is (name != "add_case_note"), name
+        assert t.annotations.destructive_hint is False and t.annotations.read_only_hint is True, name
 
 
 def test_the_skill_glossary_holds_every_simple_mode_word_and_the_reference_page_list_is_real():

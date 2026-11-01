@@ -54,11 +54,10 @@ Tools exposed (every one read-only; none changes the tenant):
     zdx_summary       — ZDX application scores and alerts (counts only)
     timeline          — What the app did since a date (its own records, people counted)
     case_notes        — The admin's workspace notes for the tenant (local)
-    add_case_note     — Add a comment to a workspace note (local; never the tenant)
 
 There are no tenant write tools: changes are made in the app's UI, behind
 write mode, a named writer and assessor, a preview and a typed confirmation.
-add_case_note writes only the app's local notes store (never the tenant).
+Every tool is read-only: notes are added by the admin on the app's pages.
 """
 
 import argparse
@@ -727,26 +726,6 @@ async def case_notes(tag: Annotated[str, Field(max_length=40)] = "", kind: Annot
     object kind. Authors are counted, not named. Reads no tenant. Read-only.
     """
     return await _run("case_notes", mcp_tools.case_notes, dict(tag=tag, kind=kind), source=source, snapshot_id=snapshot_id)
-
-
-NOTE_TOOL = (ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
-             if ToolAnnotations is not None else None)
-
-
-@mcp.tool(annotations=NOTE_TOOL)
-async def add_case_note(kind: Annotated[str, Field(min_length=1, max_length=40, description="rule, dictionary, url_category, finding, page...")],
-                        ref: Annotated[str, Field(min_length=1, max_length=300, description="the object's id or name as the app keys it")],
-                        comment: Annotated[str, Field(min_length=1, max_length=1000)],
-                        label: Annotated[str, Field(max_length=300)] = "",
-                        source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
-    """
-    Add one comment to the admin's workspace note on an object (a case
-    note), in the app's local notes store, written as the AI assistant and
-    audited. It never changes the tenant: tenant changes are made in the
-    app's UI with its own confirmations.
-    """
-    return await _run("add_case_note", mcp_tools.add_case_note, dict(kind=kind, ref=ref, comment=comment, label=label),
-                      source=source, snapshot_id=snapshot_id)
 
 
 # ── Entrypoint ───────────────────────────────────────────────────────

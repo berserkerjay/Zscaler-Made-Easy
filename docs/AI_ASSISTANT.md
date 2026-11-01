@@ -38,7 +38,6 @@ mode, a named writer and assessor, a preview and a typed confirmation.
 | `zdx_summary` | ZDX | App score bands, the lowest apps, alerts by severity and rule (no devices) |
 | `timeline` | Audit timeline | What the app did since a date, from its own records (people counted) |
 | `case_notes` | Workspace notes | The admin's notes for the tenant (local) |
-| `add_case_note` | Workspace notes | Adds a comment to a local note, written as the AI assistant; never the tenant |
 | `run_assessment`, `run_section`, `list_checks`, `get_health` | The assessment | As before |
 
 Each analysis tool takes `source`: `live` (the tenant whose sign-in is set
