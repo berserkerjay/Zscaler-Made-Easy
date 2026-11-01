@@ -132,15 +132,65 @@ def test_an_oversize_workbook_is_refused_before_it_is_opened():
         zadm.parse_list(data)
 
 
-def test_rows_past_the_row_cap_are_not_read(monkeypatch):
-    """ASVS V12.1.1 · CWE-770: at most MAX_ROWS rows of the sheet are returned."""
+def test_a_sheet_past_the_row_cap_is_refused_not_cut_short(monkeypatch):
+    """ASVS V12.1.1 · V5.1.4 · CWE-770 · CWE-1284: a sheet with more than MAX_ROWS rows is refused with the reason (a list read in part would plan a partial removal without saying so); exactly MAX_ROWS rows is read whole (boundary); the matcher passes the reason on."""
     # Arrange
     monkeypatch.setattr(xlsx_reader, "MAX_ROWS", 3)
-    data = _book([[f"u{i}@acme.com"] for i in range(10)])
+    over = _book([[f"u{i}@acme.com"] for i in range(4)])
+    at = _book([[f"u{i}@acme.com"] for i in range(3)])
+    # Act / Assert
+    with pytest.raises(xlsx_reader.XlsxRefused, match="more than 3 rows"):
+        xlsx_reader.read_rows(over)
+    with pytest.raises(zadm.ao.OperationError, match="could not be read: the first sheet has more than 3 rows; split it"):
+        zadm.xlsx_list_text(over)
+    assert xlsx_reader.read_rows(at) == [["u0@acme.com"], ["u1@acme.com"], ["u2@acme.com"]]
+
+
+@pytest.mark.parametrize("cap,value,rows,why", [
+    ("MAX_CELLS", 5, [["a", "b"], ["c", "d"], ["e", "f"]], "more than 5 filled cells"),
+    ("MAX_COLS", 2, [["a", "b", "c"]], "a value past column B"),
+    ("MAX_SHARED", 1, None, "more than 1 distinct text values"),
+])
+def test_a_sheet_past_the_cell_column_or_shared_string_cap_is_refused(monkeypatch, cap, value, rows, why):
+    """ASVS V12.1.1 · CWE-770 · CWE-1284: a sheet with more filled cells than MAX_CELLS, a value past column MAX_COLS, or more shared strings than MAX_SHARED is refused, never cut short."""
+    # Arrange
+    monkeypatch.setattr(xlsx_reader, cap, value)
+    shared = f'<sst {NS}><si><t>one</t></si><si><t>two</t></si></sst>'
+    data = _book(rows, sheet=None if rows else f'<worksheet {NS}><sheetData><row r="1"><c r="A1" t="s"><v>1</v></c></row></sheetData></worksheet>',
+                 extra={"xl/sharedStrings.xml": shared})
+    # Act / Assert
+    with pytest.raises(xlsx_reader.XlsxRefused, match=why):
+        xlsx_reader.read_rows(data)
+
+
+def test_a_large_sheet_is_refused_early_with_bounded_memory_and_work(monkeypatch):
+    """ASVS V12.1.1 · V11.1.4 · CWE-400 · CWE-770 · WSTG-BUSL-09: a large upload (60,000 rows: over the default row cap, every size and ratio cap passed) is refused, its sheet is streamed and reading stops at the cap (well under half the sheet inflated), and peak memory stays small (the whole part is never held or parsed into a tree)."""
+    # Arrange
+    import tracemalloc
+    data = _book([[f"user{i:06d}@acme.example", f"HOST-{i:06d}"] for i in range(60_000)])
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        part = z.getinfo("xl/worksheets/sheet1.xml").file_size
+    assert len(data) < xlsx_reader.MAX_FILE_BYTES and part < xlsx_reader.MAX_PART_BYTES and part > 6 * 1024 * 1024
+    inflated = []
+    real_read = xlsx_reader._Stream.read
+    def counted(self, n=-1):
+        chunk = real_read(self, n)
+        inflated.append((self.name, len(chunk)))
+        return chunk
+    monkeypatch.setattr(xlsx_reader._Stream, "read", counted)
     # Act
-    rows = xlsx_reader.read_rows(data)
+    tracemalloc.start()
+    try:
+        with pytest.raises(xlsx_reader.XlsxRefused, match=f"more than {xlsx_reader.MAX_ROWS} rows") as got:
+            xlsx_reader.read_rows(data)
+        _now, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
     # Assert
-    assert rows == [["u0@acme.com"], ["u1@acme.com"], ["u2@acme.com"]]
+    assert "split it" in str(got.value)
+    read = sum(n for name, n in inflated if name == "xl/worksheets/sheet1.xml")
+    assert 0 < read < part / 2, (read, part)
+    assert peak < 24 * 1024 * 1024 + len(data), peak
 
 
 @pytest.mark.parametrize("data,why", [(b"", "empty"), (b"name,host\n", "not an Excel"), (b"PK\x03\x04garbage", "damaged")])
