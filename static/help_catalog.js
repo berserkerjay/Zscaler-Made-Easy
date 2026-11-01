@@ -100,7 +100,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#dlpSafetyBanner .sb-leave": {
-    "what": "Leaves the sample tenant or the offline snapshot in this browser, then reloads the page on the live tenant.",
+    "what": "Leaves the sample tenant or the offline snapshot in this browser, then reloads the page on the live tenant. In a simulation, it drops the simulation's copy and goes back to the sample tenant or the snapshot it was made from.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
@@ -1948,7 +1948,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#gdOffline .zo-row button.gd-btn.primary": {
-    "what": "Opens the sample tenant, a made-up company, in this browser. When one is open, it leaves the sample or closes the snapshot.",
+    "what": "Opens the sample tenant, a made-up company, in this browser. When one is open, it leaves the sample, closes the snapshot or leaves the simulation (back to the sample or the snapshot it was made from).",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
@@ -5660,6 +5660,26 @@ window.HELP_CATALOG = {
     "input": "Tick it to make them enabled.",
     "effect": "local"
    },
+   "#zbSearch": {
+    "what": "Finds rules in the review below by name, title or area. It only hides the rules that do not match; it changes nothing in the build.",
+    "input": "Optional. A few letters or words, like gambling or Cloud Firewall, at most 80 characters. Empty shows every rule.",
+    "effect": "local"
+   },
+   "#zbChanged": {
+    "what": "Shows only the rules you changed from the tier default: another action, or turned on or off.",
+    "input": "Tick it to see only your changes. Untick it to see every rule again.",
+    "effect": "local"
+   },
+   "#zbSelSave": {
+    "what": "Saves your choices in this review (tier, areas, overlays, each rule's action and on or off) as a file, to load again later or on another tenant.",
+    "input": "Nothing to type. Just click it. It saves a local .json file; nothing is read from or written to the tenant.",
+    "effect": "download"
+   },
+   "#zbSelLoad": {
+    "what": "Loads a file saved with Download selection and puts its choices back in this review. The file is checked first; rule choices this version does not know are left out.",
+    "input": "Optional. A .json file from Download selection, at most 256 KB. Nothing is written to the tenant.",
+    "effect": "local"
+   },
    "input[data-zb-on]": {
     "what": "Includes this rule in the baseline.",
     "input": "Tick it to include the rule. A locked rule is always included.",
@@ -5899,6 +5919,21 @@ window.HELP_CATALOG = {
     "what": "Applies the previewed change to the tenant. Each item is read again right before its write.",
     "input": "Needs write mode on, your permission to change the tenant, the assessor's name, the box ticked and any phrase typed.",
     "effect": "write"
+   },
+   "#opSimulate": {
+    "what": "Applies the rehearsed change to a simulation: a copy of the sample tenant or the opened snapshot kept in this app's memory. Then the Path analyzer and Test a list show what the change would do.",
+    "input": "Nothing to type here. Preview the change on the sample tenant or a snapshot first, and type the phrase above when one is asked. Nothing reaches a tenant, the sample tenant or a saved snapshot.",
+    "effect": "local"
+   },
+   "#opSimLeave": {
+    "what": "Leaves the simulation: its copy is dropped and this browser goes back to the sample tenant or the snapshot it was made from. The rehearsed changes are gone.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opSimPath": {
+    "what": "Opens the Path analyzer, which now reads the simulation, so you can see what the rehearsed change does to a destination.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    },
    "#opResult details.pa-details > summary": {
     "what": "Shows or hides the log of what was done.",
@@ -7757,6 +7792,26 @@ window.HELP_CATALOG = {
     "what": "Applies every part in order, each read again right before it is written, read back and recorded with its Undo. Stops at the first part that does not apply.",
     "input": "Needs write mode on, a named assessor, the review box and the typed phrase.",
     "effect": "write"
+   },
+   "#pbSimulate": {
+    "what": "Applies the rehearsed build to a simulation: a copy of the sample tenant or the opened snapshot kept in this app's memory. Every part runs in order, as a real apply would. Then the Path analyzer and Test a list show the result.",
+    "input": "Needs a dry run made on the sample tenant or a snapshot, and the phrase typed. Nothing reaches a tenant, the sample tenant or a saved snapshot.",
+    "effect": "local"
+   },
+   "#pbSimPhrase": {
+    "what": "Confirms that you want to apply this dry run to the simulation.",
+    "input": "Required. Type the phrase shown, like APPLY 12 CHANGES. Case does not matter.",
+    "effect": "local"
+   },
+   "#pbSimLeave": {
+    "what": "Leaves the simulation: its copy is dropped and this browser goes back to the sample tenant or the snapshot it was made from. The rehearsed build is gone.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#pbSimPath": {
+    "what": "Opens the Path analyzer, which now reads the simulation, so you can see what the rehearsed build does to a destination.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    },
    "#pvBuild button.pb-key": {
     "what": "Shows the provisioning key the build just created for the App Connectors. It is shown once and never kept by this app.",

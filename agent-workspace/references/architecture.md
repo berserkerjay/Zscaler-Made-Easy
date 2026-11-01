@@ -47,6 +47,7 @@ Find the files a change touches here, then read only those.
 | `dlp_importer.py` | DLP Policy Pack Importer — general-purpose library |
 | `dlp_mcp_server.py` | DLP Assessment MCP Tool Server |
 | `dns_forward_zones.py` | DNS records for Client Connector hostnames: download-only text, never applied. |
+| `editions.py` | Licensed editions: Cloud Firewall (standard or advanced), Cloud Sandbox |
 | `engine_explain.py` | DLP engine explainability: an engine expression as people read it. |
 | `guidance.py` | Continuous evaluation, phase 4: guidance that keeps itself current. |
 | `insights.py` | ZIA Insights traffic data: read-only, paced, Stop-able wrappers over the |

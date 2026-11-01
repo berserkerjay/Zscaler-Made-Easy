@@ -121,12 +121,24 @@ ORDER: Tuple[str, ...] = tuple(s["key"] for s in STEPS)
 # (pov.VERTICALS[key]["build"]), which wins. Keys: tier (ZIA baseline),
 # overlays (compliance overlays), zpa_preset (ops_zpa.VERTICALS), aiguard
 # (ai_guard.PROFILES), zdx (ops_zdx.TEMPLATES).
+#
+# The intake's compliance profile (pov.clean_intake: the vertical's
+# pov.VERTICAL_COMPLIANCE, or the operator's pick) then wins over the preset
+# where the one compliance choice decides in Build new (compliance_for):
+# the tier (a federal profile's own tier), its overlay, the rules it adds
+# or requires (spec["compliance_profile"] on the ZIA baseline), the AI Guard
+# detection profile, the DLP packs offered and the compliance pack.
 PRESET_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "_default": {"tier": "balanced", "overlays": [], "zpa_preset": "general", "aiguard": "GENERAL", "zdx": "best_practice"},
     "healthcare": {"tier": "healthcare", "overlays": ["HIPAA", "HITRUST"], "zpa_preset": "healthcare", "aiguard": "HIPAA", "zdx": "microsoft_365"},
     "financial": {"tier": "strict", "overlays": ["PCI", "SOX"], "zpa_preset": "finance", "aiguard": "PCI", "zdx": "best_practice"},
     "general": {"tier": "balanced", "overlays": [], "zpa_preset": "general", "aiguard": "GENERAL", "zdx": "best_practice"},
     "education": {"tier": "balanced", "overlays": ["FERPA"], "zpa_preset": "education", "aiguard": "FERPA", "zdx": "microsoft_365"},
+    # Federal and public sector: FedRAMP Moderate is the vertical's default compliance profile (pov.VERTICAL_COMPLIANCE),
+    # whose SC-7(5) default deny only the Strict tier has; the NIST SP 800-53 overlay and AI Guard profile; the federal
+    # ZPA app preset (case management, financial, HR, records) and the federal ZDX template (Login.gov, USAJOBS, SAM.gov
+    # as custom apps). The app hosts are templates to review with the agency (ops_zpa.VERTICALS / ops_zdx.TEMPLATES).
+    "federal": {"tier": "strict", "overlays": ["NIST_800_53"], "zpa_preset": "federal", "aiguard": "NIST_800_53", "zdx": "federal"},
 }
 # ZIA baseline areas each intake product asks for (ATP is never on by default: it has no disabled state).
 AREAS_FOR: Dict[str, List[str]] = {"url_filtering": ["url"], "threat": ["sandbox", "ftc"], "firewall": ["firewall"], "dns": ["dns"],
@@ -148,6 +160,34 @@ def preset_for(vertical: str) -> Dict[str, Any]:
     return out
 
 
+def compliance_for(intake: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """What the intake's compliance profile decides for the build, as the
+    one compliance choice does in Build new (static/ops_zia_baseline.js
+    applyProfile, ops_zia_baseline.normalize, ops_aiguard): its tier (None
+    for a framework profile: the preset's tier stays), its overlay, the
+    rules it adds, requires and leaves out, the AI Guard detection profile,
+    the DLP policy packs offered and the compliance pack's files. None when
+    the intake has no profile; an unknown key is None too (the intake was
+    cleaned by pov.clean_intake, which refuses one)."""
+    import compliance_profiles as cp
+    try:
+        key = cp.key_of(intake.get("compliance_profile"))
+    except cp.ProfileError:
+        return None
+    if not key:
+        return None
+    p = cp.PROFILES[key]
+    try:
+        sm = cp.summary(key)
+        packs, lines = sm["packs"], sm["lines"]
+    except Exception:  # noqa: BLE001 - no pack library on disk: the ids alone
+        packs, lines = [{"id": x, "name": x, "available": False} for x in p["packs"]], []
+    return {"key": key, "label": p["label"], "kind": p["kind"], "tier": p["tier"], "tier_why": p["tier_why"], "overlay": p["overlay"],
+            "adds": sorted(p.get("add", {})), "requires": sorted(p.get("require", {})), "forbids": sorted(p.get("forbid", {})),
+            "aiguard": p["aiguard"], "packs": packs, "lines": lines,
+            "compliance_pack": ["mapping.html", "mapping.xlsx", "mapping.csv", "policy.json", "testplan.html", "compliance-pack.zip"]}
+
+
 def catalog() -> List[Dict[str, Any]]:
     """The steps as the page offers them (no callables)."""
     return [{k: s[k] for k in ("key", "type", "section", "label", "scope", "needs", "arrives")} for s in STEPS]
@@ -162,11 +202,20 @@ def defaults(intake: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     domain = str(intake.get("domain") or "")
     customer = str(intake.get("customer") or "")
     pre = preset_for(str(intake.get("vertical") or ""))
+    comp = compliance_for(intake)
+    tier, overlays, aig = pre["tier"], list(pre["overlays"]), pre["aiguard"]
+    if comp:
+        # The one compliance choice, as in Build new: a federal profile's tier, its overlay, its AI Guard profile.
+        tier = comp["tier"] or tier
+        overlays = overlays + ([comp["overlay"]] if comp["overlay"] not in overlays else [])
+        aig = comp["aiguard"]
     out: Dict[str, Dict[str, Any]] = {}
     areas = [a for a in ("firewall", "url", "ssl", "sandbox", "dns", "ftc", "cac") if any(a in AREAS_FOR.get(p, []) for p in products)]
-    out["zia_baseline"] = {"on": bool(areas), "spec": {"type": "zia_baseline", "tier": pre["tier"], "mode": "tier", "prefix": prefix[:10],
-                                                       "areas": areas or ["url", "ssl"], "overlays": list(pre["overlays"]), "enable_rules": False},
-                           "why": "" if areas else "No ZIA product is in the intake."}
+    zb_spec: Dict[str, Any] = {"type": "zia_baseline", "tier": tier, "mode": "tier", "prefix": prefix[:10],
+                               "areas": areas or ["url", "ssl"], "overlays": overlays, "enable_rules": False}
+    if comp:
+        zb_spec["compliance_profile"] = comp["key"]   # the rules the profile adds, requires and leaves out (ops_zia_baseline)
+    out["zia_baseline"] = {"on": bool(areas), "spec": zb_spec, "why": "" if areas else "No ZIA product is in the intake."}
     out["ssl_certificates"] = {"on": False, "spec": {"type": "ssl_certificate_move", "certificate": "", "rules": []},
                                "why": "Pick the certificate and the Inspect rules to move (Load choices from the tenant)."}
     zpa = "zpa" in products
@@ -190,16 +239,25 @@ def defaults(intake: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         tpl = ops_zdx.TEMPLATES.get(pre["zdx"]) or ops_zdx.TEMPLATES["best_practice"]
     except Exception:  # noqa: BLE001
         tpl = {"id": "best_practice", "predefined": [], "custom": []}
-    custom = [{"name": f"{customer or prefix} intranet"[:60], "url": f"https://intranet.{domain}/", "cloudpath": True}] if domain else list(tpl.get("custom") or [])
+    intranet = [{"name": f"{customer or prefix} intranet"[:60], "url": f"https://intranet.{domain}/", "cloudpath": True}] if domain else []
+    if tpl.get("keep_custom"):
+        # A template whose custom apps are the point (the federal sites): kept, the intranet added.
+        custom = [dict(c) for c in tpl.get("custom") or []] + intranet
+    else:
+        custom = intranet or list(tpl.get("custom") or [])
     out["zdx_probes"] = {"on": zdx, "spec": {"type": "zdx_probes", "template": tpl.get("id") or "best_practice", "interval_minutes": 5,
                                              "protocol": "ADAPTIVE", "predefined": [dict(p) for p in tpl.get("predefined") or []
                                                                                     if p.get("provider") not in ("SHAREPOINT", "ONEDRIVE")],
                                              "custom": custom}, "why": "" if zdx else "ZDX is not in the intake."}
     out["aiguard_routing"] = {"on": False, "spec": {"type": "aiguard_routing", "prefix": prefix[:12], "apps": ["chatgpt", "m365copilot", "claude", "gemini"],
                                                     "cert": {}}, "why": "Tick it to send GenAI apps through AI Guard (needs ZIA platform and AI Guard ticked)."}
-    out["aiguard_policy"] = {"on": False, "spec": {"type": "aiguard_detection_policy", "prefix": prefix[:12], "profile": pre["aiguard"], "mode": "monitor",
-                                                   "apps": ["chatgpt", "m365copilot", "claude", "gemini"]},
-                             "why": "Tick it to add an AI Guard detection policy (Monitor) for the GenAI apps."}
+    ag_spec: Dict[str, Any] = {"type": "aiguard_detection_policy", "prefix": prefix[:12], "profile": aig, "mode": "monitor",
+                               "apps": ["chatgpt", "m365copilot", "claude", "gemini"]}
+    if comp:
+        ag_spec["compliance_profile"] = comp["key"]
+    out["aiguard_policy"] = {"on": False, "spec": ag_spec,
+                             "why": "Tick it to add an AI Guard detection policy (Monitor) for the GenAI apps."
+                                    + (f" Its profile comes from {comp['label']}." if comp else "")}
     return out
 
 

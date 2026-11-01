@@ -315,6 +315,77 @@ def test_the_intake_preset_drives_the_defaults_and_a_new_preset_merges_as_data(m
     assert pov.clean_intake({"customer": "Q", "vertical": "qa_preset"})["products"] == ["url_filtering", "zpa"]
 
 
+def test_the_intake_compliance_profile_drives_the_build_as_in_build_new():
+    """ASVS V1.4.4 · CWE-1188: a federal intake profile sets the baseline's tier (Strict), overlay and compliance_profile (its added and required rules) and the AI Guard profile; a framework profile keeps the preset's tier; none leaves the preset alone."""
+    import compliance_profiles as cp
+    import ops_zia_baseline as zb
+    # Arrange
+    irs = dict(INTAKE, vertical="general", compliance_profile="IRS_1075")
+    hipaa = dict(INTAKE, compliance_profile="HIPAA")
+    # Act
+    d_irs, d_hipaa, d_none = pb.defaults(irs), pb.defaults(hipaa), pb.defaults(dict(INTAKE, vertical="general"))
+    rev = zb.review(d_irs["zia_baseline"]["spec"])
+    comp = pb.compliance_for(irs)
+    # Assert
+    z = d_irs["zia_baseline"]["spec"]
+    assert z["compliance_profile"] == "IRS_1075" and z["tier"] == "strict" and "NIST_800_53" in z["overlays"]
+    assert d_irs["aiguard_policy"]["spec"]["profile"] == "IRS_1075" and d_irs["aiguard_policy"]["spec"]["compliance_profile"] == "IRS_1075"
+    rows = {r["key"]: r for r in rev["rules"]}
+    assert "url.translation" in rows and rows["url.translation"]["profile_note"].startswith("Added by IRS")   # the rule IRS 1075 adds
+    assert rows["cac.webmail"]["locked"] and rows["fw.default_deny"]["locked"]                               # the rules it requires
+    assert comp["packs"] and [p["id"] for p in comp["packs"]] == cp.PROFILES["IRS_1075"]["packs"] and "compliance-pack.zip" in comp["compliance_pack"]
+    h = d_hipaa["zia_baseline"]["spec"]
+    assert h["tier"] == "healthcare" and h["compliance_profile"] == "HIPAA" and d_hipaa["aiguard_policy"]["spec"]["profile"] == "HIPAA"
+    assert "compliance_profile" not in d_none["zia_baseline"]["spec"] and d_none["aiguard_policy"]["spec"]["profile"] == "GENERAL"
+    assert pb.compliance_for(dict(INTAKE, compliance_profile="")) is None
+
+
+def test_the_federal_preset_fills_every_builder_default():
+    """ASVS V1.4.4 · CWE-1188: the federal vertical builds Strict with FedRAMP Moderate, the federal ZPA app preset and the federal ZDX template (Login.gov, USAJOBS, SAM.gov kept beside the intranet), not the general fallback."""
+    import ops_zdx
+    import ops_zpa
+    # Arrange
+    intake = pov.clean_intake({"customer": "Agency", "domain": "agency.example.gov", "prefix": "FED", "vertical": "federal",
+                               "products": ["url_filtering", "firewall", "dns", "zpa", "zdx"]})
+    # Act
+    pre = pb.preset_for("federal")
+    d = pb.defaults(intake)
+    segs = ops_zpa.VERTICALS["federal"]["apps"]
+    # Assert
+    assert intake["compliance_profile"] == "FEDRAMP_MOD"
+    assert pre == {"tier": "strict", "overlays": ["NIST_800_53"], "zpa_preset": "federal", "aiguard": "NIST_800_53", "zdx": "federal"}
+    assert d["zia_baseline"]["spec"]["tier"] == "strict" and d["zia_baseline"]["spec"]["compliance_profile"] == "FEDRAMP_MOD"
+    assert d["zpa_app_segments"]["spec"]["preset"] == {"vertical": "federal", "domain": "agency.example.gov"}
+    assert {h for h, _, _ in segs} >= {"casemgmt", "financial", "hr"}
+    z = d["zdx_probes"]["spec"]
+    assert z["template"] == "federal" and [c["name"] for c in z["custom"]][:3] == ["Login.gov", "USAJOBS", "SAM.gov"]
+    assert z["custom"][-1]["url"] == "https://intranet.agency.example.gov/" and ops_zdx.TEMPLATES["federal"]["review"]
+    assert d["aiguard_policy"]["spec"]["profile"] == "NIST_800_53"
+    ops_zdx._clean_setup(z)   # the template's spec is one the ZDX builder takes
+
+
+def test_the_federal_zpa_preset_expands_into_prefixed_segments():
+    """ASVS V1.4.4 · CWE-1188: the ZPA builder expands the federal preset into prefixed segments under the base domain; an unknown preset names every preset, the federal one included."""
+    import ops_zpa
+    # Act
+    apps, nspec = ops_zpa._desired_apps("FED", {"preset": {"vertical": "federal", "domain": "agency.example.gov"}})
+    # Assert
+    by = {a["name"]: a for a in apps}
+    assert {"FED-federal-casemgmt", "FED-federal-financial", "FED-federal-hr"} <= set(by)
+    assert by["FED-federal-casemgmt"]["domains"] == ["casemgmt.agency.example.gov"] and nspec["preset"]["vertical"] == "federal"
+    with pytest.raises(ao.OperationError, match="federal"):
+        ops_zpa._desired_apps("FED", {"preset": {"vertical": "nope", "domain": "agency.example.gov"}})
+
+
+def test_the_defaults_route_returns_the_compliance_profile(live):
+    """ASVS V1.4.4 · CWE-1188: /api/pov/build/defaults names the intake's compliance profile (the federal vertical's FedRAMP Moderate) beside the parts it set."""
+    r = live["c"].post("/api/pov/build/defaults", json={"intake": {"customer": "Agency", "vertical": "federal", "prefix": "FED"}})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["compliance"]["key"] == "FEDRAMP_MOD" and body["compliance"]["tier"] == "strict"
+    assert body["defaults"]["zia_baseline"]["spec"]["compliance_profile"] == "FEDRAMP_MOD"
+
+
 # ── The routes: the live tenant (a fake behind the factory), the POV record, Undo ──
 
 CREDS = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "pov-build-secret-never-kept", "customer_id": "7200000000000001"}

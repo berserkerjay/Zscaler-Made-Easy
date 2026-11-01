@@ -40,6 +40,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import ucaas_oneclick   # pure: the UCaaS one-click switch names
+
 # ---------------------------------------------------------------------------
 # Sources
 # ---------------------------------------------------------------------------
@@ -71,6 +73,8 @@ REASONS: Dict[str, str] = {
     "CAUTION_ONLY": "A caution page warns the user and lets them continue: it is not credited to an enforcement control.",
     "ALLOWS_TRAFFIC": "The rule's action (as chosen in the review) lets the traffic through, so it carries out none of its controls.",
     "NOT_CREATED": "Switched off in the review: the build does not create it.",
+    "MEDIA_BREAKOUT": "A UCaaS one-click switch that is on: the provider's voice and video break out without SSL inspection, for call "
+                      "quality (Zscaler's guidance). It narrows inspection, so it is listed for the assessor and not credited to a control.",
 }
 
 # ---------------------------------------------------------------------------
@@ -151,6 +155,12 @@ RULE_OBJECTIVES: Dict[str, Dict[str, str]] = {
     "atp.cookie_stealing_blocked": {"objective": "malicious_code"}, "atp.potential_malicious_requests_blocked": {"objective": "malicious_code"},
     "atp.bit_torrent_blocked": {"objective": "least_functionality"}, "atp.tor_blocked": {"objective": "least_functionality"},
     "atp.ssh_tunnelling_blocked": {"objective": "least_functionality"}, "atp.dga_domains_blocked": {"objective": "protective_dns"},
+    # UCaaS one-click switches (ops_zia_baseline area "ucaas", ucaas_oneclick.SETTINGS). Off, the provider's
+    # traffic is not exempted and stays under inspection; on, map_ucaas gives MEDIA_BREAKOUT instead.
+    **{f"ucaas.{_k}": {"objective": "encrypted_visibility",
+                       "why": "Off: this provider's calls get no one-click breakout, so they stay under SSL inspection and the "
+                              "Cloud Firewall rules."}
+       for _k in ucaas_oneclick.KEYS},
 }
 
 # ---------------------------------------------------------------------------
@@ -562,6 +572,21 @@ def map_rule(profile_key: str, key: str, *, action: Any = None, on: bool = True)
     return _finish_map(profile_key, entry.get("objective") or "", entry.get("reason") or "", action, on, entry.get("why") or "")
 
 
+def map_ucaas(profile_key: str, key: str, value: bool) -> Dict[str, Any]:
+    """A UCaaS one-click switch ('ucaas.<field>' or the bare field): on is a
+    deliberate inspection exemption (MEDIA_BREAKOUT, no control credited);
+    off keeps the provider's calls inspected (its RULE_OBJECTIVES entry).
+    ProfileError for a switch with no entry."""
+    k = key if key.startswith("ucaas.") else "ucaas." + key
+    entry = RULE_OBJECTIVES.get(k)
+    if entry is None:
+        raise ProfileError(f"The UCaaS switch {k!r} has no objective and no reason code (compliance_profiles.RULE_OBJECTIVES).")
+    if value:
+        return _finish_map(profile_key, entry.get("objective") or "", "MEDIA_BREAKOUT", None, True,
+                           "On: the provider's calls break out without SSL inspection.")
+    return _finish_map(profile_key, entry.get("objective") or "", entry.get("reason") or "", None, True, entry.get("why") or "")
+
+
 def _finish_map(profile_key: str, objective: str, reason: str, action: Any, on: bool, why: str = "") -> Dict[str, Any]:
     out = {"objective": objective, "objective_label": OBJECTIVES[objective]["label"] if objective else "", "controls": [],
            "reason": "", "reason_text": "", "why": why}
@@ -708,6 +733,12 @@ def mapping(profile_key: str, review: Optional[Dict[str, Any]] = None, *, packs:
                 m = map_rule(profile_key, "atp." + s["key"], action=act)
                 rows.append({"source": "ZIA baseline", "area": "Advanced Threat Protection", "key": "atp." + s["key"], "name": s["label"],
                              "title": s["label"], "action": act, "on": True, "created": False, "state": "setting", **m, "profile_note": ""})
+            # The UCaaS one-click switches (settings, like ATP): each mapped or reasoned, whichever way it is set.
+            for s in review.get("ucaas") or []:
+                m = map_ucaas(profile_key, s["key"], bool(s["value"]))
+                rows.append({"source": "ZIA baseline", "area": "UCaaS one-click", "key": "ucaas." + s["key"], "name": s["label"],
+                             "title": f"UCaaS one-click: {s['label']}", "action": "BREAKOUT" if s["value"] else "INSPECT", "on": True,
+                             "created": False, "state": "setting", **m, "profile_note": ""})
     for pid in (p["packs"] if packs is None else packs):
         pname, rules = _pack_rules(pid)
         for r in rules:

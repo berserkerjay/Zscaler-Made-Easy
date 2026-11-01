@@ -3,7 +3,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-471 markers.
+482 markers.
 
 | File:line | Note |
 |---|---|
@@ -35,47 +35,47 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `bulk_test.py:121` | SUSPICIOUS_DESTINATION; the others are assumed from ZIA's category list. |
 | `bulk_test.py:125` | category costs little. Names this app already uses (ssl_flow) or assumed. |
 | `compliance_pack.py:7` | the control catalogue with sources and the assumed flag |
-| `compliance_pack.py:136` | return "; ".join(f"{c['id']}{' (assumed)' if c.get('assumed') else ''}" for c in m.get("controls") or []) |
-| `compliance_pack.py:186` | MAP_COLUMNS = ["Source", "Area", "Rule", "Rule key", "Created", "Action", "Objective", "Controls", "Assumed", "Reason code", "Reason", |
-| `compliance_pack.py:194` | _act(r["action"]), r["objective_label"], _ctrl_text(r), "yes" if any(c.get("assumed") for c in r["controls"]) else "", |
-| `compliance_pack.py:199` | CTRL_COLUMNS = ["Control", "Title", "Source", "Baseline", "Rules that carry it out", "Assumed", "Why assumed"] |
-| `compliance_pack.py:208` | "yes" if c.get("assumed") else "", c.get("assumed_why", "")] for c in ctx["controls"]] |
-| `compliance_pack.py:233` | f"instead. A control marked <span class=\"a\">assumed</span> is not verified against its source (see the Controls table).</p>", |
-| `compliance_pack.py:378` | c = cat.get(cid, {"id": cid, "title": "", "assumed": False}) |
-| `compliance_pack.py:379` | out.append({"control": cid, "title": c.get("title", ""), "assumed": bool(c.get("assumed")), "tests": tests, |
-| `compliance_pack.py:384` | TP_COLUMNS = ["Control", "Title", "Assumed", "Test", "Rule", "Source", "Steps", "Expected", "Evidence", "Result"] |
-| `compliance_pack.py:391` | rows.append([c["control"], c["title"], "yes" if c["assumed"] else "", "", "", "", c["note"], "", "", ""]) |
-| `compliance_pack.py:393` | rows.append([c["control"], c["title"], "yes" if c["assumed"] else "", t["id"], t["rule"], t["source"], t["steps"], t["expected"], |
-| `compliance_pack.py:407` | mark = ' <span class="a">(assumed)</span>' if c["assumed"] else "" |
-| `compliance_pack.py:737` | "Controls marked 'assumed' are not verified against their source; the mapping report lists why."] |
+| `compliance_pack.py:148` | return "; ".join(f"{c['id']}{' (assumed)' if c.get('assumed') else ''}" for c in m.get("controls") or []) |
+| `compliance_pack.py:198` | MAP_COLUMNS = ["Source", "Area", "Rule", "Rule key", "Created", "Action", "Objective", "Controls", "Assumed", "Reason code", "Reason", |
+| `compliance_pack.py:206` | _act(r["action"]), r["objective_label"], _ctrl_text(r), "yes" if any(c.get("assumed") for c in r["controls"]) else "", |
+| `compliance_pack.py:211` | CTRL_COLUMNS = ["Control", "Title", "Source", "Baseline", "Rules that carry it out", "Assumed", "Why assumed"] |
+| `compliance_pack.py:220` | "yes" if c.get("assumed") else "", c.get("assumed_why", "")] for c in ctx["controls"]] |
+| `compliance_pack.py:245` | f"instead. A control marked <span class=\"a\">assumed</span> is not verified against its source (see the Controls table).</p>", |
+| `compliance_pack.py:390` | c = cat.get(cid, {"id": cid, "title": "", "assumed": False}) |
+| `compliance_pack.py:391` | out.append({"control": cid, "title": c.get("title", ""), "assumed": bool(c.get("assumed")), "tests": tests, |
+| `compliance_pack.py:396` | TP_COLUMNS = ["Control", "Title", "Assumed", "Test", "Rule", "Source", "Steps", "Expected", "Evidence", "Result"] |
+| `compliance_pack.py:403` | rows.append([c["control"], c["title"], "yes" if c["assumed"] else "", "", "", "", c["note"], "", "", ""]) |
+| `compliance_pack.py:405` | rows.append([c["control"], c["title"], "yes" if c["assumed"] else "", t["id"], t["rule"], t["source"], t["steps"], t["expected"], |
+| `compliance_pack.py:419` | mark = ' <span class="a">(assumed)</span>' if c["assumed"] else "" |
+| `compliance_pack.py:749` | "Controls marked 'assumed' are not verified against their source; the mapping report lists why."] |
 | `compliance_profiles.py:27` | What is sourced and what is assumed |
 | `compliance_profiles.py:32` | `assumed: True` and an `assumed_why`; assumed() lists them all, and every |
-| `compliance_profiles.py:161` | def _c(cid: str, title: str, source: str, baseline: str = "", assumed: str = "") -> Dict[str, Any]: |
-| `compliance_profiles.py:162` | return {"id": cid, "title": title, "source": source, "baseline": baseline, "assumed": bool(assumed), "assumed_why": assumed} |
-| `compliance_profiles.py:192` | assumed="SC-21 asks the resolver to verify the origin and integrity of answers (DNSSEC); whether the Zscaler Trusted Resolver " |
-| `compliance_profiles.py:193` | "validates DNSSEC is not confirmed here, so crediting the DNS redirect to SC-21 is assumed."), |
-| `compliance_profiles.py:244` | "m2209", assumed="The Data actions are summarised from memory of the memorandum; check the wording against section III.E."), |
-| `compliance_profiles.py:248` | assumed="Crediting web malware and phishing blocking to the Devices pillar's threat protection function is this app's reading."), |
-| `compliance_profiles.py:254` | assumed="Crediting web content isolation to Application Threat Protections is this app's reading."), |
-| `compliance_profiles.py:258` | assumed="Crediting incident response checks to Automation and Orchestration is this app's reading."), |
-| `compliance_profiles.py:261` | if _z["source"] == "m2209" and not _z["assumed"]: |
-| `compliance_profiles.py:414` | "assumed": "GovRAMP's own Moderate control list is not checked here; it is taken as the NIST SP 800-53B Moderate baseline.", |
-| `compliance_profiles.py:470` | if cid in _IRS_ENHANCEMENTS_UNVERIFIED and not x["assumed"]: |
-| `compliance_profiles.py:471` | x["assumed"] = True |
-| `compliance_profiles.py:486` | if profile_key == "GOVRAMP" and not c["assumed"]: |
-| `compliance_profiles.py:487` | c["assumed"], c["assumed_why"] = True, PROFILES["GOVRAMP"]["assumed"] |
-| `compliance_profiles.py:494` | assessment area maps to, with its source and assumed flag.""" |
-| `compliance_profiles.py:516` | "assumed": False, "assumed_why": "", "area_level": True}) |
-| `compliance_profiles.py:526` | out += [{"id": cid, "title": "", "source": ov["source"]["id"], "source_ref": ov["source"], "assumed": False, |
-| `compliance_profiles.py:648` | "aiguard_name": ap.get("name", p["aiguard"]), "reuses": p["reuses"], "assumed_profile": p.get("assumed", ""), |
-| `compliance_profiles.py:650` | "assumed_controls": [c["id"] for c in controls(profile_key) if c.get("assumed")]} |
-| `compliance_profiles.py:664` | def assumed() -> List[Dict[str, str]]: |
-| `compliance_profiles.py:665` | """Every assumed control (and profile-level assumption), for the report.""" |
-| `compliance_profiles.py:671` | if c.get("assumed"): |
-| `compliance_profiles.py:725` | "assumed": sum(1 for r in rows if any(c.get("assumed") for c in r["controls"]))}} |
-| `compliance_profiles.py:797` | c = cat.get(cid, {"id": cid, "title": "", "assumed": False, "assumed_why": ""}) |
-| `compliance_profiles.py:798` | rows.append({"control": cid, "title": c.get("title", ""), "status": status, "assumed": bool(c.get("assumed")), |
-| `compliance_profiles.py:812` | "map_pack_rule", "applies", "controls", "assumed", "assessment_view", "get", "key_of", "ProfileError", "FEDERAL_KEYS"] |
+| `compliance_profiles.py:171` | def _c(cid: str, title: str, source: str, baseline: str = "", assumed: str = "") -> Dict[str, Any]: |
+| `compliance_profiles.py:172` | return {"id": cid, "title": title, "source": source, "baseline": baseline, "assumed": bool(assumed), "assumed_why": assumed} |
+| `compliance_profiles.py:202` | assumed="SC-21 asks the resolver to verify the origin and integrity of answers (DNSSEC); whether the Zscaler Trusted Resolver " |
+| `compliance_profiles.py:203` | "validates DNSSEC is not confirmed here, so crediting the DNS redirect to SC-21 is assumed."), |
+| `compliance_profiles.py:254` | "m2209", assumed="The Data actions are summarised from memory of the memorandum; check the wording against section III.E."), |
+| `compliance_profiles.py:258` | assumed="Crediting web malware and phishing blocking to the Devices pillar's threat protection function is this app's reading."), |
+| `compliance_profiles.py:264` | assumed="Crediting web content isolation to Application Threat Protections is this app's reading."), |
+| `compliance_profiles.py:268` | assumed="Crediting incident response checks to Automation and Orchestration is this app's reading."), |
+| `compliance_profiles.py:271` | if _z["source"] == "m2209" and not _z["assumed"]: |
+| `compliance_profiles.py:424` | "assumed": "GovRAMP's own Moderate control list is not checked here; it is taken as the NIST SP 800-53B Moderate baseline.", |
+| `compliance_profiles.py:480` | if cid in _IRS_ENHANCEMENTS_UNVERIFIED and not x["assumed"]: |
+| `compliance_profiles.py:481` | x["assumed"] = True |
+| `compliance_profiles.py:496` | if profile_key == "GOVRAMP" and not c["assumed"]: |
+| `compliance_profiles.py:497` | c["assumed"], c["assumed_why"] = True, PROFILES["GOVRAMP"]["assumed"] |
+| `compliance_profiles.py:504` | assessment area maps to, with its source and assumed flag.""" |
+| `compliance_profiles.py:526` | "assumed": False, "assumed_why": "", "area_level": True}) |
+| `compliance_profiles.py:536` | out += [{"id": cid, "title": "", "source": ov["source"]["id"], "source_ref": ov["source"], "assumed": False, |
+| `compliance_profiles.py:673` | "aiguard_name": ap.get("name", p["aiguard"]), "reuses": p["reuses"], "assumed_profile": p.get("assumed", ""), |
+| `compliance_profiles.py:675` | "assumed_controls": [c["id"] for c in controls(profile_key) if c.get("assumed")]} |
+| `compliance_profiles.py:689` | def assumed() -> List[Dict[str, str]]: |
+| `compliance_profiles.py:690` | """Every assumed control (and profile-level assumption), for the report.""" |
+| `compliance_profiles.py:696` | if c.get("assumed"): |
+| `compliance_profiles.py:756` | "assumed": sum(1 for r in rows if any(c.get("assumed") for c in r["controls"]))}} |
+| `compliance_profiles.py:828` | c = cat.get(cid, {"id": cid, "title": "", "assumed": False, "assumed_why": ""}) |
+| `compliance_profiles.py:829` | rows.append({"control": cid, "title": c.get("title", ""), "status": status, "assumed": bool(c.get("assumed")), |
+| `compliance_profiles.py:843` | "map_pack_rule", "applies", "controls", "assumed", "assessment_view", "get", "key_of", "ProfileError", "FEDERAL_KEYS"] |
 | `config_backup.py:58` | one exists). Assumed, not verifiable without a tenant: that the SDK's add_ / |
 | `config_backup.py:154` | operands carry the profile's UDID and the network's network id (assumed from the portal's payloads). |
 | `config_backup.py:283` | """A bandwidth class the customer made (assumed: Zscaler's own classes are |
@@ -96,13 +96,19 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
 | `dlp_api_server.py:3850` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
-| `dlp_api_server.py:9329` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
-| `dlp_api_server.py:9331` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
-| `dlp_api_server.py:9439` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
+| `dlp_api_server.py:9341` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
+| `dlp_api_server.py:9343` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
+| `dlp_api_server.py:9476` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
 | `dns_forward_zones.py:47` | * Assumed (not in the SDK or Zscaler's API reference): that the resolver |
+| `editions.py:12` | tenants, and are ASSUMED (not in the SDK). The ZDX edition is not exposed by |
+| `editions.py:17` | brings the standard firewall; assumed) |
+| `editions.py:19` | standard  ZSEC_WEB_ABA, or ZIA_ATP (assumed, as above) |
+| `editions.py:26` | descriptions, ASSUMED: not verified against a tenant) |
+| `editions.py:59` | SKU_NOTE = "Subscription ids are assumed (as seen on tenants; the SDK documents the licence list, not its ids)." |
+| `editions.py:143` | out.append(SKU_NOTE + " What each edition allows is this app's reading of Zscaler's edition descriptions (assumed).") |
 | `insights.py:670` | ASSUMED: Shadow IT's sanctioned_state spells the two states as |
-| `offline_tenant.py:482` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
-| `offline_tenant.py:1301` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
+| `offline_tenant.py:504` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
+| `offline_tenant.py:1359` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
 | `ops_aiguard.py:33` | readiness check; what is verified against the SDK and what is assumed is |
 | `ops_aiguard.py:622` | _SSL_STOPPERS = {"DO_NOT_DECRYPT", "BLOCK"}   # SSL inspection action types (BLOCK: assumed, not enumerated in the SDK model) |
 | `ops_config_restore.py:79` | assumed: a rule created without it is active at once (the API's default). |
@@ -165,13 +171,17 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_zdx.py:49` | What is verified and what is assumed |
 | `ops_zdx.py:64` | ASSUMED (not in the SDK, and not checked against a live tenant from here): |
 | `ops_zdx.py:86` | "Custom Apps Collection" a new ZDX tenant lacks are assumed the same way. |
-| `ops_zdx.py:101` | CONFIG = ZDX_BASE + "/config"      # ASSUMED: the /config part (no configuration service in the SDK) |
-| `ops_zdx.py:104` | INTERVALS_MIN = (5, 10, 15, 30)    # ASSUMED: the probe intervals ZDX offers between 5 and 30 minutes |
-| `ops_zdx.py:112` | NAME_MAX = 64                      # ASSUMED: ZDX app and probe names |
-| `ops_zdx.py:202` | "assumed from Zscaler's public descriptions, not verified against your tenant. Check the result in the ZDX portal.") |
-| `ops_zdx.py:295` | """The ZDX configuration API (ASSUMED paths) on the signed-in client's |
-| `ops_zdx.py:536` | "assumed": ASSUMED_NOTE}, |
-| `ops_zdx.py:709` | Probe and app bodies (ASSUMED: the shape the ZDX portal stores) |
+| `ops_zdx.py:102` | CONFIG = ZDX_BASE + "/config"      # ASSUMED: the /config part (no configuration service in the SDK) |
+| `ops_zdx.py:105` | INTERVALS_MIN = (5, 10, 15, 30)    # ASSUMED: the probe intervals ZDX offers between 5 and 30 minutes |
+| `ops_zdx.py:113` | NAME_MAX = 64                      # ASSUMED: ZDX app and probe names |
+| `ops_zdx.py:166` | (assumed), and agencies add their own portals. |
+| `ops_zdx.py:219` | "assumed from Zscaler's public descriptions, not verified against your tenant. Check the result in the ZDX portal.") |
+| `ops_zdx.py:312` | """The ZDX configuration API (ASSUMED paths) on the signed-in client's |
+| `ops_zdx.py:558` | "assumed": ASSUMED_NOTE}, |
+| `ops_zdx.py:731` | Probe and app bodies (ASSUMED: the shape the ZDX portal stores) |
+| `ops_zdx.py:842` | P.warnings.append("ZDX Lite has no configurable probes (assumed): nothing in this setup is created.") |
+| `ops_zdx.py:866` | reason=f"left out: {why_ed} (assumed, from the licensed edition)") |
+| `ops_zdx.py:922` | reason=f"left out: {why_ed} (assumed, from the licensed edition)") |
 | `ops_zdx_trace.py:40` | users.list_users(query_params={"search": ...})         GET  /users (search sent as q: ASSUMED to filter) |
 | `ops_zdx_trace.py:52` | ASSUMED: the status words of a trace (which mean running and which mean |
 | `ops_zdx_trace.py:87` | ASSUMED = [ |
@@ -197,7 +207,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_zid_user.py:423` | assumed: POST /ziam/admin/api/v1/users/{id}:setskipmfa ({"timestamp": epoch seconds}), |
 | `ops_zid_user.py:436` | """SkipMfaDto {timestamp} (ASSUMED: now, epoch seconds); no body for a reset.""" |
 | `ops_zpa.py:58` | other. Assumed, not verifiable without a |
-| `ops_zpa.py:1200` | plan.warnings.append("New rules are added at the end of each policy (assumed ZPA behaviour); a rule above them still decides first.") |
+| `ops_zpa.py:166` | Host names and ports are templates to review with the agency (assumed: agencies name and port these systems their own way). |
+| `ops_zpa.py:1207` | plan.warnings.append("New rules are added at the end of each policy (assumed ZPA behaviour); a rule above them still decides first.") |
 | `ops_zpa_admin.py:87` | ASSUMED (not verifiable without a tenant; see ASSUMED below and every plan's |
 | `ops_zpa_admin.py:138` | ASSUMED = [ |
 | `ops_zpa_admin.py:139` | "Moving an App Connector sends PUT /connector/{id} with the target group's id (appConnectorGroupId); assumed, not in the SDK's docstring.… |
@@ -358,9 +369,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/ops_aiguard.js:55` | const st = F.aiguard_routing, cat = res.catalog \|\| { apps: [], assumed: [] }, rd = res.readiness \|\| {}; |
 | `static/ops_aiguard.js:116` | const st = F.aiguard_detection_policy, cat = res.catalog \|\| { apps: [], profiles: [], assumed: [] }, rd = res.readiness \|\| {}; |
 | `static/ops_list_fix.js:233` | <p>Add or remove entries on one IP destination group, or make a new one. A group holds IPv4 addresses, CIDR blocks and ranges (type IP) o… |
-| `static/ops_zdx.js:41` | const note = (H, res) => `<div class="df-hint">${H.E(data(res).assumed \|\| '')}</div>`; |
-| `static/ops_zia_baseline.js:157` | <div class="df-hint">${E(cps.reuses)}${cps.assumed_profile ? ` Assumed: ${E(cps.assumed_profile)}` : ''}</div> |
-| `static/ops_zia_baseline.js:159` | ${(cps.assumed_controls \|\| []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(cps.assumed_… |
+| `static/ops_zdx.js:44` | const note = (H, res) => `<div class="df-hint">${H.E(data(res).assumed \|\| '')}</div>`; |
+| `static/ops_zia_baseline.js:171` | <div class="df-hint">${E(cps.reuses)}${cps.assumed_profile ? ` Assumed: ${E(cps.assumed_profile)}` : ''}</div> |
+| `static/ops_zia_baseline.js:173` | ${(cps.assumed_controls \|\| []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(cps.assumed_… |
 | `static/path_motion.js:261` | extra.assumed = ['r_web>evid']; |
 | `static/path_motion.js:396` | <div class="pm-legend" aria-hidden="true"><span><i class="lane-main"></i>content and verdict</span><span><i class="lane-ev"></i>evidence … |
 | `static/path_motion.js:430` | el.setAttribute('class', `pm-bit lane-${r.lane}${r.tone === 'assumed' ? ' assumed' : ''}`); |

@@ -569,7 +569,12 @@
         <div class="op-row"><label class="df-ctl"><input type="checkbox" id="opAgree"><span>I reviewed this plan${S.undoOf ? ' (the Undo)' : ''} and the customer agreed to it.</span></label></div>
         <div class="op-row"><button type="button" class="rp-btn primary" id="opGo" disabled aria-describedby="opGoWhy">Apply ${E(p.counts.change)} change${p.counts.change === 1 ? '' : 's'}</button>
           <span class="df-hint" id="opGoWhy" aria-live="polite"></span></div>
-        <div class="df-hint">Each item is read again right before its write; anything someone changed meanwhile is skipped, never overwritten.</div>`;
+        <div class="df-hint">Each item is read again right before its write; anything someone changed meanwhile is skipped, never overwritten.</div>
+        ${simOffered(p) ? `<div class="bp-card info op-simbox" id="opSimBox" role="group" aria-labelledby="opSimH"><div class="t" id="opSimH">Try it on a simulation</div>
+          <div>${E(p.rehearsal.simulate)}</div>
+          <div class="df-hint">It needs only this plan${p.confirm_phrase ? ' and the phrase typed above' : ''}. Nothing reaches a tenant, the sample tenant or a saved snapshot.</div>
+          <div class="op-row"><button type="button" class="rp-btn" id="opSimulate" disabled aria-describedby="opSimWhy">Apply to a simulation</button>
+            <span class="df-hint" id="opSimWhy" aria-live="polite"></span></div></div>` : ''}`;
       // Apply stays disabled until every gate on this page is met: write mode, a
       // plan with changes, the assessor's name, the review box and the exact phrase.
       const arm = () => {
@@ -582,11 +587,20 @@
         if (p.confirm_phrase && !phraseMatches(($('opPhrase') || {}).value, p.confirm_phrase)) need.push(`${p.confirm_phrase} typed exactly`);
         $('opGo').disabled = S.busy || need.length > 0;
         $('opGoWhy').textContent = need.length ? `Still needed: ${need.join(', ')}.` : 'Ready to apply.';
+        const sim = $('opSimulate');
+        if (sim) {
+          const simNeed = [];
+          if (!ready) simNeed.push('a plan with changes');
+          if (p.confirm_phrase && !phraseMatches(($('opPhrase') || {}).value, p.confirm_phrase)) simNeed.push(`${p.confirm_phrase} typed exactly`);
+          sim.disabled = S.busy || simNeed.length > 0;
+          $('opSimWhy').textContent = simNeed.length ? `Still needed: ${simNeed.join(', ')}.` : 'Ready to apply to a simulation.';
+        }
       };
       $('opAssessor').addEventListener('input', e => { S.assessor = e.target.value.trim(); arm(); });
       $('opAgree').addEventListener('change', arm);
       const ph = $('opPhrase'); if (ph) ph.addEventListener('input', arm);
       $('opGo').addEventListener('click', apply);
+      if ($('opSimulate')) $('opSimulate').addEventListener('click', simulate);
       if (kept) { if (ph) ph.value = kept.phrase; $('opAgree').checked = kept.agree; }
       arm();
       if (kept && kept.focus && $(kept.focus)) $(kept.focus).focus();
@@ -611,12 +625,63 @@
       } catch (e) { fail(where, 'The change could not be applied', e.message); say(`The change could not be applied: ${e.message}`); }
       finally { loadHistory(); }
     }
+    // ── A rehearsal applied to a simulation (an in-memory copy of the sample
+    // tenant or the opened snapshot, POST /api/offline/simulate/operation).
+    // The real apply stays refused there; this browser then uses the copy, so
+    // the Path analyzer and Test a list read the result until it is left.
+    const simOffered = p => !!(p && p.rehearsal && p.rehearsal.simulate && !S.undoOf);
+    const tellOffline = () => { try { window.dispatchEvent(new CustomEvent('zme:offline', { detail: { from: 'operations' } })); } catch (e) { /* old browser */ } };
+    async function simulate() {
+      if (S.busy || !simOffered(S.preview)) return;
+      const p = S.preview, where = $('opResult');
+      const phrase = ($('opPhrase') || {}).value || '';
+      if (p.confirm_phrase && !phraseMatches(phrase, p.confirm_phrase)) { say(`Type ${p.confirm_phrase} to confirm.`); $('opPhrase').focus(); return; }
+      const payload = body(Object.assign({ operation: S.spec, plan_hash: p.plan_hash, confirm: true, confirm_text: phrase }, plugSecrets(S.spec && S.spec.type)));
+      const plugApply = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[S.kind];
+      if (plugApply && typeof plugApply.applyExtra === 'function') { const x = plugApply.applyExtra(S, H) || {}; if (x.secrets) payload.secrets = x.secrets; }
+      S.busy = true; $('opSimulate').disabled = true; say('Applying the change to a simulation.');
+      let r = null;
+      try {
+        const res = await fetch('/api/offline/simulate/operation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${res.status}`);
+        r = d;
+      } catch (e) { fail(where, 'Not applied to a simulation', e.message, true); say(`Not applied to a simulation: ${e.message}`); }
+      finally { S.busy = false; }
+      if (!r) { renderApply(); return; }
+      renderResult(r, [], '');
+      if (r.simulation) { showSimulation(where, r.simulation); tellOffline(); }
+    }
+    function showSimulation(where, sim) {
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = String(text); return n; };
+      const n = (sim.applied || []).length;
+      const card = mk('div', 'bp-card info op-simulation'); card.id = 'opSimCard'; card.setAttribute('role', 'note');
+      card.appendChild(mk('div', 't', 'Simulation: nothing here is real'));
+      card.appendChild(mk('div', '', sim.note || ''));
+      card.appendChild(mk('div', 'df-hint', `Made from ${sim.base_label || 'the offline tenant'}. ${n} change${n === 1 ? '' : 's'} applied to this simulation so far. Every page now reads the simulation until you leave it.`));
+      const row = mk('div', 'op-row');
+      const path = mk('a', 'rp-btn', 'Check it in the Path analyzer'); path.id = 'opSimPath'; path.href = '/report/path';
+      const leave = mk('button', 'rp-btn', 'Leave the simulation'); leave.type = 'button'; leave.id = 'opSimLeave';
+      const msg = mk('span', 'df-hint'); msg.setAttribute('role', 'status');
+      leave.addEventListener('click', async () => {
+        leave.disabled = true;
+        try {
+          const res = await fetch('/api/offline/simulation/discard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${res.status}`);
+          msg.textContent = d.message || 'The simulation was dropped.'; path.remove(); leave.remove(); say(msg.textContent); tellOffline();
+        } catch (e) { leave.disabled = false; msg.textContent = `Could not leave the simulation: ${e.message}`; }
+      });
+      row.append(path, leave, msg); card.appendChild(row);
+      where.prepend(card);
+    }
     function renderResult(r, logs, jobId) {
       const where = $('opResult');
       if (r.status === 'plan_changed') { where.innerHTML = `<div class="bp-card warn" role="alert"><div class="t">The tenant changed since the preview</div><div>${E(r.message)} Preview again.</div></div>`; say('The tenant changed since the preview; nothing was written.'); return; }
       if (['refused', 'blocked'].includes(r.status)) { fail(where, 'Nothing was written', r.message || (r.blockers || []).join(' ')); return; }
       const c = r.counts_run || {}, v = r.verification || {}, act = r.activation;
       const head = { applied: ['Applied', 'info'], partial: ['Partly applied', 'warn'], failed: ['Not applied', 'risk'], stopped: ['Stopped', 'warn'], nothing_applied: ['Nothing applied', 'warn'], nothing_to_do: ['Nothing to change', 'info'] }[r.status] || [r.status, 'warn'];
+      if (r.simulation) head[0] += ' to the simulation';
       where.innerHTML = `<div class="bp-card ${head[1]}" role="status" tabindex="-1" id="opResultCard"><div class="t">${E(head[0])}: ${E(r.title)}</div>
           <div>${E(c.applied || 0)} applied, ${E(c.conflict || 0)} conflict${c.conflict === 1 ? '' : 's'}, ${E(c.failed || 0)} failed, ${E(c.skipped || 0)} not attempted, ${E(c.noop || 0)} already as asked, ${E(c.excluded || 0)} excluded.
           ${r.stopped ? ` ${E(r.stopped)}` : ''} Read back: ${E(v.confirmed || 0)} of ${E(v.checked || 0)} confirmed${(v.mismatched || []).length ? `; ${E(v.mismatched.join('; '))}` : ''}.

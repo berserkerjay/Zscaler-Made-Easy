@@ -48,6 +48,23 @@ lists what each batch of changes did, newest first.
 - The sample tenant's GRE tunnels and newer Client Connector app profile answer now read into a backup.
 - Scheduled sync keeps DNS Control, IPS, SSL inspection, URL category, Cloud App Control, DLP, network object, forwarding, bandwidth, NAT, Sandbox, tenancy, File Type Control and traffic capture groups in step through the restore engine: each run still only plans and files the change to the four-eyes queue. A rule label selects only rules carrying it (deletes too); a group without rule labels refuses a label.
 
+### Rehearse, then simulate
+- **Apply to a simulation.** On the sample tenant or an opened snapshot, a rehearsed change (a Bulk changes or Build new dry run) or a rehearsed POV build can now be applied to a simulation: a copy of that offline tenant kept in this app's memory. The sample tenant, the saved snapshot and every real tenant are never written. It needs the dry run's plan and its typed phrase, like a real apply. This browser then reads the simulation, so the Path analyzer and Test a list show what the change would do. A second change builds on the first. Each result says "Simulation: applied to an in-memory copy only", and the safety banner on every page says a simulation is in use.
+- **Leave the simulation.** One button on the result, on the safety banner and on the Connect page drops the copy and goes back to the sample tenant or the snapshot it was made from.
+- The real apply still refuses every offline tenant, a simulation too, and a live tenant is never simulated into. Every audit entry a simulated run writes (each object write and the run's summary) carries `simulation: true`, and no change record or Undo is made for it. Cloud App Control rules and ZPA policy rules are not modelled offline yet, so a simulated POV build that includes them stops at that part and says so.
+
+### POV build follows the intake's compliance profile
+- **Compliance profile in the POV build.** The Build tab now follows the compliance profile picked in the intake: it sets the ZIA baseline tier and the rules the profile adds, requires or leaves out, and the AI Guard detection profile. The tab offers the profile's DLP policy packs and its compliance pack, made from the ZIA baseline part as it stands.
+- **Federal preset.** The federal and public sector vertical fills every builder default: a Strict ZIA baseline with FedRAMP Moderate, a federal ZPA app preset and a federal ZDX template (Login.gov, USAJOBS and SAM.gov as custom apps; their hosts are templates to review).
+- The compliance pack now maps every UCaaS one-click switch to a control, or gives it the reason code MEDIA_BREAKOUT.
+
+### Edition-aware rule sets
+- **Licensed editions.** The ZIA security baseline and the ZDX setup read the tenant's licence list (only when a ZIA scope is ticked on the Scope page) and find the Cloud Firewall, Cloud Sandbox and ZDX editions. Rules a standard edition does not allow are left out or made simpler in the preview, and ZDX apps the edition does not monitor are left out, each with a plain note. An edition that cannot be read changes nothing. The licence ids and edition limits are assumed until checked against a real tenant.
+
+### ZIA baseline rule review: search, filter, save and load
+- **Search rules** in the ZIA security baseline's review by name, title or area, and tick *Changed from the tier default only* to see just your changes.
+- **Download selection** saves your review choices (tier, areas, overlays, each rule's action and on or off) as a file; **Load a selection** puts them back, on this tenant or another. The file is checked as untrusted input before it is used, and rule choices this version does not know are left out.
+
 ## 2026-10-31
 
 ### Path coverage: unread conditions never match, Category lookup, UCaaS one-click

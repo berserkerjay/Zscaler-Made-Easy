@@ -36,7 +36,10 @@
     const now = d.not_available ? '' : `<div class="df-hint">In the tenant now: ${H.E(c.apps || 0)} ZDX app${c.apps === 1 ? '' : 's'} (${H.E(c.apps_on || 0)} on), ${H.E(c.probes || 0)} probe${c.probes === 1 ? '' : 's'} (${H.E(c.probes_on || 0)} on).</div>`;
     const errs = Object.entries((res && res.errors) || {});
     const er = errs.length ? `<div class="bp-card warn"><div class="t">Could not be read</div><ul>${errs.map(([k, v]) => `<li>${H.E(k)}: ${H.E(v)}</li>`).join('')}</ul></div>` : '';
-    return `${er}${na}${now}`;
+    // The licensed ZDX edition (editions.py): what it leaves out, in plain words; the preview leaves those apps out.
+    const ed = d.edition || {};
+    const edn = (ed.notes || []).length ? `<div class="bp-card info" id="zdxEdition" role="note"><div class="t">${H.E(ed.label ? `Edition: ${ed.label}` : 'ZDX edition')}</div><ul>${ed.notes.map(x => `<li>${H.E(x)}</li>`).join('')}</ul></div>` : '';
+    return `${er}${na}${now}${edn}`;
   }
   const note = (H, res) => `<div class="df-hint">${H.E(data(res).assumed || '')}</div>`;
 

@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users), and more of the platform read and checked",
+    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users), rehearse then simulate, and more of the platform read and checked",
     "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
@@ -108,6 +108,44 @@ window.WHATS_NEW = {
       "changelog": ["Reset a ZIdentity user's password or MFA"],
       "marks": [
         { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zid_user_reset\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "simulation", "release": "2026-11-01", "label": "Apply to a simulation",
+      "what": "On the sample tenant or a snapshot, apply a rehearsed change to an in-memory copy, then see its effect in the Path analyzer. Nothing reaches a tenant.",
+      "changelog": ["Apply to a simulation", "Leave the simulation"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opH4" },
+        { "page": "/report/operations", "at": "#opSimulate", "shown": "after a preview on the sample tenant or a snapshot" },
+        { "page": "/report/operations", "at": "#opSimLeave", "shown": "after Apply to a simulation" },
+        { "page": "/report/pov", "at": "#pbSimulate", "shown": "after a dry run of the build on the sample tenant or a snapshot" },
+        { "page": "/report/pov", "at": "#pbSimLeave", "shown": "after Apply to a simulation" }
+      ]
+    },
+    {
+      "id": "pov-compliance-profile", "release": "2026-11-01", "label": "Compliance profile in the POV build",
+      "what": "The Build tab follows the intake's compliance profile and offers its DLP packs and compliance pack. The federal preset fills every builder default.",
+      "changelog": ["Compliance profile in the POV build", "Federal preset"],
+      "marks": [
+        { "page": "/report/pov", "at": "#pbCompliance", "shown": "on the Build tab, once the intake's parts are loaded" }
+      ]
+    },
+    {
+      "id": "licensed-editions", "release": "2026-11-01", "label": "Licensed editions",
+      "what": "The ZIA baseline and the ZDX setup read the licence list and leave out what your Cloud Firewall, Sandbox or ZDX edition does not allow.",
+      "changelog": ["Licensed editions"],
+      "marks": [
+        { "page": "/report/operations", "at": "#zbEditions", "shown": "after Read from the tenant in ZIA security baseline" },
+        { "page": "/report/operations", "at": "#zdxEdition", "shown": "after Read from the tenant in the ZDX setup" }
+      ]
+    },
+    {
+      "id": "baseline-review-search", "release": "2026-11-01", "label": "Search and save the baseline review",
+      "what": "Search the ZIA baseline's rules, show only what you changed, and save or load your choices as a file.",
+      "changelog": ["Search rules", "Changed from the tier default only", "Download selection", "Load a selection"],
+      "marks": [
+        { "page": "/report/operations", "at": "#zbSearch", "shown": "after Read from the tenant in ZIA security baseline" },
+        { "page": "/report/operations", "at": "#zbSelSave", "shown": "after Read from the tenant in ZIA security baseline" }
       ]
     },
     {
