@@ -62,7 +62,11 @@ MAX_LIST_PAGES = 20                       # pages read per paginated list when s
 
 COOKIE = "zme_tenant_source"
 SAMPLE = "sample"
-SOURCE_RE = re.compile(r"\A(sample|snap-[0-9a-f]{16}|file-[0-9a-f]{16})\Z")   # \Z: "$" would also take a trailing newline
+SIMULATION = "simulation"
+SOURCE_RE = re.compile(r"\A(sample|snap-[0-9a-f]{16}|file-[0-9a-f]{16}|sim-[0-9a-f]{16})\Z")   # \Z: "$" would also take a trailing newline
+MAX_SIMULATIONS = 4                       # simulations held in memory at once (the oldest goes)
+SIMULATION_NOTE = ("Simulation: applied to an in-memory copy only. Nothing was written to a tenant, to the sample tenant or to a "
+                   "saved snapshot. The Path analyzer, Test a list and every page now read this copy until you leave it.")
 CLIENT_ID_PREFIX = "offline-"
 OFFLINE_DOMAIN = ".offline.invalid"       # RFC 6761: .invalid never resolves (defence in depth)
 OFFLINE_SECRET = "offline-no-secret"      # a fixed marker so the creds are "complete"; not a credential
@@ -257,9 +261,14 @@ class OfflineStore:
         return {"mode": self.kind, "source": self.id, "tenant_label": self.label, "company": m.get("company") or "",
                 "saved_at": m.get("saved_at") or "", "profile_name": m.get("profile_name") or "",
                 "scopes": list(m.get("scopes") or []), "answers": len(self.responses), "writable": self.writable,
-                "changes": self.writes}
+                "changes": self.writes,
+                **({"simulation": {"base_source": m.get("base_source") or "", "base_kind": m.get("base_kind") or "",
+                                   "base_label": m.get("base_label") or "", "applied": list(m.get("applied") or [])[-20:],
+                                   "note": SIMULATION_NOTE}} if self.kind == SIMULATION else {})}
 
     def _missing(self, path: str) -> str:
+        if self.kind == SIMULATION:
+            return f"The simulation has no data for {path} (its {self.meta.get('base_kind') or 'offline tenant'} had none)."
         if self.kind == SAMPLE:
             return f"The sample tenant has no data for {path}."
         return f"Not in this snapshot: {path} (it was not in scope, or not readable, when the snapshot was saved)."
@@ -274,6 +283,19 @@ class OfflineStore:
         if path.endswith("/lite") and path[:-5] in self.responses:
             return self.responses[path[:-5]]
         return None
+
+    def _zpa_max_id(self) -> int:
+        """The largest numeric id anywhere in the ZPA config (floor 90000): ZPA
+        ids are one space across object types, so a created object gets one past
+        it and never collides with another ZPA collection's new id."""
+        hi = 90000
+        for key, entry in self.responses.items():
+            if not key.startswith("/zpa/"):
+                continue
+            for x in _items(entry.get("body")) or []:
+                if isinstance(x, dict) and str(x.get("id", "")).isdigit():
+                    hi = max(hi, int(x["id"]))
+        return hi
 
     def _item(self, path: str) -> Tuple[Optional[Dict[str, Any]], Optional[List[Any]], int]:
         """(the object, its list, its index) for a '<collection>/<id>' path."""
@@ -498,11 +520,18 @@ class OfflineStore:
             if method == "POST" and items is not None:
                 # A deep copy: the caller's payload must never alias the in-memory tenant.
                 obj = copy.deepcopy(body) if isinstance(body, dict) else {}
-                ids = [int(x.get("id")) for x in items if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
-                new_id = max(ids + [90000]) + 1
-                obj["id"] = str(new_id) if path.startswith("/zpa/") else new_id
-                if path.endswith("/cloudApplicationInstances"):
-                    obj["instanceId"] = new_id      # a cloud app instance's id is instanceId (zia/models/cloud_app_instances.py)
+                if path.startswith("/zpa/"):
+                    # ZPA ids are one space across every object type, not per collection: a
+                    # connector group and a provisioning key never share an id. Allocate past
+                    # the largest id anywhere in the ZPA config so a POV build's later parts
+                    # can resolve the distinct ids its earlier parts created.
+                    obj["id"] = str(self._zpa_max_id() + 1)
+                else:
+                    ids = [int(x.get("id")) for x in items if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
+                    new_id = max(ids + [90000]) + 1
+                    obj["id"] = new_id
+                    if path.endswith("/cloudApplicationInstances"):
+                        obj["instanceId"] = new_id      # a cloud app instance's id is instanceId (zia/models/cloud_app_instances.py)
                 items.append(obj)
                 self.writes += 1
                 return 200, copy.deepcopy(obj)
@@ -907,10 +936,33 @@ def register(store: OfflineStore) -> OfflineStore:
     with _LOCK:
         _OPEN[store.id] = store
         _OPEN.move_to_end(store.id)
-        snaps = [k for k in _OPEN if k != SAMPLE]
+        snaps = [k for k in _OPEN if k != SAMPLE and not k.startswith("sim-")]
         while len(snaps) > MAX_OPEN:
             _OPEN.pop(snaps.pop(0), None)
         return store
+
+
+def simulate(base: "OfflineStore") -> "OfflineStore":
+    """The in-memory copy a rehearsed plan is applied to: a deep copy of the
+    sample tenant or of an opened snapshot (never the copy that is kept, and
+    never a live tenant: only an OfflineStore is accepted), writable, under a
+    fresh random id. A simulation given again is returned as it is, so a
+    second rehearsed change builds on the first."""
+    if not isinstance(base, OfflineStore):
+        raise OfflineError("Only the sample tenant or an opened snapshot can be simulated: nothing was written.", 409)
+    if base.kind == SIMULATION:
+        return base
+    with base._lock:
+        responses = copy.deepcopy(base.responses)
+    meta = dict(copy.deepcopy(base.meta), tenant_label=f"Simulation of {base.label}", base_source=base.id, base_kind=base.kind,
+                base_label=base.label, applied=[])
+    sim = OfflineStore(f"sim-{secrets.token_hex(8)}", SIMULATION, responses, meta, writable=True)
+    with _LOCK:
+        _OPEN[sim.id] = sim
+        sims = [k for k in _OPEN if k.startswith("sim-")]
+        while len(sims) > MAX_SIMULATIONS:
+            _OPEN.pop(sims.pop(0), None)
+    return sim
 
 
 def forget(source_id: str) -> None:

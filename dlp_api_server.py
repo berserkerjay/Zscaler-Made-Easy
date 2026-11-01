@@ -4388,6 +4388,12 @@ REHEARSAL_SAMPLE = ("Rehearsal only: this is the sample tenant. The plan and the
                     "applied from it — nothing was written. Leave the sample and use the live tenant to apply.")
 REHEARSAL_SNAPSHOT = ("Rehearsal only: this is an offline snapshot, which is read-only. The plan and the dry run work here as a rehearsal, "
                       "but nothing is ever applied from it — nothing was written. Close the snapshot and use the live tenant to apply.")
+REHEARSAL_SIMULATION = ("Rehearsal only: this is a simulation, an in-memory copy with rehearsed changes. A real apply never runs on it — "
+                        "nothing was written. Use Apply to the simulation to change the copy again, or leave the simulation and use the "
+                        "live tenant to apply.")
+SIMULATE_HOW = ("Apply to a simulation: the rehearsed plan is applied to an in-memory copy of this offline tenant (never to the "
+                "sample itself, a saved snapshot or a tenant), so the Path analyzer and Test a list can run against the result.")
+_REHEARSAL_APPLY = {"sample": REHEARSAL_SAMPLE, "snapshot": REHEARSAL_SNAPSHOT, "simulation": REHEARSAL_SIMULATION}
 
 
 def _rehearsal(creds: Dict[str, Any]) -> Optional[str]:
@@ -4399,7 +4405,11 @@ def _rehearsal(creds: Dict[str, Any]) -> Optional[str]:
         raise HTTPException(status_code=e.status, detail=str(e))
     if st is None:
         return None
-    return "sample" if st.kind == _offline.SAMPLE else "snapshot"
+    return _store_kind(st)
+
+
+def _store_kind(st: Any) -> str:
+    return {_offline.SAMPLE: "sample", _offline.SIMULATION: "simulation"}.get(st.kind, "snapshot")
 
 
 def _refuse_offline_apply(creds: Dict[str, Any]) -> None:
@@ -4408,7 +4418,7 @@ def _refuse_offline_apply(creds: Dict[str, Any]) -> None:
     sample tenant or a snapshot: there they rehearse, they never write."""
     kind = _rehearsal(creds)
     if kind:
-        raise HTTPException(status_code=409, detail=REHEARSAL_SAMPLE if kind == "sample" else REHEARSAL_SNAPSHOT)
+        raise HTTPException(status_code=409, detail=_REHEARSAL_APPLY[kind])
 
 
 def _client_rehearsal(client: Any) -> Optional[str]:
@@ -4416,14 +4426,16 @@ def _client_rehearsal(client: Any) -> Optional[str]:
     st = getattr(client, "_store", None) if getattr(client, "offline", False) is True else None
     if not isinstance(st, _offline.OfflineStore):
         return None
-    return "sample" if st.kind == _offline.SAMPLE else "snapshot"
+    return _store_kind(st)
 
 
 def _mark_rehearsal(out: Dict[str, Any], kind: Optional[str]) -> Dict[str, Any]:
     """Label a plan or preview made on the sample or a snapshot."""
     if kind and isinstance(out, dict):
-        out["rehearsal"] = {"kind": kind, "note": REHEARSAL_NOTE,
-                            "apply": REHEARSAL_SAMPLE if kind == "sample" else REHEARSAL_SNAPSHOT}
+        out["rehearsal"] = {"kind": kind, "note": REHEARSAL_NOTE, "apply": _REHEARSAL_APPLY[kind],
+                            # A rehearsed plan can be applied to an in-memory copy (a simulation), never to the
+                            # sample, the saved snapshot or a tenant: POST /api/offline/simulate/*.
+                            "simulate": SIMULATE_HOW}
     return out
 
 
@@ -13787,6 +13799,112 @@ async def pov_build_defaults(req: PovBuildDefaultsRequest):
     intake = _pov_call(pov.clean_intake, req.intake)
     return {"intake": intake, "steps": pov_build.catalog(), "defaults": pov_build.defaults(intake), "preset": pov_build.preset_for(intake["vertical"]),
             "compliance": pov_build.compliance_for(intake)}
+
+
+# ── Simulation: a rehearsed plan applied to an in-memory copy ──────────
+# On the sample tenant or an opened snapshot, a rehearsed plan (its dry run
+# and plan hash) can be applied to a simulation: a deep copy held in this
+# server's memory (offline_tenant.simulate), never the sample itself, the
+# saved snapshot or any tenant. The browser then uses the copy (the offline
+# cookie), so the Path analyzer, Test a list and every page read the
+# simulated result until the copy is left. The real apply routes keep
+# refusing every offline tenant (409); a live tenant is never simulated into.
+# Nothing here writes outside memory: no write mode or assessor is needed,
+# but the plan hash (the rehearsal's) and the typed phrase are, as for an apply.
+SIMULATION_LIVE = ("A simulation runs only on the sample tenant or an opened snapshot (Connect page): the live tenant is never "
+                   "simulated into. Nothing was written.")
+
+
+def _simulation_target(req: Any) -> Tuple[Dict[str, str], Any, Any]:
+    """(offline creds, base store, simulation store) for a simulated apply;
+    409 for the live tenant, 400 without confirm or the rehearsal's hash."""
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Applying to the simulation requires explicit confirmation (confirm=true).")
+    if not req.plan_hash:
+        raise HTTPException(status_code=400, detail="plan_hash is required — rehearse the change first (the dry run).")
+    creds = _tenant_creds(req)
+    try:
+        base = _offline.store_for_creds(creds)
+    except _offline.OfflineError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    if base is None:
+        raise HTTPException(status_code=409, detail=SIMULATION_LIVE)
+    return creds, base, _offline.simulate(base)
+
+
+def _simulation_answer(request: Request, result: Dict[str, Any], sim: Any, base: Any, what: str) -> JSONResponse:
+    applied = result.get("status") in ("applied", "partial", "stopped", "failed", "nothing_to_do") and bool(result.get("items") or result.get("steps"))
+    if applied:
+        sim.meta.setdefault("applied", []).append({"what": str(what)[:120], "status": str(result.get("status") or ""),
+                                                   "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    result["simulation"] = {"source": sim.id, "tenant_label": sim.label, "base_label": sim.meta.get("base_label") or base.label,
+                            "base_kind": sim.meta.get("base_kind") or "", "note": _offline.SIMULATION_NOTE,
+                            "applied": list(sim.meta.get("applied") or [])[-20:]}
+    result["writes_enabled"] = False
+    return _offline_answer(request, json.loads(json.dumps(result, default=str)), sim.id)
+
+
+@app.post("/api/offline/simulate/operation")
+async def offline_simulate_operation(req: OperationRequest, request: Request):
+    """Apply a rehearsed Build new or Bulk changes plan to a simulation (an
+    in-memory copy of the sample tenant or the opened snapshot), with the
+    rehearsal's plan hash and the typed phrase; this browser then uses the
+    copy. Clearly a simulation: nothing reaches a tenant or a saved file."""
+    import admin_ops
+    if not isinstance(req.operation, dict) or not req.operation.get("type"):
+        raise HTTPException(status_code=400, detail="operation is required (the one that was rehearsed).")
+    if admin_ops.is_undo_only(req.operation) or req.undo_of:
+        raise HTTPException(status_code=409, detail="An Undo is not simulated: leave the simulation to discard its changes. Nothing was written.")
+    scope = _ops_scope(req, req.operation)
+    creds, base, sim = _simulation_target(req)
+    client = _offline.OfflineSdkClient(sim, _offline.creds_for(sim))
+    pw = _ops_passwords(req)
+
+    def run() -> Dict[str, Any]:
+        try:
+            return admin_ops.execute(client, req.operation, plan_hash=req.plan_hash, scope=scope, writes_enabled=True,
+                                     confirm_text=req.confirm_text, assessor="Simulation (in-memory copy)", tenant_label=sim.label,
+                                     settle_seconds=0)
+        except admin_ops.OperationError as e:
+            return {"status": "refused", "message": str(e), "items": []}
+    result = await asyncio.to_thread(_with_passwords, pw, run)
+    return _simulation_answer(request, result, sim, base, str(req.operation.get("type")))
+
+
+@app.post("/api/offline/simulate/pov-build")
+async def offline_simulate_pov_build(req: PovBuildRequest, request: Request):
+    """Apply a rehearsed POV build to a simulation, every part in order, as
+    the real apply would; this browser then uses the copy."""
+    import pov_build
+    parts = _pov_build_parts(req)
+    scope = _pov_build_scope(req, parts)
+    creds, base, sim = _simulation_target(req)
+    client = _offline.OfflineSdkClient(sim, _offline.creds_for(sim))
+
+    def run() -> Dict[str, Any]:
+        try:
+            return pov_build.execute(client, parts, plan_hash=req.plan_hash, scope=scope, writes_enabled=True, confirm_text=req.confirm_text,
+                                     assessor="Simulation (in-memory copy)", tenant_label=sim.label, settle_seconds=0)
+        except pov_build.BuildError as e:
+            return {"status": "refused", "message": str(e), "steps": []}
+    result = await asyncio.to_thread(run)
+    return _simulation_answer(request, result, sim, base, "POV build")
+
+
+@app.post("/api/offline/simulation/discard")
+async def offline_simulation_discard(request: Request):
+    """Leave the simulation: its in-memory copy is dropped and this browser
+    goes back to the sample tenant or the snapshot it was made from."""
+    sid = _offline.current_source() or ""
+    st = _offline.store(sid) if sid.startswith("sim-") else None
+    if st is None:
+        raise HTTPException(status_code=409, detail="This browser is not using a simulation.")
+    base_id = str(st.meta.get("base_source") or "")
+    _offline.forget(sid)
+    base = _offline.store(base_id) if base_id else None
+    if base is None:
+        return _offline_answer(request, {"mode": "live", "message": "The simulation was dropped; the tenant it was made from is no longer open."}, None)
+    return _offline_answer(request, dict(base.describe(), message="The simulation was dropped: back to " + base.label + "."), base.id)
 
 
 @app.post("/api/pov/build/preview/start")
