@@ -34,13 +34,16 @@ window.WHATS_NEW = {
       "id": "fix-flow-url", "release": "2026-11-01", "label": "URL filtering in Fix rows from Test a list",
       "what": "Fix selected puts URL filtering rows in a custom URL category and adds that category to a matching rule, or to a new disabled rule above the rule that decided them; the preview warns when the category alone changes nothing.",
       "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing"],
-      "marks": [{ "page": "/report/operations", "at": "select[aria-label=\"Custom URL category for the URLs\"]", "shown": "after Read from the tenant, with URL filtering rows" }]
+      "marks": [{ "page": "/report/operations", "at": "select[id^=\"lfCat\"]", "shown": "after Read from the tenant, with URL filtering rows" }]
     },
     {
       "id": "zpa-typed-domains", "release": "2026-11-01", "label": "Add typed domains to a segment",
       "what": "ZPA segment domains adds typed domains to an application segment or removes picked ones, and Fix selected opens it for rows ZPA carries.",
       "changelog": ["Add typed domains to a segment", "ZPA rows open the ZPA change", "ZPA segment domains"],
-      "marks": [{ "page": "/report/operations", "at": "#opZAdd", "shown": "when Add typed domains is picked" }]
+      "marks": [
+        { "page": "/report/operations", "at": "#opKindZpaH" },
+        { "page": "/report/operations", "at": "#opZAdd", "shown": "when Add typed domains is picked" }
+      ]
     },
     {
       "id": "zpa-access-position", "release": "2026-11-01", "label": "Place it above",

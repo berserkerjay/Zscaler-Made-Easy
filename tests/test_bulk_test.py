@@ -775,7 +775,7 @@ def test_the_excel_results_sheet_is_capped_and_says_so(monkeypatch):
 # ── Fix selected: a hand-off, never a write ─────────────────────────────
 
 def test_fix_selected_prepares_a_url_category_change_and_writes_nothing():
-    """ASVS V4.1.1 · CWE-862 · A01:2021: Fix selected only keeps a list for Bulk changes under a random id (the host names as a URL category change, the address as a Cloud Firewall fix); it sends no request at all."""
+    """ASVS V4.1.1 · CWE-862 · A01:2021: Fix selected only keeps a list for Bulk changes under a random id (the host names as a URL category change and a URL filtering fix, the address as a Cloud Firewall fix); it sends no request at all."""
     # Arrange
     c = Tenant()
     rn = _run("destination,expected\nmail.example.com,block\nnews.example,block\n203.0.113.5,block\n", client=c)
@@ -784,17 +784,19 @@ def test_fix_selected_prepares_a_url_category_change_and_writes_nothing():
     rec = bt.fix_handoff(rn, rows=[1, 2, 2, 3], purpose="block")
     # Assert
     assert rec["urls"] == ["mail.example.com", "news.example"] and len(rec["id"]) == 24
-    assert [(f["area"], [d["value"] for d in f["destinations"]]) for f in rec["fixes"]] == [("firewall", ["203.0.113.5"])]
+    assert [(f["area"], [d["value"] for d in f["destinations"]]) for f in rec["fixes"]] == [("firewall", ["203.0.113.5"]),
+                                                                                         ("url", ["mail.example.com", "news.example"])]
+    assert rec["zpa"] == []
     assert (c.reads, len(c.lookups)) == sent and not c.writes
     assert bt.get_fix(rec["id"])["urls"] == rec["urls"]
     assert bt.get_fix(rec["id"], now=rec["created"] + bt.FIX_KEEP_SECONDS + 1) is None
 
 
 @pytest.mark.parametrize("kw,why", [({"rows": [0]}, "not a row"), ({"rows": [99]}, "not a row"), ({"rows": [True]}, "not a row"),
-                                    ({"area": "zpa"}, "copy its list"), ({"area": "nope"}, "Unknown area"), ({}, "Pick rows"),
+                                    ({"area": "client_connector"}, "copy its list"), ({"area": "nope"}, "Unknown area"), ({}, "Pick rows"),
                                     ({"rows": [1], "purpose": "delete"}, "purpose")])
 def test_fix_selected_refuses_what_it_cannot_hand_off(kw, why):
-    """ASVS V5.1.3 · CWE-20: rows out of range, an area changed elsewhere (ZPA), or an unknown purpose are refused in words."""
+    """ASVS V5.1.3 · CWE-20: rows out of range, an area changed elsewhere (Client Connector), or an unknown purpose are refused in words."""
     # Arrange
     rn = _run("destination,expected\n203.0.113.0/30,block\n")
     # Act / Assert
@@ -922,16 +924,16 @@ def test_a_list_that_cannot_be_tested_is_refused_before_signing_in(monkeypatch):
 
 
 def test_fix_is_refused_when_url_categories_are_not_in_scope(monkeypatch):
-    """ASVS V4.1.3 · CWE-272: Fix selected is refused (400) when custom URL categories are not in scope on the Scope page."""
+    """ASVS V4.1.3 · CWE-272: Fix selected is refused (400) when nothing it changes (custom URL categories, ZIA platform lists, ZPA segments) is in scope on the Scope page."""
     # Arrange
     import dlp_api_server as srv
     from fastapi.testclient import TestClient
     t = TestClient(srv.app)
     base = {k: v for k, v in CREDS.items() if k not in ("scopes", "channels")}
     # Act
-    r = t.post("/api/bulk-test/anything/fix", json=dict(base, scopes=["zpa"], channels={}, from_page=True, rows=[1]))
+    r = t.post("/api/bulk-test/anything/fix", json=dict(base, scopes=["zcc"], channels={}, from_page=True, rows=[1]))
     # Assert
-    assert r.status_code == 400 and "URL" in r.json()["detail"]
+    assert r.status_code == 400 and "URL" in r.json()["detail"] and "ZPA" in r.json()["detail"]
 
 
 @pytest.mark.parametrize("path", ["/api/bulk-test/nope/export?format=csv", "/api/bulk-test/nope/list?area=url&purpose=block"])
