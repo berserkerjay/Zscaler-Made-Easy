@@ -1,5 +1,7 @@
 """Wave 9 security gates: team-mode tenant isolation of kept records
-(configuration backups and templates), template ownership, the forced
+(configuration backups and templates, saved traffic reports, Client
+Connector fleet history, the latest tenant-health answers, and a rehearsal
+by backup or template id), template ownership, the forced
 password change for accounts an administrator sets up, the plan hash on
 the older writes (/api/remediation/execute, /api/migrate/enable) and the
 typed phrase on the older deletes (/api/dlp-packs/removal/apply,
@@ -11,6 +13,7 @@ records every call it is asked to make."""
 from __future__ import annotations
 
 import os
+from collections import OrderedDict
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,7 +23,10 @@ import dlp_api_server as srv
 import remediation
 import rule_migrator
 import team_server as team
+import traffic_logs as tl
+import zcc_fleet_history as zh
 from tests.test_team_server import ORIGIN, PW, _FakeSdk, _login, _user, team_on, world  # noqa: F401 - fixtures
+from tests.test_traffic_logs import T0, activity, lines, upload
 
 
 # ── kept records of two tenants ─────────────────────────────────────────
@@ -130,6 +136,117 @@ def test_a_template_exported_in_team_mode_names_its_maker_and_tenant(kept):
     meta = cb.template_meta(r.json()["template"]["id"])
     assert meta["profile_id"] == kept["a"] and meta["owner_id"] == kept["users"]["olga"]["id"]
     assert _login("bea").get(f"/api/config-templates/{meta['id']}/download").status_code == 404
+
+
+# ── other kept records: saved traffic reports, fleet history, tenant
+# health, and a rehearsal by backup or template id ─────────────────────
+SNAP = {"at": "2026-10-01T00:00:00+00:00", "devices": 5, "source": "live"}
+
+
+@pytest.fixture
+def records(kept, tmp_path, monkeypatch):
+    """Tenant A's and tenant B's saved traffic report, Client Connector fleet
+    history and latest tenant-health answer, plus a health answer that names
+    no tenant profile."""
+    monkeypatch.setenv("DLP_CHECK_TRAFFIC_LOG_REPORTS", str(tmp_path / "saved"))
+    monkeypatch.setenv("DLP_CHECK_FLEET_HISTORY", str(tmp_path / "fleet_history.json"))
+    u = kept["users"]
+    rep = tl.analyze(upload(lines(activity("c1", "secret.user@example.com", T0))))
+    rep_a = tl.save_report(rep, "Acme week", profile_id=kept["a"], owner_id=u["olga"]["id"])["name"]
+    rep_b = tl.save_report(rep, "Bolt week", profile_id=kept["b"], owner_id=u["bea"]["id"])["name"]
+    zh.record("acme-fleet", SNAP, profile_id=kept["a"])
+    zh.record("bolt-fleet", SNAP, profile_id=kept["b"])
+    health = OrderedDict([("nobody", {"label": "nobody", "status": "done"}),
+                          ("bolt", {"label": "bolt", "status": "done", "profile_id": kept["b"]}),
+                          ("acme", {"label": "acme", "status": "done", "profile_id": kept["a"]})])
+    monkeypatch.setattr(srv, "_TENANT_HEALTH", health)
+    return dict(kept, rep_a=rep_a, rep_b=rep_b)
+
+
+def test_a_saved_traffic_report_is_listed_only_to_people_of_its_tenant(records):
+    """ASVS V4.2.1 · CWE-639 · CWE-200 · WSTG-ATHZ-04: the saved traffic report list shows a person only the reports of the tenants they may read; an administrator sees all."""
+    # Act
+    seen = {who: {r["name"] for r in _login(who).get("/api/traffic-logs/saved").json()["reports"]} for who in ("vic", "bea", "root")}
+    # Assert
+    assert seen["vic"] == {records["rep_a"]}
+    assert seen["bea"] == {records["rep_b"]}
+    assert seen["root"] == {records["rep_a"], records["rep_b"]}
+
+
+def test_another_tenants_saved_traffic_report_cannot_be_opened_or_deleted(records):
+    """ASVS V4.2.1 · CWE-639 · CWE-284 · WSTG-ATHZ-04: an operator of tenant A who names tenant B's saved report to open or delete it is answered 'not found, or not yours'; B's report stays; A's own opens."""
+    olga = _login("olga")
+    # Act
+    opened = olga.post(f"/api/traffic-logs/saved/{records['rep_b']}/open", headers=ORIGIN)
+    deleted = olga.delete(f"/api/traffic-logs/saved/{records['rep_b']}", headers=ORIGIN)
+    # Assert
+    assert opened.status_code == 404 and "not yours" in opened.json()["detail"], opened.text
+    assert deleted.status_code == 404 and "not yours" in deleted.json()["detail"], deleted.text
+    assert tl.saved_meta(records["rep_b"]) is not None, "tenant B's report is still kept"
+    assert olga.post(f"/api/traffic-logs/saved/{records['rep_a']}/open", headers=ORIGIN).status_code == 200
+
+
+def test_another_tenants_fleet_history_cannot_be_forgotten(records):
+    """ASVS V4.2.1 · CWE-639 · CWE-284 · WSTG-ATHZ-04: forgetting tenant B's Client Connector fleet history is refused (404) to an operator of A and removes nothing; A's own is forgotten."""
+    olga = _login("olga")
+    # Act
+    r = olga.post("/api/zcc/fleet/history/forget", json={"tenant": "bolt-fleet", "confirm": True}, headers=ORIGIN)
+    # Assert
+    assert r.status_code == 404 and "not yours" in r.json()["detail"], r.text
+    assert len(zh.load("bolt-fleet")) == 1
+    own = olga.post("/api/zcc/fleet/history/forget", json={"tenant": "acme-fleet", "confirm": True}, headers=ORIGIN)
+    assert own.status_code == 200 and own.json()["removed"] == 1 and zh.load("acme-fleet") == []
+
+
+def test_tenant_health_latest_shows_only_the_answers_of_tenants_the_person_may_read(records):
+    """ASVS V4.2.1 · CWE-639 · CWE-200 · WSTG-ATHZ-04: /api/tenant-health/latest lists tenant B's answer only to people of B, and an answer that names no tenant only to an administrator."""
+    # Act
+    seen = {who: [x["label"] for x in _login(who).get("/api/tenant-health/latest").json()["results"]] for who in ("vic", "bea", "root")}
+    # Assert
+    assert seen["vic"] == ["acme"]
+    assert seen["bea"] == ["bolt"]
+    assert seen["root"] == ["acme", "bolt", "nobody"]
+
+
+@pytest.mark.parametrize("source,target", [("bk_a", "bk_b"), ("bk_b", "bk_a"), ("tpl_b", "bk_a")])
+def test_a_rehearsal_against_or_from_another_tenants_backup_or_template_is_refused(records, source, target):
+    """ASVS V4.2.1 · CWE-639 · CWE-863 · WSTG-ATHZ-04: a rehearsal whose target or source is tenant B's backup or template is answered 404 to an operator of A, with no sign-in; A's own rehearses."""
+    kind = "template" if source.startswith("tpl") else "backup"
+    olga = _login("olga")
+
+    def rehearse(src_kind, src, tgt):
+        op = {"type": "config_restore_zia", "source": {src_kind: src}, "target": "other" if src_kind == "template" else "same", "mode": "add_missing"}
+        return olga.post("/api/config-backups/rehearse", json={"operation": op, "target": tgt}, headers=ORIGIN)
+    # Act
+    r = rehearse(kind, records[source], records[target])
+    # Assert
+    assert r.status_code == 404 and "not yours" in r.json()["detail"], r.text
+    assert records["signed_in"] == []
+    own = rehearse("backup", records["bk_a"], records["bk_a"])
+    assert own.status_code == 200, own.text
+
+
+def _anon_calls(rec):
+    return [("get", "/api/traffic-logs/saved", None),
+            ("post", f"/api/traffic-logs/saved/{rec['rep_a']}/open", None),
+            ("delete", f"/api/traffic-logs/saved/{rec['rep_a']}", None),
+            ("post", "/api/zcc/fleet/history/forget", {"tenant": "acme-fleet", "confirm": True}),
+            ("get", "/api/tenant-health/latest", None),
+            ("post", "/api/config-backups/rehearse", {"operation": {"type": "config_restore_zia", "source": {"backup": rec["bk_a"]},
+                                                                    "target": "same", "mode": "add_missing"}, "target": rec["bk_a"]})]
+
+
+@pytest.mark.parametrize("i", range(6), ids=["saved-list", "saved-open", "saved-delete", "fleet-forget", "health-latest", "rehearse"])
+def test_the_kept_record_routes_refuse_a_caller_who_is_not_signed_in(records, i):
+    """ASVS V4.1.1 · V2.1.1 · CWE-306 · CWE-862 · WSTG-ATHN-04: in team mode, the saved report, fleet history forget, tenant-health latest and rehearse routes answer 401 to a caller with no session, and change nothing."""
+    method, path, body = _anon_calls(records)[i]
+    anon = TestClient(srv.app)
+    # Act
+    r = getattr(anon, method)(path, headers=ORIGIN, **({"json": body} if body is not None else {}))
+    # Assert
+    assert r.status_code == 401, (path, r.status_code, r.text[:200])
+    assert "acme" not in r.text and "Acme week" not in r.text
+    assert tl.saved_meta(records["rep_a"]) is not None and len(zh.load("acme-fleet")) == 1
 
 
 # ── forced password change ──────────────────────────────────────────────

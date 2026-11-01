@@ -162,7 +162,7 @@ def test_a_tampered_or_keyless_store_is_refused_and_self_healing_does_not_eat_se
     res = self_heal.check_stores()
     assert not any("Tenant profiles" in a for a in res.get("actions") or []), res
     body = raw[raw.rindex(":") + 1:]
-    flipped = raw[:raw.rindex(":") + 1] + ("A" if body[5] != "A" else "B") + body[1:5] + body[5:]
+    flipped = raw[:raw.rindex(":") + 1] + ("A" if body[0] != "A" else "B") + body[1:]   # always a different first character
     with pytest.raises(store_crypto.StoreLocked):
         store_crypto.open_text(flipped)
     with pytest.raises(store_crypto.StoreLocked):
