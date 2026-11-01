@@ -5588,7 +5588,8 @@ def _run_tenant_terraform(client, creds: Dict[str, str], opts: Dict[str, Any], p
                     "secret_variables": v.get("secret_variables") or [], "skipped": len(v.get("skipped") or [])}
                 for p, v in rep["products"].items()}
     return {"status": "ready", "filename": res["filename"], "bytes": res["bytes"], "tenant_label": label, "products": products,
-            "not_exported": rep["not_exported"][:200], "artifact": res["artifact"]}
+            "not_exported": rep["not_exported"][:200], "may_be_incomplete": (rep.get("may_be_incomplete") or [])[:50],
+            "artifact": res["artifact"]}
 
 
 @app.post("/api/tenant-terraform/start")

@@ -583,7 +583,9 @@
       runJob(mode === 'clone' ? 'Whole tenant as Terraform (clone)' : 'Whole tenant as Terraform', '/api/tenant-terraform/start', payload, res => {
         const rows = Object.entries(res.products || {}).map(([p, v]) => `<tr><th scope="row">${E(TF_PRODUCTS[p] || p)}</th><td>${E(v.resources)}</td><td>${E(v.imports)}</td><td>${E(v.data_sources)}</td><td>${E((v.secret_variables || []).join(', ') || 'none')}</td></tr>`).join('');
         const nx = (res.not_exported || []).slice(0, 40).map(x => `<li><strong>${E(x.what)}</strong>: ${E(x.why)}</li>`).join('');
-        return (rows ? `<div class="df-tablewrap"><table class="df-table ex-sum"><caption class="sr-only">Objects per workspace</caption><thead><tr><th scope="col">Workspace</th><th scope="col">Resources</th><th scope="col">Import blocks</th><th scope="col">Lookups by name</th><th scope="col">Secret variables</th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
+        const inc = (res.may_be_incomplete || []).slice(0, 20).map(x => `<li><strong>${E(x.what)}</strong>: ${E(x.why)}</li>`).join('');
+        return (inc ? `<p class="df-hint"><strong>May be incomplete</strong> (what was read is exported; do not treat these lists as the whole tenant):</p><ul class="ex-list">${inc}</ul>` : '')
+          + (rows ? `<div class="df-tablewrap"><table class="df-table ex-sum"><caption class="sr-only">Objects per workspace</caption><thead><tr><th scope="col">Workspace</th><th scope="col">Resources</th><th scope="col">Import blocks</th><th scope="col">Lookups by name</th><th scope="col">Secret variables</th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
           + (nx ? `<p class="df-hint">Not exported (the workspace README lists every one):</p><ul class="ex-list">${nx}</ul>` : '');
       });
     }

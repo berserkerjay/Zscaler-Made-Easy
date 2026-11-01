@@ -101,7 +101,9 @@ Assumed, not verifiable without a tenant:
     as a JSON array (or an envelope holding one), without paging, in the
     camelCase the provider's docs name (isDefaultTemplate,
     ziaNotificationTemplate, highTrustCriteria {cs: [{cn: [...]}]}, a
-    posture profile's platform as 1..5);
+    posture profile's platform as 1..5). The posture list is NOT assumed
+    complete: the zcc provider documents that it can be cut short silently,
+    so every export says it may be incomplete (MAY_BE_INCOMPLETE);
   - the ZPA policy rules the SDK reads in the v1 form (operands with lhs /
     rhs) map to the v2 resources' form by putting an operand whose lhs is
     "id" into `values` and every other operand into `entry_values`
@@ -430,10 +432,26 @@ def _t(key: str, resource: str, label: str, area: str, svc: str, method: Optiona
 
 # Client Connector reads the SDK has no call for: the paths the zcc provider
 # 0.1.2-beta.3 manages these resources at (its resource docs and schema
-# descriptions). assumed: answered whole (no paging), as a JSON array or an
-# envelope holding one.
+# descriptions). assumed: answered in one GET (no paging), as a JSON array or
+# an envelope holding one. Not assumed complete for ZIA posture profiles: see
+# MAY_BE_INCOMPLETE.
 ZCC_RAW_PATHS = {"zcc.notification_templates": "/zcc/papi/public/v2/notification-templates",
                  "zcc.zia_posture": "/zcc/papi/public/v2/zia-posture-profiles"}
+
+# Lists the API is known to cut short without saying so. The zcc provider's
+# own docs (docs/data-sources/zcc_zia_posture.md, CLAUDE.md) say the
+# /zia-posture-profiles list endpoint "mishandles pagination and silently
+# returns a truncated set"; the provider pages nothing there (its data source
+# looks a profile up by id only), and neither the provider nor the SDK
+# offers a paging form that is known to work, so the export cannot get
+# every profile for certain. It never implies completeness: every export
+# that reads such a list says, in its report and both READMEs, that the
+# list may be incomplete, with the count it got.
+MAY_BE_INCOMPLETE = {
+    "zcc.zia_posture": ("the Client Connector API's ZIA posture profile list (/zia-posture-profiles) is known to cut its answer "
+                        "short without saying so (the zscaler/zcc provider's documentation); compare the count with the Client "
+                        "Connector portal and add any missing profile by hand (import it by its numeric id)"),
+}
 
 
 _P = ("scope", "zia_extras")
@@ -1718,8 +1736,19 @@ _USE_CLONE = ("## Build these objects in another tenant\n\n```bash\nterraform in
               "Settings and objects bound to this tenant (locations, tunnels, connectors, cloud accounts) are left out.\n\n")
 
 
+def _incomplete_md(rows: List[Dict[str, Any]], with_product: bool = False) -> str:
+    """The "May be incomplete" README section (empty when nothing is)."""
+    if not rows:
+        return ""
+    head = "| Product | What | Why |\n|---|---|---|\n" if with_product else "| What | Why |\n|---|---|\n"
+    body = "".join((f"| {PRODUCT_LABELS.get(x['product'], '')} " if with_product else "")
+                   + f"| {md_safe.text(x['what'])} | {md_safe.text(x['why'])} |\n" for x in rows)
+    return ("## May be incomplete\n\nThe API answers these lists in a way that can leave objects out without saying so: "
+            "what was read is exported, but do not treat the list as the whole tenant.\n\n" + head + body + "\n")
+
+
 def _readme_product(product: str, counts: Dict[str, int], ctx: _Ctx, not_exported: List[Dict[str, str]], namespace: str,
-                    tenant_label: str) -> str:
+                    tenant_label: str, incomplete: Optional[List[Dict[str, Any]]] = None) -> str:
     rows = "".join(f"| `{res}` | {n} |\n" for res, n in sorted(counts.items()))
     nx = "".join(f"| {md_safe.text(x['what'])} | {md_safe.text(x['why'])} |\n" for x in not_exported) or "| (nothing) | |\n"
     for res, attrs in sorted(ctx.dropped.items()):
@@ -1737,7 +1766,8 @@ def _readme_product(product: str, counts: Dict[str, int], ctx: _Ctx, not_exporte
             + "## What is in this workspace\n\n| Resource type | Objects |\n|---|---|\n" + (rows or "| (none) | 0 |\n") + "\n"
             f"References: {ctx.refs['resource']} by Terraform address, {ctx.refs['data']} by a lookup by name (`datasource.tf`), "
             f"{ctx.refs['id']} by tenant id (the object is not exported and has no lookup, or is a user).\n\n"
-            "## Not exported\n\n| What | Why |\n|---|---|\n" + nx + "\n"
+            + _incomplete_md(incomplete or [])
+            + "## Not exported\n\n| What | Why |\n|---|---|\n" + nx + "\n"
             + ("## Secrets\n\nNo secret is in these files. Each secret the provider needs is a sensitive map variable keyed by resource label; "
                "set it in `terraform.tfvars` (git-ignored) or with `TF_VAR_...`.\n\n| Variable | Holds |\n|---|---|\n" + secrets + "\n" if secrets else "")
             + "## Verify\n\n```bash\nterraform fmt -check -recursive   # the files are written fmt-clean\nterraform validate\n```\n\n"
@@ -1756,7 +1786,12 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
     files: Dict[str, str] = {}
     report: Dict[str, Any] = {"generated_at": when, "tenant_label": tenant_label, "mode": opts.get("mode") or "adopt",
                               "rules_disabled": opts.get("mode") == "clone" and not opts.get("keep_rule_state"), "products": {}, "not_exported": [],
-                              "not_covered": [{"product": p, "what": w, "why": y} for p, w, y in NOT_COVERED]}
+                              "not_covered": [{"product": p, "what": w, "why": y} for p, w, y in NOT_COVERED], "may_be_incomplete": []}
+    for key, why in sorted(MAY_BE_INCOMPLETE.items()):
+        if key in types and BY_KEY[key]["product"] in opts["products"]:
+            n = len(types[key] or [])
+            report["may_be_incomplete"].append({"product": BY_KEY[key]["product"], "type": key, "what": BY_KEY[key]["label"], "read": n,
+                                                "why": f"{n} read, but the list may be incomplete: {why}"})
     for key, why in sorted((plan_info.get("not_in_scope") or {}).items()):
         report["not_exported"].append({"product": BY_KEY[key]["product"], "type": key, "what": BY_KEY[key]["label"], "why": why})
     for key, why in sorted((plan_info.get("left_out") or {}).items()):
@@ -1825,7 +1860,8 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
         files[f"{base}/terraform.tfvars.example"] = _tfvars_example(product, ctx.secret_vars)
         files[f"{base}/.gitignore"] = GITIGNORE
         files[f"{base}/README.md"] = _readme_product(product, counts, ctx, skipped + [x for x in report["not_exported"] if x["product"] == product],
-                                                     opts.get("namespace") or DEFAULT_NAMESPACE, tenant_label)
+                                                     opts.get("namespace") or DEFAULT_NAMESPACE, tenant_label,
+                                                     [x for x in report["may_be_incomplete"] if x["product"] == product])
         report["products"][product] = {"resources": counts, "imports": len(imports), "data_sources": len(ctx.data), "disabled": ctx.disabled,
                                        "references": dict(ctx.refs), "unresolved": dict(ctx.unresolved),
                                        "secret_variables": sorted(ctx.secret_vars), "skipped": skipped,
@@ -1845,6 +1881,8 @@ def _readme_root(report: Dict[str, Any], opts: Dict[str, Any]) -> str:
             continue
         n = sum(info.get("resources", {}).values())
         lines.append(f"| `{p}/` ({PRODUCT_LABELS[p]}) | {n} | {info.get('imports', 0)} | {info.get('data_sources', 0)} |\n")
+    lines.append("\n" + _incomplete_md(report.get("may_be_incomplete") or [], with_product=True).rstrip("\n") + "\n"
+                 if report.get("may_be_incomplete") else "")
     lines.append("\n## Not exported\n\n| Product | What | Why |\n|---|---|---|\n")
     for x in report["not_exported"]:
         lines.append(f"| {PRODUCT_LABELS.get(x['product'], '')} | {md_safe.text(x['what'])} | {md_safe.text(x['why'])} |\n")

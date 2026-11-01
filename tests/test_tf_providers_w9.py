@@ -12,7 +12,9 @@
   call for them); every zcc argument written is one the provider's
   0.1.2-beta.3 schema declares;
 * the CI sample export holds a workspace for every product and CI
-  validates each one, as a blocking step;
+  validates each one (advisory until its first green run, then blocking);
+* the API's ZIA posture profile list can be cut short silently, so the
+  export says it may be incomplete;
 * policy packs take the same private-registry namespace option as the
   whole-tenant export.
 
@@ -201,6 +203,69 @@ def test_a_posture_profile_on_an_unknown_platform_is_not_exported_and_a_missing_
     assert any("odd" in x["what"] and "platform" in x["why"] for x in skipped), skipped
 
 
+def test_the_zia_posture_list_is_reported_as_possibly_incomplete_never_as_complete():
+    """ASVS V1.14.6 · V7.4.1 · CWE-1059 · CWE-392: the API's ZIA posture profile list can be cut short silently (the zcc provider says so), so the export report and both READMEs say the list may be incomplete, with the count read; a list not known to truncate is not flagged."""
+    # Arrange
+    client = _settings_store({"/zcc/papi/public/v2/notification-templates": {"status": 200, "body": [{"id": 5, "name": "t"}]},
+                              "/zcc/papi/public/v2/zia-posture-profiles": {"status": 200, "body": [
+                                  {"id": 6, "name": "p1", "platform": 3}, {"id": 7, "name": "p2", "platform": 4}]}})
+    # Act
+    snap = tt.read_tenant(client, ["zcc.notification_templates", "zcc.zia_posture"])
+    files, rep = tt.generate(snap, tt.normalize_options(["zcc"]), tenant_label="Fixture", generated_at="2026-11-01T00:00:00Z")
+    # Assert
+    inc = rep["may_be_incomplete"]
+    assert [(x["type"], x["read"]) for x in inc] == [("zcc.zia_posture", 2)], inc
+    assert "2 read, but the list may be incomplete" in inc[0]["why"] and "/zia-posture-profiles" in inc[0]["why"]
+    for readme in (files[f"{tt.ROOT_DIR}/README.md"], files[f"{tt.ROOT_DIR}/zcc/README.md"]):
+        sec = readme.split("## May be incomplete", 1)[1].split("\n## ", 1)[0]
+        assert "ZIA posture profiles" in sec and "may be incomplete" in sec and "Notification templates" not in sec
+    assert json.loads(files[f"{tt.ROOT_DIR}/export_report.json"])["may_be_incomplete"] == inc
+
+
+def test_an_empty_posture_list_is_still_flagged_and_an_export_without_it_is_not():
+    """ASVS V1.14.6 · CWE-1059 · CWE-392: boundary: a posture list that came back empty may also have been cut short, so it is flagged with 0 read; an export that did not read posture profiles (or not Client Connector) has nothing flagged."""
+    # Arrange
+    client = _settings_store({"/zcc/papi/public/v2/notification-templates": {"status": 200, "body": [{"id": 5, "name": "t"}]},
+                              "/zcc/papi/public/v2/zia-posture-profiles": {"status": 200, "body": []}})
+    # Act
+    _f, empty = tt.generate(tt.read_tenant(client, ["zcc.zia_posture", "zcc.notification_templates"]), tt.normalize_options(["zcc"]),
+                            tenant_label="Fixture", generated_at="2026-11-01T00:00:00Z")
+    files, other = tt.generate(tt.read_tenant(client, ["zcc.notification_templates"]), tt.normalize_options(["zcc"]),
+                               tenant_label="Fixture", generated_at="2026-11-01T00:00:00Z")
+    # Assert
+    assert [(x["type"], x["read"]) for x in empty["may_be_incomplete"]] == [("zcc.zia_posture", 0)]
+    assert other["may_be_incomplete"] == [] and "May be incomplete" not in "".join(files.values())
+
+
+def test_the_route_result_carries_the_may_be_incomplete_note(monkeypatch):
+    """ASVS V1.14.6 · CWE-392 · WSTG-BUSL-01: the whole-tenant export job's result (what the Exports page shows) carries the posture list's "may be incomplete" note, so the page never implies the list is complete."""
+    # Arrange
+    import dlp_api_server as srv
+    from fastapi.testclient import TestClient
+    st = ot.sample_store(reset=True)
+    client = ot.OfflineSdkClient(st, ot.creds_for(st))
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: client)
+    c = TestClient(srv.app)
+    body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "cloud": "production",
+            "scopes": ["zcc"], "channels": {}, "from_page": True, "products": ["zcc"]}
+    # Act
+    r = c.post("/api/tenant-terraform/start", json=body)
+    deadline = time.time() + 60
+    snap = None
+    while time.time() < deadline:
+        snap = c.get(f"/api/dlp-packs/jobs/{r.json()['job_id']}").json()
+        if snap["status"] != "running":
+            break
+        time.sleep(0.05)
+    # Assert
+    assert r.status_code == 200, r.text
+    res = snap["result"]
+    assert res["status"] == "ready", res
+    assert [x["type"] for x in res["may_be_incomplete"]] == ["zcc.zia_posture"] and "may be incomplete" in res["may_be_incomplete"][0]["why"]
+    page = (ROOT / "static" / "report_exports.html").read_text(encoding="utf-8")
+    assert "res.may_be_incomplete" in page and "May be incomplete" in page
+
+
 @pytest.mark.parametrize("creds,why", [
     ({"auth_method": "legacy", "cloud": "zscaler"}, "classic ZIA sign-in"),
     ({"auth_method": "oneapi", "cloud": "zscalergov"}, "zscalergov"),
@@ -271,7 +336,7 @@ def test_the_route_skips_the_zcc_workspace_on_zscalerten_and_says_why(monkeypatc
 
 
 def test_the_ci_sample_has_a_workspace_for_every_product_and_ci_validates_each(tmp_path):
-    """ASVS V14.2.1 · V1.14.6 · CWE-1357: tools/terraform_samples.py writes the whole-tenant sample with a zia, zpa, ztc and zcc workspace (zcc with notification templates and ZIA posture), and the CI step checks each one is there and validates every workspace folder, blocking the run."""
+    """ASVS V14.2.1 · V1.14.6 · CWE-1357: tools/terraform_samples.py writes the whole-tenant sample with a zia, zpa, ztc and zcc workspace (zcc with notification templates and ZIA posture), and the CI step checks each one is there and validates every workspace folder; advisory (continue-on-error) until its first green run, with a note that it becomes blocking then."""
     # Act
     out = subprocess.run([sys.executable, str(ROOT / "tools" / "terraform_samples.py"), str(tmp_path)], capture_output=True, text=True,
                          timeout=300, env=dict(os.environ, PYTHONPATH=str(ROOT)))
@@ -284,7 +349,10 @@ def test_the_ci_sample_has_a_workspace_for_every_product_and_ci_validates_each(t
     zcc_tf = (tmp_path / "tenant" / tt.ROOT_DIR / "zcc" / "client_connector.tf").read_text(encoding="utf-8")
     assert 'resource "zcc_notification_template"' in zcc_tf and 'resource "zcc_zia_posture"' in zcc_tf
     assert "for p in zia zpa ztc zcc" in step and "tenant-terraform/*/" in step and "terraform -chdir=\"$d\" validate" in step
-    assert "continue-on-error" not in step and "(advisory)" not in step, "a workspace that does not validate fails CI"
+    # Owner decision (wave 9): advisory until its first green run, then blocking. It has never run.
+    note = ci.split("Validate the whole-tenant export of the sample tenant", 1)[0].rsplit("\n\n", 1)[1]   # the comment over the step
+    assert "continue-on-error: true" in step and "(advisory)" in step and "blocking" in note and "first green run" in note, \
+        "the step stays advisory, with a note that it becomes blocking after its first green run"
 
 
 def _pack():

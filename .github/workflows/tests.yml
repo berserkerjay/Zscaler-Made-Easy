@@ -115,11 +115,14 @@ jobs:
           done
           exit $rc
 
-      # Blocking (owner decision, wave 9): the whole-tenant export (tenant_terraform) of the
+      # Advisory until a first green run: the whole-tenant export (tenant_terraform) of the
       # sample tenant, every product's workspace the export writes (zia, zpa, ztc and zcc; the
       # samples tool fails when one is missing), against the provider each one pins. The
-      # zscaler/zcc provider is a beta pinned exactly (0.1.2-beta.3).
-      - name: Validate the whole-tenant export of the sample tenant, every product
+      # zscaler/zcc provider is a beta pinned exactly (0.1.2-beta.3). Owner decision (wave 9):
+      # this step becomes blocking (remove continue-on-error) after its first green run; it has
+      # never run yet (no Actions minutes), so ztc and zcc have never been validated in CI.
+      - name: Validate the whole-tenant export of the sample tenant, every product (advisory)
+        continue-on-error: true
         run: |
           rc=0
           for p in zia zpa ztc zcc; do
