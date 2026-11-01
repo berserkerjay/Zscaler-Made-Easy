@@ -14,8 +14,8 @@ What an update does
 4. When origin is github.com, cross-check the commit just pulled against
    GitHub's REST API for main — a channel separate from the git pull
    itself. A mismatch rolls the pull back and refuses the update rather
-   than running an unverified tree; see verify_against_github_api(). The
-   repository is private, so this needs DLP_CHECK_GITHUB_TOKEN; without
+   than running an unverified tree; see verify_against_github_api(). While
+   the repository is private, this needs DLP_CHECK_GITHUB_TOKEN; without
    it (or offline, or with a non-GitHub origin) the cross-check cannot
    run, and the update says so in a "Verify against GitHub: skipped"
    step and reports verified=False — it is never shown as verified. This
@@ -172,7 +172,7 @@ def _index_hint(msg: str) -> str:
 def _auth_hint(msg: str) -> str:
     low = msg.lower()
     if "could not read username" in low or "authentication failed" in low or "terminal prompts disabled" in low or "403" in low:
-        return (" The repository is private and this machine is not signed in to GitHub for git. "
+        return (" GitHub asked for a sign-in (the repository is private) and this machine is not signed in to GitHub for git. "
                 "Open a Command Prompt in the app folder, run  git fetch  once and sign in when asked, then update again.")
     if "ssl certificate problem" in low or "unable to get local issuer" in low or "self-signed certificate" in low or "certificate verify" in low or "schannel" in low:
         ca = git_env().get("GIT_SSL_CAINFO")
@@ -209,7 +209,7 @@ UPSTREAM_ALIASES = ("berserkerjay/DLP-Check",)
 
 def github_branch_head(branch: str, timeout: int = 10) -> Tuple[Optional[str], Optional[str]]:
     """Short sha of `branch` on GitHub over its REST API, for a copy with
-    no git checkout (the container, a ZIP). The repository is private, so
+    no git checkout (the container, a ZIP). While the repository is private,
     a read-only token in DLP_CHECK_GITHUB_TOKEN (fine-grained, Contents:
     read) is needed; it is only ever sent to api.github.com and never
     logged. Returns (sha, error)."""
@@ -234,7 +234,7 @@ def github_branch_head(branch: str, timeout: int = 10) -> Tuple[Optional[str], O
         sha = _api_sha(r)
         return (sha[:7] or None), (None if sha else "GitHub's answer had no commit")
     if r.status_code in (401, 403, 404) and not token:
-        return None, ("The repository is private, so the update check needs a read-only GitHub token: create a fine-grained token with "
+        return None, ("GitHub did not show the repository without sign-in (it is private), so the update check needs a read-only GitHub token: create a fine-grained token with "
                       "Contents: read on " + repo + " and put DLP_CHECK_GITHUB_TOKEN=<token> in the .env file next to docker-compose.yml, "
                       "then docker compose up -d.")
     if r.status_code in (401, 403, 404):
@@ -265,7 +265,7 @@ def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout
     different tree than GitHub itself has. This does not verify commit
     or tag signatures (main carries no signed tags); see SECURITY.md.
 
-    The repository is private, so the read-only token in
+    While the repository is private, the read-only token in
     DLP_CHECK_GITHUB_TOKEN is sent (only to api.github.com, never logged),
     as github_branch_head() does.
 
@@ -299,7 +299,7 @@ def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout
         r = requests.get(f"https://api.github.com/repos/{owner}/{repo}/commits/{branch}", headers=headers, timeout=timeout)
         if getattr(r, "status_code", 200) in (401, 403, 404):
             if not token:
-                return {"checked": False, "reason": (f"the repository is private and DLP_CHECK_GITHUB_TOKEN is not set, so GitHub's API "
+                return {"checked": False, "reason": (f"DLP_CHECK_GITHUB_TOKEN is not set and the repository needs a sign-in (it is private), so GitHub's API "
                                                      f"would not show {owner}/{repo} (HTTP {r.status_code}). Set a read-only token "
                                                      "(fine-grained, Contents: read) to have updates cross-checked")}
             return {"checked": False, "reason": f"GitHub refused DLP_CHECK_GITHUB_TOKEN (HTTP {r.status_code}): it must be able to read "

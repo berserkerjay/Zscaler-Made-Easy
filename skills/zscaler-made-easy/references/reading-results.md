@@ -1,5 +1,7 @@
 # Reading the tools' answers
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 Every answer has the same frame:
 
 | Field | Meaning |

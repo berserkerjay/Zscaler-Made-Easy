@@ -1,5 +1,7 @@
 # Installing Zscaler Made Easy — a walkthrough for someone doing this for the first time
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 This page assumes you have never installed a developer tool before. It
 does not assume you know what Python, Git, Docker or a terminal are; each
 one is explained the first time it comes up. Pick **one** of the four
@@ -62,7 +64,7 @@ one on the Releases page; the attestation says GitHub itself built it,
 from this repository's code, with its release workflow, and records the
 commit. It is a signed record (SLSA build provenance) that the GitHub CLI
 checks. Install the GitHub CLI once from https://cli.github.com, sign in
-with `gh auth login` (the repository is private, so use the account that
+with `gh auth login` (while the repository is private, use the account that
 can see it), then:
 
 ```bash
@@ -179,9 +181,10 @@ installing only puts the program on your computer.
       [work laptop box](#work-laptop-tls-inspection-or-a-proxy) before you
       start; it changes one step.
 - [ ] **Access to the GitHub repository** `github.com/berserkerjay/Zscaler-Made-Easy`.
-      It is **private**: someone on the team must add your GitHub account
-      first. If the page says "404" or asks you to sign in and then still
-      refuses, that is the reason.
+      The code is open source (Apache-2.0); whether the repository is public
+      or **private** is set by its owner. While it is private, someone on the
+      team must add your GitHub account first. If the page says "404" or asks
+      you to sign in and then still refuses, that is the reason.
 - [ ] **A decision: ZIP or Git.** See
       [Two ways to get the files](#two-ways-to-get-the-files) below. Git is
       one extra install and lets the app update itself; a ZIP is simpler
@@ -704,7 +707,7 @@ Proxies** (Linux: `docs.docker.com/engine/daemon/proxy/`).
 
 **Step 2 — Get the code with git.** Use `git clone`, not a ZIP: the
 update script (Step 3 and every update after it) only works in a git
-clone. The repository is private, so git asks you to sign in to GitHub
+clone. While the repository is private, git asks you to sign in to GitHub
 the first time.
 
 - **Windows:** if `git --version` in PowerShell says "not recognized",
@@ -838,7 +841,7 @@ hand: the app only knows where it is published from `DLP_CHECK_HOST_BIND`.
 - **Update notice in the app:** a minute after the page opens, and every
   6 hours while it stays open, the app checks GitHub and shows a notice at
   the top when a newer build is out (both for the container and for a
-  local install). Because the repository is private, the container needs
+  local install). While the repository is private, the container needs
   a read-only GitHub token for that check: create a fine-grained token on
   GitHub (*Settings → Developer settings → Fine-grained tokens*, only this
   repository, *Contents: read*), put `DLP_CHECK_GITHUB_TOKEN=<the token>`
@@ -933,7 +936,7 @@ Docker can fetch the code from GitHub itself and build it, so you need
 nothing but Docker (Step 1) and a terminal. It is the same image as
 above, run with the same settings as `docker-compose.yml`.
 
-**1. A GitHub token for Docker.** The repository is private, so Docker
+**1. A GitHub token for Docker.** While the repository is private, Docker
 needs a read-only token to fetch it. On `github.com`: your avatar →
 **Settings** → **Developer settings** → **Personal access tokens** →
 **Fine-grained tokens** → **Generate new token**; *Repository access*:

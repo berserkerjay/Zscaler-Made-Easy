@@ -1,5 +1,7 @@
 # Accessibility conformance (Section 508 / WCAG 2.1 AA)
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 Zscaler Made Easy's web interface is built to meet the Revised Section 508
 Standards, which incorporate WCAG 2.0 Level AA, and it is tested against
 WCAG 2.1 Level AA. This page says what was tested, how, what was found and

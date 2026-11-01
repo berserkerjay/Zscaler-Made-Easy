@@ -1,5 +1,7 @@
 # SIEM query templates
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 The tools read configuration and a few observed sources. To prove what
 really happened to one user or destination, the admin runs a query in
 their own log store. These are templates: give the admin the query text;

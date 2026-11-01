@@ -1,5 +1,7 @@
 # How the assessment score is computed — and what it is not
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 One vocabulary is used everywhere the numbers appear: the dashboard tiles,
 the Summary card, the section scores, the findings list, the Word report
 and the JSON export. They are all built from the same summary

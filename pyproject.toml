@@ -1,5 +1,7 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+# setuptools 77 is the first to read an SPDX `license` expression and
+# `license-files` (PEP 639); the build installs the locked 84.x.
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,7 +12,8 @@ version = "2026.9.13"
 description = "Zscaler DLP assessment and policy-pack deployment: 300+ automated checks, guided deploy / verify / remove of policy packs, reports and continuous evaluation."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {file = "LICENSE"}
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 # The runtime dependencies. Installs pin every wheel by hash from
 # requirements.lock (install.sh, INSTALL_Zscaler_Made_Easy.bat and the
 # Dockerfile all install from that file); this list is the source it is
@@ -57,7 +60,7 @@ dlp-check-evaluate = "continuous_eval:main"
 
 [tool.setuptools]
 py-modules = [
-    "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "change_queue", "channel_scope", "compliance_mapping", "console_index", "csv_safe", "md_safe", "xlsx_writer", "xlsx_reader", "syslog_listener", "traffic_log_watch", "policy_exports", "url_tools", "config_exports", "engine_explain", "audit_timeline", "admin_ops", "ops_zcc", "ops_zdx", "ops_zpa", "workspace_notes", "ai_guard", "ops_aiguard", "pov", "bulk_test", "ops_zia_baseline", "rule_editor", "ops_rule_editor", "ops_zia_objects", "config_backup", "ops_config_restore", "ops_rule_csv", "rule_csv", "sync_jobs", "ops_fw_import", "panos_migrate", "local_plugins", "update_notify", "tui", "ops_list_fix", "ops_zia_sandbox", "ops_sanction",
+    "open_source", "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "change_queue", "channel_scope", "compliance_mapping", "console_index", "csv_safe", "md_safe", "xlsx_writer", "xlsx_reader", "syslog_listener", "traffic_log_watch", "policy_exports", "url_tools", "config_exports", "engine_explain", "audit_timeline", "admin_ops", "ops_zcc", "ops_zdx", "ops_zpa", "workspace_notes", "ai_guard", "ops_aiguard", "pov", "bulk_test", "ops_zia_baseline", "rule_editor", "ops_rule_editor", "ops_zia_objects", "config_backup", "ops_config_restore", "ops_rule_csv", "rule_csv", "sync_jobs", "ops_fw_import", "panos_migrate", "local_plugins", "update_notify", "tui", "ops_list_fix", "ops_zia_sandbox", "ops_sanction",
     "continuous_eval", "corpus_engines", "safe_files", "posture_plus", "data_flow", "ssl_coverage", "deployments", "detection_health", "discover_endpoints", "readiness", "zia_path_modules", "rule_fields", "category_lookup", "ucaas_oneclick", "zia_forwarding",
     "dlp_analysis", "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance", "insights", "device_posture", "offline_tenant", "sample_tenant",
     "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_export", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops", "path_analyzer", "tenant_auth", "tenant_fingerprint", "pac_eval", "path_whatif",

@@ -1,5 +1,7 @@
 # Plain-word glossary
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 The words the app's Simple mode explains, re-authored here so an answer can
 use the same plain words the admin sees in the app. Use them when the admin
 is new to Zscaler or asks "what does that mean?"; keep the technical word

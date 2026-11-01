@@ -6799,7 +6799,9 @@
       "version": "2026.9.13",
       "licenses": [
         {
-          "expression": "LicenseRef-Zscaler-Made-Easy-Internal"
+          "license": {
+            "id": "Apache-2.0"
+          }
         }
       ]
     },

@@ -1,5 +1,7 @@
 # Changelog
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 The app shows its build (git commit) in the guide's *Build* badge and at
 `GET /api/health`. Updates are fast-forwards of the branch the install is
 on — `main` unless it was switched from the Update app card; this file
@@ -100,6 +102,10 @@ lists what each batch of changes did, newest first.
 
 ### Category lookup takes 100 entries
 - Category lookup now checks up to 100 entries in one run (was 25), still in one paced lookup request.
+
+### Open source under the Apache License 2.0
+- **Open source under the Apache License 2.0.** The app is now open-source software: `LICENSE` is the Apache License 2.0 text and the new `NOTICE` carries the attribution that travels with every copy. Every document, the help page (About this app) and Advanced settings (App version and updates) say so, and that the app is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties, as an independent project, not an official Zscaler product. The old internal-use, not-for-redistribution terms are gone. Whether the GitHub repository is public or private is still set by its owner; the install guide's sign-in steps now say "while the repository is private".
+- `THIRD_PARTY_NOTICES.md` now says what its GPL and LGPL components mean for passing the app on: one LGPL-3.0 library the Zscaler SDK imports (in every install, the container and the standalone edition), the LGPL-2.1 part of a Windows-only package that nothing imports, and the GPL programs and LGPL C library of the container's Debian base image (separate programs beside the app, and a dynamically linked library). No dependency changed. The SBOM's root component is `Apache-2.0`, and `pyproject.toml` declares it as an SPDX licence with `LICENSE` and `NOTICE` as its licence files.
 
 ## 2026-10-31
 

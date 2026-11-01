@@ -1,5 +1,7 @@
 # Where am I?
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 **Zscaler Made Easy** (repository `berserkerjay/Zscaler-Made-Easy`). A local FastAPI app (`dlp_api_server.py`) with a browser UI (`static/`) that **assesses, explains, builds, changes, backs up and audits** a customer's Zscaler tenant: ZIA, ZPA, Client Connector, ZDX, ZIdentity, Cloud & Branch Connector, AI Guard and the smaller Zscaler products. It runs on the admin's own machine (or in its Docker container, `zscaler-made-easy`, on port 8001), single-user by default; an optional team server mode adds accounts and per-tenant access.
 
 This folder is the **agent workspace**: plain-text instructions that route an agent to exactly the context one step of work needs. You are an AI agent doing one stage of one task. Read `CONTEXT.md` next.

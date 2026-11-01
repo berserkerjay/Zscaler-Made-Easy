@@ -23,8 +23,8 @@ else in the folder. Local state that git ignores (tenant profiles with
 remembered secrets, the UI token, audit log, local_settings.env, ...) can
 then never be shipped, and a tracked file with one of those names stops the
 build (fail closed). The bundle also carries the licence texts of what it
-redistributes: LICENSE, THIRD_PARTY_NOTICES.md, third_party_licenses/ and
-the CPython licence of the interpreter it embeds.
+redistributes: LICENSE, NOTICE, THIRD_PARTY_NOTICES.md, third_party_licenses/
+and the CPython licence of the interpreter it embeds.
 
 Code signing is optional and only happens when the release workflow has the
 signing secrets (macOS: STANDALONE_CODESIGN_IDENTITY names a Developer ID
@@ -43,10 +43,15 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import textwrap
 import zipfile
 from typing import Dict, Iterable, List, Optional, Sequence
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+from open_source import NOTE_TEXT  # noqa: E402  (the repository root's one wording)
+
 NAME = "ZscalerMadeEasy"
 ENTRY = "standalone_main.py"
 BUILD_INFO_FILE = "standalone_build.json"
@@ -129,6 +134,8 @@ def python_licence() -> Optional[str]:
 README = """Zscaler Made Easy, standalone edition ({version}, {label})
 =============================================================
 
+""" + textwrap.fill(NOTE_TEXT, 76) + """
+
 Nothing to install: no Python, no virtual environment, no administrator rights.
 
 Before the first start, check the download (INSTALL.md, "Download and run"):
@@ -152,8 +159,9 @@ data folder, not here, so a new version can replace this folder:
 Proxy and corporate root certificate settings go in local_settings.env in
 that folder (KEY=VALUE lines, e.g. REQUESTS_CA_BUNDLE=/path/to/root-ca.pem).
 
-Built from commit {commit}. Licences: _internal/LICENSE, _internal/THIRD_PARTY_NOTICES.md,
-_internal/third_party_licenses/ and _internal/PYTHON_LICENSE.txt.
+Built from commit {commit}. Licences: _internal/LICENSE (Apache-2.0),
+_internal/NOTICE, _internal/THIRD_PARTY_NOTICES.md, _internal/third_party_licenses/
+and _internal/PYTHON_LICENSE.txt.
 """
 SIGNED_NOTE = "  The program is code-signed{notarized}; your system checks the signature itself.\n"
 UNSIGNED_NOTE = ("  This build is NOT code-signed. Windows SmartScreen or macOS Gatekeeper will\n"

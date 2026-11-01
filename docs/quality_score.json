@@ -15052,6 +15052,7 @@
       "Binary-Artifacts",
       "CI-Tests",
       "Dangerous-Workflow",
+      "License",
       "Pinned-Dependencies",
       "SAST",
       "SBOM",

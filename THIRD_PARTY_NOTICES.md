@@ -1,6 +1,9 @@
 # Third-party notices
 
-Zscaler Made Easy itself is under the terms in [LICENSE](LICENSE). It runs with the
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
+Zscaler Made Easy itself is under the Apache License 2.0 ([LICENSE](LICENSE), with
+its [NOTICE](NOTICE)). It runs with the
 third-party components below, each under its own licence. This file is
 generated from the SBOM ([docs/sbom.cdx.json](docs/sbom.cdx.json)) by
 `python tools/sbom_enrich.py docs/sbom.cdx.json`; see [docs/SBOM.md](docs/SBOM.md).
@@ -115,3 +118,46 @@ shown, and the Debian licence texts are in `/usr/share/common-licenses/`.
 | zlib (zlib1g) | `/usr/share/doc/zlib1g/copyright` | Zlib |
 | dash | `/usr/share/doc/dash/copyright` | BSD-3-Clause AND GPL-2.0-or-later |
 | coreutils | `/usr/share/doc/coreutils/copyright` | GPL-3.0-or-later |
+
+## What these licences mean for redistributing Zscaler Made Easy
+
+Zscaler Made Easy's own code is under the Apache License 2.0. None of it is copied
+from a GPL or LGPL work, and every third-party component is used unmodified, as
+its own package or program. The GPL and LGPL components, and how they are used:
+
+- **jwcrypto (LGPL-3.0-or-later).** The app's own code does not import it; the
+  Zscaler SDK (zscaler-sdk-python) imports it for OneAPI sign-in. So it is installed
+  on every platform: in a local install's virtual environment, in the container
+  image (the Dockerfile installs requirements.lock) and frozen into the standalone
+  (no-install) edition by PyInstaller. The LGPL lets a work that only uses the
+  library keep its own licence, so the app stays under Apache-2.0. Whoever passes
+  on a build that contains jwcrypto passes on the LGPL-3.0 and GPL-3.0 texts (the
+  LGPL-3.0 is a set of extra permissions on top of the GPL-3.0, which is the only
+  reason GPL-3.0.txt is here), says where jwcrypto's source is (its unmodified PyPI
+  release) and leaves the recipient able to use a changed jwcrypto: it is a separate
+  package folder in a local install and in the container, and the app's full source
+  and build script (tools/build_standalone.py) let anyone rebuild the standalone
+  edition with another jwcrypto.
+- **pywin32 (partly LGPL-2.1-or-later).** Windows only. The LGPL-2.1 part is its
+  adodbapi module, which nothing in the app imports; the rest of pywin32 is under
+  BSD-3-Clause, PSF-2.0, HPND and MIT. It is not in the container image (Linux). A
+  local Windows install has it, unmodified, in the virtual environment; PyInstaller
+  freezes only modules that something imports, so adodbapi is not expected in the
+  Windows standalone edition.
+- **The container image's base: dash (GPL-2.0-or-later), coreutils
+  (GPL-3.0-or-later) and glibc (LGPL-2.1-or-later).** Debian packages of the base
+  image, unmodified. dash and coreutils are separate programs beside the app in
+  the same image (an aggregate, which the GPL allows next to software under other
+  licences); the app does not link to them. CPython links to glibc dynamically,
+  which the LGPL allows. Whoever passes on the image passes on their licence texts
+  (in the image, at the paths above) and offers their source (Debian publishes it
+  for each package version). The standalone edition does not carry them.
+
+The Apache License 2.0 is compatible with the GPL-3.0 in one direction only:
+Apache-2.0 code may become part of a GPL-3.0 work (the combined work is then
+passed on under the GPL-3.0), but GPL-3.0 code may not become part of an
+Apache-2.0 work. So Zscaler Made Easy may be passed on under Apache-2.0 with the
+components above used as they are, and someone may build it into a GPL-3.0
+project; copying GPL or LGPL source code into this repository, instead of using
+those libraries and programs unmodified, would put the result under those
+licences, so it is not done. This summary is not legal advice.

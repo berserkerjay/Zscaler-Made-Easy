@@ -58,7 +58,8 @@ def test_the_install_guide_has_the_sections_a_first_timer_needs():
     assert "OneAPI" in before and "Classic ZIA API" in before
     for field in ("Vanity domain", "Client ID", "Client secret", "Admin username", "Admin password", "API key"):
         assert field.lower() in before.lower(), field
-    assert "private" in before, "the reader is told the repository is private and needs access"
+    assert "private" in before and "set by its owner" in " ".join(before.split()), \
+        "the reader is told the owner sets the visibility and that a private repository needs access"
 
 
 def test_the_install_guide_uses_the_apps_own_words():
@@ -146,7 +147,7 @@ def test_the_overview_covers_every_function_the_app_explains():
 
 def test_the_readme_and_the_getting_started_guide_agree_with_the_install_guide():
     assert "docs/OVERVIEW.md" in README and "INSTALL.md" in README and "GETTING_STARTED.md" in README
-    assert "This repository is public" not in README, "the repository is private; INSTALL.md and GETTING_STARTED.md say so"
+    assert "This repository is public" not in README, "the owner sets the visibility; README.md never claims it is public"
     assert "docs/DLP_Assessment_Step_by_Step_Guide.docx" not in README and _exists("DLP_Assessment_Step_by_Step_Guide.docx")
     assert "Add python.exe to PATH" in README and "Add Python to PATH" not in STARTED
     heads = [h for h in re.findall(r"^## (1[a-c]?)\.", STARTED, re.M)]
@@ -157,16 +158,22 @@ def test_the_readme_and_the_getting_started_guide_agree_with_the_install_guide()
 
 
 def test_no_top_level_doc_or_the_licence_claims_the_repository_is_public():
-    # The repository is private (SECURITY.md, README.md, GitHub). LICENSE once
-    # said "This repository is public", which the README-only check missed.
+    # The code is open source (Apache-2.0), but the owner sets whether the
+    # repository is public; no document may claim it is. LICENSE once said
+    # "This repository is public", which the README-only check missed.
     names = sorted(n for n in os.listdir(ROOT) if n == "LICENSE" or n.lower().endswith(".md"))
     assert "LICENSE" in names and "README.md" in names and "SECURITY.md" in names, names
     for name in names:
         text = " ".join(_read(name).split()).lower()
         for claim in ("this repository is public", "the repository is public", "being publicly readable"):
-            assert claim not in text, f"{name} says {claim!r}; the repository is private"
+            assert claim not in text, f"{name} says {claim!r}; the repository's visibility is set by its owner"
     licence = " ".join(_read("LICENSE").split())
-    assert "private" in licence and "apply unchanged" in licence, "LICENSE states the real visibility, conditionally, like README"
+    assert licence.startswith("Apache License Version 2.0, January 2004"), "LICENSE is the Apache License 2.0 text, nothing added"
+    readme = " ".join(_read("README.md").split())
+    assert "Apache License 2.0" in readme and "set by its owner" in readme, "README states the licence and who sets the visibility"
+    for name in ("INSTALL.md", "GETTING_STARTED.md", "SECURITY.md"):
+        text = " ".join(_read(name).split())
+        assert "the repository is private, so" not in text.lower(), f"{name} states the visibility as a fact, not conditionally"
 
 
 def test_the_unlock_dialog_and_the_update_help_do_not_assume_a_windows_console():

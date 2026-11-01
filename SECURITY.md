@@ -1,5 +1,7 @@
 # Security policy
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 Zscaler Made Easy runs on a consultant's laptop, holds a Zscaler API client's
 credentials for the length of an engagement, and can write to a customer
 tenant. This page says how the tool protects that, who is authorized to
@@ -452,7 +454,7 @@ to do when a control falls short.
   `local_settings.bat` or the form on a shared laptop.
 - The updater fast-forwards `main` over HTTPS and cross-checks the
   commit it pulled against GitHub's REST API (a channel separate from
-  the git pull). The repository is private, so that cross-check needs a
+  the git pull). While the repository is private, that cross-check needs a
   read-only `DLP_CHECK_GITHUB_TOKEN`; without one (or offline, or from a
   fork or mirror) it cannot run, and the update shows a "Verify against
   GitHub: skipped" warning with the reason instead of claiming it was

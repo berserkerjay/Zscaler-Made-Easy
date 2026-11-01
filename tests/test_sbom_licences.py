@@ -49,7 +49,7 @@ def test_every_sbom_component_and_the_root_carry_a_licence():
     sbom = _sbom()
     unlicensed = [f"{c['name']}=={c['version']}" for c in sbom["components"] if not _licence(c)]
     assert not unlicensed, f"SBOM components without a licence: {unlicensed}"
-    assert _licence(sbom["metadata"]["component"]) == "LicenseRef-Zscaler-Made-Easy-Internal"
+    assert _licence(sbom["metadata"]["component"]) == "Apache-2.0", "the app itself is under the Apache License 2.0"
 
 
 def test_the_weak_copyleft_components_are_labelled_as_such():
@@ -118,16 +118,28 @@ def test_third_party_notices_ship_the_copyleft_texts_and_license_points_at_them(
                         ("third_party_licenses/LGPL-2.1.txt", "GNU LESSER GENERAL PUBLIC LICENSE")):
         assert path in notices
         assert title in _read(*path.split("/"))[:400]
-    lic = _read("LICENSE")
-    assert "THIRD_PARTY_NOTICES.md" in lic and "docs/sbom.cdx.json" in lic
+    # LICENSE is the exact Apache-2.0 text, so the pointer lives in NOTICE,
+    # which Apache-2.0 section 4(d) carries with every copy.
+    notice = _read("NOTICE")
+    assert "THIRD_PARTY_NOTICES.md" in notice and "docs/sbom.cdx.json" in notice
     # requirements.lock and the Terraform lockfiles hold no licence data.
-    assert "see requirements.lock" not in lic
+    assert "see requirements.lock" not in notice
+    # The notices say what the GPL and LGPL components mean for passing the app on.
+    assert "## What these licences mean for redistributing Zscaler Made Easy" in notices
+    for name in ("jwcrypto (LGPL-3.0-or-later)", "pywin32 (partly LGPL-2.1-or-later)", "coreutils", "one direction only"):
+        assert name in notices, name
 
 
-def test_pyproject_licence_is_the_license_file_not_a_free_text_claim():
+def test_pyproject_licence_is_the_spdx_apache_expression_with_its_licence_files():
+    """SSDF PS.3.1 · CWE-1059: pyproject.toml declares the SPDX licence Apache-2.0 (PEP 639) with LICENSE and NOTICE as its licence files."""
+    import tomllib
     pyproject = _read("pyproject.toml")
-    assert re.search(r'^license\s*=\s*\{\s*file\s*=\s*"LICENSE"\s*\}', pyproject, re.M)
+    project = tomllib.loads(pyproject)["project"]
+    assert project["license"] == "Apache-2.0"
+    assert project["license-files"] == ["LICENSE", "NOTICE"]
     assert "Not for redistribution." not in pyproject.split("[project]", 1)[1].split("\n[", 1)[0]
+    # setuptools reads an SPDX `license` string only from version 77.
+    assert '"setuptools>=77"' in pyproject.split("[build-system]", 1)[1].split("\n[", 1)[0]
 
 
 def test_ci_pins_its_supply_chain_tools_and_checks_the_enriched_sbom():

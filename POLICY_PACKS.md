@@ -1,5 +1,7 @@
 # DLP Policy Packs — Authoring Guide
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 A **policy pack** is a directory of JSON files that define DLP dictionaries, engines, and policies to deploy against a ZIA tenant. Any directory placed in the project root that follows the layout below is auto-discovered and appears in the **📦 DLP Policy Packs** modal.
 
 Use `fed_policy_pack/` as the canonical reference while authoring your own.

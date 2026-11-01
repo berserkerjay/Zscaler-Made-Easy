@@ -8950,7 +8950,7 @@ def _latest_remote_commit(branch: str = "main") -> Optional[str]:
     if app_update.in_container() or not os.path.exists(os.path.join(_APP_DIR, ".git")):
         # No git checkout here (the container image, or a ZIP copy): ask
         # GitHub's REST API instead, with a read-only token when one is set
-        # (the repository is private, so without one GitHub answers 404).
+        # (while the repository is private, GitHub answers 404 without one).
         sha, err = app_update.github_branch_head(branch)
         entry["sha"], entry["error"] = sha, err
         return sha

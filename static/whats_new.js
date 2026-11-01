@@ -996,6 +996,15 @@ window.WHATS_NEW = {
       "marks": [
         {"page": "/report/fleet", "at": "#zfDisableH"}
       ]
+    },
+    {
+      "id": "open-source-note", "release": "2026-11-01", "label": "Open source",
+      "what": "The app is open source under the Apache License 2.0. The help page and Advanced settings say so, and what it is built from.",
+      "changelog": ["Open source under the Apache License 2.0"],
+      "marks": [
+        { "page": "/help", "at": "#hpAboutH" },
+        { "page": "/report/advanced", "at": "#advLicH" }
+      ]
     }
   ]
 };

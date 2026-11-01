@@ -1,5 +1,7 @@
 # The app's reference library
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 The app ships a small library of reference pages (`static/reference/`,
 opened from the app's Reference menu). They explain how Zscaler's data
 security fits together. Point the admin to the right page when a question
