@@ -87,7 +87,11 @@
     const cmsg = (t, bad) => { $('lgChangeMsg').textContent = t || ''; $('lgChangeMsg').className = 'lg-msg' + (bad ? ' bad' : ''); };
     // A password an administrator set must be replaced before anything else
     // (the server refuses every other call until then).
-    const askForNewPassword = () => { $('lgForm').hidden = true; $('lgSso').hidden = true; $('lgChange').hidden = false; $('lgCur').focus(); };
+    const askForNewPassword = () => { ['lgForm', 'lgSso', 'lgPasskey', 'lgStep2'].forEach(id => { $(id).hidden = true; }); $('lgChange').hidden = false; $('lgCur').focus(); };
+    // A passkey sign-in can also land on an account whose password an
+    // administrator set: ask the server before leaving the page.
+    const signedIn = () => fetch('/api/auth/status', { credentials: 'same-origin', cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
+      .then(s => { if (s && s.unlocked && s.password_change_required) { msg(''); askForNewPassword(); } else window.location.replace('/'); });
     fetch('/api/auth/status', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).then(s => {
       if (!s) return;
       if (!s.team) { msg('This server is not a team server, so there is no account to sign in to here. Open the app instead.', true); $('lgGo').disabled = true; return; }
@@ -138,7 +142,7 @@
             transports: cred.response.getTransports ? cred.response.getTransports() : [] } } });
         }
         let j = {}; try { j = await r.json(); } catch (err) { /* not json */ }
-        if (r.ok) { msg('Signed in.'); window.location.replace('/'); return; }
+        if (r.ok) { msg('Signed in.'); step = null; await signedIn(); return; }
         msg((typeof j.detail === 'string' ? j.detail : 'Sign-in failed.') + ' Sign in with your password again.', true);
         step = null; $('lgStep2').hidden = true; $('lgForm').hidden = false;
       } catch (err) { msg(err && err.name === 'NotAllowedError' ? 'The passkey request was cancelled or timed out. Try again.' : 'The passkey could not be used here.', true); }
@@ -156,7 +160,7 @@
         if (!cred) { msg('No passkey was chosen.', true); return; }
         r = await post('/api/auth/team/passkey/login', { ceremony: j.ceremony, credential: assertion(cred) });
         j = {}; try { j = await r.json(); } catch (err) { /* not json */ }
-        if (r.ok) { msg('Signed in.'); window.location.replace('/'); return; }
+        if (r.ok) { msg('Signed in.'); step = null; await signedIn(); return; }
         msg(typeof j.detail === 'string' ? j.detail : 'Sign-in failed.', true);
       } catch (err) { msg(err && err.name === 'NotAllowedError' ? 'The passkey request was cancelled or timed out.' : 'The passkey could not be used here.', true); }
       finally { $('lgPasskeyBtn').disabled = false; }

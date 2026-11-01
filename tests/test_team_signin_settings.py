@@ -613,3 +613,32 @@ def test_identity_provider_strings_reach_the_page_as_text_only():
     for ids in NEW_CONTROLS.values():
         for sel in ids:
             assert re.search(rf'id="{sel[1:]}"', page + (ROOT / "static" / "login.html").read_text(encoding="utf-8")), sel
+
+
+# ── 6. passkeys and a password an administrator set (integration) ──────
+
+def test_a_passkey_sign_in_after_an_administrator_reset_still_has_to_choose_a_new_password(team_on):
+    """ASVS V2.1.10 · V2.8.1 · CWE-620 · WSTG-ATHN-09: an account with a passkey whose password an administrator reset gets its passkey step, then a session that opens only the password change, until it chooses its own."""
+    auth = _with_passkey()
+    reset = "temporary horse battery staple"
+    team.set_password(team.find_user("alice")["id"], reset, by="root", must_change=True)
+    c = _client()
+    j = c.post("/api/auth/team/login", json={"username": "alice", "password": reset}, headers=H).json()
+    assert j["ok"] is False and j["next"] == "passkey"
+    r = c.post("/api/auth/team/passkey/login", json={"ceremony": j["ceremony"], "credential": auth.get(j["options"])}, headers=H)
+    assert r.status_code == 200
+    assert c.get("/api/auth/status").json()["password_change_required"] is True
+    blocked = c.get("/api/team/overview")
+    assert blocked.status_code == 403 and blocked.json().get("password_change_required") is True
+    assert c.post("/api/team/me/password", json={"current": reset, "new": PW + " again"}, headers=H).status_code == 200
+    assert team.must_change_password(team.find_user("alice")) is False
+
+
+def test_the_sign_in_page_checks_for_a_password_change_after_a_passkey_sign_in():
+    """WCAG 2.2 SC 3.3.2 · CWE-620 · WSTG-ATHN-09: both passkey sign-ins on the Sign in page ask the server before leaving, and show the password change when it is required."""
+    src = (ROOT / "static" / "login.html").read_text(encoding="utf-8")
+    passkey_paths = re.findall(r"r = await post\('/api/auth/team/passkey/login'.*?if \(r\.ok\) \{([^}]*)\}", src, re.S)
+    assert len(passkey_paths) == 2
+    assert all("signedIn()" in ok and "location.replace" not in ok for ok in passkey_paths)
+    helper = re.search(r"const signedIn = .*?;\n", src, re.S).group(0)
+    assert "/api/auth/status" in helper and "password_change_required" in helper and "askForNewPassword()" in helper
