@@ -41,6 +41,7 @@ TOOLBAR = {
     "openReferenceTab('data-security-architect')": "dsarchitect",
     "openPostureTab()": "posture",
     "openFindAnything()": "find", "openTodoTab()": "todo", "openPovTab()": "pov",
+    "openOtherProductsTab()": "otherproducts",
 }
 
 
