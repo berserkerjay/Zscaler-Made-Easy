@@ -335,3 +335,62 @@ def test_the_sample_tenant_reads_into_a_backup_offline(monkeypatch):
     doc = cb.from_offline(ot.sample_store())
     assert doc["meta"]["kind"] == "sample" and len(doc["types"]["zia.url_filtering_rules"]) >= 1
     assert len(doc["types"]["zpa.application_segments"]) >= 1 and doc["types"]["zcc.trusted_networks"]
+
+
+# ── restore breadth (#3): the new read types in the sample tenant and a snapshot ──
+
+NEW_READ_TYPES = ("zia.nat_control_rules", "zia.traffic_capture_rules", "zia.workload_groups", "zpa.user_portals", "zpa.pra_credentials",
+                  "zpa.scim_attributes", "zpa.scim_groups", "zpa.service_edges", "zpa.enrollment_certificates", "zcc.admin_users",
+                  "zcc.predefined_ip_apps", "zcc.custom_ip_apps", "zcc.process_apps")
+
+
+def test_every_new_type_is_in_a_backup_of_the_sample_tenant_without_secrets_or_people():
+    """ASVS V8.3.4 · CWE-359 · WSTG-CONF-11: the sample tenant's backup holds every new type, with no PEM block, credential secret or administrator e-mail address."""
+    import offline_tenant as ot
+    doc = cb.from_offline(ot.sample_store())
+    missing = [k for k in NEW_READ_TYPES if not doc["types"].get(k)]
+    assert not missing, (missing, {k: doc["meta"]["unread"].get(k) for k in missing})
+    raw = json.dumps(doc)
+    assert "BEGIN CERTIFICATE" not in raw and "PRIVATE KEY" not in raw
+    assert "@larkspur-freight.example" not in json.dumps(doc["types"]["zcc.admin_users"])
+    assert all("user_name" not in r for r in doc["types"]["zcc.admin_users"])
+    assert all(set(r) <= {"id", "name", "credential_type", "user_domain", "description", "last_credential_reset_time", "creation_time",
+                          "modified_time", "modified_by", "microtenant_id", "microtenant_name", "passphrase", "password", "private_key",
+                          "user_name"} and r.get("password") in (None, "(set)") for r in doc["types"]["zpa.pra_credentials"])
+    groups = doc["types"]["zpa.scim_groups"]
+    assert groups and all(str(g.get("idp_id")) for g in groups)
+
+
+def test_client_connector_admin_users_are_counted_not_named():
+    """ASVS V8.3.4 · CWE-359 · WSTG-CONF-11: a backup keeps each Client Connector admin's role and state by id, never the user name (an e-mail address)."""
+    c = Client(Tenant({"zcc.admin_users": [{"id": 7, "user_name": "alice@corp.example", "company_role": {"id": 1, "role_name": "Super Admin"},
+                                            "account_enabled": True, "is_default_admin": False}]}))
+    got = cb.capture(c, ["zcc"], ALL)
+    rows = got["types"]["zcc.admin_users"]
+    assert rows == [{"id": 7, "company_role": {"id": 1, "role_name": "Super Admin"}, "account_enabled": True, "is_default_admin": False}]
+    assert cb.name_of(cb.BY_KEY["zcc.admin_users"], rows[0]) == "7"
+
+
+def test_entitlements_are_restored_through_the_bulk_changes_put():
+    """ASVS V1.14.1 · CWE-1059: the backup restore PUTs a Client Connector entitlement to the same path Bulk changes → ZPA and ZDX entitlements uses."""
+    import ops_zcc_admin as oza
+    assert cb.BY_KEY["zcc.zpa_entitlements"]["raw_zcc"] == "/" + oza.SERVICES["zpa"][4]
+    assert cb.BY_KEY["zcc.zdx_entitlements"]["raw_zcc"] == "/" + oza.SERVICES["zdx"][4]
+
+
+def test_a_snapshot_reads_the_new_types_and_scim_per_identity_provider():
+    """ASVS V4.1.3 · CWE-285 · WSTG-ATHZ-02: a snapshot with ZPA, ZIA platform and Client Connector ticked reads the new lists, SCIM groups and attributes once per identity provider, and a snapshot backup holds them."""
+    import offline_tenant as ot
+    plan = ot.capture_plan(["zia_extras", "zpa", "zcc"])
+    for ep in ("/zia/trafficCaptureRules", "/zia/workloadGroups", "/zia/dnatRules", "/zpa/userPortal", "/zpa/serviceEdge", "/zpa/credential",
+               "/zpa/enrollmentCert", "/zcc/adminUsers", "/zcc/predefinedIpBasedApps", ot.PER_OBJECT_SCIM):
+        assert ep in plan, ep
+    assert ot.PER_OBJECT_SCIM not in ot.capture_plan(["zia_extras", "zcc"])
+    src = ot.OfflineRawClient(ot.sample_store(), {})
+    got = ot.capture(src, ["zia_extras", "zpa", "zcc", "rbac"], {}, lambda m: None)
+    keys = set(got["responses"])
+    assert any(k.endswith("/idp/2601/scimattribute") for k in keys) and any(k.endswith("/scimgroup/idpId/2601") for k in keys)
+    assert "/zpa/userconfig/v1/customers/{customerId}/scimgroup/idpId/2601" in keys
+    doc = cb.from_offline(ot.open_document(json.dumps({"format": ot.FORMAT, "version": ot.VERSION, "meta": {"tenant_label": "snap"},
+                                                       "responses": got["responses"]}), "snap-0011223344556677"), ["zpa"])
+    assert doc["types"]["zpa.scim_groups"] and doc["types"]["zpa.scim_attributes"] and doc["types"]["zpa.user_portals"]

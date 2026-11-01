@@ -81,6 +81,7 @@ ZCC = "/zcc/papi/public/v1"
 ZPA1 = "/zpa/mgmtconfig/v1/admin/customers/{customerId}"
 ZPA2 = "/zpa/mgmtconfig/v2/admin/customers/{customerId}"
 ZPA_PRA = "/zpa/waap-pra-config/v1/admin/customers/{customerId}"
+ZPA_USERCONFIG = "/zpa/userconfig/v1/customers/{customerId}"   # SCIM groups (zpa/scim_groups.py): no /admin segment
 ZDX = "/zdx/v1"
 ZID = "/ziam/admin/api/v1"
 ZTW = "/ztw/api/v1"
@@ -1136,6 +1137,26 @@ ZCC_PROCESS_APPS = {"appIdentities": [
     {"id": 6001, "appName": "Depot scanner agent", "fileNames": ["scanagent.exe"], "filePaths": ["C:\\Program Files\\Depot Scan\\"],
      "matchingCriteria": 1},
     {"id": 6002, "appName": "Contractor tools", "fileNames": ["powershell.exe", "python.exe", "*.exe"], "filePaths": [], "matchingCriteria": 1}]}
+# Configuration backups (2026-11-01): the remaining read-only types the backup catalogue reads.
+TRAFFIC_CAPTURE_RULES = [{"id": 1691, "name": "Capture depot scanner traffic", "order": 1, "rank": 7, "state": "DISABLED", "action": "CAPTURE",
+                          "description": "Packet capture for the handheld sync issue (turned on while troubleshooting)."}]
+ZIA_WORKLOAD_GROUPS = [{"id": 1701, "name": "Billing VMs", "description": "Freight billing workloads in the cloud",
+                        "expression": "tag:app=billing"}]
+ZPA_USER_PORTALS = [{"id": "2991", "name": "Larkspur apps", "enabled": True, "domain": "apps.larkspur-freight.example",
+                     "description": "Browser Access portal for depot staff", "userNotificationEnabled": False}]
+ZPA_SERVICE_EDGE_GROUPS = [{"id": "2995", "name": "Portland edge", "enabled": True, "location": "Portland, OR"}]
+ZPA_SERVICE_EDGES = [{"id": "2996", "name": "pse-pdx-01", "enabled": True, "serviceEdgeGroupId": "2995", "serviceEdgeGroupName": "Portland edge",
+                      "controlChannelStatus": "ZPN_STATUS_AUTHENTICATED", "currentVersion": "24.212.1"}]
+ZPA_SCIM_ATTRIBUTES = [{"id": "2611", "name": "department", "idpId": "2601", "dataType": "String", "multivalued": False,
+                        "schemaURI": "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"},
+                       {"id": "2612", "name": "costCenter", "idpId": "2601", "dataType": "String", "multivalued": False,
+                        "schemaURI": "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"}]
+ZPA_SCIM_GROUPS = [{"id": 2621, "name": "Finance", "idpId": 2601, "idpGroupId": "00g1finance"},
+                   {"id": 2622, "name": "Depot operations", "idpId": 2601, "idpGroupId": "00g2depot"}]
+ZCC_ADMIN_USERS = [{"id": 41, "userName": "it.admin@larkspur-freight.example", "companyRole": {"id": 1, "roleName": "Super Admin"},
+                    "accountEnabled": True, "editEnabled": True, "isDefaultAdmin": False, "serviceType": "ZIA"}]
+ZCC_PREDEFINED_IP_APPS = [{"id": 7001, "appName": "Microsoft Teams calls", "active": True, "uid": "p-7001",
+                           "appDataBlob": [{"proto": "UDP", "port": "3478-3481", "ipaddr": "52.112.0.0/14", "fqdn": ""}]}]
 ZCC_CUSTOM_IP_APPS = {"customAppContracts": [
     # One list with the contractors' bypassed app above (feat/zcc-plus keeps id 5001 for it).
     dict(CUSTOM_IP_APPS[0], uid="c-5001"),
@@ -1262,8 +1283,8 @@ def responses() -> Dict[str, Any]:
         f"{ZCC}/getAdminUsersSyncInfo": {"id": 1, "ziaInitialSyncDone": 1, "ziaLastSyncTime": "2026-10-28 02:00:00", "ziaSyncErrorCode": 0, "ziaSyncStatus": 1,
                                              "zpaInitialSyncDone": 1, "zpaLastSyncTime": "2026-10-28 02:00:00", "zpaSyncErrorCode": 0, "zpaSyncStatus": 1},
         f"{ZCC}/getPacFiles": [], f"{ZCC}/webAppService/listByCompany": [], f"{ZCC}/webBypassAppConfig/listByCompany": [],
-        f"{ZCC}/custom-ip-based-apps": ZCC_CUSTOM_IP_APPS, f"{ZCC}/predefined-ip-based-apps": {"appServiceContracts": []},
-        f"{ZCC}/getAdminUsers": [], f"{ZCC}/getAdminRoles": [], f"{ZCC}/webDeviceGroups/listByCompany": [],
+        f"{ZCC}/custom-ip-based-apps": ZCC_CUSTOM_IP_APPS, f"{ZCC}/predefined-ip-based-apps": {"appServiceContracts": ZCC_PREDEFINED_IP_APPS},
+        f"{ZCC}/getAdminUsers": ZCC_ADMIN_USERS, f"{ZCC}/getAdminRoles": [], f"{ZCC}/webDeviceGroups/listByCompany": [],
         f"{ZCC}/getZpaGroupEntitlements": {"zpaEnableForAll": True}, f"{ZCC}/getZdxGroupEntitlements": {"zdxEnableForAll": True},
         # ZPA
         f"{ZPA1}/application": _zpa(SEGMENTS),
@@ -1271,7 +1292,7 @@ def responses() -> Dict[str, Any]:
         f"{ZPA1}/serverGroup": _zpa(SERVER_GROUPS),
         f"{ZPA1}/appConnectorGroup": _zpa(CONNECTOR_GROUPS),
         f"{ZPA1}/connector": _zpa(CONNECTORS),
-        f"{ZPA1}/serviceEdgeGroup": _zpa([]), f"{ZPA1}/serviceEdge": _zpa([]),
+        f"{ZPA1}/serviceEdgeGroup": _zpa(ZPA_SERVICE_EDGE_GROUPS), f"{ZPA1}/serviceEdge": _zpa(ZPA_SERVICE_EDGES),
         f"{ZPA2}/idp": _zpa(IDPS),
         f"{ZPA2}/samlAttribute": _zpa(SAML_ATTRIBUTES),
         f"{ZPA2}/posture": _zpa(POSTURE_PROFILES),
@@ -1284,7 +1305,7 @@ def responses() -> Dict[str, Any]:
         f"{ZPA1}/privateCloud": _zpa([]), f"{ZPA1}/privateCloudControllerGroup": _zpa([]), f"{ZPA1}/privateCloudController": _zpa([]),
         f"{ZPA1}/branchConnectorGroup": _zpa(BRANCH_CONNECTOR_GROUPS), f"{ZPA1}/branchConnector": _zpa(BRANCH_CONNECTORS),
         f"{ZPA1}/cloudConnectorGroup": _zpa(CLOUD_CONNECTOR_GROUPS), f"{ZPA1}/cloudConnector": _zpa(CLOUD_CONNECTORS),
-        f"{ZPA1}/praConsole": _zpa(PRA_CONSOLES), f"{ZPA1}/praPortal": _zpa(PRA_PORTALS), f"{ZPA1}/userPortal": _zpa([]),
+        f"{ZPA1}/praConsole": _zpa(PRA_CONSOLES), f"{ZPA1}/praPortal": _zpa(PRA_PORTALS), f"{ZPA1}/userPortal": _zpa(ZPA_USER_PORTALS),
         f"{ZPA1}/associationType/CONNECTOR_GRP/provisioningKey": _zpa(ZPA_PROVISIONING_KEYS),
         f"{ZPA1}/associationType/SERVICE_EDGE_GRP/provisioningKey": _zpa([]),
         f"{ZPA1}/roles": _zpa(ZPA_ROLES),
@@ -1342,6 +1363,11 @@ def responses() -> Dict[str, Any]:
         f"{ZDX}/analysis": [],
         # Client Connector bypass apps
         f"{ZCC}/process-based-apps": ZCC_PROCESS_APPS,
+        # Configuration backups (config_backup.TYPES, 2026-11-01): the remaining read-only types (user portals,
+        # service edges, Client Connector admin users and predefined IP-based apps are answered above)
+        f"{ZIA}/trafficCaptureRules": TRAFFIC_CAPTURE_RULES, f"{ZIA}/workloadGroups": ZIA_WORKLOAD_GROUPS,
+        f"{ZPA1}/idp/2601/scimattribute": _zpa(ZPA_SCIM_ATTRIBUTES),
+        f"{ZPA_USERCONFIG}/scimgroup/idpId/2601": _zpa(ZPA_SCIM_GROUPS),
     }
     r[f"{ZIA}/cloudApplications/lite"] = CLOUD_APPS
     r[f"{ZIA}/subscriptions"] = SUBSCRIPTIONS

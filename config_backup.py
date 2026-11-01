@@ -311,6 +311,12 @@ def _device_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return {k: row[k] for k in DEVICE_FIELDS if k in row}
 
 
+def _admin_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """A Client Connector admin without the person: the user name is an
+    e-mail address, so the backup counts admins (by id, role and state)."""
+    return {k: v for k, v in row.items() if k not in ("user_name", "email", "login_name", "name")}
+
+
 def _metadata_row(row: Dict[str, Any]) -> Dict[str, Any]:
     """A certificate or credential as metadata: no PEM blocks or requests."""
     return {k: v for k, v in row.items() if k not in ("certificate", "csr", "public_key", "private_key", "certificate_chain")}
@@ -598,8 +604,8 @@ TYPES: List[Dict[str, Any]] = [
        scopes=("zcc",), why="predefined by Zscaler"),
     _t("zcc.process_apps", "Process-based apps", "process_based_apps", "get_process_based_apps", level="read", scopes=("zcc",),
        why="the SDK can only read them"),
-    _t("zcc.admin_users", "Client Connector admin users", "admin_user", "list_admin_users", level="read", scopes=("zcc",), name="user_name",
-       why=_ADMIN),
+    _t("zcc.admin_users", "Client Connector admin users (no user names)", "admin_user", "list_admin_users", level="read", scopes=("zcc",),
+       name="id", project=_admin_row, why=_ADMIN + "; kept by id with role and state, without the user name (an e-mail address)"),
     _t("zcc.devices", "Enrolled devices (no personal data)", "devices", "list_devices", level="read", scopes=("zcc",),
        q={"page_size": "5000"}, project=_device_row,
        why="an inventory, kept without user names, host names, addresses or hardware ids; never written"),

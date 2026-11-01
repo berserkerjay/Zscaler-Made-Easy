@@ -148,6 +148,51 @@ def test_a_clone_creates_dependencies_first_and_remaps_every_id_by_name():
     assert t.activations == 1 and r["verification"]["mismatched"] == []
 
 
+# Each newly writable ZIA type (restore breadth #11) with an object of another type it refers to: the referenced
+# object exists in the target under another id, so a reference copied as it was would point at the wrong object.
+BREADTH_REMAP = [
+    ("zia.forwarding_rules", {"id": 131, "name": "Direct to SaaS", "order": 1, "state": "ENABLED", "forward_method": "DIRECT",
+                              "src_ip_groups": [{"id": 301, "name": "Branch nets"}]},
+     "zia.ip_source_groups", {"id": 301, "name": "Branch nets", "ip_addresses": ["10.9.0.0/16"]}, "src_ip_groups"),
+    ("zia.bandwidth_control_rules", {"id": 91, "name": "Cap video", "order": 1, "state": "ENABLED", "max_bandwidth": 20,
+                                     "bandwidth_classes": [{"id": 81, "name": "Video"}]},
+     "zia.bandwidth_classes", {"id": 81, "name": "Video", "type": "BANDWIDTH_CAT_CUSTOM", "web_applications": ["YOUTUBE"]}, "bandwidth_classes"),
+    ("zia.firewall_rules", {"id": 161, "name": "Allow prod", "order": 1, "state": "ENABLED", "action": "ALLOW",
+                            "workload_groups": [{"id": 101, "name": "Prod VMs"}]},
+     "zia.workload_groups", {"id": 101, "name": "Prod VMs", "expression": "tag:env=prod"}, "workload_groups"),
+    ("zia.cloud_app_control_rules", {"id": 205, "name": "Corp Box only", "order": 1, "state": "ENABLED", "type": "FILE_SHARE",
+                                     "actions": ["ALLOW_FILE_SHARE_VIEW"], "cloud_app_instances": [{"id": 111, "name": "Corp Box"}]},
+     "zia.cloud_app_instances", {"id": 111, "name": "Corp Box", "instance_type": "BOX",
+                                 "instance_identifiers": [{"instance_identifier": "corp.box.com"}]}, "cloud_app_instances"),
+    ("zia.cloud_app_control_rules", {"id": 206, "name": "Corp M365 only", "order": 1, "state": "ENABLED", "type": "ENTERPRISE_COLLABORATION",
+                                     "actions": ["ALLOW_ENTERPRISE_COLLABORATION_VIEW"],
+                                     "tenancy_restriction_profile": {"id": 121, "name": "Only corp M365"}},
+     "zia.tenancy_restriction_profiles", {"id": 121, "name": "Only corp M365", "app_type": "MSLOGINSERVICES", "item_value": ["corp.example"]},
+     "tenancy_restriction_profile"),
+    ("zia.nat_control_rules", {"id": 141, "name": "DNAT web", "order": 1, "state": "ENABLED", "redirect_ip": "10.0.0.5",
+                               "dest_ip_groups": [{"id": 302, "name": "Web servers"}]},
+     "zia.ip_destination_groups", {"id": 302, "name": "Web servers", "type": "DSTN_IP", "addresses": ["10.0.0.5"]}, "dest_ip_groups"),
+    ("zia.traffic_capture_rules", {"id": 151, "name": "Capture DNS", "order": 1, "state": "ENABLED", "action": "CAPTURE",
+                                   "nw_services": [{"id": 303, "name": "DNS 5353"}]},
+     "zia.network_services", {"id": 303, "name": "DNS 5353", "type": "CUSTOM", "dest_udp_ports": [{"start": 5353}]}, "nw_services"),
+]
+
+
+@pytest.mark.parametrize("key, row, ref_key, ref_row, field", BREADTH_REMAP, ids=[f"{r[0]}-{r[4]}" for r in BREADTH_REMAP])
+def test_a_clone_remaps_the_references_of_every_newly_writable_type(key, row, ref_key, ref_row, field):
+    """ASVS V1.14.6 · CWE-1023 · WSTG-BUSL-06: forwarding, bandwidth, NAT, traffic capture and Cloud App Control rules cloned to another tenant name the target's own bandwidth classes, workload groups, app instances, tenancy profiles and network objects, never the source's ids."""
+    bid = backup_of({key: [row], ref_key: [ref_row]})
+    target_id = 9900 + (ref_row["id"] % 100)
+    t = Tenant({key: [], ref_key: [dict(ref_row, id=target_id)]})
+    p, r = apply(Client(t), spec(bid=bid, types=[key, ref_key]))
+    assert p["status"] == "ready" and r["status"] == "applied", (p["blockers"], [(u["object"]["name"], u.get("reason"), u.get("error"))
+                                                                               for u in p["items"] + r["items"] if u["status"] != "change"])
+    got = t.by_name(key, row["name"])
+    ids = [x["id"] for x in got[field]] if isinstance(got[field], list) else [got[field]["id"]]
+    assert ids == [target_id] and got["state"] == "DISABLED"
+    assert [k for op, k, _n in t.writes if op == "create"] == [key]   # the referenced object was matched by name, not copied
+
+
 def test_zpa_and_client_connector_follow_their_dependency_order():
     """ASVS V1.14.6 · CWE-1023: connector groups, segment and server groups come before segments; trusted networks before forwarding profiles."""
     bid = backup_of(source_data())
