@@ -1,7 +1,7 @@
 /* One ZIdentity user on Bulk changes (/report/operations, "Day-to-day admin"),
-   on the shared engine (ops_zid_user.py): edit the user's names, department
-   and groups (zid_user_edit), or reset its password or let it skip MFA
-   (zid_user_reset: raw calls to ZIdentity's published API, typed
+   on the shared engine (ops_zid_user.py): edit the user's names, email,
+   department and groups (zid_user_edit), or reset its password or let it skip MFA
+   (zid_user_reset: a raw call to ZIdentity's public API, typed
    "RESET <login>"). The page does the rest: Read from the tenant, Preview,
    the four gates, Apply, Undo. A temporary password ZIdentity answers is
    fetched once after the apply (POST /api/operations/zidentity/secret),
@@ -13,7 +13,7 @@
   let E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   function st(S) {
-    if (!S.zuser) S.zuser = { pick: '', display: null, first: null, last: null, dept: null, add: new Set(), remove: new Set(), act: 'reset_password' };
+    if (!S.zuser) S.zuser = { pick: '', display: null, first: null, last: null, email: null, dept: null, add: new Set(), remove: new Set(), act: 'reset_password' };
     return S.zuser;
   }
   function errs(res) {
@@ -34,7 +34,7 @@
   function wirePicker(res, where, S, H, name, again) {
     const z = st(S);
     where.querySelectorAll(`input[name="${name}"]`).forEach(r => r.addEventListener('change', () => {
-      z.pick = r.value; z.display = z.first = z.last = z.dept = null; z.add.clear(); z.remove.clear(); again(name);
+      z.pick = r.value; z.display = z.first = z.last = z.email = z.dept = null; z.add.clear(); z.remove.clear(); again(name);
     }));
     const go = document.getElementById('zuuSearchGo');
     if (go) {
@@ -51,7 +51,8 @@
     const form = u ? `
       <div class="op-row"><label class="df-ctl"><span class="lbl">Display name</span><input id="zuuDisplay" value="${E(val('display', 'display_name'))}" maxlength="255" aria-label="Display name"></label>
         <label class="df-ctl"><span class="lbl">First name</span><input id="zuuFirst" value="${E(val('first', 'first_name'))}" maxlength="255" aria-label="First name"></label>
-        <label class="df-ctl"><span class="lbl">Last name</span><input id="zuuLast" value="${E(val('last', 'last_name'))}" maxlength="255" aria-label="Last name"></label></div>
+        <label class="df-ctl"><span class="lbl">Last name</span><input id="zuuLast" value="${E(val('last', 'last_name'))}" maxlength="255" aria-label="Last name"></label>
+        <label class="df-ctl"><span class="lbl">Email</span><input id="zuuEmail" type="email" value="${E(val('email', 'primary_email'))}" maxlength="255" autocomplete="off" aria-label="Email"></label></div>
       <div class="op-row"><label class="df-ctl"><span class="lbl">Department</span><select id="zuuDept" aria-label="Department">
         <option value="">(none)</option>${(res.departments || []).map(d => `<option value="${E(d.id)}"${(z.dept == null ? u.department_id : z.dept) === d.id ? ' selected' : ''}>${E(d.name)}</option>`).join('')}
       </select></label><span class="df-hint">The departments the directory's users already have.</span></div>
@@ -62,7 +63,7 @@
     where.innerHTML = `${errs(res)}${picker(res, z, 'zuuPick')}${form}`;
     const again = id => { renderEdit(res, where, S, H); const el = document.getElementById(id) || where.querySelector(`input[name="${id}"]:checked`); if (el) el.focus(); };
     wirePicker(res, where, S, H, 'zuuPick', again);
-    [['zuuDisplay', 'display'], ['zuuFirst', 'first'], ['zuuLast', 'last']].forEach(([id, k]) => { const el = document.getElementById(id); if (el) el.addEventListener('input', () => { z[k] = el.value; }); });
+    [['zuuDisplay', 'display'], ['zuuFirst', 'first'], ['zuuLast', 'last'], ['zuuEmail', 'email']].forEach(([id, k]) => { const el = document.getElementById(id); if (el) el.addEventListener('input', () => { z[k] = el.value; }); });
     const d = document.getElementById('zuuDept'); if (d) d.addEventListener('change', () => { z.dept = d.value; });
     where.querySelectorAll('input[data-zuu-add]').forEach(cb => cb.addEventListener('change', () => { cb.checked ? z.add.add(cb.dataset.zuuAdd) : z.add.delete(cb.dataset.zuuAdd); }));
     where.querySelectorAll('input[data-zuu-rem]').forEach(cb => cb.addEventListener('change', () => { cb.checked ? z.remove.add(cb.dataset.zuuRem) : z.remove.delete(cb.dataset.zuuRem); }));
@@ -72,7 +73,7 @@
     const z = st(S), res = S.zuserRes || {}, u = (res.users || []).find(x => x.id === z.pick);
     if (!u) throw new Error('Pick the user.');
     const set = {};
-    [['display', 'display_name'], ['first', 'first_name'], ['last', 'last_name']].forEach(([k, f]) => { if (z[k] != null && z[k].trim() !== (u[f] || '')) set[f] = z[k].trim(); });
+    [['display', 'display_name'], ['first', 'first_name'], ['last', 'last_name'], ['email', 'primary_email']].forEach(([k, f]) => { if (z[k] != null && z[k].trim() !== (u[f] || '')) set[f] = z[k].trim(); });
     if (z.dept != null && z.dept !== (u.department_id || '')) {
       const dd = (res.departments || []).find(x => x.id === z.dept);
       set.department = dd ? { id: dd.id, name: dd.name } : null;

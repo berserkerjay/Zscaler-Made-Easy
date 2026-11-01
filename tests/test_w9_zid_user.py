@@ -87,7 +87,7 @@ def test_the_picker_lists_users_departments_and_groups_and_names_the_raw_calls()
     assert {d["name"] for d in out["departments"]} == {"Finance", "Engineering"}
     assert {g["name"]: g["dynamic"] for g in out["groups"]}["Everyone (dynamic)"] is True
     assert next(u for u in out["users"] if u["id"] == "u-1")["department"] == "Finance"
-    assert all("raw request" in n.lower() and "assumed" in n for n in out["raw_calls"])
+    assert all("raw call to zidentity's public api" in n.lower() and "assumed" in n for n in out["raw_calls"])
 
 
 # ── zid_user_edit ──────────────────────────────────────────────────────
@@ -111,6 +111,27 @@ def test_edit_sends_the_user_as_read_with_only_the_changed_fields_and_undo_puts_
     assert row["displayName"] == "Avery Quinn" and row["department"] == {"id": "d-1", "name": "Finance"}
     audit = [json.loads(x) for x in (isolated / "audit.log").read_text(encoding="utf-8").splitlines() if x.strip()]
     assert any(e.get("event") == "admin_operation" and e.get("actor") == "alice" for e in audit)
+
+
+def test_the_email_is_edited_as_primary_email_and_undo_puts_it_back():
+    """ASVS V1.4.1 · CWE-841: payload oracle: the PUT carries primaryEmail changed and every other field as read; read back; Undo restores the email."""
+    c = client()
+    p, r = apply(c, {"type": ou.T_EDIT, "id": "u-1", "set": {"primary_email": "avery.quinn@acme.example"}})
+    assert r["status"] == "applied" and r["verification"]["confirmed"] == 1
+    put = [s for s in c.tenant.sent if s[0] == "PUT"][0][2]
+    assert put["primaryEmail"] == "avery.quinn@acme.example" and put["loginName"] == "avery@acme.example" and put["displayName"] == "Avery Quinn"
+    assert r["inverse"]["set"] == {"primary_email": "avery@acme.example"}
+    _p2, r2 = apply(c, r["inverse"])
+    assert r2["status"] == "applied" and c.tenant.zid_users["u-1"]["primaryEmail"] == "avery@acme.example"
+
+
+@pytest.mark.parametrize("email", ["", "not-an-address", "a b@acme.example", "<x>@acme.example", "x@acme", "x@@acme.example", "x" * 250 + "@acme.example"])
+def test_a_bad_email_is_refused_before_anything_is_read(email):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: an empty, malformed or oversized email is refused before any read or write."""
+    c = client()
+    with pytest.raises(ao.OperationError, match="one address like"):
+        ao.plan(c, {"type": ou.T_EDIT, "id": "u-1", "set": {"primary_email": email}}, scope=ZID)
+    assert c.tenant.sent == []
 
 
 def test_clearing_the_department_drops_it_from_the_put():
@@ -192,7 +213,7 @@ def test_reset_needs_reset_login_typed_and_the_named_assessor():
     spec = {"type": ou.T_RESET, "id": "u-1", "action": "reset_password"}
     p = ao.plan(c, spec, scope=ZID)
     assert p["confirm_phrase"] == "RESET AVERY@ACME.EXAMPLE" and p["status"] == "ready"
-    assert any("Cannot be undone" in w for w in p["warnings"]) and any("raw request" in n for n in p["notes"])
+    assert any("Cannot be undone" in w for w in p["warnings"]) and any("raw call to ZIdentity's public API" in n for n in p["notes"])
     with pytest.raises(ao.OperationError, match="assessor"):
         ao.execute(c, spec, plan_hash=p["plan_hash"], scope=ZID, writes_enabled=True, assessor="  ", confirm_text=p["confirm_phrase"])
     with pytest.raises(PermissionError):

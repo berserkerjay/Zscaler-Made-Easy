@@ -9,8 +9,8 @@ typed confirmation, a re-read right before each write, the read-back where
 ZIdentity lets one be made, the record, the audit log with the actor, and
 Undo where one exists. ZIdentity saves each change at once (no activation).
 
-  zid_user_edit   one user: display name, first and last name and
-                  department (picked from the departments the directory's
+  zid_user_edit   one user: display name, first and last name, email
+                  (primary_email) and department (picked from the departments the directory's
                   users already carry, or cleared), and the ZIdentity groups
                   it is in (add or remove; dynamic groups are refused: their
                   rule decides). The user is sent back as read with only
@@ -40,7 +40,7 @@ display_name}, idp, custom_attrs_info), list_user_group_details (GET
 /users/{id}/groups); groups.list_groups, get_group, add_user_to_group (POST
 /groups/{id}/users/{userId}), remove_user_from_group (DELETE the same path).
 
-RAW CALLS (not in the SDK: zscaler-sdk-python 1.11.3 zid/users.py has no
+RAW CALLS to ZIdentity's public API (not in the SDK: zscaler-sdk-python 1.11.3 zid/users.py has no
 password or MFA method; a test checks that on the installed SDK). Sent
 through the SDK's own request executor for the ZIdentity service (the same
 sign-in, base URL and retries policy the SDK uses), by zid_user_action()
@@ -91,15 +91,18 @@ ACTION_WORDS = {"reset_password": "Reset the password", "skip_mfa": "Skip MFA"}
 # A user id that goes into a raw path: letters, digits, _ and - only (no '.', ':' or '/').
 _PATH_ID = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 _ID = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
-ATTRS = ("display_name", "first_name", "last_name", "department")
-ATTR_WORDS = {"display_name": "Display name", "first_name": "First name", "last_name": "Last name", "department": "Department"}
+ATTRS = ("display_name", "first_name", "last_name", "primary_email", "department")
+ATTR_WORDS = {"display_name": "Display name", "first_name": "First name", "last_name": "Last name", "primary_email": "Email",
+              "department": "Department"}
+# An email address as ZIdentity's primary_email (the SDK model's field): one @, no spaces, quotes or angle brackets.
+_EMAIL = re.compile(r"^[^@\s<>\"'`]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?\.[A-Za-z]{2,63}$")
 NOT_IN_SCOPE = oz.NOT_IN_SCOPE
 NO_UNDO_RESET = ("Cannot be undone: ZIdentity starts the password reset at once; the user's old password stops working and the user "
                  "must set a new one.")
 NO_UNDO_MFA = ("Cannot be undone through the API: ZIdentity records that this user may skip MFA, for as long as ZIdentity's own "
                "setting allows; there is no call to clear it.")
-RAW_NOTE = ("Sent as a raw request: the Zscaler SDK (1.11.3) has no call for it. Path and body follow Zscaler's published ZIdentity "
-            "API reference (Users → {what}); not verified against a live tenant from this build (assumed).")
+RAW_NOTE = ("A raw call to ZIdentity's public API: the Zscaler SDK (1.11.3) has no call for it. Path and body follow Zscaler's published "
+            "ZIdentity API reference (Users → {what}); not verified against a live tenant from this build (assumed).")
 PASSWORD_ONCE = ("If ZIdentity answers with a temporary password, it is shown once, right after the apply, to you only; this app never "
                  "stores, logs or exports it.")
 
@@ -129,7 +132,7 @@ def attrs_of(row: Dict[str, Any]) -> Dict[str, Any]:
     """The managed fields as the preview shows them."""
     d = dept_of(row)
     return {"display_name": _txt(row.get("display_name")), "first_name": _txt(row.get("first_name")), "last_name": _txt(row.get("last_name")),
-            "department": d["name"] if d else ""}
+            "primary_email": _txt(row.get("primary_email")), "department": d["name"] if d else ""}
 
 
 def user_groups(svc: Any, uid: str) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
@@ -219,6 +222,12 @@ def normalize_edit(spec: Dict[str, Any]) -> Dict[str, Any]:
         if f in want:
             # An Undo may put back an empty display name it found; an ordinary edit may not empty it.
             s[f] = _name(want[f], ATTR_WORDS[f].lower(), f == "display_name" and spec.get("undo") is not True)
+    if "primary_email" in want:
+        e = str(want["primary_email"] if want["primary_email"] is not None else "").strip()
+        # An Undo may put back an empty email it found; an ordinary edit needs a valid address.
+        if not (e == "" and spec.get("undo") is True) and (len(e) > NAME_MAX or not _EMAIL.match(e)):
+            raise ao.OperationError("The email must be one address like sam@example.com (no spaces), at most 255 characters.")
+        s["primary_email"] = e
     if "department" in want:
         d = want["department"]
         if d in (None, "", {}):
@@ -409,6 +418,10 @@ def h_group(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
 # zid_user_reset (raw calls: see the module docstring)
 # ---------------------------------------------------------------------------
 
+# Raw call to ZIdentity's public API (the SDK has no method for either action).
+# assumed: POST /ziam/admin/api/v1/users/{id}:resetpassword (no body) and
+# assumed: POST /ziam/admin/api/v1/users/{id}:setskipmfa ({"timestamp": epoch seconds}),
+# from Zscaler's published ZIdentity API reference, not verified against a live tenant.
 def action_path(user_id: str, action: str) -> str:
     """The raw path of one user action; ValueError for an id or action that is not allowed."""
     if not _PATH_ID.match(str(user_id or "")):
@@ -590,8 +603,8 @@ def inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 _COMMON = dict(family=FAMILY, product=PRODUCT, in_scope=in_scope, read_objects=read_objects, handlers=HANDLERS, verify=verify, inverse=inverse,
                script=SCRIPT, group="Day-to-day admin")
 ao.register(T_EDIT, label="Edit a ZIdentity user", plan=plan_edit,
-            hint=("Change one user's display name, first and last name, department and groups; the user is sent back as read with only "
+            hint=("Change one user's display name, first and last name, email, department and groups; the user is sent back as read with only "
                   "those fields changed, and Undo puts them back. Needs ZIdentity ticked on the Scope page."), **_COMMON)
 ao.register(T_RESET, label="Reset a ZIdentity user's password or MFA", plan=plan_reset,
-            hint=("Reset one user's password, or let the user skip MFA once, through ZIdentity's API (raw calls: the Zscaler SDK has none). "
+            hint=("Reset one user's password, or let the user skip MFA once, by a raw call to ZIdentity's public API (the Zscaler SDK has none). "
                   "Needs the assessor's name and RESET <login> typed; cannot be undone. Needs ZIdentity ticked on the Scope page."), **_COMMON)
