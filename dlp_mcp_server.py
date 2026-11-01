@@ -49,9 +49,16 @@ Tools exposed (every one read-only; none changes the tenant):
     category_lookup   — ZIA URL categories for up to 25 URLs
     readiness         — What this API client can read or change
     compliance_map    — Framework controls for the last assessment or a check
+    traffic_logs_summary — A saved traffic and session log report, counts only
+    ztw_summary       — Cloud & Branch Connector: counts and the connector checks
+    zdx_summary       — ZDX application scores and alerts (counts only)
+    timeline          — What the app did since a date (its own records, people counted)
+    case_notes        — The admin's workspace notes for the tenant (local)
+    add_case_note     — Add a comment to a workspace note (local; never the tenant)
 
-There are no write tools: changes are made in the app's UI, behind write
-mode, a named writer and assessor, a preview and a typed confirmation.
+There are no tenant write tools: changes are made in the app's UI, behind
+write mode, a named writer and assessor, a preview and a typed confirmation.
+add_case_note writes only the app's local notes store (never the tenant).
 """
 
 import argparse
@@ -658,6 +665,88 @@ async def compliance_map(framework: Annotated[str, Field(max_length=40, descript
     run_section first). Read-only.
     """
     return await _run("compliance_map", mcp_tools.compliance_map, dict(framework=framework, check_id=check_id), tenant=False)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def traffic_logs_summary(saved_report: Annotated[str, Field(max_length=80, description="a saved report's name; blank: list them")] = "") -> dict:
+    """
+    A traffic and session log report saved on the app's Traffic and session
+    logs page, summarised as counts: log types, period, ZPA connections and
+    failures by reason, apps, connectors and destinations, anomalies. People
+    are counted, never named. Blank saved_report lists the saved reports.
+    Logs are never uploaded through this server. Needs ZIA Insights in the
+    server's scope. Reads no tenant. Read-only.
+    """
+    return await _run("traffic_logs_summary", mcp_tools.traffic_logs_summary, dict(saved_report=saved_report), tenant=False)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def ztw_summary(source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    Cloud & Branch Connector: connector groups, connectors serving,
+    forwarding rules (direct ones counted), gateways, locations, activation,
+    and each connector check with its status and fix. Admins and API keys
+    are counted, never listed. Needs Cloud & Branch Connector in scope.
+    source: live, sample or snapshot (with snapshot_id). Read-only: never
+    changes the tenant.
+    """
+    return await _run("ztw_summary", mcp_tools.ztw_summary, {}, source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def zdx_summary(source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    ZDX: application scores in the last day (poor / okay / good bands and the
+    lowest apps) and alerts (ongoing, last 14 days) by severity, type and
+    rule. Devices and users are never listed. Needs ZDX in scope.
+    source: live, sample or snapshot (with snapshot_id). Read-only: never
+    changes the tenant.
+    """
+    return await _run("zdx_summary", mcp_tools.zdx_summary, {}, source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def timeline(since: Annotated[str, Field(max_length=40, description="a date such as 2026-10-01; blank: the last 7 days")] = "") -> dict:
+    """
+    What Zscaler Made Easy did since a date (at most 31 days back): policy
+    pack deployments and undos, tenant writes, jobs, write-mode switches and
+    sign-ins, from its own deployment records and audit log; counts by
+    action and day and the newest events. People are counted, never named.
+    ZIA's admin audit log is not read here. Needs Automation readiness in the
+    server's scope. Reads no tenant. Read-only.
+    """
+    return await _run("timeline", mcp_tools.timeline, dict(since=since), tenant=False)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def case_notes(tag: Annotated[str, Field(max_length=40)] = "", kind: Annotated[str, Field(max_length=40)] = "",
+                     source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    The admin's workspace notes for the tenant (tags, comments, open
+    to-dos), kept by the app on its own pages; optionally only one tag or
+    object kind. Authors are counted, not named. Reads no tenant. Read-only.
+    """
+    return await _run("case_notes", mcp_tools.case_notes, dict(tag=tag, kind=kind), source=source, snapshot_id=snapshot_id)
+
+
+NOTE_TOOL = (ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
+             if ToolAnnotations is not None else None)
+
+
+@mcp.tool(annotations=NOTE_TOOL)
+async def add_case_note(kind: Annotated[str, Field(min_length=1, max_length=40, description="rule, dictionary, url_category, finding, page...")],
+                        ref: Annotated[str, Field(min_length=1, max_length=300, description="the object's id or name as the app keys it")],
+                        comment: Annotated[str, Field(min_length=1, max_length=1000)],
+                        label: Annotated[str, Field(max_length=300)] = "",
+                        source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    Add one comment to the admin's workspace note on an object (a case
+    note), in the app's local notes store, written as the AI assistant and
+    audited. It never changes the tenant: tenant changes are made in the
+    app's UI with its own confirmations.
+    """
+    return await _run("add_case_note", mcp_tools.add_case_note, dict(kind=kind, ref=ref, comment=comment, label=label),
+                      source=source, snapshot_id=snapshot_id)
 
 
 # ── Entrypoint ───────────────────────────────────────────────────────

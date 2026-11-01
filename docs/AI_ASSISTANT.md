@@ -33,6 +33,12 @@ mode, a named writer and assessor, a preview and a typed confirmation.
 | `category_lookup` | URL lookup | Zscaler's categories for up to 25 URLs |
 | `readiness` | Readiness check | What the API client can read or change |
 | `compliance_map` | Compliance mapping | Framework controls met or not, from the last assessment |
+| `traffic_logs_summary` | Traffic and session logs | A saved report as counts (people counted); never an upload through MCP |
+| `ztw_summary` | Cloud & Branch Connector | Connector counts and the connector checks (admins and keys counted) |
+| `zdx_summary` | ZDX | App score bands, the lowest apps, alerts by severity and rule (no devices) |
+| `timeline` | Audit timeline | What the app did since a date, from its own records (people counted) |
+| `case_notes` | Workspace notes | The admin's notes for the tenant (local) |
+| `add_case_note` | Workspace notes | Adds a comment to a local note, written as the AI assistant; never the tenant |
 | `run_assessment`, `run_section`, `list_checks`, `get_health` | The assessment | As before |
 
 Each analysis tool takes `source`: `live` (the tenant whose sign-in is set
