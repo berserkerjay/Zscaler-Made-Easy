@@ -8,7 +8,11 @@
 //     i.e. ZSCALER_UI_AUTH=0): anyone who can reach the address can use it;
 //   - this browser uses the sample tenant or an offline snapshot
 //     (/api/offline/status → mode sample / snapshot): nothing on the page is
-//     the live tenant. The banner offers "Leave", which goes back to it.
+//     the live tenant. The banner offers "Leave", which goes back to it;
+//   - this browser uses a simulation (mode simulation: an in-memory copy of
+//     the sample or a snapshot with rehearsed changes applied). The banner
+//     says so and offers "Leave the simulation", which drops the copy and goes
+//     back to the sample or the snapshot it was made from.
 // The banner sits in the page flow (first child of <body>), so it pushes the
 // page down instead of covering it. It is refreshed on load, when write mode
 // changes in this tab (the "dlp:write-mode" event Deploy Studio fires), when
@@ -116,10 +120,16 @@ body.db-layout #dlpSafetyBanner { margin-left: var(--db-w, 264px); }
     const writeOn = !!(w && w.enabled);
     const gateOff = !!(a && a.required === false);
     const wr = b.querySelector('.sb-write'), gr = b.querySelector('.sb-gate');
-    const off = state.offline, offOn = !!(off && (off.mode === 'sample' || off.mode === 'snapshot' || off.mode === 'gone'));
+    const off = state.offline, offOn = !!(off && (off.mode === 'sample' || off.mode === 'snapshot' || off.mode === 'gone' || off.mode === 'simulation'));
     const or_ = b.querySelector('.sb-offline');
     or_.hidden = !offOn;
-    if (offOn) {
+    or_.classList.toggle('sb-simulation', !!(offOn && off.mode === 'simulation'));
+    if (offOn && off.mode === 'simulation') {
+      const sim = off.simulation || {}, n = (sim.applied || []).length;
+      or_.querySelector('.sb-offline-head').textContent = 'Simulation: nothing here is real.';
+      or_.querySelector('.sb-offline-how').textContent = `A copy of ${sim.base_label || 'the offline tenant'} in this app's memory, with ${n} rehearsed change${n === 1 ? '' : 's'} applied. Nothing was written to a tenant, the sample tenant or a saved snapshot.`;
+      or_.querySelector('.sb-leave').textContent = 'Leave the simulation';
+    } else if (offOn) {
       const sample = off.mode === 'sample', gone = off.mode === 'gone';
       or_.querySelector('.sb-offline-head').textContent = sample ? 'Sample tenant: nothing here is real.'
         : gone ? 'The sample or snapshot this page used is closed.' : 'Offline snapshot: nothing here is live.';
@@ -198,10 +208,12 @@ body.db-layout #dlpSafetyBanner { margin-left: var(--db-w, 264px); }
     const b = build();
     const btn = b.querySelector('.sb-leave'), msg = b.querySelector('.sb-offline-msg');
     state.busy = true; btn.disabled = true; msg.textContent = '';
+    // A simulation is left by dropping its copy: back to the sample or the snapshot it was made from.
+    const sim = !!(state.offline && state.offline.mode === 'simulation');
     try {
-      const r = await fetch('/api/offline/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const r = await fetch(sim ? '/api/offline/simulation/discard' : '/api/offline/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      state.offline = { mode: 'live' };
+      state.offline = sim ? ((await r.json().catch(() => null)) || { mode: 'live' }) : { mode: 'live' };
       render();
       pingOtherTabs();
       try { window.dispatchEvent(new CustomEvent('zme:offline', { detail: Object.assign({ from: 'banner' }, state.offline) })); } catch (e) { /* old browser */ }

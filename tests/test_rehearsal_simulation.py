@@ -180,11 +180,56 @@ def test_a_rehearsed_pov_build_applies_to_the_simulation(offline):
 
 def test_a_simulation_store_is_a_copy_and_the_live_kind_is_refused():
     """ASVS V1.14.1 · CWE-441: simulate() deep-copies the offline tenant (a write to the copy leaves the base untouched) and refuses anything that is not an offline tenant."""
+    # Arrange
     base = ot.sample_store(reset=True)
+    before = copy.deepcopy(base.responses)
     sim = ot.simulate(base)
+    # Act
     sim.answer_write("PUT", "/zia/api/v1/urlCategories/CUSTOM_01", {"id": "CUSTOM_01", "configuredName": "X", "urls": ["a.example"]})
-    assert sim.kind == ot.SIMULATION and sim.writes >= 0 and base.writes == 0
-    assert base.responses != sim.responses or sim.writes == 0
+    # Assert
+    assert sim.kind == ot.SIMULATION and sim.writes == 1 and base.writes == 0
+    assert base.responses == before and sim.responses != before
     assert ot.simulate(sim) is sim
     with pytest.raises(ot.OfflineError):
         ot.simulate({"kind": "live"})
+
+
+def _audit(tmp_path):
+    import json
+    p = tmp_path / "audit.log"
+    return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()] if p.exists() else []
+
+
+def test_the_audit_entries_of_a_simulated_apply_say_simulation_and_nothing_is_recorded(offline, tmp_path):
+    """ASVS V7.1.3 · ASVS V7.2.1 · CWE-778 · WSTG-CONF-09: every audit entry a simulated apply writes (each object write and the run's summary) carries simulation=true, so the log can never be read as a tenant change; no change record (deployments.json operation, Undo) is made."""
+    # Arrange
+    import deployments
+    c = offline["c"]
+    _use_sample(c)
+    prev = _rehearse(c, ADD)
+    # Act
+    r = _simulate(c, ADD, prev)
+    entries = _audit(tmp_path)
+    # Assert
+    assert r.status_code == 200 and r.json()["status"] == "applied", r.text[:300]
+    run = [e for e in entries if e["event"] == "run_finished" and e.get("run") == "operation"]
+    writes = [e for e in entries if e["event"] == "object_write"]
+    assert len(run) == 1 and run[0]["simulation"] is True and run[0]["tenant"].startswith("Simulation of "), run
+    assert writes and all(e.get("simulation") is True for e in writes), writes
+    assert deployments.list_operations() == [] and "operation_id" not in r.json()
+
+
+def test_an_offline_run_that_is_not_a_simulation_carries_no_simulation_mark(offline, tmp_path):
+    """ASVS V7.1.3 · CWE-778: the mark comes from the client the run writes through, a simulation's in-memory copy only: a run on the sample tenant's own client (or any tenant client) writes no simulation field."""
+    # Arrange
+    import pack_ops
+    base = ot.sample_store(reset=True)
+    sample_client = ot.OfflineSdkClient(base, ot.creds_for(base))
+    sim_client = ot.OfflineSdkClient(ot.simulate(base), ot.creds_for(base))
+    # Act
+    for client in (sample_client, object(), sim_client):
+        with pack_ops.audited_run("operation", client, plan_hash="c" * 64) as box:
+            box["result"] = {"status": "applied", "summary": {}}
+    runs = [e for e in _audit(tmp_path) if e["event"] == "run_finished"]
+    # Assert
+    assert [e.get("simulation") for e in runs] == [None, None, True], runs

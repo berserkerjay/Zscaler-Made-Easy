@@ -235,6 +235,13 @@ def test_no_authorization_decision_reads_the_unverified_token_claims():
     # answer as data to show, its token part marked "decoded for display, not verified"; it decides nothing.
     # tenant_health uses only readiness' read helpers (_ask, _stop, _state_words) and its two tenant
     # checks, never the token or its claims.
-    assert set(importers) <= {"mcp_tools.py", "tenant_health.py"}, importers
+    # editions reads the ZIA licence list through readiness' GET helper (_raw_get on SUBSCRIPTIONS_PATH)
+    # and cleans it with parse_subscriptions: a tenant API answer, never the token or its claims. It
+    # decides which rule sets the preview offers, not who may do what.
+    assert set(importers) <= {"mcp_tools.py", "tenant_health.py", "editions.py"}, importers
     th = open(os.path.join(root, "tenant_health.py"), encoding="utf-8").read()
     assert not re.search(r"readiness\.\w*(token|claim|jwt)", th, re.I), "tenant_health must not read the token"
+    ed = open(os.path.join(root, "editions.py"), encoding="utf-8").read()
+    used = set(re.findall(r"\breadiness\.(\w+)", ed))
+    assert used <= {"_raw_get", "SUBSCRIPTIONS_PATH", "parse_subscriptions", "SKU_INFO"}, sorted(used)
+    assert not re.search(r"from readiness import", ed), "editions names each readiness helper it uses"

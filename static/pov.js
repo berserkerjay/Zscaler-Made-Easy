@@ -456,7 +456,8 @@
     try { B.offline = await api('/api/offline/status'); } catch (e) { B.offline = { mode: 'live' }; }
     try { B.write = await api('/api/write-mode'); } catch (e) { B.write = { enabled: false }; }
   }
-  const rehearsing = () => !!B.offline && (B.offline.mode === 'sample' || B.offline.mode === 'snapshot');
+  const rehearsing = () => !!B.offline && (B.offline.mode === 'sample' || B.offline.mode === 'snapshot' || B.offline.mode === 'simulation');
+  const offlineWords = () => (B.offline.mode === 'sample' ? 'the sample tenant' : B.offline.mode === 'simulation' ? 'a simulation (an in-memory copy with rehearsed changes)' : 'an offline snapshot');
   function buildIntake() { return pov ? pov.intake : B.rehearsalIntake; }
   async function loadBuildDefaults() {
     const intake = buildIntake();
@@ -624,7 +625,7 @@
     box.replaceChildren(
       h('p', { class: 'pv-lead', text: `One plan for ${intake.customer}: tick the parts to build, preview them as one dry run (one section per product, every object, one plan hash), then apply them with one typed confirmation. They run in the order below, what others use first; the first part that does not apply stops the run, and Undo reverses what was applied. New objects arrive disabled or monitor-only unless you choose otherwise.` }),
       rehearsing() ? h('div', { class: 'bp-card info pb-rehearsal', role: 'note' }, h('div', { class: 't', text: 'Rehearsal — nothing is written' }),
-        h('div', { text: `${B.offline.tenant_label || 'This offline tenant'} is ${B.offline.mode === 'sample' ? 'the sample tenant' : 'an offline snapshot'}: the plan and the dry run work here as a rehearsal. Applying is not offered; use the live tenant to apply.` })) : '',
+        h('div', { text: `${B.offline.tenant_label || 'This offline tenant'} is ${offlineWords()}: the plan and the dry run work here as a rehearsal. Applying to a tenant is not offered here; after the dry run you can apply it to a simulation, or use the live tenant to apply.` })) : '',
       complianceCard(),
       h('div', { class: 'pb-parts' }, B.steps.map(partCard).filter(Boolean)),
       h('div', { class: 'pv-row' }, preview, h('span', { class: 'pv-meta', text: n ? `${plural(n, 'part')} ticked. Reads the tenant only; nothing is written.` : 'Tick at least one part.' })),
@@ -744,6 +745,7 @@
   function renderBuildApply() {
     const out = $('pbApplyOut'), p = B.preview;
     if (!out) return;
+    if (p && p.rehearsal && p.rehearsal.simulate && !p.undo) { renderSimulateBox(out, p); return; }
     if (!p || p.rehearsal) { out.replaceChildren(); return; }
     const on = !!(B.write || {}).enabled, ready = p.status === 'ready';
     const assessor = h('input', { type: 'text', id: 'pbAssessor', maxlength: 120, value: B.assessor || (() => { try { const el = window.opener && !window.opener.closed && window.opener.document.getElementById('assessor'); return el ? el.value : ''; } catch (e) { return ''; } })(), placeholder: 'Jane Doe, Zscaler DS Engineer', autocomplete: 'off' });
@@ -771,6 +773,67 @@
       h('div', { class: 'pv-row' }, h('label', { for: agree.id }, agree, ` I reviewed this dry run${p.undo ? ' (the Undo)' : ''} and the customer agreed to it.`)),
       h('div', { class: 'pv-row' }, go, why)));
     arm();
+  }
+  // ── A rehearsed build applied to a simulation: an in-memory copy of the
+  // sample tenant or the opened snapshot (POST /api/offline/simulate/pov-build).
+  // The real apply stays refused there; this browser then uses the copy, so the
+  // Path analyzer and Test a list read the result until it is left.
+  const tellOffline = () => { try { window.dispatchEvent(new CustomEvent('zme:offline', { detail: { from: 'pov' } })); } catch (e) { /* old browser */ } };
+  function renderSimulateBox(out, p) {
+    const ready = p.status === 'ready';
+    const phrase = h('input', { type: 'text', id: 'pbSimPhrase', autocomplete: 'off', spellcheck: 'false' });
+    const go = h('button', { type: 'button', class: 'rp-btn', id: 'pbSimulate', disabled: true, 'aria-describedby': 'pbSimWhy', text: 'Apply to a simulation' });
+    const why = h('span', { class: 'pv-meta', id: 'pbSimWhy', 'aria-live': 'polite' });
+    const arm = () => {
+      const need = [];
+      if (!ready) need.push('a plan with changes and no blocker');
+      if (p.confirm_phrase && phrase.value.trim().toUpperCase() !== p.confirm_phrase) need.push(`${p.confirm_phrase} typed exactly`);
+      go.disabled = B.busy || need.length > 0;
+      why.textContent = need.length ? `Still needed: ${need.join(', ')}.` : 'Ready to apply to a simulation.';
+    };
+    phrase.addEventListener('input', arm);
+    go.addEventListener('click', () => simulateBuild(phrase.value));
+    out.replaceChildren(h('div', { class: 'pv-sec pb-simbox' }, h('h2', { text: 'Try the build on a simulation' }),
+      h('p', { class: 'pv-meta', text: p.rehearsal.simulate }),
+      h('p', { class: 'pv-meta', text: 'Every part runs in order, as a real apply would. Nothing reaches a tenant, the sample tenant or a saved snapshot.' }),
+      p.confirm_phrase ? h('div', { class: 'pv-form' }, h('label', { for: phrase.id }, `Type ${p.confirm_phrase} to confirm`, phrase)) : null,
+      h('div', { class: 'pv-row' }, go, why)));
+    arm();
+  }
+  async function simulateBuild(phrase) {
+    if (B.busy || !B.preview) return;
+    const p = B.preview;
+    B.busy = true;
+    say('Applying the build to a simulation.');
+    try {
+      B.result = await api('/api/offline/simulate/pov-build', buildBody({ parts: p.parts_request || chosenParts(), plan_hash: p.plan_hash, confirm: true, confirm_text: phrase }));
+      B.preview = null;
+      say(`Simulation: build ${B.result.status}.`);
+      tellOffline();
+      await buildStatus();
+    } catch (e) { B.result = { status: 'refused', message: e.message, steps: [] }; }
+    finally { B.busy = false; renderBuild(); }
+  }
+  async function leaveSimulation(msg) {
+    try {
+      const d = await api('/api/offline/simulation/discard', {});
+      B.result = null; B.preview = null;
+      await buildStatus();
+      tellOffline();
+      renderBuild();
+      say(d.message || 'The simulation was dropped.');
+      status(d.message || 'The simulation was dropped.');
+    } catch (e) { msg.textContent = `Could not leave the simulation: ${e.message}`; }
+  }
+  function simulationCard(sim) {
+    const n = (sim.applied || []).length;
+    const msg = h('span', { class: 'pv-meta', role: 'status' });
+    const leave = h('button', { type: 'button', class: 'rp-btn', id: 'pbSimLeave', text: 'Leave the simulation' });
+    leave.addEventListener('click', () => { leave.disabled = true; leaveSimulation(msg).finally(() => { leave.disabled = false; }); });
+    return h('div', { class: 'bp-card info pb-simulation', role: 'note' }, h('div', { class: 't', text: 'Simulation: nothing here is real' }),
+      h('div', { text: sim.note || '' }),
+      h('div', { class: 'pv-meta', text: `Made from ${sim.base_label || 'the offline tenant'}. ${plural(n, 'change')} applied to this simulation so far. Every page now reads the simulation until you leave it.` }),
+      h('div', { class: 'pv-row' }, h('a', { class: 'rp-btn', id: 'pbSimPath', href: '/report/path', text: 'Check it in the Path analyzer' }), leave, msg));
   }
   async function applyBuild(phrase, assessor) {
     if (B.busy || !B.preview) return;
@@ -815,7 +878,7 @@
     const undo = r.undo_available && r.build_id ? h('button', { type: 'button', class: 'rp-btn pb-undo-build', 'data-build': r.build_id, text: 'Undo everything applied so far' }) : null;
     if (undo) undo.addEventListener('click', () => previewUndo(r.build_id));
     out.replaceChildren(h('div', { class: `bp-card ${tone}`, role: r.status === 'applied' ? 'status' : 'alert' },
-      h('div', { class: 't', text: { applied: r.undo ? 'Undo applied' : 'Build applied', stopped: `Stopped at ${r.stopped_at || 'a part'}`, failed: 'Nothing was applied',
+      h('div', { class: 't', text: { applied: r.undo ? 'Undo applied' : r.simulation ? 'Build applied to the simulation' : 'Build applied', stopped: `Stopped at ${r.stopped_at || 'a part'}`, failed: 'Nothing was applied',
                                     plan_changed: 'The tenant changed since the preview', refused: 'Not applied', blocked: 'Blocked', nothing_to_do: 'Nothing to change' }[r.status] || r.status }),
       r.message ? h('div', { text: r.message }) : null,
       h('ol', { class: 'pb-steps' }, (r.steps || []).map(s => h('li', {}, h('strong', { text: s.label }), `: ${words[s.status] || s.status}.`,
@@ -823,6 +886,7 @@
         (s.problems || []).length ? h('ul', {}, s.problems.slice(0, 10).map(x => h('li', { text: `${x.object || ''} ${x.field || ''}: ${x.status}${x.reason ? ' — ' + x.reason : ''}` }))) : null,
         (s.one_time_secrets || []).map(keyBox)))),
       r.pov_error ? h('div', { class: 'pv-meta', text: `Not listed on the POV: ${r.pov_error}` }) : null, undo));
+    if (r.simulation) out.prepend(simulationCard(r.simulation));
   }
 
   // Notes and follow-ups.

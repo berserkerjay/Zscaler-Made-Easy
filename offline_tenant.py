@@ -836,6 +836,12 @@ class OfflineSdkClient:
         self._zia_rate_label = store.label
         self._zia_rate_labels = (store.label,)
 
+    @property
+    def simulation(self) -> bool:
+        """True over a simulation's in-memory copy: pack_ops.audited_run marks
+        every audit entry of the run with simulation=true."""
+        return self._store.kind == SIMULATION
+
     def get_request_executor(self) -> "OfflineExecutor":
         """As the SDK's OneAPI client (oneapi_client.Client.get_request_executor):
         the fleet's service-status CSV is asked through it."""

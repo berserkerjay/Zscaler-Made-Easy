@@ -1464,7 +1464,10 @@ def audited_run(run: str, client: Any, *, plan_hash: str = "", cancel: Optional[
     tally: Dict[Tuple[Any, ...], Tuple[str, str]] = {}
     started = time.time()
     tenant = zia_rate.label_of(client)
-    with audit_scope(run=run, tenant=tenant, _tally=tally):
+    # A simulation (offline_tenant.simulate: an in-memory copy of the sample or a
+    # snapshot) says so on every entry of its run, so the log never reads as a tenant change.
+    simulation = True if getattr(client, "simulation", False) is True else None
+    with audit_scope(run=run, tenant=tenant, simulation=simulation, _tally=tally):
         error = None
         try:
             yield box
@@ -1477,7 +1480,7 @@ def audited_run(run: str, client: Any, *, plan_hash: str = "", cancel: Optional[
                 summary = run_summary(box.get("result") if error is None else None, tally)
                 summary["plan_hash"] = summary.get("plan_hash") or plan_hash or None
                 summary["cancelled"] = bool(cancel is not None and cancel.is_set()) or summary.get("stopped") == CANCELLED_REASON
-                fields = dict(summary, tenant=tenant, error=error)
+                fields = dict(summary, tenant=tenant, error=error, **({"simulation": True} if simulation else {}))
                 if not pack_jobs.note(**fields):
                     pack_jobs.write_audit("run_finished", run=run, tenant=tenant, actor=ctx.get("actor"),
                                           duration_seconds=round(time.time() - started, 1),
