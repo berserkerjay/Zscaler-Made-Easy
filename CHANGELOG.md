@@ -5,6 +5,16 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-01
+
+### Restore breadth: wider backups, ZPA rules and Client Connector in restore, more sync groups
+- Backups now also read ZIA NAT and traffic capture rules and workload groups, ZPA user portals, PRA credentials (metadata only), SCIM attributes and groups (per identity provider), individual Private Service Edges and enrollment certificates (metadata only), and Client Connector admin users (by id, role and state, without user names), predefined and custom IP-based apps and process-based apps; the sample tenant and saved snapshots carry them too.
+- Restore and clone write forwarding rules, bandwidth classes and rules, workload groups, cloud app instances, tenancy restriction profiles and NAT and traffic capture rules, with every reference matched by name in the target; new rules arrive disabled.
+- ZPA policy rules (access, timeout, forwarding, isolation, inspection, redirection, credential, capabilities) restore with every condition operand remapped; a rule whose conditions cannot be sent exactly is left out with the reason. A new ZPA rule needs the explicit "keep each rule's state" tick, because the SDK cannot create it disabled.
+- Client Connector app profiles restore their non-secret fields only (passwords and the policy token are never sent), and ZPA and ZDX entitlements are put back with the same PUT Bulk changes uses; both are undoable and never cloned to another tenant.
+- A clone leaves locations, static IPs and GRE tunnels out and lists them as manual steps.
+- Scheduled sync keeps DNS Control, IPS, SSL inspection, URL category, Cloud App Control, DLP, network object, forwarding, bandwidth, NAT, Sandbox, tenancy, File Type Control and traffic capture groups in step through the restore engine: each run still only plans and files the change to the four-eyes queue. A rule label selects only rules carrying it (deletes too); a group without rule labels refuses a label.
+
 ## 2026-10-31
 
 ### Path coverage: unread conditions never match, Category lookup, UCaaS one-click

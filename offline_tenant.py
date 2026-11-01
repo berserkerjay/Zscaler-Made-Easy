@@ -1324,8 +1324,8 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     # ZPA user portals and SCIM attributes and groups per identity provider, Client Connector admin users
     # (a backup of a snapshot keeps them by id, without the user name).
     + [(_ZIA, f"/zia/{x}") for x in ("trafficCaptureRules", "workloadGroups")]
-    # PRA credentials (metadata, scrubbed: no secret is ever saved) follow ZPA as the backup does, not only RBAC.
-    + [(("zpa",), "/zpa/userPortal"), (("zpa",), "/zpa/credential"), (("zpa",), PER_OBJECT_SCIM), (("zcc",), "/zcc/adminUsers")]
+    # (PRA credentials stay with RBAC above: a snapshot reads them only with RBAC ticked.)
+    + [(("zpa",), "/zpa/userPortal"), (("zpa",), PER_OBJECT_SCIM), (("zcc",), "/zcc/adminUsers")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}

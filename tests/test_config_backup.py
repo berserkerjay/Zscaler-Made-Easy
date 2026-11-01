@@ -382,9 +382,10 @@ def test_a_snapshot_reads_the_new_types_and_scim_per_identity_provider():
     """ASVS V4.1.3 · CWE-285 · WSTG-ATHZ-02: a snapshot with ZPA, ZIA platform and Client Connector ticked reads the new lists, SCIM groups and attributes once per identity provider, and a snapshot backup holds them."""
     import offline_tenant as ot
     plan = ot.capture_plan(["zia_extras", "zpa", "zcc"])
-    for ep in ("/zia/trafficCaptureRules", "/zia/workloadGroups", "/zia/dnatRules", "/zpa/userPortal", "/zpa/serviceEdge", "/zpa/credential",
+    for ep in ("/zia/trafficCaptureRules", "/zia/workloadGroups", "/zia/dnatRules", "/zpa/userPortal", "/zpa/serviceEdge",
                "/zpa/enrollmentCert", "/zcc/adminUsers", "/zcc/predefinedIpBasedApps", ot.PER_OBJECT_SCIM):
         assert ep in plan, ep
+    assert "/zpa/credential" in ot.capture_plan(["zpa", "rbac"])   # PRA credentials (metadata) only with RBAC ticked
     assert ot.PER_OBJECT_SCIM not in ot.capture_plan(["zia_extras", "zcc"])
     src = ot.OfflineRawClient(ot.sample_store(), {})
     got = ot.capture(src, ["zia_extras", "zpa", "zcc", "rbac"], {}, lambda m: None)
