@@ -1416,6 +1416,45 @@ def counts_only(rep: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+# ── Session filter (Client Connector version, platform) ──────────────
+MAX_FILTER = 120
+
+
+def session_choices(rep: Dict[str, Any]) -> Dict[str, List[str]]:
+    """The Client Connector versions and platforms the consolidated sessions
+    carry, for the page's filter (sorted, distinct, as written in the log)."""
+    rows = ((rep.get("zpa") or {}).get("status") or {}).get("rows") or []
+    return {k: sorted({str(r.get(k) or "") for r in rows if isinstance(r, dict)}) for k in ("version", "platform")}
+
+
+def filter_sessions(rep: Dict[str, Any], version: Any = "", platform: Any = "") -> Dict[str, Any]:
+    """A copy of the report whose session list holds only the sessions of
+    that Client Connector version and / or platform (exact match, as the
+    log wrote it; "" is any). The counts elsewhere stay those of all the
+    logs; the filter is named in the report (session_filter) so an export
+    says what it holds. ValueError for a value too long or with control
+    characters (it never reaches a file)."""
+    want = {}
+    for key, val in (("version", version), ("platform", platform)):
+        v = str(val or "")
+        if len(v) > MAX_FILTER or _CTRL.search(v) or "\n" in v or "\r" in v:
+            raise ValueError(f"the {key} filter is not a value from the logs")
+        if v:
+            want[key] = v
+    if not want:
+        return rep
+    out = dict(rep)
+    zpa = dict(out.get("zpa") or {})
+    st = dict(zpa.get("status") or {})
+    rows = [r for r in st.get("rows") or [] if isinstance(r, dict) and all(str(r.get(k) or "") == v for k, v in want.items())]
+    st["rows"] = rows
+    st["rows_filtered"] = len(rows)
+    zpa["status"] = st
+    out["zpa"] = zpa
+    out["session_filter"] = want
+    return out
+
+
 # ── Flat tables (CSV, Excel, PDF share them) ─────────────────────────
 def tables(rep: Dict[str, Any]) -> List[Tuple[str, List[str], List[List[Any]]]]:
     """(title, columns, rows) for every table in the report, in page order."""
@@ -1426,7 +1465,8 @@ def tables(rep: Dict[str, Any]) -> List[Tuple[str, List[str], List[List[Any]]]]:
         ["Lines too long (skipped)", inp.get("oversized", 0)], ["JSON records of another kind", inp.get("unrecognised", 0)],
         ["First event", (rep.get("period") or {}).get("first") or ""], ["Last event", (rep.get("period") or {}).get("last") or ""],
         ["Counts only (no people)", "yes" if rep.get("counts_only") else "no"],
-    ] + [[f"{t['label']} records", t["records"]] for t in rep.get("log_types") or []]))
+    ] + [[f"Sessions listed: {k} is", v] for k, v in sorted((rep.get("session_filter") or {}).items())]
+        + [[f"{t['label']} records", t["records"]] for t in rep.get("log_types") or []]))
     zpa = rep.get("zpa") or {}
     act = zpa.get("activity") or {}
     if act:

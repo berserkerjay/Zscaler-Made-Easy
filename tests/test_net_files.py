@@ -373,7 +373,7 @@ def test_the_api_builds_from_a_finished_fleet_read_and_audits_counts_only():
     d = r.json()
     assert d["counts"]["records"] == 2 and d["counts"]["duplicates"] == 1
     assert 'name: "rowans-macbook-pro.corp.example.com."' in d["files"]["unbound"]
-    assert set(d["file_names"]) == {"unbound", "bind_forward", "bind_zone", "csv"}
+    assert set(d["file_names"]) == {"unbound", "bind_forward", "bind_zone", "windows_ps", "windows_dnscmd", "csv"}
     log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
     assert "zcc_dns_records" in log
     tail = [ln for ln in log.splitlines() if "zcc_dns_records" in ln][-1]

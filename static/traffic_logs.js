@@ -16,6 +16,8 @@
   let report = null;
   let limitBytes = 7 * 1024 * 1024;
   let siemTimer = null;
+  // The session list's Client Connector version and platform filter; the downloads use it too.
+  const sessFilter = { version: '', platform: '' };
 
   // el('tag', {attr: value, class: 'x', text: 'y', on: {click: fn}}, child, ...)
   function el(tag, attrs, ...kids) {
@@ -304,18 +306,35 @@
   function sessions(st) {
     const out = box(`Sessions (${fmt(st.rows_total)}${st.rows_total > st.rows.length ? `, newest ${fmt(st.rows.length)} kept` : ''})`, 'tlSessions');
     const input = el('input', { type: 'search', id: 'tlSessFilter', maxlength: '200', placeholder: 'user, device, address, country…' });
-    out.appendChild(el('div', { class: 'tl-row' }, el('label', { for: 'tlSessFilter', text: 'Find sessions' }), input));
+    // Exact-value filters from the sessions themselves (the log's own words, set as text).
+    const pick = (id, key, label) => {
+      const vals = Array.from(new Set(st.rows.map(r => String(r[key] || '')))).sort();
+      const sel = el('select', { id }, el('option', { value: '', text: `Any ${label.toLowerCase()}` }),
+        ...vals.map(v => el('option', { value: v, text: v || '(not in the log)' })));
+      sel.value = vals.includes(sessFilter[key]) ? sessFilter[key] : '';
+      sessFilter[key] = sel.value;
+      return sel;
+    };
+    const ver = pick('tlSessVersion', 'version', 'Client Connector version');
+    const plat = pick('tlSessPlatform', 'platform', 'Platform');
+    out.appendChild(el('div', { class: 'tl-row' }, el('label', { for: 'tlSessFilter', text: 'Find sessions' }), input,
+      el('label', { for: 'tlSessVersion', text: 'Client Connector version' }), ver, el('label', { for: 'tlSessPlatform', text: 'Platform' }), plat));
     const holder = el('div');
     out.appendChild(holder);
     const cols = ['User', 'Start', 'End', 'Minutes', 'Public IP', 'Device', 'Platform', 'Version', 'Country', 'Trusted network'];
     const draw = () => {
       const q = input.value.trim().toLowerCase();
-      const rows = st.rows.filter(r => !q || [r.user, r.device, r.public_ip, r.private_ip, r.country, r.city, r.platform, r.version].some(v => String(v || '').toLowerCase().includes(q)));
+      sessFilter.version = ver.value; sessFilter.platform = plat.value;
+      const rows = st.rows.filter(r => (!ver.value || String(r.version || '') === ver.value) && (!plat.value || String(r.platform || '') === plat.value))
+        .filter(r => !q || [r.user, r.device, r.public_ip, r.private_ip, r.country, r.city, r.platform, r.version].some(v => String(v || '').toLowerCase().includes(q)));
       clear(holder).appendChild(table(cols, rows.slice(0, 200).map(r => [r.user, r.start, r.end || 'still open', r.duration_s == null ? '' : Math.round(r.duration_s / 6) / 10,
         r.public_ip, r.device, r.platform, r.version, r.country, r.trusted_network || 'no']), [3]));
-      holder.appendChild(el('p', { class: 'tl-dim', text: `${fmt(rows.length)} matching${rows.length > 200 ? ', first 200 shown; the Excel download has them all' : ''}.` }));
+      holder.appendChild(el('p', { class: 'tl-dim', text: `${fmt(rows.length)} matching${rows.length > 200 ? ', first 200 shown; the Excel download has them all' : ''}.`
+        + (ver.value || plat.value ? ' Downloads with user names keep only the sessions of the version and platform picked here.' : '') }));
     };
     input.addEventListener('input', draw);
+    ver.addEventListener('change', draw);
+    plat.addEventListener('change', draw);
     draw();
     return out;
   }
@@ -412,7 +431,8 @@
     if (!report) return;
     const names = $('tlNames').checked ? '1' : '0';
     try {
-      const r = await fetch(`/api/traffic-logs/report/${encodeURIComponent(report.report_id)}/export?format=${fmtName}&names=${names}`);
+      const q = new URLSearchParams({ format: fmtName, names, version: sessFilter.version, platform: sessFilter.platform });
+      const r = await fetch(`/api/traffic-logs/report/${encodeURIComponent(report.report_id)}/export?${q.toString()}`);
       if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || `HTTP ${r.status}`); }
       const blob = await r.blob();
       const cd = r.headers.get('Content-Disposition') || '';
@@ -483,6 +503,81 @@
       loadSaved();
     } catch (e) { status(`Could not delete: ${e.message}`, true); }
   }
+
+  // ── Daily report from a watched folder (opt-in) ──
+  async function api(method, url, body) {
+    const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const x = d && d.detail;
+      throw new Error(typeof x === 'string' ? x : Array.isArray(x) && x.length ? x.map(e => String((e && e.msg) || e)).join('; ') : `HTTP ${r.status}`);
+    }
+    return d;
+  }
+  function watchShow(st) {
+    const s = st.settings || {};
+    $('tlwFolder').value = s.folder || ''; $('tlwHour').value = String(s.hour == null ? 6 : s.hour); $('tlwKeep').value = String(s.keep || 7);
+    $('tlwNames').checked = !!s.names; $('tlwOn').checked = !!s.enabled;
+    const l = st.limits || {};
+    $('tlwLimits').textContent = `At most ${fmt(l.files)} files, ${fmt(l.file_mb)} MB each and ${fmt(l.total_mb)} MB together a run (${(l.extensions || []).join(' ')}).`;
+    const last = st.last_run;
+    const parts = [s.enabled ? `On: next report ${st.next_run || 'when the folder is set'}.` : 'Off.'];
+    if (last) parts.push(`Last report ${last.at} (${last.trigger === 'manual' ? 'made by hand' : 'scheduled'}): ${last.status}${last.files ? `, ${fmt(last.files)} file(s), ${fmt(last.records)} records` : ''}${last.error ? ` — ${last.error}` : ''}${last.report ? ', in Saved reports' : ''}.`);
+    $('tlwStatus').textContent = parts.join(' ');
+    $('tlwStatus').classList.toggle('bad', !!(last && last.status === 'failed'));
+  }
+  function watchBody() {
+    return { folder: $('tlwFolder').value.trim(), hour: parseInt($('tlwHour').value, 10), keep: parseInt($('tlwKeep').value, 10),
+      names: $('tlwNames').checked, enabled: $('tlwOn').checked };
+  }
+  api('GET', '/api/traffic-logs/watch').then(watchShow).catch(() => { $('tlwStatus').textContent = 'Could not read the daily report settings.'; });
+  $('tlwSave').addEventListener('click', async () => {
+    try { watchShow(await api('POST', '/api/traffic-logs/watch', watchBody())); announce('Daily report settings saved'); }
+    catch (e) { $('tlwStatus').textContent = `Not saved: ${e.message}`; $('tlwStatus').classList.add('bad'); }
+  });
+  $('tlwRun').addEventListener('click', async () => {
+    $('tlwStatus').textContent = 'Reading the folder…';
+    try { const d = await api('POST', '/api/traffic-logs/watch/run'); watchShow(d.state); loadSaved(); }
+    catch (e) { $('tlwStatus').textContent = `No report: ${e.message}`; $('tlwStatus').classList.add('bad'); }
+  });
+
+  // ── Syslog listener (off by default) ──
+  let syslogTimer = null;
+  function syslogShow(st) {
+    const on = !!st.running;
+    setEnabled('tlsStart', !on); setEnabled('tlsStop', on);
+    setEnabled('tlsAnalyze', (st.lines || 0) > 0); setEnabled('tlsClear', (st.lines || 0) > 0);
+    const l = st.limits || {};
+    $('tlsLimits').textContent = `Messages over ${fmt(l.message_bytes)} bytes, more than ${fmt(l.rate_per_second)} a second, or past ${fmt(l.lines)} lines (${fmt(l.buffer_mb)} MB) are dropped and counted.`;
+    const c = st.counts || {};
+    $('tlsStatus').textContent = on || st.lines
+      ? `${on ? `Listening on ${st.host} port ${st.port} (${String(st.protocol || '').toUpperCase()})` : 'Stopped'}: ${fmt(st.lines || 0)} line(s) in memory from ${fmt(st.senders || 0)} sender(s). `
+        + `Received ${fmt(c.received || 0)}, dropped ${fmt((c.too_long || 0) + (c.rate_limited || 0) + (c.buffer_dropped || 0))} (too long ${fmt(c.too_long || 0)}, too fast ${fmt(c.rate_limited || 0)}, buffer full ${fmt(c.buffer_dropped || 0)}).`
+      : 'Not listening.';
+    clearTimeout(syslogTimer);
+    if (on) syslogTimer = setTimeout(syslogRefresh, 3000);
+  }
+  function syslogRefresh() { api('GET', '/api/traffic-logs/syslog').then(syslogShow).catch(() => {}); }
+  syslogRefresh();
+  $('tlsStart').addEventListener('click', async () => {
+    try {
+      syslogShow(await api('POST', '/api/traffic-logs/syslog/start', { host: $('tlsHost').value.trim(), port: parseInt($('tlsPort').value, 10),
+        protocol: $('tlsProto').value, allow_remote: $('tlsRemote').checked }));
+      announce('Syslog listener started');
+    } catch (e) { $('tlsStatus').textContent = `Not started: ${e.message}`; }
+  });
+  $('tlsStop').addEventListener('click', async () => {
+    try { syslogShow(await api('POST', '/api/traffic-logs/syslog/stop', { clear: false })); announce('Syslog listener stopped'); }
+    catch (e) { $('tlsStatus').textContent = `Could not stop: ${e.message}`; }
+  });
+  $('tlsClear').addEventListener('click', async () => {
+    try { syslogShow(await api('POST', '/api/traffic-logs/syslog/clear')); announce('Lines forgotten'); }
+    catch (e) { $('tlsStatus').textContent = `Could not clear: ${e.message}`; }
+  });
+  $('tlsAnalyze').addEventListener('click', async () => {
+    try { show(await api('POST', '/api/traffic-logs/syslog/analyze')); status('Analysed the lines the listener received.'); }
+    catch (e) { status(`Could not analyse: ${e.message}`, true); }
+  });
 
   // ── SIEM queries ──
   function syncSourcePlaceholders() {

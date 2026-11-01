@@ -342,6 +342,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/config-backups/diff-live/start": READ,
     "GET /api/config-templates/{template_id}/download": READ,
     "POST /api/operations/lookup": READ,
+    "POST /api/operations/zcc/domain-users.csv": READ,
     "POST /api/operations/zdx/deeptrace/follow/start": READ,
     "GET /api/operations/jobs/{job_id}/devices.csv": READ,
     "POST /api/rule-csv/export": READ,
@@ -463,6 +464,15 @@ ROUTE_RULES: Dict[str, str] = {
 
     # ── the server itself, and views across every tenant ──
     "POST /api/best-practices/crawl": ADMIN,
+    # (wave 9) the traffic logs' watched folder and syslog listener: server-wide settings, a network listener and its shared buffer
+    "GET /api/traffic-logs/watch": ADMIN,
+    "POST /api/traffic-logs/watch": ADMIN,
+    "POST /api/traffic-logs/watch/run": ADMIN,
+    "GET /api/traffic-logs/syslog": ADMIN,
+    "POST /api/traffic-logs/syslog/start": ADMIN,
+    "POST /api/traffic-logs/syslog/stop": ADMIN,
+    "POST /api/traffic-logs/syslog/clear": ADMIN,
+    "POST /api/traffic-logs/syslog/analyze": ADMIN,
     "POST /api/dlp-packs/{pack_id}/from-tenant": ADMIN,
     "GET /api/digests": ADMIN,
     "POST /api/digests/run": ADMIN,

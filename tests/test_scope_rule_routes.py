@@ -491,6 +491,7 @@ ROUTES: List[Route] = [
           partial=ZPA, out=ZPA_OUT),
     Route("/api/operations/objects", {"family": "zcc_admin"}, partial=ZCC, out=ZCC_OUT),
     Route("/api/operations/lookup", {"family": "zcc_admin", "what": "devices", "user": "jdoe@acme.com"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/zcc/domain-users.csv", {"domain": "acme.com", "personal_data_ok": True}, partial=ZCC, out=ZCC_OUT),
     Route("/api/operations/preview", {"operation": {"type": "zcc_entitlements", "service": "zpa", "enable_for_all": False}}, partial=ZCC, out=ZCC_OUT),
     Route("/api/operations/objects", {"family": "zdx_trace"}, partial=ZDX, out=ZDX_OUT),
     Route("/api/operations/lookup", {"family": "zdx_trace", "what": "devices", "user": "jdoe@acme.com"}, partial=ZDX, out=ZDX_OUT),

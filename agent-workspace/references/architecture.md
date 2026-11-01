@@ -143,6 +143,7 @@ Find the files a change touches here, then read only those.
 | `standalone_main.py` | Entry point of the standalone (no-install) edition of Zscaler Made Easy. |
 | `store_crypto.py` | Encryption at rest for the app's own local stores (optional; off by |
 | `sync_jobs.py` | Scheduled sync, done safely: plans for a person to approve, never an |
+| `syslog_listener.py` | An optional syslog listener for ZIA NSS and ZPA LSS log lines (off by default). |
 | `team_api.py` | The team server's own routes (team_server.py): sign-in with a local |
 | `team_passkeys.py` | Passkeys (WebAuthn) for team server accounts: a person registers a |
 | `team_routes.py` | The access rule of every route in team server mode (team_server.py). |
@@ -153,6 +154,7 @@ Find the files a change touches here, then read only those.
 | `tenant_profiles.py` | Tenant profiles — one saved record per customer tenant, so a consultant |
 | `tenant_terraform.py` | Export a whole tenant to Terraform: ZIA, ZPA, Cloud & Branch Connector and |
 | `tenant_terraform_schema.py` | The provider attributes a whole-tenant Terraform export writes, per |
+| `traffic_log_watch.py` | A daily traffic and session log report from a watched folder (opt-in). |
 | `traffic_logs.py` | Session and traffic log analysis: ZPA LSS and ZIA NSS logs, read locally. |
 | `tui.py` | Terminal UI: `zscaler-made-easy tui`. |
 | `ucaas_oneclick.py` | ZIA's UCaaS one-click configuration: what the API exposes, and how the |
@@ -163,6 +165,7 @@ Find the files a change touches here, then read only those.
 | `vertical.py` | The vertical a tenant profile belongs to decides what the app suggests. |
 | `workload_path.py` | Workload traffic through a Cloud or Branch Connector, for the Path |
 | `workspace_notes.py` | Workspace notes: tags, comments and to-dos on any object, per tenant. |
+| `xlsx_reader.py` | Read the cells of an uploaded Excel workbook (.xlsx), as untrusted input. |
 | `xlsx_writer.py` | A small Excel (.xlsx) writer: Office Open XML SpreadsheetML, written |
 | `zcc_bypass.py` | Client Connector bypasses on a traced path: which list decides. |
 | `zcc_devices.py` | Client Connector: one device's details, and the disable-reason report as counts. |

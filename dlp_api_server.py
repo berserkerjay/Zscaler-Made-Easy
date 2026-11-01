@@ -1371,6 +1371,9 @@ class DLPPackDeployRequest(TenantCredsRequest):
     # Terraform hand-off only: "static" never reads the tenant (credentials
     # are ignored); "gap" needs them; "" decides by whether they are present.
     mode: str = ""
+    # Terraform hand-off only: a private registry mirror for the zia provider
+    # ("registry.example.com/zscaler"); empty is the public zscaler/zia.
+    provider_namespace: str = ""
     # apply-only: the hash of the plan the user approved, plus explicit consent
     plan_hash: str = ""
     confirm: bool = False
@@ -5436,12 +5439,22 @@ async def dlp_packs_terraform(req: DLPPackDeployRequest):
         raise HTTPException(status_code=500, detail=f"pack_terraform unavailable: {e}")
     if not req.pack_ids:
         raise HTTPException(status_code=400, detail="Select at least one pack.")
+    _check_tf_namespace(req.provider_namespace)
     packs = _resolve_pack_ids(req.pack_ids)
     creds, client = await _terraform_client(req)
     result = await asyncio.to_thread(_run_terraform, client, creds, req, packs, None, None)
     name, media, data = result["artifact"]
     return Response(content=data, media_type=media,
                     headers={"Content-Disposition": f'attachment; filename="{name}"', "X-DLP-Check-Mode": result["mode"]})
+
+
+def _check_tf_namespace(ns: str) -> None:
+    """A malformed private-registry namespace is a 400 before anything is read."""
+    import pack_terraform
+    try:
+        pack_terraform.provider_source(ns)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 async def _terraform_client(req: DLPPackDeployRequest):
@@ -5499,7 +5512,8 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
             return {"status": "stopped", "stopped": "You clicked Stop.", "mode": mode, "packs": list(workspaces), "logs": logs}
         _log(f"Generating the Terraform workspace for {p.get('name') or p['id']}…")
         files = pack_terraform.generate(p, report=pack_terraform.split_report(report, p["id"]) if report else None,
-                                        channel_targets=(req.channel_targets or {}).get(p["id"]), assessor=by)
+                                        channel_targets=(req.channel_targets or {}).get(p["id"]), assessor=by,
+                                        namespace=req.provider_namespace)
         workspaces[p["id"]] = files
         _log(f"  {len(files)} files" + (", imports.tf included" if "imports.tf" in files else "") + ".")
     data = pack_terraform.zip_workspaces(workspaces)
@@ -5520,6 +5534,7 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request)
     if not req.pack_ids:
         raise HTTPException(status_code=400, detail="Select at least one pack.")
     _require_assessor(req)
+    _check_tf_namespace(req.provider_namespace)
     packs = _resolve_pack_ids(req.pack_ids)
     creds, client = await _terraform_client(req)
     job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
@@ -5677,7 +5692,7 @@ class TenantTerraformRequest(ScopedTenantCredsRequest):
     keep_rule_state: bool = False
 
 
-TENANT_TF_NEEDS_ONEAPI = ("ZPA, Cloud & Branch Connector and Client Connector need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
+TENANT_TF_NEEDS_ONEAPI = ("ZPA and Cloud & Branch Connector need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
                           "Untick them, or sign in with an API client. Nothing was read.")
 TENANT_TF_NEEDS_CUSTOMER_ID = ("ZPA needs the ZPA customer ID (Connect to the tenant → Customer ID, or the saved profile): every ZPA API "
                                "path carries it. Untick ZPA, or fill it in. Nothing was read.")
@@ -5709,7 +5724,8 @@ def _run_tenant_terraform(client, creds: Dict[str, str], opts: Dict[str, Any], p
                     "secret_variables": v.get("secret_variables") or [], "skipped": len(v.get("skipped") or [])}
                 for p, v in rep["products"].items()}
     return {"status": "ready", "filename": res["filename"], "bytes": res["bytes"], "tenant_label": label, "products": products,
-            "not_exported": rep["not_exported"][:200], "artifact": res["artifact"]}
+            "not_exported": rep["not_exported"][:200], "may_be_incomplete": (rep.get("may_be_incomplete") or [])[:50],
+            "artifact": res["artifact"]}
 
 
 @app.post("/api/tenant-terraform/start")
@@ -5734,8 +5750,16 @@ async def tenant_terraform_start(req: TenantTerraformRequest, request: Request):
     creds = _tenant_creds(req)
     if not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant profile) to export it.")
+    # The Client Connector provider signs in with OneAPI only (not on zscalergov / zscalerten, not
+    # with the classic ZIA sign-in): its workspace is skipped with the reason, the rest exported.
+    zcc_skip = tenant_terraform.zcc_unavailable(creds)
+    if zcc_skip and any(tenant_terraform.BY_KEY[k]["product"] == "zcc" for k in plan["read"]):
+        try:
+            plan = tenant_terraform.plan(sc, ch, opts, include_personal=bool(req.include_personal_data), skip_products={"zcc": zcc_skip})
+        except tenant_terraform.ExportRefused as e:
+            raise HTTPException(status_code=400, detail=str(e))
     products_read = {tenant_terraform.BY_KEY[k]["product"] for k in plan["read"]}
-    if products_read & {"zpa", "ztc", "zcc"} and creds.get("auth_method") == tenant_auth.LEGACY:
+    if products_read & {"zpa", "ztc"} and creds.get("auth_method") == tenant_auth.LEGACY:
         raise HTTPException(status_code=400, detail=TENANT_TF_NEEDS_ONEAPI)
     if "zpa" in products_read and not validate_customer_id(creds.get("customer_id") or ""):
         raise HTTPException(status_code=400, detail=TENANT_TF_NEEDS_CUSTOMER_ID)
@@ -6546,18 +6570,20 @@ async def exports_client_connector_start(req: ConfigExportRequest, request: Requ
 
 
 @app.get("/api/pack-library/{pack_id}/terraform.zip")
-async def pack_library_terraform(pack_id: str, assessor: str = "", profile_id: str = ""):
+async def pack_library_terraform(pack_id: str, assessor: str = "", profile_id: str = "", provider_namespace: str = ""):
     """The pack as a Terraform workspace for the official zscaler/zia
     provider, static mode (no tenant read), for any pack in the library.
     Gap mode (imports of what already exists) is the Terraform hand-off.
     `assessor` (else the saved profile's, by `profile_id`) is the name the
-    provenance tags carry; refused (400) when no assessor is named."""
+    provenance tags carry; refused (400) when no assessor is named.
+    `provider_namespace`: a private registry mirror for the provider."""
     import pack_library as pl
     import pack_terraform
+    _check_tf_namespace(provider_namespace)
     pack = _resolve_pack_ids([pack_id])[0]
     from types import SimpleNamespace
     by = _require_assessor(SimpleNamespace(assessor=assessor, profile_id=profile_id))
-    files = await asyncio.to_thread(lambda: pack_terraform.generate(pack, assessor=by))
+    files = await asyncio.to_thread(lambda: pack_terraform.generate(pack, assessor=by, namespace=provider_namespace))
     data = pack_terraform.zip_workspaces({pack["id"]: files})
     return Response(content=data, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{pl.slugify(pack_id) or "pack"}-terraform.zip"', "X-DLP-Check-Mode": "static"})
@@ -6966,8 +6992,10 @@ class OperationLookupRequest(OperationCredsRequest):
     """A read-only search for a day-to-day admin form: `family` (zcc_admin
     or zdx_trace) and `what` (devices, match; users, apps, app_scores,
     app_score, health, device_app, probes, traces, trace, results). `text`
-    is a list of devices to match (at most 1 MB, checked in code), `mode`
-    remove or force and `domain` an optional user domain filter."""
+    is a list of devices to match (at most 1 MB, checked in code), or
+    `xlsx_b64` an Excel workbook of them (the Client Connector portal's
+    device export; at most 8 MB, read by xlsx_reader), `mode` remove or
+    force and `domain` an optional user domain filter."""
     family: str = ""
     what: str = ""
     user: str = ""
@@ -6975,6 +7003,7 @@ class OperationLookupRequest(OperationCredsRequest):
     app_id: str = ""
     trace_id: str = ""
     text: str = ""
+    xlsx_b64: str = ""
     mode: str = ""
     domain: str = ""
 
@@ -7000,12 +7029,55 @@ async def operations_lookup(req: OperationLookupRequest):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     query = {"user": req.user, "device_id": req.device_id, "app_id": req.app_id, "trace_id": req.trace_id, "text": req.text, "mode": req.mode,
-             "domain": req.domain}
+             "domain": req.domain, "xlsx_b64": req.xlsx_b64}
     try:
         out = await asyncio.to_thread(_keyed, client, fn, client, req.what, query, None)
     except admin_ops.OperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return dict(out, tenant_label=tenant_auth.record_label(creds))
+
+
+class ZccDomainUsersRequest(OperationCredsRequest):
+    """The user domain whose enrolled user names to download, and the
+    explicit acknowledgement that the file is personal data."""
+    domain: str = ""
+    personal_data_ok: bool = False
+
+
+@app.post("/api/operations/zcc/domain-users.csv")
+async def operations_zcc_domain_users(req: ZccDomainUsersRequest, request: Request):
+    """The user names enrolled in Client Connector under one user domain,
+    with each user's device count, device states and last seen, as CSV
+    (cells made safe for spreadsheets). Personal data, so it needs
+    personal_data_ok=true (400 otherwise, before any sign-in). Read-only:
+    one paged read of the enrolled devices; ZCC must be in scope on the
+    Scope page. The audit record holds the domain's user count, never a
+    name."""
+    import admin_ops
+    import ops_zcc_admin
+    _ops_scope(req, ops_zcc_admin.FAMILY)
+    if req.personal_data_ok is not True:
+        raise HTTPException(status_code=400, detail="This file lists people's user names (personal data): tick that you need it, then download it again.")
+    dom = str(req.domain or "").strip().lower().lstrip("@")
+    if not ops_zcc_admin._DOMAIN_RE.match(dom):
+        raise HTTPException(status_code=400, detail="Type the user domain, like acme.com.")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+
+    def read():
+        inv, _pages, err = ops_zcc_admin.inventory(client)
+        if err:
+            raise admin_ops.OperationError(f"The enrolled devices could not be read completely, so no list was made: {err}")
+        return ops_zcc_admin.domain_users(inv, dom)
+    try:
+        rows = await asyncio.to_thread(_keyed, client, read)
+    except admin_ops.OperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("zcc_domain_users_export", actor=_actor(request) or _security.current_actor(), domain=dom, users=len(rows))
+    body = ops_zcc_admin.domain_users_csv(rows, dom).encode("utf-8")
+    return Response(content=body, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="client-connector-users-{dom}-personal-data.csv"',
+                             "Cache-Control": "no-store"})
 
 
 class DeepTraceFollowRequest(OperationCredsRequest):
@@ -9689,12 +9761,18 @@ async def traffic_logs_forget(report_id: str):
 
 
 @app.get("/api/traffic-logs/report/{report_id}/export")
-async def traffic_logs_export(report_id: str, format: str = "xlsx", names: bool = False):
+async def traffic_logs_export(report_id: str, format: str = "xlsx", names: bool = False, version: str = "", platform: str = ""):
     """The analysis as CSV, Excel, PDF or JSON. Counts only (user names
-    replaced, sessions left out) unless names=true."""
+    replaced, sessions left out) unless names=true. `version` / `platform`
+    keep only the sessions of that Client Connector version or platform in
+    the session list (the page's session filter)."""
     import traffic_logs as tl
     import xlsx_writer
     rep = _tlogs_report(report_id)
+    try:
+        rep = tl.filter_sessions(rep, version, platform)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     body = rep if names else tl.counts_only(rep)
     ts = datetime.now().strftime("%Y%m%d_%H%M")
     fname_base = f"traffic_logs_{ts}{'' if names else '_counts_only'}"
@@ -9781,6 +9859,196 @@ async def traffic_logs_siem(siem: str = "splunk", hours: int = 24, user: str = "
         return {"queries": siem_queries.render_all(siem, hours, src, user, destination), "note": siem_queries.catalogue()["note"]}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Traffic logs: the daily report from a watched folder (traffic_log_watch) ──
+# Opt-in, off by default. The server reads the folder's log files (read-only)
+# once a day and saves a counts-only report unless names were asked for.
+# Changing it or running it now is a server-wide change: the writer check
+# and an audit record.
+class TrafficLogWatchSettings(BaseModel):
+    """The watched folder, whether the daily report is on, the hour (this computer's time), keep names, how many reports to keep."""
+    enabled: bool = False
+    folder: str = ""
+    hour: int = 6
+    names: bool = False
+    keep: int = 7
+
+    @field_validator("folder")
+    @classmethod
+    def _short(cls, v: str) -> str:
+        if len(v or "") > 1000:
+            raise ValueError("too long")
+        return v
+
+
+@app.get("/api/traffic-logs/watch")
+async def traffic_logs_watch_state():
+    """The daily report's settings, last run and next run."""
+    import traffic_log_watch as tw
+    return await asyncio.to_thread(tw.get_state)
+
+
+@app.post("/api/traffic-logs/watch")
+async def traffic_logs_watch_save(req: TrafficLogWatchSettings, request: Request):
+    """Turn the daily report on or off, or change its folder, hour, names and keep (writer only)."""
+    import traffic_log_watch as tw
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(tw.save_settings, req.model_dump())
+    except tw.WatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    s = out["settings"]
+    _audit.record("traffic_logs_watch_settings", actor=_actor(request) or _security.current_actor(), enabled=s["enabled"], names=s["names"],
+                  hour=s["hour"], keep=s["keep"])
+    return out
+
+
+@app.post("/api/traffic-logs/watch/run")
+async def traffic_logs_watch_run(request: Request):
+    """Make the daily report now from the files changed since the last run (writer only)."""
+    import traffic_log_watch as tw
+    _security.require_writer()
+    try:
+        rec = await asyncio.to_thread(tw.run, trigger="manual")
+    except tw.WatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("traffic_logs_watch_run", actor=_actor(request) or _security.current_actor(), status=rec["status"], files=rec["files"],
+                  records=rec["records"], names=rec["names"])
+    return {"last_run": rec, "state": await asyncio.to_thread(tw.get_state)}
+
+
+_TLW_STATE: Dict[str, Any] = {"enabled": False, "tick_seconds": 60.0, "last_error": None}
+
+
+def _tlw_timer_on() -> bool:
+    return os.environ.get("DLP_CHECK_TRAFFIC_LOG_WATCH_TIMER", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _tlw_tick() -> Optional[Dict[str, Any]]:
+    """Run the daily report when it is due; returns the run record or None."""
+    import traffic_log_watch as tw
+    if not tw.due():
+        return None
+    try:
+        rec = tw.run(trigger="schedule")
+    except tw.WatchError:
+        return None
+    _audit.record("traffic_logs_watch_run", actor="schedule", status=rec["status"], files=rec["files"], records=rec["records"], names=rec["names"])
+    return rec
+
+
+async def _tlw_loop() -> None:
+    while _TLW_STATE.get("enabled"):
+        try:
+            await asyncio.sleep(_TLW_STATE["tick_seconds"])
+        except asyncio.CancelledError:
+            break
+        try:
+            await asyncio.to_thread(_tlw_tick)
+            _TLW_STATE["last_error"] = None
+        except Exception as e:  # noqa: BLE001 — the timer never takes the server down
+            _TLW_STATE["last_error"] = f"{type(e).__name__}: {str(e)[:200]}"
+
+
+@app.on_event("startup")
+async def _start_tlw_timer() -> None:
+    if not _tlw_timer_on():
+        return
+    _TLW_STATE["enabled"] = True
+    asyncio.create_task(_tlw_loop())
+
+
+# ── Traffic logs: the optional syslog listener (syslog_listener) ─────────
+# Off by default and never started on its own; 127.0.0.1 unless another
+# address and allow_remote are both given; caps on size, rate, buffer and
+# connections; raw lines in memory only. Starting and stopping it is a
+# server-wide change: the writer check and an audit record.
+class SyslogStartRequest(BaseModel):
+    """Where the listener listens: an IP address of this computer (127.0.0.1 unless allow_remote), a port from 1024 and UDP or TCP."""
+    host: str = "127.0.0.1"
+    port: int = 5514
+    protocol: str = "udp"
+    allow_remote: bool = False
+
+    @field_validator("host", "protocol")
+    @classmethod
+    def _short(cls, v: str) -> str:
+        if len(v or "") > 64:
+            raise ValueError("too long")
+        return v
+
+
+class SyslogStopRequest(BaseModel):
+    """Stop listening; clear=true also forgets the lines that arrived."""
+    clear: bool = False
+
+
+@app.get("/api/traffic-logs/syslog")
+async def traffic_logs_syslog_status():
+    """Whether the listener runs, where, and its counters (received, kept, dropped for size, rate or buffer)."""
+    import syslog_listener as sl
+    return sl.status()
+
+
+@app.post("/api/traffic-logs/syslog/start")
+async def traffic_logs_syslog_start(req: SyslogStartRequest, request: Request):
+    import syslog_listener as sl
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(sl.start, req.host, req.port, req.protocol, req.allow_remote)
+    except sl.ListenerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("traffic_logs_syslog_start", actor=_actor(request) or _security.current_actor(), host=out["host"], port=out["port"],
+                  protocol=out["protocol"], allow_remote=out["allow_remote"])
+    return out
+
+
+@app.post("/api/traffic-logs/syslog/stop")
+async def traffic_logs_syslog_stop(req: SyslogStopRequest, request: Request):
+    import syslog_listener as sl
+    _security.require_writer()
+    out = await asyncio.to_thread(sl.stop, req.clear)
+    _audit.record("traffic_logs_syslog_stop", actor=_actor(request) or _security.current_actor(), cleared=bool(req.clear),
+                  received=(out.get("counts") or {}).get("received", 0))
+    return out
+
+
+@app.post("/api/traffic-logs/syslog/clear")
+async def traffic_logs_syslog_clear(request: Request):
+    """Forget the lines that arrived (they were only ever in memory; writer only)."""
+    import syslog_listener as sl
+    _security.require_writer()
+    out = sl.clear()
+    _audit.record("traffic_logs_syslog_clear", actor=_actor(request) or _security.current_actor())
+    return out
+
+
+@app.post("/api/traffic-logs/syslog/analyze")
+async def traffic_logs_syslog_analyze():
+    """Analyse the lines that arrived, as an upload of them would be: the
+    report is held in memory like any analysis (save it to keep it)."""
+    import syslog_listener as sl
+    import traffic_logs as tl
+    try:
+        files = sl.buffered_upload()
+        rep = await asyncio.to_thread(tl.analyze, files)
+    except sl.ListenerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:600])
+    rep.setdefault("input", {})["source"] = "syslog listener"
+    rid = _remember_report("tlogs", rep)
+    return _REPORTS[rid]
+
+
+@app.on_event("shutdown")
+async def _stop_syslog_listener() -> None:
+    try:
+        import syslog_listener as sl
+        sl.stop(clear=True)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ── Migrate from another DLP (vendor_migrate) ──────────────────────────

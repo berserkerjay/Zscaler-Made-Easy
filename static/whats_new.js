@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users), rehearse then simulate, and more of the tenant read and scored",
+    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users), rehearse then simulate, outside-tool gaps closed (Client Connector Terraform, Excel device lists, logs without uploading), and more of the tenant read and scored",
     "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
@@ -167,6 +167,36 @@ window.WHATS_NEW = {
         { "page": "/", "at": "#scopeField input.scope-cb[value=\"zpa\"]", "shown": "on the Scope page" },
         { "page": "/", "at": "#scopeField input.scope-cb[value=\"ztw\"]", "shown": "on the Scope page" }
       ]
+    },
+    {
+      "id": "zcc-excel-list", "release": "2026-11-01", "label": "Excel device lists",
+      "what": "Remove devices from a list now takes the Client Connector portal's Excel export (.xlsx), read safely on the server.",
+      "changelog": ["Excel device lists"],
+      "marks": [{ "page": "/report/operations", "at": "#admListFile", "shown": "in Build new, Remove devices from a list" }]
+    },
+    {
+      "id": "zcc-domain-users", "release": "2026-11-01", "label": "Download the domain's user names",
+      "what": "Download the user names enrolled under one user domain as a CSV, after ticking that you need the personal data.",
+      "changelog": ["Download the domain's user names"],
+      "marks": [{ "page": "/report/operations", "at": "#admDomainUsers", "shown": "in Build new, Remove devices from a list" }]
+    },
+    {
+      "id": "tl-no-upload", "release": "2026-11-01", "label": "Read logs without uploading",
+      "what": "A daily report from a watched folder and an optional syslog listener, both off until you turn them on.",
+      "changelog": ["Read logs without uploading", "Daily report from a folder", "Syslog listener"],
+      "marks": [{ "page": "/report/traffic-logs", "at": "#tlAutoH" }]
+    },
+    {
+      "id": "dns-windows", "release": "2026-11-01", "label": "Windows DNS Server output",
+      "what": "The DNS records for client hostnames as Windows DNS Server conditional forwarders (PowerShell or dnscmd).",
+      "changelog": ["Windows DNS Server output"],
+      "marks": [{ "page": "/report/fleet", "at": "#zfDnsWinPs" }]
+    },
+    {
+      "id": "tf-zcc", "release": "2026-11-01", "label": "Client Connector Terraform (beta provider)",
+      "what": "The whole-tenant Terraform export writes Client Connector fail-open, device cleanup, web privacy, notification templates and ZIA posture profiles with the beta provider pinned exactly.",
+      "changelog": ["Client Connector Terraform"],
+      "marks": [{ "page": "/report/exports", "at": "#exTfZccBeta" }]
     },
     {
       "id": "category-lookup", "release": "2026-10-31", "label": "Category lookup",

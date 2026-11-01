@@ -116,12 +116,19 @@ jobs:
           exit $rc
 
       # Advisory until a first green run: the whole-tenant export (tenant_terraform) of the
-      # sample tenant against the zscaler/zia and zscaler/zpa providers it pins.
-      - name: Validate the whole-tenant export of the sample tenant (advisory)
+      # sample tenant, every product's workspace the export writes (zia, zpa, ztc and zcc; the
+      # samples tool fails when one is missing), against the provider each one pins. The
+      # zscaler/zcc provider is a beta pinned exactly (0.1.2-beta.3). Owner decision (wave 9):
+      # this step becomes blocking (remove continue-on-error) after its first green run; it has
+      # never run yet (no Actions minutes), so ztc and zcc have never been validated in CI.
+      - name: Validate the whole-tenant export of the sample tenant, every product (advisory)
         continue-on-error: true
         run: |
           rc=0
-          for d in /tmp/tf_samples/tenant/tenant-terraform/zia/ /tmp/tf_samples/tenant/tenant-terraform/zpa/; do
+          for p in zia zpa ztc zcc; do
+            [ -f "/tmp/tf_samples/tenant/tenant-terraform/$p/terraform.tf" ] || { echo "::error::no $p workspace in the sample export"; rc=1; }
+          done
+          for d in /tmp/tf_samples/tenant/tenant-terraform/*/; do
             echo "== $d"
             terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null || { rc=1; continue; }
             terraform -chdir="$d" validate -no-color || rc=1

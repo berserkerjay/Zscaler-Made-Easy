@@ -492,6 +492,23 @@ COMPANY_INFO = {"businessName": COMPANY, "orgId": 7200001, "proxyEnabled": 1, "z
                 "zadEnabled": 0, "enableGlobalZCCTelemetry": 1}
 WEB_PRIVACY_INFO = {"id": 1, "active": "1", "collectUserInfo": "1", "collectMachineHostname": "1", "collectZdxLocation": "1",
                     "enablePacketCapture": "0", "disableCrashlytics": "0", "exportLogsForNonAdmin": "0"}
+# Client Connector v2 objects the SDK has no call for (read raw; the zcc provider's
+# zcc_notification_template and zcc_zia_posture field names, platform 1..5).
+ZCC_V2 = "/zcc/papi/public/v2"
+NOTIFICATION_TEMPLATES = [
+    {"id": 71, "name": "Larkspur default", "isDefaultTemplate": True, "enableClient": True, "enableZia": True, "enableAppUpdates": True,
+     "enableServiceStatus": True, "durationInSeconds": 8, "enablePersistent": False, "enableDoNotDisturb": True,
+     "ziaNotificationTemplate": {"enableZiaFirewall": True, "enableZiaFirewallPopup": False, "enableZiaDNS": True, "enableZiaDNSPopup": False,
+                                 "enableZiaIPS": True, "enableZiaIPSPopup": True, "enableZiaPersistent": False},
+     "zpaNotificationTemplate": {"enableDevicePostureFailure": True, "enableZpaReauth": True, "zpaReauthIntervalInMinutes": 60,
+                                 "delayPostureFailureSeconds": 5}},
+]
+ZIA_POSTURE_PROFILES = [
+    {"id": 81, "name": "Larkspur laptops (Windows)", "platform": 3,
+     "highTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled"}, {"id": "5", "name": "Full disk encryption"}]}]},
+     "mediumTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled"}]}]},
+     "lowTrustCriteria": {"cs": []}},
+]
 DEVICE_CLEANUP = {"id": 1, "active": 1, "autoRemovalDays": 30, "autoPurgeDays": 60, "deviceExceedLimit": 16}
 
 # ── ZPA ───────────────────────────────────────────────────────────────
@@ -1363,6 +1380,7 @@ def responses() -> Dict[str, Any]:
         f"{ZCC}/webFailOpenPolicy/listByCompany": FAIL_OPEN,
         f"{ZCC}/getCompanyInfo": COMPANY_INFO,
         f"{ZCC}/getWebPrivacyInfo": WEB_PRIVACY_INFO, f"{ZCC}/getDeviceCleanupInfo": DEVICE_CLEANUP,
+        f"{ZCC_V2}/notification-templates": NOTIFICATION_TEMPLATES, f"{ZCC_V2}/zia-posture-profiles": ZIA_POSTURE_PROFILES,
         f"{ZCC}/getAdminUsersSyncInfo": {"id": 1, "ziaInitialSyncDone": 1, "ziaLastSyncTime": "2026-10-28 02:00:00", "ziaSyncErrorCode": 0, "ziaSyncStatus": 1,
                                              "zpaInitialSyncDone": 1, "zpaLastSyncTime": "2026-10-28 02:00:00", "zpaSyncErrorCode": 0, "zpaSyncStatus": 1},
         f"{ZCC}/getPacFiles": [], f"{ZCC}/webAppService/listByCompany": [], f"{ZCC}/webBypassAppConfig/listByCompany": [],

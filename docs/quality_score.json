@@ -348,7 +348,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 105,
+            "fixed": 112,
             "accepted": 12,
             "records": [
               "c6-zcc-zdx",
@@ -371,7 +371,8 @@
               "w8-zdx-zid-zcc",
               "w8-zia-threat-saas",
               "w8-zwa-aiguard",
-              "w9-admin-editors"
+              "w9-admin-editors",
+              "w9-ops-gaps"
             ]
           },
           "coverage": {
@@ -485,7 +486,7 @@
     }
   ],
   "counts": {
-    "findings": 742,
+    "findings": 749,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -499,12 +500,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 189,
+        "fixed": 192,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 407,
+        "fixed": 411,
         "accepted": 3
       },
       "info": {
@@ -514,12 +515,12 @@
       }
     },
     "checks": {
-      "pass": 676,
+      "pass": 682,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11596
+    "tests_added": 11661
   },
   "findings": [
     {
@@ -4617,6 +4618,54 @@
       "slug": "w9-coverage-checks",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-OPS-GAPS-01",
+      "title": "The traffic-log watch and syslog listener routes had no team-mode rule and no write-safety classification, and the syslog clear needed no writer and was not audited",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-862",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "Team rules (admin), write-safety classification, require_writer and an audit record on the clear.",
+      "test": "tests/test_team_server.py::test_every_route_has_an_access_rule_or_is_on_the_public_list",
+      "commit": "db6401f",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W9-OPS-GAPS-04",
+      "title": "The whole-tenant export treated the ZIA posture profile list as complete, though the API is documented to cut it short silently",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-392",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "Every export that reads the list says it may be incomplete, with the count read (report, export_report.json, READMEs, job result, Exports page).",
+      "test": "tests/test_tf_providers_w9.py::test_the_zia_posture_list_is_reported_as_possibly_incomplete_never_as_complete",
+      "commit": "4c56386",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W9-OPS-GAPS-05",
+      "title": "The workbook reader parsed a whole sheet part into memory (734 MB peak for a 3 MB upload) and cut a sheet past the row cap short instead of refusing it",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-400",
+      "asvs": "V12.1.1",
+      "wcag": "",
+      "fix": "Streamed iterative parse with the caps checked as bytes are inflated; a sheet over the row, filled-cell, column or shared-string cap is refused, reading stopping at the cap.",
+      "test": "tests/test_zcc_lists_w9.py::test_a_large_sheet_is_refused_early_with_bounded_memory_and_work",
+      "commit": "03468b7",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "W9-SG-03",
@@ -11131,6 +11180,70 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W9-OPS-GAPS-02",
+      "title": "The workbook reader capped each part's size but not the expansion ratio or the total declared size",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-409",
+      "asvs": "V12.1.1",
+      "wcag": "",
+      "fix": "Per-part ratio cap (200x past 1 MB) checked before and after reading, and a 96 MB total declared size cap.",
+      "test": "tests/test_zcc_lists_w9.py::test_a_zip_bomb_part_is_refused_by_its_expansion_ratio",
+      "commit": "db6401f",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W9-OPS-GAPS-03",
+      "title": "Client Connector notification templates and ZIA posture profiles were listed as not exported",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V14.2.1",
+      "wcag": "",
+      "fix": "Raw GET at the provider's v2 paths (assumed shape), written in the provider's nested-attribute form.",
+      "test": "tests/test_tf_providers_w9.py::test_a_oneapi_sample_tenant_exports_notification_templates_and_zia_posture_with_the_settings",
+      "commit": "fe9b98f",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W9-OPS-GAPS-06",
+      "title": "No test proved that clearing or stopping the syslog listener needs the writer and is audited",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-862",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "Tests: without the writer clear and stop are 403 and keep the lines; with it each writes its audit record.",
+      "test": "tests/test_traffic_log_sources.py::test_clearing_or_stopping_the_listener_without_the_writer_is_refused_and_keeps_the_lines",
+      "commit": "a086dcd",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W9-OPS-GAPS-07",
+      "title": "The release notes said every new assistant tool checks the server's scope, though the case-notes tools (local notes) take no Scope key",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.1.2",
+      "wcag": "",
+      "fix": "The CHANGELOG says which tools check scope and that the case-notes tools work on the app's local notes.",
+      "test": "tests/test_mcp_tools_w9.py::test_the_changelog_says_which_assistant_tools_check_scope",
+      "commit": "a086dcd",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "W9-SG-06",
       "title": "An ACME certificate was renewed only at start-up, so a server running past expiry served an expired certificate",
       "severity": "low",
@@ -14460,6 +14573,17 @@
       "tests_added": 112
     },
     {
+      "slug": "w9-ops-gaps",
+      "area": "ops-gaps",
+      "title": "Outside-tool gaps: Client Connector Terraform (notification templates, ZIA posture), Excel device lists, domain user names, traffic logs without uploading, assistant tools",
+      "standards": [
+        "ASVS 4.0.3 L2 V4.1, V5.1, V5.3, V5.5, V8.3, V12.1, V14.2"
+      ],
+      "checks": 6,
+      "findings": 7,
+      "tests_added": 65
+    },
+    {
       "slug": "w9-security-gates",
       "area": "Security gates: team-mode isolation of kept records, the four gates on the older writes and deletes, Client Connector OTP behind write mode, forced password change, ACME renewal while running, store encryption coverage",
       "title": "Wave 9: every write or delete route, old ones and the OTP reveal included, behind the write engine's gates; team mode keeps each tenant's records apart",
@@ -14571,6 +14695,7 @@
       "CWE-67",
       "CWE-73",
       "CWE-74",
+      "CWE-77",
       "CWE-78",
       "CWE-79",
       "CWE-88",

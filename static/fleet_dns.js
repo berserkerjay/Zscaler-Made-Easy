@@ -1,6 +1,6 @@
 /* DNS records for client hostnames (/report/fleet, section #zfDns): after a
  * fleet read with enrolled devices, POST /api/zcc/fleet/{job}/dns-records
- * builds Unbound, BIND and CSV text from that read (no tenant call) and the
+ * builds Unbound, BIND, Windows DNS (PowerShell, dnscmd) and CSV text from that read (no tenant call) and the
  * buttons save it as files. Nothing is sent to a DNS server. Every value
  * from the server is set as text or escaped. */
 (function () {
@@ -11,7 +11,7 @@
     return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
   if (!$('zfDns')) return;
   let job = null, built = null;
-  const DL = { zfDnsUnbound: 'unbound', zfDnsNamed: 'bind_forward', zfDnsZone: 'bind_zone', zfDnsCsv: 'csv' };
+  const DL = { zfDnsUnbound: 'unbound', zfDnsNamed: 'bind_forward', zfDnsZone: 'bind_zone', zfDnsWinPs: 'windows_ps', zfDnsWinCmd: 'windows_dnscmd', zfDnsCsv: 'csv' };
   const STATUS = { ok: 'OK', renamed: 'Renamed', duplicate: 'Duplicate', collision: 'Collision', invalid: 'No usable name', reserved: 'Reserved name', 'too long': 'Too long' };
 
   function setEnabled(id, on) { const b = $(id); if (b) { b.disabled = !on; b.setAttribute('aria-disabled', on ? 'false' : 'true'); } }

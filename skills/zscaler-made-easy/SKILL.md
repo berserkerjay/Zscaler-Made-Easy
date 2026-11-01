@@ -1,6 +1,6 @@
 ---
 name: zscaler-made-easy
-description: Answer a Zscaler admin's questions about their own tenant with the Zscaler Made Easy MCP tools - why something was blocked or allowed, which rule wins, whether DLP covers a channel (web, endpoint, email, SaaS, GenAI), what is not SSL inspected, what the live DLP incidents show, what traffic did, how ZPA decides, how healthy the Client Connector fleet is, what changed since a snapshot, and which compliance controls are met. Use it when the zscaler-made-easy MCP server is connected. Every tool is read-only.
+description: Answer a Zscaler admin's questions about their own tenant with the Zscaler Made Easy MCP tools - why something was blocked or allowed, which rule wins, whether DLP covers a channel (web, endpoint, email, SaaS, GenAI), what is not SSL inspected, what the live DLP incidents show, what traffic did, how ZPA decides, how healthy the Client Connector fleet is, what changed since a snapshot, which compliance controls are met, what a saved traffic log report shows, how Cloud & Branch Connector and ZDX look, what the app changed recently, and the admin's case notes. Use it when the zscaler-made-easy MCP server is connected. Every tool is read-only.
 ---
 
 # Zscaler Made Easy: live analysis
@@ -16,11 +16,17 @@ time you read a tool's answer. Use
 answer, [references/data-security-flows.md](references/data-security-flows.md)
 when the question is "why didn't DLP catch it" or "how does this channel
 work", and [references/siem-queries.md](references/siem-queries.md) when the
-admin wants to check what really happened in their logs.
+admin wants to check what really happened in their logs. Use
+[references/glossary.md](references/glossary.md) for the plain meaning of a
+word the admin may not know, and
+[references/reference-library.md](references/reference-library.md) to point
+them to the app's reference pages for "how should this work?" questions.
 
 ## Rules that are never broken
 
 1. **Read-only.** No tool changes the tenant, and there is no tool that can.
+   `add_case_note` only adds a comment to the app's own local notes, and only
+   when the admin asks you to note something.
    When the answer is "change this rule", say what to change and where, and
    say the admin makes the change in the app (or the Zscaler portal), where
    write mode, a preview and a typed confirmation protect it. Never offer to
@@ -78,6 +84,11 @@ answer leaves the question open.
 | Why does a tool say "not permitted"? What can this API client do? | `readiness` | |
 | Are we compliant with PCI / HIPAA / NIST? Which controls fail? | `compliance_map` (after `run_assessment`) | `run_section` for one area |
 | How mature is our DLP overall? | `run_assessment` | `compliance_map`; `list_checks` |
+| What did the logs I saved show? Which ZPA connections failed and why? | `traffic_logs_summary` (blank to list, then `saved_report`) | `zpa_path` for a failing destination; SIEM queries |
+| Are our Cloud & Branch Connectors healthy and set up well? | `ztw_summary` | `path_check` for a workload destination |
+| Which apps have a poor ZDX score? What ZDX alerts fired? | `zdx_summary` | `fleet_health` for the devices' Client Connector |
+| What did the app change recently? What happened since Monday? | `timeline` (`since`) | `snapshot_diff` for what the configuration now differs by |
+| What did we note about this rule or finding? Note this for later | `case_notes` (`tag` or `kind`) | `add_case_note` (`kind`, `ref`, `comment`) when the admin asks to note something |
 
 ## Answer shape
 

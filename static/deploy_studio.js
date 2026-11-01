@@ -590,7 +590,8 @@ async function _dzTerraform(ids, mode) {
     _dzNeedAssessor();
     // Static mode sends no credentials at all, so the server never reads the tenant.
     const creds = mode === 'static' ? { client_id: '', client_secret: '', vanity_domain: '', username: '', password: '', api_key: '', cloud: (_dzCreds() || {}).cloud || 'production', assessor: (_dzCreds() || {}).assessor || '' } : _dzCreds();
-    const snap = await _dzRunJob('/api/dlp-packs/terraform/start', { pack_ids: ids, use_rank_0: DZ.options.use_rank_0, channel_targets: _dzTargets(ids), mode: mode || '', ...creds });
+    const snap = await _dzRunJob('/api/dlp-packs/terraform/start', { pack_ids: ids, use_rank_0: DZ.options.use_rank_0, channel_targets: _dzTargets(ids), mode: mode || '',
+      provider_namespace: TF.ns || '', ...creds });
     if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The hand-off ended without a result.');
     if (snap.result.status === 'stopped' || !snap.download) throw new Error(snap.result.stopped || 'The hand-off was stopped before the workspace was built.');
     const r = await fetch(snap.download, { cache: 'no-store' });
@@ -2298,7 +2299,7 @@ async function _dzExportFile(path) {
 // provider, for customers whose platform team manages Zscaler as code.
 // Opened through openToolTab('terraform', packIds) so it lives in its own
 // tab like the other tools; the dialog below is what gets mirrored.
-const TF = { packs: [], selected: new Set(), summaries: {}, busy: false, error: '', last: null };
+const TF = { packs: [], selected: new Set(), summaries: {}, busy: false, error: '', last: null, ns: '' };
 function _tfEnsureModal() {
   if (document.getElementById('terraformModal')) return;
   const m = document.createElement('div');
@@ -2446,6 +2447,7 @@ function _tfRender() {
     ${sums || '<div class="d">Select at least one pack.</div>'}
     <div class="dz-h">4 · Download and hand over</div>
     <div class="tf-actions">
+      <label class="tf-ns" for="tfNs">Private registry namespace <span class="d">(optional)</span> <input type="text" id="tfNs" maxlength="200" placeholder="zscaler" autocomplete="off" spellcheck="false" value="${_dzE(TF.ns || '')}" oninput="TF.ns = this.value.trim()"></label>
       <button type="button" class="dz-btn primary" ${sel.length && !TF.busy ? '' : 'disabled'} onclick="_tfDownload()">${TF.busy ? 'Working…' : `Download workspace (${mode} mode, ${_dzN(sel.length, 'pack')})`}</button>
       <span class="d">One zip, one folder per pack. Give it to the customer's platform team with the note below.${mode === 'gap' ? ' Gap mode reads the tenant first (dictionaries, engines, the rules on every channel the pack uses): a minute or two, shown step by step below, and those reads count against the ZIA API rate limit.' : ''}</span>
     </div>

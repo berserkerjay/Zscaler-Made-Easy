@@ -11,7 +11,8 @@
     <out>/endpoint/                  a pack with an Endpoint DLP rule, a sub-rule
                                      and an application group
     <out>/tenant/tenant-terraform/   the sample tenant exported whole (tenant_terraform):
-                                     zia/ and zpa/ workspaces with import blocks
+                                     one workspace per product (zia/, zpa/, ztc/, zcc/)
+                                     with import blocks; CI validates every one
 
     python tools/terraform_samples.py /tmp/tf_samples
 """
@@ -61,11 +62,15 @@ def main(out: str) -> int:
     import offline_tenant as ot
     import tenant_terraform as tt
     st = ot.sample_store(reset=True)
-    opts = tt.normalize_options(["zia", "zpa"])
-    sel = tt.plan(["dlp", "zia_extras", "zpa"], {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb",
+    opts = tt.normalize_options(list(tt.PRODUCTS))
+    sel = tt.plan(["dlp", "zia_extras", "zpa", "ztw", "zcc"], {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb",
                                                                        "ssl_inspection", "cloud_app_control")}, opts)
     snap = tt.read_tenant(ot.OfflineSdkClient(st, ot.creds_for(st)), sel["read"])
     files, _report = tt.generate(snap, opts, tenant_label="Sample tenant", plan_info=sel, generated_at="2026-10-31T00:00:00Z")
+    missing = [p for p in tt.PRODUCTS if f"{tt.ROOT_DIR}/{p}/terraform.tf" not in files]
+    if missing:   # CI validates every product's workspace: the sample must produce each one
+        print(f"the whole-tenant sample has no workspace for {missing}", file=sys.stderr)
+        return 2
     for path, content in files.items():
         target = os.path.join(out, "tenant", path)
         os.makedirs(os.path.dirname(target), exist_ok=True)

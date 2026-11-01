@@ -51,6 +51,10 @@ BUILDERS = {
     "reorder": {"type": "reorder", "policy": "url_filtering", "order": [603, 602, 601]},
     "url_categories": {"type": "url_categories", "action": "add", "target": "CUSTOM_01", "urls": ["new.larkspur-freight.example"]},
     "zpa_domains": {"type": "zpa_domains", "action": "copy", "source": "2201", "target": "2202", "domains": ["billing.larkspur-freight.example"]},
+    "zcc_device_bulk_remove": {"type": "zcc_device_bulk_remove", "mode": "remove", "batch_size": 2, "devices": [
+        {"udid": "LKF-WIN-0001", "user": "avery.quinn@larkspur-freight.example", "entry": "avery.quinn@larkspur-freight.example"},
+        {"udid": "LKF-MAC-0002", "user": "rowan.ellis@larkspur-freight.example", "entry": "LKF-MAC-0002"},
+        {"udid": "LKF-WIN-0003", "user": "jordan.blake@larkspur-freight.example", "entry": "@larkspur-freight.example"}]},
 }
 # The POV build: every part at once, the ZPA parts depending on each other.
 POV_PARTS = {"zia_baseline": BUILDERS["zia_baseline"], "ssl_certificates": BUILDERS["ssl_certificate_move"],
@@ -156,6 +160,29 @@ def test_every_builder_plans_offline_as_a_rehearsal(offline, source, op):
     assert out["status"] in ("ready", "nothing_to_do", "blocked"), out["status"]
     if op not in ("zcc_profile_delete", "zdx_probe_delete"):   # deleting an object in use is refused on any tenant
         assert out["status"] != "blocked", out["blockers"]
+    assert st.writes == 0 and offline["attempts"] == [] and offline["built"] == []
+
+
+def test_a_bulk_device_removal_plans_from_a_snapshot_reading_the_devices_in_pages(offline, monkeypatch):
+    """ASVS V1.14.1 · V12.6.1 · CWE-653 · WSTG-INPV-19: on a snapshot holding the enrolled devices (/zcc/papi/public/v1/getDevices), a bulk removal plans as a rehearsal in batches; inventory() reads the offline answer page by page (two pages of two) and every device once."""
+    # Arrange
+    import ops_zcc_admin as zadm
+    c = offline["c"]
+    st = _use_snapshot(c)
+    monkeypatch.setattr(zadm, "INVENTORY_PAGE", 2)
+    client = ot.OfflineSdkClient(st, ot.creds_for(st))
+    # Act
+    rows, pages, err = zadm.inventory(client)
+    r = c.post("/api/operations/preview", json=dict(SCOPE, operation=copy.deepcopy(BUILDERS["zcc_device_bulk_remove"])))
+    # Assert
+    assert "/zcc/papi/public/v1/getDevices" in st.responses, "the snapshot holds the enrolled devices"
+    assert err is None and pages == 2 and sorted(d["udid"] for d in rows) == sorted(d["udid"] for d in sample_tenant.DEVICES)
+    assert r.status_code == 200, r.text[:400]
+    out = r.json()
+    _assert_rehearsal(out, "snapshot")
+    assert out["status"] == "ready", out.get("blockers")
+    assert [g["target"]["udids"] for g in out["groups"]] == [["LKF-WIN-0001", "LKF-MAC-0002"], ["LKF-WIN-0003"]]
+    assert sorted(i["group"] for i in out["items"]) == ["batch:1", "batch:1", "batch:2"]
     assert st.writes == 0 and offline["attempts"] == [] and offline["built"] == []
 
 
