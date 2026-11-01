@@ -5,6 +5,17 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-01
+
+### Outside-tool gaps: Client Connector Terraform, device lists, traffic logs without uploading, assistant tools
+- **Client Connector Terraform.** The whole-tenant export's zcc workspace (the beta zscaler/zcc provider, pinned exactly to 0.1.2-beta.3, OneAPI only; skipped with the reason for a classic sign-in and on zscalergov, zscalergovus and zscalerten) now writes the fail-open policy, device cleanup and web privacy settings, notification templates and ZIA posture profiles beside trusted networks and forwarding profiles. Notification templates and posture profiles are read (GET only) at the paths the provider uses, since the SDK has no call for them; their nested settings are written in the provider's own form, a posture profile's platform by name. Every argument written is one the pinned provider declares (a test checks each). CI validates the zia, zpa, ztc and zcc workspaces of the sample export and now fails the run when one does not validate. Policy packs take the same private-registry namespace option.
+- **Excel device lists.** Remove devices from a list takes the Client Connector portal's device export as an .xlsx file (8 MB at most), read on the server as untrusted: entry count, total size and expansion-ratio caps against zip bombs, a hardened XML parser (no DTD or entities), the first sheet only, a row cap; a UDID, user or host name column is found by its header. Cells that are not a valid entry are counted as invalid, never matched.
+- **Download the domain's user names.** Beside the list, one user domain's enrolled user names, with each user's device count, states and last seen, as a CSV whose cells are made safe for spreadsheets. It is personal data, so it needs a tick first (the server refuses without it, before signing in); the audit log records the domain and the count, never a name.
+- **Read logs without uploading.** On the Traffic and session logs page: a **Daily report from a folder** you name (made once a day from the files changed since the last run), and a **Syslog listener** (off by default, on an interface and high port you choose, rate-limited, lines kept in memory only). Both need a writer and are audited. The session table filters by Client Connector version and platform.
+- **Windows DNS Server output.** The DNS records for client hostnames can be downloaded as Windows DNS Server conditional forwarders (PowerShell or dnscmd), injection-safe.
+- Assistant (MCP) tools: a saved traffic log report as counts, Cloud & Branch Connector, ZDX application scores and alerts, the app's own timeline since a date, and the admin's case notes (read, and add a comment as the AI assistant to the app's local notes). Each is read-only toward the tenant, checks the server's scope first and counts people instead of naming them. The assistant skill gained a plain-word glossary and a guide to the app's reference pages.
+- The offline rehearsal now plans a bulk device removal from a snapshot, reading the enrolled devices page by page.
+
 ## 2026-10-31
 
 ### Path coverage: unread conditions never match, Category lookup, UCaaS one-click

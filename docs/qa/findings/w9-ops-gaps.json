@@ -1,0 +1,92 @@
+{
+ "area": "ops-gaps",
+ "title": "Outside-tool gaps: Client Connector Terraform (notification templates, ZIA posture), Excel device lists, domain user names, traffic logs without uploading, assistant tools",
+ "files": [
+  "tenant_terraform.py",
+  "tenant_terraform_schema.py",
+  "xlsx_reader.py",
+  "ops_zcc_admin.py",
+  "static/ops_admin.js",
+  "dlp_api_server.py",
+  "mcp_tools.py",
+  "dlp_mcp_server.py",
+  "sample_tenant.py",
+  ".github/workflows/tests.yml",
+  "team_routes.py"
+ ],
+ "standards": [
+  "ASVS 4.0.3 L2 V4.1, V5.1, V5.3, V5.5, V8.3, V12.1, V14.2"
+ ],
+ "coverage": {
+  "before": 0.0,
+  "after": 100.0
+ },
+ "checks": [
+  {
+   "id": "tf-provider-schema",
+   "what": "every zcc argument written (fail-open, device cleanup, web privacy, notification templates, ZIA posture) is one the pinned provider 0.1.2-beta.3 declares, nested attributes included",
+   "standard": "ASVS V14.2.1",
+   "result": "pass"
+  },
+  {
+   "id": "xlsx-bomb-xxe",
+   "what": "zip bomb (ratio, total size, entry count), DTD/entity and oversize workbooks refused; a normal one parses",
+   "standard": "ASVS V12.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "domain-users-personal",
+   "what": "domain user names need the server-checked personal-data tick, are CSV-injection safe, no-store, and the audit holds only the count",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "mcp-scope-counts",
+   "what": "each new assistant tool answers counts on the sample tenant and refuses an unticked scope before any read; no person named",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "route-tables",
+   "what": "the new route and the traffic-log watch and syslog routes have team rules and a write classification; the syslog clear needs a writer and is audited",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W9-OPS-GAPS-01",
+   "title": "The traffic-log watch and syslog listener routes had no team-mode rule and no write-safety classification, and the syslog clear needed no writer and was not audited",
+   "severity": "medium",
+   "cwe": "CWE-862",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "Team rules (admin), write-safety classification, require_writer and an audit record on the clear.",
+   "test": "tests/test_team_server.py::test_every_route_has_an_access_rule_or_is_on_the_public_list",
+   "commit": "db6401f"
+  },
+  {
+   "id": "W9-OPS-GAPS-02",
+   "title": "The workbook reader capped each part's size but not the expansion ratio or the total declared size",
+   "severity": "low",
+   "cwe": "CWE-409",
+   "asvs": "V12.1.1",
+   "status": "fixed",
+   "fix": "Per-part ratio cap (200x past 1 MB) checked before and after reading, and a 96 MB total declared size cap.",
+   "test": "tests/test_zcc_lists_w9.py::test_a_zip_bomb_part_is_refused_by_its_expansion_ratio",
+   "commit": "db6401f"
+  },
+  {
+   "id": "W9-OPS-GAPS-03",
+   "title": "Client Connector notification templates and ZIA posture profiles were listed as not exported",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V14.2.1",
+   "status": "fixed",
+   "fix": "Raw GET at the provider's v2 paths (assumed shape), written in the provider's nested-attribute form.",
+   "test": "tests/test_tf_providers_w9.py::test_a_oneapi_sample_tenant_exports_notification_templates_and_zia_posture_with_the_settings",
+   "commit": "fe9b98f"
+  }
+ ],
+ "tests_added": 52
+}

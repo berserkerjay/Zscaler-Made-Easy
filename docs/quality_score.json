@@ -345,7 +345,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 102,
+            "fixed": 105,
             "accepted": 12,
             "records": [
               "c6-zcc-zdx",
@@ -367,7 +367,8 @@
               "w8-shadow-it",
               "w8-zdx-zid-zcc",
               "w8-zia-threat-saas",
-              "w8-zwa-aiguard"
+              "w8-zwa-aiguard",
+              "w9-ops-gaps"
             ]
           },
           "coverage": {
@@ -481,7 +482,7 @@
     }
   ],
   "counts": {
-    "findings": 713,
+    "findings": 716,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -495,12 +496,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 178,
+        "fixed": 179,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 393,
+        "fixed": 395,
         "accepted": 3
       },
       "info": {
@@ -510,12 +511,12 @@
       }
     },
     "checks": {
-      "pass": 646,
+      "pass": 651,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11297
+    "tests_added": 11349
   },
   "findings": [
     {
@@ -4501,6 +4502,22 @@
       "slug": "w8-cloud-connector",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-OPS-GAPS-01",
+      "title": "The traffic-log watch and syslog listener routes had no team-mode rule and no write-safety classification, and the syslog clear needed no writer and was not audited",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-862",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "Team rules (admin), write-safety classification, require_writer and an audit record on the clear.",
+      "test": "tests/test_team_server.py::test_every_route_has_an_access_rule_or_is_on_the_public_list",
+      "commit": "db6401f",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -10791,6 +10808,38 @@
       "sub_area": "builders"
     },
     {
+      "id": "W9-OPS-GAPS-02",
+      "title": "The workbook reader capped each part's size but not the expansion ratio or the total declared size",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-409",
+      "asvs": "V12.1.1",
+      "wcag": "",
+      "fix": "Per-part ratio cap (200x past 1 MB) checked before and after reading, and a 96 MB total declared size cap.",
+      "test": "tests/test_zcc_lists_w9.py::test_a_zip_bomb_part_is_refused_by_its_expansion_ratio",
+      "commit": "db6401f",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W9-OPS-GAPS-03",
+      "title": "Client Connector notification templates and ZIA posture profiles were listed as not exported",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V14.2.1",
+      "wcag": "",
+      "fix": "Raw GET at the provider's v2 paths (assumed shape), written in the provider's nested-attribute form.",
+      "test": "tests/test_tf_providers_w9.py::test_a_oneapi_sample_tenant_exports_notification_templates_and_zia_posture_with_the_settings",
+      "commit": "fe9b98f",
+      "reason": "",
+      "slug": "w9-ops-gaps",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13915,6 +13964,17 @@
       "checks": 8,
       "findings": 5,
       "tests_added": 46
+    },
+    {
+      "slug": "w9-ops-gaps",
+      "area": "ops-gaps",
+      "title": "Outside-tool gaps: Client Connector Terraform (notification templates, ZIA posture), Excel device lists, domain user names, traffic logs without uploading, assistant tools",
+      "standards": [
+        "ASVS 4.0.3 L2 V4.1, V5.1, V5.3, V5.5, V8.3, V12.1, V14.2"
+      ],
+      "checks": 5,
+      "findings": 3,
+      "tests_added": 52
     }
   ],
   "standards": {
@@ -13984,6 +14044,7 @@
       "CWE-67",
       "CWE-73",
       "CWE-74",
+      "CWE-77",
       "CWE-78",
       "CWE-79",
       "CWE-88",

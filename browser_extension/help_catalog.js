@@ -676,6 +676,11 @@ window.HELP_CATALOG = {
    }
   },
   "/": {
+   "#tfNs": {
+    "what": "Points the Terraform files at your own copy of the Zscaler provider (a private registry mirror). Blank uses the public one.",
+    "input": "Optional. A registry host and namespace, like registry.example.com/zscaler.",
+    "effect": "local"
+   },
    ".tool-group button[onclick=\"openSimpleMode()\"]": {
     "what": "Seven big tasks in plain words (connect, check, fix, protect, why was something blocked, what changed, a report for your boss), one question per screen. Nothing changes your Zscaler without your yes.",
     "input": "Nothing to type. Just click it. It opens in this tab.",
@@ -3946,6 +3951,16 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Read the fleet first, then fill in the domain and the resolver addresses.",
     "effect": "local"
    },
+   "#zfDnsWinPs": {
+    "what": "Saves the records as a PowerShell script for Windows DNS Server. You run it on your DNS server yourself.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDnsWinCmd": {
+    "what": "Saves the records as dnscmd commands for Windows DNS Server. You run them on your DNS server yourself.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
    "#zfDnsUnbound": {
     "what": "Saves the Unbound forward zones as a file. You load it on your DNS server yourself.",
     "input": "Nothing to type. Build the records first.",
@@ -6266,8 +6281,8 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#admListFile": {
-    "what": "Loads the list from a file.",
-    "input": "Optional. A .txt or .csv file, at most 1 MB.",
+    "what": "Loads the list from a file. An Excel file is read on the server, safely.",
+    "input": "Optional. A .txt or .csv file (at most 1 MB), or an Excel .xlsx file such as the portal's device export (at most 8 MB).",
     "effect": "local"
    },
    "#admListDomain": {
@@ -6284,6 +6299,16 @@ window.HELP_CATALOG = {
     "what": "Picks Remove or Force remove for the whole list.",
     "input": "Tick one.",
     "effect": "local"
+   },
+   "#admUsersOk": {
+    "what": "Says you need the user names of the domain. The file lists people, so it is personal data.",
+    "input": "Tick it before you download.",
+    "effect": "local"
+   },
+   "#admDomainUsers": {
+    "what": "Downloads the user names of the domain in Only users of this domain, with their device counts, as a CSV file. It only reads.",
+    "input": "Type the domain and tick the box first.",
+    "effect": "download"
    },
    "#admMatch": {
     "what": "Matches the list against the enrolled devices. It only reads.",
@@ -8327,6 +8352,91 @@ window.HELP_CATALOG = {
    }
   },
   "/report/traffic-logs": {
+   "#tlWatchBox > summary": {
+    "what": "Opens the daily report settings: a report made once a day from log files in a folder you name.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSyslogBox > summary": {
+    "what": "Opens the syslog listener: this app can take log lines sent to it, kept in memory only.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlwFolder": {
+    "what": "Names the folder the daily report reads log files from.",
+    "input": "Required to turn it on. A folder on this computer.",
+    "effect": "local"
+   },
+   "#tlwHour": {
+    "what": "Sets the hour of the day the report is made.",
+    "input": "0 to 23, in this computer's time.",
+    "effect": "local"
+   },
+   "#tlwKeep": {
+    "what": "Sets how many daily reports are kept.",
+    "input": "A whole number.",
+    "effect": "local"
+   },
+   "#tlwNames": {
+    "what": "Keeps user names in the saved reports. Off, people are only counted.",
+    "input": "Optional. Tick it only if you need the names.",
+    "effect": "local"
+   },
+   "#tlwOn": {
+    "what": "Turns the daily report on or off.",
+    "input": "Tick it to turn it on.",
+    "effect": "local"
+   },
+   "#tlwSave": {
+    "what": "Saves the daily report settings.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlwRun": {
+    "what": "Makes the report now from the files changed since the last run.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlsHost": {
+    "what": "Picks the network address the syslog listener listens on.",
+    "input": "Required. This computer's address, like 127.0.0.1.",
+    "effect": "local"
+   },
+   "#tlsPort": {
+    "what": "Picks the port the syslog listener listens on.",
+    "input": "Required. A high port, like 5514.",
+    "effect": "local"
+   },
+   "#tlsProto": {
+    "what": "Picks UDP or TCP for the syslog listener.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#tlsRemote": {
+    "what": "Lets other computers send logs to the listener.",
+    "input": "Optional. Leave it off unless a log server must send here.",
+    "effect": "local"
+   },
+   "#tlsStart": {
+    "what": "Starts the syslog listener. Lines are kept in memory only.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlsStop": {
+    "what": "Stops the syslog listener.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlsAnalyze": {
+    "what": "Makes a report from the lines that arrived.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlsClear": {
+    "what": "Forgets the lines that arrived.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#tlFiles": {
     "what": "Picks the ZPA LSS or ZIA NSS log files to analyze. You can also drop them in this box.",
     "input": "Required. JSON lines, a CSV or TSV with its header row, or the default NSS tab-separated feed, as .json, .log, .txt, .csv or .tsv, or packed in a .gz or .zip. Keep it under the upload limit shown.",

@@ -1185,7 +1185,7 @@ def ztw_summary(ctx: Ctx) -> Dict[str, Any]:
 
 
 # ── 18. ZDX summary ─────────────────────────────────────────────────
-ZDX_BANDS = (("poor", 0, 33), ("okay", 34, 65), ("good", 66, 100))   # ZDX's own score bands
+ZDX_BANDS = (("poor", 0, 33), ("okay", 34, 65), ("good", 66, 100))   # assumed: the ZDX portal's score bands (not in the SDK)
 
 
 def zdx_summary(ctx: Ctx) -> Dict[str, Any]:

@@ -220,6 +220,12 @@ external references refused, after a size cap (8 MiB) and with depth (48)
 and element-count (250,000) caps. Every value that becomes a Zscaler name
 is checked again when the plan is previewed on Bulk changes.
 
+## Excel workbooks and the syslog listener (wave 9)
+
+- **Excel workbooks** (Remove devices from a list): read by `xlsx_reader.py` as untrusted archives: at most 8 MB, at most 2,000 members whose declared sizes add up to at most 96 MB, no member expanding more than 200 times its compressed size, stored or deflate only and never encrypted, each opened part size-capped; XML through defusedxml with DTDs, entities and external references refused; the first sheet only, at most 20,000 rows of 64 cells of 512 characters; formulas are never evaluated (a cached value or nothing).
+- **Syslog listener** (Traffic and session logs): the one inbound listener besides the app itself. Off by default and never started on its own; a writer starts it on an interface and high port they choose (other computers only when they say so), it is rate-limited and size-capped, keeps lines in memory only (never on disk unless a report is saved, counts only by default), and every start, stop and clear is audited with the actor.
+- **Domain user names** (Client Connector): the one download that lists people by design; it needs an explicit personal-data tick checked on the server, and the audit log records the count, never a name.
+
 ## Team server (optional; off by default)
 
 `ZSCALER_TEAM_MODE=1` turns the app into a multi-user team server
