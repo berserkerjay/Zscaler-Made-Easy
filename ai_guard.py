@@ -576,6 +576,34 @@ DEPTH_ASSUMED = (
 # Credential fields kept: names and links only. Anything else in the answer
 # (a key, a token, a secret) is never read into the result.
 CREDENTIAL_FIELDS = ("id", "name", "application_id", "provider_id", "provider_credentials_id", "mode", "create_time_millis", "update_time_millis")
+# LLM provider credentials (client.aiguard.llm_provider_credentials.list_credentials,
+# GET /aiguard/v1/llm-provider-credentials; LlmProviderCredentials: providerId,
+# name, expireTimeMillis, apiCredentials {type, ...}). apiCredentials carries
+# the provider's key, so it is never kept: only these names and dates leave
+# the reader (zscaler_genai_checks AIG.7, sdk_client). id and the
+# create/update times are assumed from the other AI Guard models; the
+# SDK model of this resource does not name them.
+PROVIDER_CREDENTIALS_PATH = "/aiguard/v1/llm-provider-credentials"
+PROVIDER_CREDENTIAL_FIELDS = ("id", "name", "providerId", "expireTimeMillis", "createTimeMillis", "updateTimeMillis")
+
+
+def provider_credential_metadata(rows: Any) -> List[Dict[str, Any]]:
+    """LLM provider credentials reduced to their names and dates: every
+    other field (apiCredentials and anything a newer API adds) is dropped,
+    whatever its spelling. Values are kept only when they are plain text or
+    numbers, so a nested key can never ride along."""
+    out: List[Dict[str, Any]] = []
+    for r in rows if isinstance(rows, list) else []:
+        if not isinstance(r, dict):
+            continue
+        norm = {re.sub(r"[^a-z0-9]", "", str(k).lower()): v for k, v in r.items()}
+        keep: Dict[str, Any] = {}
+        for f in PROVIDER_CREDENTIAL_FIELDS:
+            v = norm.get(f.lower())
+            if isinstance(v, (str, int, float)) and not isinstance(v, bool):
+                keep[f] = v[:128] if isinstance(v, str) else v
+        out.append(keep)
+    return out
 APPLICATION_FIELDS = ("id", "name", "create_time_millis", "update_time_millis")
 API_KEY_ENV = "AIGUARD_API_KEY"
 CLOUD_ENV = "AIGUARD_CLOUD"

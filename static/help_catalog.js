@@ -1048,7 +1048,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"aiguard\"]": {
-    "what": "Lets the app read Zscaler AI Guard: is it licensed and reachable. The Bulk changes builders use it. Not part of the checks.",
+    "what": "Adds the AI Guard checks (AIG.1 to AIG.7) and lets the app read Zscaler AI Guard: is it licensed and reachable. The Bulk changes builders use it. Provider credentials are read as names and dates only.",
     "input": "Tick it to allow AI Guard. Needs a OneAPI API client with AI Guard access.",
     "effect": "local"
    },

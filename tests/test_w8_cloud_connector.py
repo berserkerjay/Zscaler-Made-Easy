@@ -203,7 +203,7 @@ def test_the_checks_run_only_with_cloud_and_branch_connector_ticked():
     """ASVS V4.1.3 · CWE-284 · WSTG-ATHZ-02: the ZTW checks are selected only by the ztw Scope page key, never by another key or the legacy full scope."""
     import dlp_api_server as srv
     ids = lambda checks: {c[0] for c in checks if c[0].startswith("ZTW.")}
-    assert ids(srv._get_checks(scopes=["ztw"])) == {f"ZTW.{n}" for n in range(1, 9)}
+    assert ids(srv._get_checks(scopes=["ztw"])) == {f"ZTW.{n}" for n in range(1, 10)}   # ZTW.9: coverage checks (IP groups)
     for other in (["zia_extras", "zpa", "zcc", "rbac", "dlp"], None):
         assert ids(srv._get_checks("full", other)) == set()
     assert ids(srv._get_checks(scopes=["ztw"])) == {c["id"] for c in TestClient(srv.app).get("/api/checks?scope=ztw").json()}
@@ -232,7 +232,7 @@ def test_the_assessment_checks_read_the_rest_paths_and_say_not_licensed_on_404()
     import zscaler_full_checks as fc
     raw = ot.OfflineRawClient(ot.sample_store(reset=True), CREDS)
     checks = [c for c in fc.PLATFORM_REG if c[0].startswith("ZTW.")]
-    assert [c[1] for c in checks] == [zo.SECTION] * 8
+    assert [c[1] for c in checks] == [zo.SECTION] * 9
     assert {c[3](raw).status for c in checks} == {"REVIEW"}
 
     class Missing:
@@ -244,13 +244,13 @@ def test_the_assessment_checks_read_the_rest_paths_and_say_not_licensed_on_404()
 
 # ── the snapshot ────────────────────────────────────────────────────────
 def test_a_snapshot_captures_the_connector_answers_only_when_ticked():
-    """ASVS V4.1.3 · CWE-284 · CWE-312: the snapshot plan holds the 14 ZTW paths with ztw ticked and none without; captured answers carry no key value."""
+    """ASVS V4.1.3 · CWE-284 · CWE-312: the snapshot plan holds the 15 ZTW paths (14 for the page, the IP groups for ZTW.9) with ztw ticked and none without; captured answers carry no key value."""
     assert not [p for p in ot.capture_plan(["zia_extras", "zpa", "zcc", "rbac"]) if p.startswith("/ztw/")]
     plan = [p for p in ot.capture_plan(["ztw"]) if p.startswith("/ztw/")]
-    assert sorted(plan) == sorted(zo.PATHS.values())
+    assert sorted(plan) == sorted(list(zo.PATHS.values()) + ["/ztw/api/v1/ipGroups"])   # + the IP groups ZTW.9 reads (coverage checks)
     raw = ot.OfflineRawClient(ot.sample_store(reset=True), CREDS)
     out = ot.capture(raw, ["ztw"], {}, lambda m: None)
-    assert len([p for p in out["responses"] if p.startswith("/ztw/")]) == 14
+    assert len([p for p in out["responses"] if p.startswith("/ztw/")]) == len(plan) == 15
     doc = ot.build_snapshot(out["responses"], {"scopes": ["ztw"]})
     blob = json.dumps(doc)
     assert "sample-placeholder-not-a-key" not in blob and "sample-not-a-real-key" not in blob

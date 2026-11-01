@@ -3,7 +3,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-482 markers.
+499 markers.
 
 | File:line | Note |
 |---|---|
@@ -24,8 +24,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ai_guard.py:299` | """Root certificates for proxy chaining (raw GET, assumed path).""" |
 | `ai_guard.py:411` | verified, assumed}. Never writes and never raises on a tenant answer.""" |
 | `ai_guard.py:548` | "builder": BUILDER_PAGE, "verified": list(VERIFIED), "assumed": list(ASSUMED)} |
-| `ai_guard.py:640` | "errors": {}, "verified": list(VERIFIED) + list(DEPTH_VERIFIED), "assumed": list(ASSUMED) + list(DEPTH_ASSUMED)} |
-| `ai_guard.py:740` | "policy_id": pid, "verified": list(DEPTH_VERIFIED), "assumed": list(DEPTH_ASSUMED)} |
+| `ai_guard.py:584` | create/update times are assumed from the other AI Guard models; the |
+| `ai_guard.py:668` | "errors": {}, "verified": list(VERIFIED) + list(DEPTH_VERIFIED), "assumed": list(ASSUMED) + list(DEPTH_ASSUMED)} |
+| `ai_guard.py:768` | "policy_id": pid, "verified": list(DEPTH_VERIFIED), "assumed": list(DEPTH_ASSUMED)} |
 | `app_services.py:23` | assumed, as Zscaler does not publish them through the API). Zscaler |
 | `app_services.py:24` | builds those groups from that list (assumed from its One Click |
 | `app_services.py:29` | alternatives (any one is enough, assumed: they are one field in the |
@@ -99,6 +100,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `dlp_api_server.py:9341` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
 | `dlp_api_server.py:9343` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
 | `dlp_api_server.py:9476` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
+| `dlp_assessment_full_auto.py:200` | times of a provider credential are assumed (not named by the SDK model). |
 | `dns_forward_zones.py:47` | * Assumed (not in the SDK or Zscaler's API reference): that the resolver |
 | `editions.py:12` | tenants, and are ASSUMED (not in the SDK). The ZDX edition is not exposed by |
 | `editions.py:17` | brings the standard firewall; assumed) |
@@ -107,8 +109,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `editions.py:59` | SKU_NOTE = "Subscription ids are assumed (as seen on tenants; the SDK documents the licence list, not its ids)." |
 | `editions.py:143` | out.append(SKU_NOTE + " What each edition allows is this app's reading of Zscaler's edition descriptions (assumed).") |
 | `insights.py:670` | ASSUMED: Shadow IT's sanctioned_state spells the two states as |
-| `offline_tenant.py:504` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
-| `offline_tenant.py:1359` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
+| `offline_tenant.py:506` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
+| `offline_tenant.py:1361` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
 | `ops_aiguard.py:33` | readiness check; what is verified against the SDK and what is assumed is |
 | `ops_aiguard.py:622` | _SSL_STOPPERS = {"DO_NOT_DECRYPT", "BLOCK"}   # SSL inspection action types (BLOCK: assumed, not enumerated in the SDK model) |
 | `ops_config_restore.py:79` | assumed: a rule created without it is active at once (the API's default). |
@@ -340,13 +342,14 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `sample_tenant.py:476` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
 | `sample_tenant.py:691` | not in the SDK: its shapes are ops_zdx's (assumed there). |
 | `sample_tenant.py:776` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
-| `sample_tenant.py:1278` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
-| `scope_permissions.py:92` | "Reports (System Audit Report; assumed name)", |
-| `scope_permissions.py:93` | "Alerts (alert subscriptions; assumed name)", |
-| `scope_permissions.py:95` | "Organization (subscriptions; assumed name)", |
-| `scope_permissions.py:362` | "Remote Assistance (assumed name)", |
-| `scope_permissions.py:428` | "/zia/api/v1/proxies", "/zia/api/v1/proxyGateways", "/zia/api/v1/rootCertificates (assumed path)", "/zia/api/v1/forwardingRules", |
-| `scope_permissions.py:515` | "customer_id_note": "The Microsegmentation customer ID; the ZPA customer ID is used when none is given (assumed).", |
+| `sample_tenant.py:1020` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
+| `sample_tenant.py:1358` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
+| `scope_permissions.py:100` | "Reports (System Audit Report; assumed name)", |
+| `scope_permissions.py:101` | "Alerts (alert subscriptions; assumed name)", |
+| `scope_permissions.py:103` | "Organization (subscriptions; assumed name)", |
+| `scope_permissions.py:385` | "Remote Assistance (assumed name)", |
+| `scope_permissions.py:451` | "/zia/api/v1/proxies", "/zia/api/v1/proxyGateways", "/zia/api/v1/rootCertificates (assumed path)", "/zia/api/v1/forwardingRules", |
+| `scope_permissions.py:538` | "customer_id_note": "The Microsegmentation customer ID; the ZPA customer ID is used when none is given (assumed).", |
 | `shadow_rules.py:185` | set (time windows: a window list is not assumed to be a union). |
 | `shadow_rules.py:363` | assumed, so only the same engines count as the same content.""" |
 | `shadow_rules.py:609` | one names (rules are assumed to be first match per application and |
@@ -465,6 +468,20 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `zscaler_full_checks.py:2268` | _INS_HIGH_RISK = 4             # risk index 1 (low) to 5 (high): 4 and 5 are high (SDK zia/shadow_it_report.py lists 1-5; the direction i… |
 | `zscaler_full_checks.py:2271` | _CASB_SKUS = ("Z_CASB", "Z_CASB_BASIC")   # readiness.SKU_INFO (subscription ids assumed as seen on tenants) |
 | `zscaler_full_checks.py:2273` | values a tenant of that app carries. ASSUMED: the SDK lists neither side's values. |
+| `zscaler_full_checks.py:3143` | GET /config/isZiaCloudConfigAvailable. Assumed: that this availability |
+| `zscaler_full_checks.py:3206` | GET /visible/versionProfiles). Assumed: "Previous Default" is the profile that holds |
+| `zscaler_full_checks.py:3214` | profile itself has no version field). Assumed: App Connectors carry a role |
+| `zscaler_full_checks.py:3289` | as metadata only). Assumed: the API states no expiry, so "expired" is |
+| `zscaler_full_checks.py:3313` | Traffic capture actions that capture nothing (assumed: the SDK names no values; |
+| `zscaler_full_checks.py:3386` | aup, enabled; SDK model). Assumed: the AUP is tenant-wide (the model |
+| `zscaler_full_checks.py:3458` | (DnsApplicationGroups: name, dnsApplications). Assumed: a DNS Control |
+| `zscaler_full_checks.py:3499` | do not do what their names say. Assumed: an empty expression selects no |
+| `zscaler_full_checks.py:3535` | no criteria or no header inserts nothing. Assumed: profileReadyForUse |
+| `zscaler_full_checks.py:3569` | C2C_FULL = 0.9   # assumed: a client-to-client range 90 % used asks for review |
+| `zscaler_full_checks.py:3577` | totalIps, usedIps, availableIps). Assumed: a range with no address left |
+| `zscaler_full_checks.py:3608` | CERT_SOON_DAYS = 30            # assumed review window before an isolation certificate expires |
+| `zscaler_full_checks.py:3644` | a result. Assumed: isolation uses the certificate to trust the sites it |
+| `zscaler_genai_checks.py:624` | Provider credential age (assumed thresholds: a key older than a year with no |
 | `zscaler_ip_ranges.py:45` | the field names are ASSUMED: not reachable from here to |
 | `zscaler_ip_ranges.py:50` | JSON paths and key ASSUMED); |
 | `zscaler_ip_ranges.py:52` | centres not yet live (ASSUMED); |

@@ -360,6 +360,11 @@ class SdkClient:
             if isinstance(body, list):
                 body = _to_dicts(body)
 
+            # A list whose objects carry a key (AI Guard provider credentials,
+            # ZIA partner integrations) keeps only its metadata, before it is cached.
+            from dlp_assessment_full_auto import metadata_only
+            body = metadata_only(endpoint, body)
+
             return body, status if status else 200
 
         except Exception as e:

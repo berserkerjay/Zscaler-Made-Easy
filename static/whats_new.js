@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users), rehearse then simulate, and more of the platform read and checked",
+    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users), rehearse then simulate, and more of the tenant read and scored",
     "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
@@ -146,6 +146,26 @@ window.WHATS_NEW = {
       "marks": [
         { "page": "/report/operations", "at": "#zbSearch", "shown": "after Read from the tenant in ZIA security baseline" },
         { "page": "/report/operations", "at": "#zbSelSave", "shown": "after Read from the tenant in ZIA security baseline" }
+      ]
+    },
+    {
+      "id": "remaining-resources-scored", "release": "2026-11-01", "label": "More of the tenant scored",
+      "what": "New assessment checks: Endpoint DLP rules on empty resource groups, the ZPA link to ZIA, connector auto-delete and version profiles, user portals, partner integrations, traffic capture rules, time intervals and AI Guard provider credentials.",
+      "changelog": ["Remaining resources scored"],
+      "marks": [
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"zia_extras\"]", "shown": "on the Scope page" },
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"zpa\"]", "shown": "on the Scope page" },
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"aiguard\"]", "shown": "on the Scope page" }
+      ]
+    },
+    {
+      "id": "object-checks", "release": "2026-11-01", "label": "Empty and expired objects",
+      "what": "Checks for objects that cannot do their job: empty DNS application, workload and connector IP groups, incomplete header insertion profiles, full client-to-client IP ranges and expired isolation certificates.",
+      "changelog": ["Objects that cannot do their job"],
+      "marks": [
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"zia_extras\"]", "shown": "on the Scope page" },
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"zpa\"]", "shown": "on the Scope page" },
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"ztw\"]", "shown": "on the Scope page" }
       ]
     },
     {

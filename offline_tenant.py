@@ -81,7 +81,7 @@ KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx",
                 "ztb", "easm", "zbi", "zcell", "zms")
 _PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw|aiguard|ztb|easm|bi|zcell|zms)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
 # ZPA's user configuration service (SCIM groups: zpa/scim_groups.py) has no /admin segment: /zpa/userconfig/v1/customers/{id}/...
-_CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/|/zpa/userconfig/v[0-9]+/customers/)[^/]+")
+_CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/|/zpa/userconfig/v[0-9]+/customers/|/zpa/cbiconfig/cbi/api/customers/)[^/]+")
 # The ZCell customer id in a Zero Trust Cellular path (zscaler/zcell/*.py:
 # /zcell/config/api/v1/customers/{id}/...) is keyed as {zcellCustomerId},
 # as the ZPA customer id is, so a snapshot opens with any id.
@@ -227,7 +227,9 @@ def scrub(value: Any, depth: int = 0) -> Any:
             if key.lower() in _NOT_SECRET and isinstance(v, (bool, int)):
                 out[key] = v
             elif (_SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or _OTP_KEY.search(key)
-                    or (isinstance(v, str) and _TOKEN_KEY.search(key) and not lifetime)):
+                    or (isinstance(v, str) and _TOKEN_KEY.search(key) and not lifetime)
+                    # A private key pasted into any text field (an isolation certificate's pem, say).
+                    or (isinstance(v, str) and "PRIVATE KEY-----" in v)):
                 out[key] = "(set)" if v not in (None, "", [], {}, False) else "(not set)"
             else:
                 out[key] = scrub(v, depth + 1)
@@ -1390,6 +1392,23 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     + [(_ZIA, f"/zia/{x}") for x in ("trafficCaptureRules", "workloadGroups")]
     # (PRA credentials stay with RBAC above: a snapshot reads them only with RBAC ticked.)
     + [(("zpa",), "/zpa/userPortal"), (("zpa",), PER_OBJECT_SCIM), (("zcc",), "/zcc/adminUsers")]
+    # Coverage checks (2026-11-01; zscaler_full_checks B.17, THR.12, GOV.9, FW.10, ZPA.22-24,
+    # HLT.5-6, zscaler_genai_checks AIG.7). The Endpoint DLP lists pass the channel
+    # guard only with Endpoint DLP on Zscaler; partner integrations and provider
+    # credentials are read as metadata only (dlp_assessment_full_auto.metadata_only).
+    # (trafficCaptureRules, workloadGroups and userPortal: captured once, above, with the backups.)
+    + [(("dlp",), f"/zia/{x}/{ch}") for x in ("endPointDlpResourceGroups", "dlpEndpointResource")
+       for ch in ("PRINTING", "REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "PERSONAL_CLOUD_STORAGE")]
+    + [(_ZIA, f"/zia/{x}") for x in ("integrationPartners", "timeIntervals")]
+    + [(("zpa",), f"/zpa/{x}") for x in ("connectorSchedule", "serviceEdgeSchedule", "visible/versionProfiles",
+                                         "config/isZiaCloudConfigAvailable", "userportal/aup", "userPortalLink")]
+    + [(("aiguard",), "/aiguard/v1/llm-provider-credentials")]
+    # Objects read until now only by backup and Terraform, now scored (FW.11, FW.12, CA.6,
+    # ZPA.25, ZPA.26, ZTW.9): DNS application groups, workload groups, HTTP header
+    # profiles, client-to-client IP ranges, isolation certificates, connector IP groups.
+    + [(_ZIA, f"/zia/{x}") for x in ("dnsApplicationGroups", "httpHeaderProfile", "httpHeaderActionProfile")]
+    + [(("zpa",), f"/zpa/{x}") for x in ("ipRanges", "cbiconfig/certificates")]
+    + [(("ztw",), "/ztw/api/v1/ipGroups")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}
@@ -1398,7 +1417,10 @@ _PARAMS = {"raw:/zdx/v1/config/applications/supported": {"type": "PREDEFINED"},
 _ZIA_PAGED = {"/zia/users", "/zia/groups", "/zia/departments", "/zia/cloudApplications/policy"}
 # ZPA reads that are one answer, not a paged list: a settings object, and the
 # emergency access list, which pages by page id (zpa/emergency_access.py).
-_ZPA_SINGLE = {"/zpa/ssoLoginOptions", "/zpa/emergencyAccess/users"}
+_ZPA_SINGLE = {"/zpa/ssoLoginOptions", "/zpa/emergencyAccess/users",
+               # settings objects and a yes/no answer (zpa/app_connector_schedule.py, service_edge_schedule.py,
+               # zia_customer_config.py check_zia_cloud_config)
+               "/zpa/connectorSchedule", "/zpa/serviceEdgeSchedule", "/zpa/config/isZiaCloudConfigAvailable"}
 ZWA_CAPTURE_DAYS = 30
 ZWA_CAPTURE_INCIDENTS = 25                # incidents whose triggers, history and tickets are saved (metadata only; never evidence)
 _UNANSWERED = (0, 429, 502, 503, 504)

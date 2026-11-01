@@ -296,8 +296,8 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 150,
-            "accepted": 5,
+            "fixed": 156,
+            "accepted": 7,
             "records": [
               "c6-assessment",
               "c6-checks",
@@ -313,7 +313,8 @@
               "w8-zia-forwarding",
               "w8-zia-governance",
               "w8-zpa-policy",
-              "w8-zpa-rbac"
+              "w8-zpa-rbac",
+              "w9-coverage-checks"
             ]
           },
           "coverage": {
@@ -484,7 +485,7 @@
     }
   ],
   "counts": {
-    "findings": 734,
+    "findings": 742,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -498,27 +499,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 187,
+        "fixed": 189,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 403,
+        "fixed": 407,
         "accepted": 3
       },
       "info": {
         "open": 0,
         "fixed": 71,
-        "accepted": 48
+        "accepted": 50
       }
     },
     "checks": {
-      "pass": 668,
+      "pass": 676,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11484
+    "tests_added": 11596
   },
   "findings": [
     {
@@ -1368,6 +1369,38 @@
       "slug": "w8-zwa-aiguard",
       "area": "functionality",
       "sub_area": "builders"
+    },
+    {
+      "id": "W9-CC-01",
+      "title": "The ZPA ZIA cloud configuration answer (zpa/zia_customer_config.py get_zia_cloud_service_config) holds the ZIA password, API key and sandbox token; reading it to check the link would put secrets in the run",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-200",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "ZPA.22 reads only check_zia_cloud_config (GET /config/isZiaCloudConfigAvailable, a yes/no answer); a test asserts the configuration path is never read or captured",
+      "test": "tests/test_w9_coverage_checks.py::test_zpa22_never_reads_the_zia_credentials",
+      "commit": "51cba5b",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-03",
+      "title": "Check 5.2 still says Endpoint DLP resources are not listed by the ZIA API; the SDK 1.11.3 lists them per channel, now read by B.17",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "left unchanged (outside this slice); B.17 reads and scores the resources",
+      "test": "tests/test_w9_coverage_checks.py::test_b17_rule_on_an_empty_group_is_a_finding",
+      "commit": "51cba5b",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-01",
@@ -4552,6 +4585,38 @@
       "slug": "w9-admin-editors",
       "area": "functionality",
       "sub_area": "builders"
+    },
+    {
+      "id": "W9-CC-04",
+      "title": "GOV.9 passed (\"No traffic capture rule\") on a 200 answer that was not a list of rules ({}, text, a number, true, a list of non-rules)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "Only a real empty list (bare or in the list envelope) means no capture rule; any other shape, and an unreadable entry beside disabled rules, is unknown with the reason",
+      "test": "tests/test_w9_coverage_checks.py::test_gov9_a_malformed_answer_is_unknown_never_pass",
+      "commit": "5434f93",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-06",
+      "title": "HLT.6 passed when ZPA listed no Default profile, and read a version field the SDK's CustomerVersionProfile model does not have (versions are per component in versionDetails), so a custom profile always passed",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-697",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "No Default profile, or a profile with no App Connector version in versionDetails, is unknown with the reason; the sample profiles carry versions so the comparison runs offline (the role name ASSISTANT is assumed)",
+      "test": "tests/test_w9_coverage_checks.py::test_hlt6_no_default_profile_listed_is_unknown_never_pass",
+      "commit": "5434f93",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "W9-SG-03",
@@ -11002,6 +11067,70 @@
       "sub_area": "builders"
     },
     {
+      "id": "W9-CC-02",
+      "title": "The live assessment client would have cached the AI Guard provider credentials answer whole, apiCredentials included",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-312",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "dlp_assessment_full_auto.metadata_only reduces the answer to names, types and dates in Client.get and SdkClient._raw_get before it is cached",
+      "test": "tests/test_w9_coverage_checks.py::test_the_live_client_keeps_only_metadata",
+      "commit": "51cba5b",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-05",
+      "title": "THR.12 dropped partner integrations with no disabled field from a pass without saying so",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "The result counts and names the partners with no enabled state as unknown, in a pass and in a finding; all of them missing is unknown",
+      "test": "tests/test_w9_coverage_checks.py::test_thr12_partners_without_a_state_are_counted_not_dropped",
+      "commit": "5434f93",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-07",
+      "title": "The test canary key was written whole in the test source, so the tracked-file credential scan (test_secret_canaries) failed",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-798",
+      "asvs": "V2.10.4",
+      "wcag": "",
+      "fix": "The canary is built from two parts at run time",
+      "test": "tests/test_secret_canaries.py::test_no_tracked_file_carries_a_real_looking_credential",
+      "commit": "7bac6af",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-08",
+      "title": "An isolation certificate's pem field could carry a private key pasted with the certificate, and a snapshot would have kept it",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-312",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "offline_tenant.scrub masks any text value holding a PRIVATE KEY block; ZPA.26 reads only the certificate's end of validity and shows nothing of the PEM",
+      "test": "tests/test_w9_coverage_checks.py::test_zpa26_never_shows_the_certificate_and_a_pasted_key_never_reaches_a_snapshot",
+      "commit": "7bac6af",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "W9-SG-06",
       "title": "An ACME certificate was renewed only at start-up, so a server running past expiry served an expired certificate",
       "severity": "low",
@@ -14288,6 +14417,47 @@
       "checks": 7,
       "findings": 3,
       "tests_added": 80
+    },
+    {
+      "slug": "w9-coverage-checks",
+      "area": "Functionality and security: the remaining high-value resources read and scored (zscaler_full_checks B.17, FW.10, THR.12, GOV.9, ZPA.22-24, HLT.5-6; zscaler_genai_checks AIG.7), their scope and channel gating, metadata-only reads of key-holding lists, sample tenant and snapshot reads",
+      "title": "Ten new scored checks checked against the installed SDK 1.11.3, the Scope rule, the Endpoint DLP channel, secret handling and unknown-not-pass, offline on the sample tenant",
+      "standards": [
+        "ASVS V1.14.1",
+        "ASVS V2.10.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.3.1",
+        "ASVS V7.4.1",
+        "ASVS V8.3.4",
+        "CWE-20",
+        "CWE-74",
+        "CWE-117",
+        "CWE-200",
+        "CWE-262",
+        "CWE-272",
+        "CWE-280",
+        "CWE-284",
+        "CWE-312",
+        "CWE-324",
+        "CWE-391",
+        "CWE-532",
+        "CWE-694",
+        "CWE-754",
+        "CWE-863",
+        "CWE-1164",
+        "CWE-1287",
+        "WSTG-ATHZ-02",
+        "WSTG-ERRH-01",
+        "SSDF PW.4.1",
+        "SSDF PW.8.2",
+        "ASVS V2.10.4",
+        "CWE-697",
+        "CWE-798"
+      ],
+      "checks": 8,
+      "findings": 8,
+      "tests_added": 112
     },
     {
       "slug": "w9-security-gates",

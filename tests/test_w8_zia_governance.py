@@ -61,7 +61,7 @@ def test_the_governance_checks_run_under_the_scope_page_keys_they_read_for():
     zia_eps = set(scope_permissions.SCOPE_PERMISSIONS["zia_extras"]["endpoints_used"])
     rbac_eps = set(scope_permissions.SCOPE_PERMISSIONS["rbac"]["endpoints_used"])
 
-    assert len(gov) == 8 and all(permissions.scope_of_section(s) == "zia_extras" for _i, s in gov)
+    assert len(gov) == 9 and all(permissions.scope_of_section(s) == "zia_extras" for _i, s in gov)
     assert len(rb) == 2 and all(permissions.scope_of_section(s) == "rbac" for _i, s in rb)
     assert {"/zia/configAudit", "/zia/alertSubscriptions", "/zia/nssServers", "/zia/nssCollectors", "/zia/nssFeeds", "/zia/subscriptions"} <= zia_eps
     assert {"/zia/passwordExpiry/settings", "/zia/remoteAssistance"} <= rbac_eps
@@ -324,7 +324,7 @@ def test_governance_findings_read_in_plain_language_and_map_to_frameworks():
     assert "SIEM" in plain["outcome"] and plain["do"]
     assert compliance_mapping.get_compliance_for_check("GOV.6") and compliance_mapping.get_compliance_for_check("RBAC.25")
     labels = [l for i, _s, l, _f in fc.PLATFORM_REG + rbac.RBAC_REG if i.startswith("GOV.") or i in ("RBAC.24", "RBAC.25")]
-    assert len(labels) == 10 and all(len(l) <= 70 and l[0].isupper() for l in labels)
+    assert len(labels) == 11 and all(len(l) <= 70 and l[0].isupper() for l in labels)
 
 
 def test_the_new_reads_name_the_permission_to_ask_for():

@@ -3022,3 +3022,702 @@ DLP_EXTRA_REG = [
 ]
 DLP_EXTRA_REG = guard_registry(DLP_EXTRA_REG)
 
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# COVERAGE: the remaining high-value resources, read and scored
+# (2026-11-01). Every path below is the installed SDK's (zscaler-sdk-python
+# 1.11.3), read through the run's client like every other check: Endpoint
+# DLP resource groups and resources (dlp, Endpoint DLP channel), the ZPA
+# link to ZIA, connector schedules, version profiles, user portal AUP and
+# links (zpa), partner integrations, traffic capture rules and time
+# intervals (zia_extras). Secret-holding answers are never read: the ZPA
+# ZIA cloud configuration (/config/ziaCloudConfig: ZIA password, API key,
+# sandbox token) is skipped for its yes/no availability answer.
+# ═══════════════════════════════════════════════════════════════════════
+_EP_REF = " Ref: https://help.zscaler.com/zia/about-endpoint-dlp"
+_OK = (200, 204)
+# zia/endpoint_dlp_resource_groups.py list_resource_group_tags GET /endPointDlpResourceGroups/{channel};
+# zia/dlp_endpoint_resource.py list_resources_by_channel GET /dlpEndpointResource/{channel}. The
+# channels are the ones the SDK names (there is no list across channels).
+EP_CHANNELS = ("PRINTING", "REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "PERSONAL_CLOUD_STORAGE")
+EP_GROUP_PATHS = tuple(f"/zia/endPointDlpResourceGroups/{c}" for c in EP_CHANNELS)
+EP_RESOURCE_PATHS = tuple(f"/zia/dlpEndpointResource/{c}" for c in EP_CHANNELS)
+
+
+def _ids(v):
+    """The ids of a list of references ({id, name} dicts or bare ids)."""
+    out = []
+    for e in v if isinstance(v, list) else []:
+        i = _fv(e, "id") if isinstance(e, dict) else e
+        if i not in (None, "") and not isinstance(i, (dict, list, bool)):
+            out.append(str(i))
+    return out
+
+
+def _int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def b_17(cl):
+    """Endpoint DLP rules are scoped to resource groups that exist and hold resources
+
+    An Endpoint DLP rule (or sub-rule) scoped to a resource group (printers,
+    removable drives, network shares, personal cloud storage) only applies to
+    the resources in that group: a group that was deleted or emptied makes
+    the rule match nothing, silently. EndpointDlpRules.resourceGroups and
+    subRules[].resourceGroups name the groups (SDK model); a group carries
+    resourceCount and resources."""
+    d, c = cl.get("/zia/endPointDlpRules")
+    if c not in _OK:
+        return R(R.INFO, f"The Endpoint DLP rules could not be read (HTTP {c}), so their resource groups were not checked.")
+    rules = [r for r in _ls(d) if isinstance(r, dict) and _enabled(r)]
+    refs = []   # (rule name, group id, group name)
+    for r in rules:
+        scoped = [(r, g) for g in (_fv(r, "resourceGroups") or []) if isinstance(g, dict)]
+        for sub in _fv(r, "subRules") or []:
+            if isinstance(sub, dict) and _enabled(sub):
+                scoped += [(sub, g) for g in (_fv(sub, "resourceGroups") or []) if isinstance(g, dict)]
+        refs += [(_nm(r), str(_fv(g, "id") or ""), _nm(g)) for _x, g in scoped if _fv(g, "id") not in (None, "")]
+    if not refs:
+        return R(R.INFO, f"No enabled Endpoint DLP rule is scoped to a resource group ({len(rules)} enabled rule(s)): nothing to check (N/A).")
+    groups, unread = {}, []
+    for ch, path in zip(EP_CHANNELS, EP_GROUP_PATHS):
+        rows, gc = _items(cl, path)
+        if gc in _OK:
+            for g in rows:
+                if _fv(g, "id") not in (None, ""):
+                    groups[str(_fv(g, "id"))] = (g, ch)
+        else:
+            unread.append(f"{ch} (HTTP {gc})")
+    resources = {}
+    for ch, path in zip(EP_CHANNELS, EP_RESOURCE_PATHS):
+        rows, rc = _items(cl, path)
+        resources[ch] = {str(_fv(x, "id")) for x in rows if _fv(x, "id") not in (None, "")} if rc in _OK else None
+    missing, empty, unknown = [], [], []
+    for rule, gid, gname in refs:
+        hit = groups.get(gid)
+        label = f"{rule} → {gname}"
+        if hit is None:
+            (unknown if unread else missing).append(label)
+            continue
+        g, ch = hit
+        listed = _ids(_fv(g, "resources"))
+        count = _int(_fv(g, "resourceCount"))
+        known = resources.get(ch)
+        if listed:
+            # Resources the group lists that its channel no longer has count as gone.
+            if not [i for i in listed if known is None or i in known]:
+                empty.append(label)
+        elif count is not None:
+            if count <= 0:
+                empty.append(label)
+        else:
+            unknown.append(label)
+    tail = (f" {len(unknown)} more could not be established ({_few(unknown)}): "
+            + (f"the groups of {', '.join(unread)} were not readable." if unread else "the group lists no resources and no count.")
+            if unknown else "")
+    if missing or empty:
+        parts = ([f"{len(missing)} scoped to a group that no longer exists: {_few(missing)}"] if missing else []) \
+            + ([f"{len(empty)} scoped to a group with no resources: {_few(empty)}"] if empty else [])
+        return R(R.WARN, f"Endpoint DLP rule scoping: {'; '.join(parts)}. Such a rule applies to nothing on that channel, so the data it should "
+                 "stop (printing, USB, network shares, personal cloud storage) passes without a match." + tail
+                 + " Best Practice: add the printers, drives or shares to the group, point the rule at a populated group, or remove the "
+                   "resource-group condition so the rule covers the whole channel." + _EP_REF)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} of {len(refs)} resource-group reference(s) on Endpoint DLP rules could not be checked "
+                 f"({_few(unknown)}): " + (f"the resource groups of {', '.join(unread)} were not readable." if unread
+                                           else "the group lists no resources and no count.") + " Nothing was judged.")
+    return R(R.PASS, f"All {len(refs)} resource-group reference(s) on enabled Endpoint DLP rules point at a group that exists and holds resources.")
+
+
+def zpa_22(cl):
+    """ZPA traffic sent to ZIA for inspection has the ZIA cloud link configured
+
+    A segment with inspectTrafficWithZia (application_segment model) hands
+    its traffic to ZIA, which needs ZPA's ZIA cloud configuration. Only the
+    yes/no answer is read: zpa/zia_customer_config.py check_zia_cloud_config
+    GET /config/isZiaCloudConfigAvailable. Assumed: that this availability
+    is what the inspection hand-off needs (the SDK names no other link)."""
+    segs, c = _zpa_list(cl, "/zpa/application")
+    if c not in _OK:
+        return R(R.INFO, f"The ZPA application segments could not be read (HTTP {c}), so the ZIA link was not checked.")
+    zia = [_nm(s) for s in segs if _truthy(_fv(s, "inspectTrafficWithZia")) and str(_fv(s, "enabled")).lower() != "false"]
+    if not zia:
+        return R(R.INFO, "No enabled ZPA application segment sends its traffic to ZIA for inspection: the ZIA link is not needed (N/A).")
+    d, cc = cl.get("/zpa/config/isZiaCloudConfigAvailable")
+    if cc not in _OK:
+        return R(R.INFO, f"Unknown: {len(zia)} segment(s) send traffic to ZIA for inspection, but whether ZPA's ZIA cloud link is configured "
+                 f"could not be read (HTTP {cc}). Nothing was judged.")
+    val = d.get("value", d.get("available")) if isinstance(d, dict) else d
+    if isinstance(val, str) and val.strip().lower() in ("true", "false"):
+        val = val.strip().lower() == "true"
+    if val is True:
+        return R(R.PASS, f"{len(zia)} segment(s) send traffic to ZIA for inspection and ZPA's ZIA cloud link is configured.")
+    if val is False:
+        return R(R.FAIL, f"ZIA cloud/SAML link for ZPA not configured, yet {len(zia)} segment(s) send their traffic to ZIA for inspection: "
+                 f"{_few(zia)}. Without the link the hand-off fails silently. Fix: in ZPA (Administration → ZIA cloud configuration) "
+                 "link the ZIA cloud, then confirm the segments' traffic shows in the ZIA logs." + _ZPA_GUIDE)
+    return R(R.INFO, "Unknown: ZPA answered the ZIA cloud link question with a value this app does not know. Nothing was judged.")
+
+
+def _schedule(cl, path, what):
+    """('on' | 'off' | 'unknown', detail) of one auto-delete schedule."""
+    d, c = _one(cl, path)
+    if d is None:
+        return "unknown", f"{what}: not readable (HTTP {c})"
+    on = _fv(d, "enabled")
+    if on is None:
+        return "unknown", f"{what}: the answer has no enabled field"
+    if _truthy(on):
+        n = _fv(d, "frequencyInterval")
+        return "on", f"{what}: on" + (f" (after {n} {str(_fv(d, 'frequency') or 'days').lower()})" if n not in (None, "") else "")
+    return "off", f"{what}: off"
+
+
+def hlt_5(cl):
+    """Disconnected App Connectors and Service Edges are deleted automatically
+
+    zpa/app_connector_schedule.py get_connector_schedule GET /connectorSchedule
+    and zpa/service_edge_schedule.py get_service_edge_schedule GET
+    /serviceEdgeSchedule (enabled, frequency, frequencyInterval,
+    deleteDisabled). The Service Edge schedule is judged only when the
+    tenant has Private Service Edges."""
+    rows = [_schedule(cl, "/zpa/connectorSchedule", "App Connectors")]
+    edges, ec = _items(cl, "/zpa/serviceEdge")
+    if ec not in _OK or edges:
+        rows.append(_schedule(cl, "/zpa/serviceEdgeSchedule", "Private Service Edges"))
+    off = [t for s, t in rows if s == "off"]
+    unknown = [t for s, t in rows if s == "unknown"]
+    if off:
+        return R(R.WARN, f"Automatic deletion of disconnected connectors is off ({'; '.join(off)}). Connectors that were rebuilt or retired stay "
+                 "listed as disconnected, hide real outages in the health views and keep their enrolment. Fix: in ZPA (Configuration → "
+                 "Connector auto-delete) turn on the schedule, for example after 5 days disconnected."
+                 + (f" Also unknown: {'; '.join(unknown)}." if unknown else "") + _ZPA_GUIDE)
+    if unknown:
+        return R(R.INFO, f"Unknown: {'; '.join(unknown)}. Nothing was judged.")
+    return R(R.PASS, "Disconnected connectors are deleted automatically (" + "; ".join(t for _s, t in rows) + ").")
+
+
+# ZPA's visible version profiles (zpa/customer_version_profile.py list_version_profiles
+# GET /visible/versionProfiles). Assumed: "Previous Default" is the profile that holds
+# connectors back a release (ZPA's three standard profiles are Default, Previous
+# Default and New Release); a profile whose version is lower than Default's is old too.
+OLD_VERSION_PROFILES = ("previous default",)
+
+
+# A profile's versions are per component in versionDetails [{role, version,
+# latestPlatform}] (zpa/models/customer_version_profile.py VersionDetails; the
+# profile itself has no version field). Assumed: App Connectors carry a role
+# naming the connector ("ASSISTANT", ZPA's internal name, or "CONNECTOR"); a
+# profile with no such entry has no version to compare (unknown).
+_CONNECTOR_ROLES = ("ASSISTANT", "CONNECTOR")
+
+
+def _ver(p):
+    found = []
+    for d in _fv(p, "versionDetails") or []:
+        if isinstance(d, dict) and any(k in str(_fv(d, "role") or "").upper() for k in _CONNECTOR_ROLES):
+            parts = re.findall(r"\d+", str(_fv(d, "version") or ""))
+            if parts:
+                found.append(tuple(int(x) for x in parts[:4]))
+    return max(found) if found else None
+
+
+def hlt_6(cl):
+    """App Connector groups are not pinned to an old version profile
+
+    An App Connector group (versionProfileId, versionProfileName,
+    overrideVersionProfile) follows a version profile; one held on an older
+    profile misses fixes the Default profile already carries."""
+    groups, gc = _items(cl, "/zpa/appConnectorGroup")
+    if gc not in _OK:
+        return R(R.INFO, f"The App Connector groups could not be read (HTTP {gc}).")
+    live = [g for g in groups if str(_fv(g, "enabled")).lower() != "false"]
+    if not live:
+        return R(R.INFO, "No enabled App Connector group: nothing to check (N/A).")
+    profs, pc = _items(cl, "/zpa/visible/versionProfiles")
+    if pc not in _OK:
+        return R(R.INFO, f"Unknown: the ZPA version profiles could not be read (HTTP {pc}), so the connector groups' profiles were not judged.")
+    by_id = {str(_fv(p, "id")): p for p in profs if _fv(p, "id") not in (None, "")}
+    by_name = {str(_fv(p, "name") or "").strip().lower(): p for p in profs if _fv(p, "name")}
+    default = by_name.get("default")
+    old, unknown, nocmp, noversion = [], [], [], []
+    for g in live:
+        pid, pname = _fv(g, "versionProfileId"), _fv(g, "versionProfileName")
+        p = by_id.get(str(pid)) if pid not in (None, "") else None
+        p = p or (by_name.get(str(pname).strip().lower()) if pname else None)
+        if p is None:
+            unknown.append(_nm(g))
+            continue
+        name = str(_fv(p, "name") or "").strip().lower()
+        if name in OLD_VERSION_PROFILES:
+            old.append(f"{_nm(g)} ({_nm(p)})")
+        elif default is None:
+            # Nothing to compare with: the group's profile is neither old by name nor provably current.
+            nocmp.append(f"{_nm(g)} ({_nm(p)})")
+        elif p is default:
+            continue
+        elif _ver(p) and _ver(default):
+            if _ver(p) < _ver(default):
+                old.append(f"{_nm(g)} ({_nm(p)})")
+        else:
+            noversion.append(f"{_nm(g)} ({_nm(p)})")
+    why = [t for t, rows in (
+        (f"ZPA lists no Default profile to compare with, so the profile of {_few(nocmp)} could not be judged", nocmp),
+        (f"{_few(noversion)} follow a profile with no version to compare with Default's", noversion),
+        (f"the version profile of {_few(unknown)} is not in the profiles ZPA lists", unknown)) if rows]
+    unknown = unknown + nocmp + noversion
+    if old:
+        return R(R.WARN, f"{len(old)} of {len(live)} App Connector group(s) are held on an older version profile: {_few(old)}. Their connectors "
+                 "upgrade later than the rest and keep fixed defects longer. Fix: move each group back to the Default profile unless a "
+                 "documented reason holds it back, and check the connector versions afterwards (HLT.4 and the ZPA analysis)."
+                 + (f" Also unknown: {'; '.join(why)}." if why else "") + _ZPA_GUIDE)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} of {len(live)} App Connector group(s) could not be judged: {'; '.join(why)}. Nothing was judged.")
+    return R(R.PASS, f"All {len(live)} App Connector group(s) follow a current version profile.")
+
+
+def thr_12(cl):
+    """Partner integrations are not left disabled
+
+    zia/partner_integrations.py list_integration_partners GET
+    /integrationPartners (IntegrationPartner: id, name, type, disabled; read
+    as metadata only). Assumed: the API states no expiry, so "expired" is
+    not judged; a disabled partner is the signal this check can read."""
+    r, c = _items(cl, "/zia/integrationPartners")
+    na = _unlicensed("Partner integrations", c)
+    if na:
+        return na
+    if c not in _OK:
+        return R(R.INFO, f"The partner integrations could not be read (HTTP {c}).")
+    if not r:
+        return R(R.INFO, "No partner integration. ZIA then receives no partner signal (for example an EDR's device risk for device posture, "
+                         "or an SD-WAN's tunnels); connect one when the organisation uses such a product. Expiry is not in the API.")
+    state = [x for x in r if _fv(x, "disabled") is not None]
+    off = [_nm(x) + (f" ({_nm(x, 'type')})" if _fv(x, "type") else "") for x in state if _truthy(_fv(x, "disabled"))]
+    nostate = [_nm(x) for x in r if _fv(x, "disabled") is None]
+    left = (f" {len(nostate)} more say no enabled or disabled state and were left out (unknown): {_few(nostate)}." if nostate else "")
+    if off:
+        return R(R.WARN, f"{len(off)} of {len(r)} partner integration(s) are disabled: {_few(off)}. Whatever they fed ZIA (device posture, "
+                 "SD-WAN tunnels, reporting) has stopped, and policy that relies on it acts on stale or missing signal."
+                 " Best Practice: re-enable each one the organisation still uses, or remove it." + left + _THREAT_REF)
+    if not state:
+        return R(R.INFO, f"Unknown: {len(r)} partner integration(s), but none says whether it is enabled. Nothing was judged.")
+    return R(R.PASS, f"{len(state)} of {len(r)} partner integration(s) checked, none disabled (expiry is not in the API).{left}")
+
+
+# Traffic capture actions that capture nothing (assumed: the SDK names no values;
+# anything else on an enabled rule is treated as capturing, which asks for review).
+_NO_CAPTURE = ("SKIP", "DO_NOT_CAPTURE", "NO_CAPTURE", "BYPASS", "BYPASS_CAPTURE")
+
+
+def gov_9(cl):
+    """Traffic capture rules are not left enabled (privacy)
+
+    zia/traffic_capture.py list_rules GET /trafficCaptureRules (state,
+    action, txnSampling, defaultRule, predefined; SDK model). A capture rule
+    records the content of matching traffic, which can hold personal data;
+    it belongs to a troubleshooting window, not to steady state."""
+    d, c = cl.get("/zia/trafficCaptureRules")
+    na = _unlicensed("Traffic capture", c)
+    if na:
+        return na
+    if c not in _OK:
+        return R(R.INFO, f"The traffic capture rules could not be read (HTTP {c}).")
+    # Only a real list (or ZIA's {"list": [...]}) is an answer: anything else is
+    # not "no rule", it is an answer this app cannot read.
+    rows = d if isinstance(d, list) else d.get("list") if isinstance(d, dict) else None
+    if not isinstance(rows, list):
+        return R(R.INFO, f"Unknown: the traffic capture rules answer is not a list ({type(d).__name__}), so whether a capture rule is on "
+                         "could not be established. Nothing was judged.")
+    r = [x for x in rows if isinstance(x, dict)]
+    odd = len(rows) - len(r)
+    if not rows:
+        return R(R.PASS, "No traffic capture rule: no traffic content is being recorded.")
+    unknown = [_nm(x) for x in r if _fv(x, "state") is None] + ([f"{odd} unreadable entr{'y' if odd == 1 else 'ies'}"] if odd else [])
+    live = [x for x in r if str(_fv(x, "state") or "").upper() == "ENABLED"
+            and str(_fv(x, "action") or "").upper() not in _NO_CAPTURE]
+    if live:
+        names = [_nm(x) + (f" (sampling {_nm(x, 'txnSampling')})" if _fv(x, "txnSampling") else "") for x in live]
+        return R(R.WARN, f"{len(live)} traffic capture rule(s) are enabled: {_few(names)}. They record the content of matching traffic, which "
+                 "can include personal data, for as long as they stay on. Best Practice: enable a capture rule only for a dated "
+                 "troubleshooting window, scoped to the users or locations concerned, then disable it." + _POLICY_GUIDE)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} traffic capture rule(s) give no enabled or disabled state that could be read: {_few(unknown)}. "
+                 "Nothing was judged.")
+    return R(R.PASS, f"{len(r)} traffic capture rule(s), none enabled to capture.")
+
+
+def fw_10(cl):
+    """Time intervals apply on at least one day
+
+    zia/time_intervals.py list_time_intervals GET /timeIntervals (name,
+    startTime, endTime, daysOfWeek). An interval with no day never applies,
+    so a rule scoped to it never matches."""
+    r, c = _items(cl, "/zia/timeIntervals")
+    if c not in _OK:
+        return R(R.INFO, f"The time intervals could not be read (HTTP {c}).")
+    if not r:
+        return R(R.INFO, "No time interval is defined: nothing to check (N/A).")
+    never, unknown = [], []
+    for x in r:
+        days = _fv(x, "daysOfWeek", "dayOfWeek")
+        if days is None:
+            unknown.append(_nm(x))
+        elif not [d for d in (days if isinstance(days, list) else [days]) if d not in (None, "")]:
+            never.append(_nm(x))
+    if never:
+        return R(R.WARN, f"{len(never)} of {len(r)} time interval(s) name no day: {_few(never)}. They never apply, so a rule scoped to one "
+                 "never matches (a block that never blocks, an allow that never allows). Best Practice: pick the days, or remove the "
+                 "interval and its use from the rules." + _FW_BP)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} time interval(s) state no days: {_few(unknown)}. Nothing was judged.")
+    return R(R.PASS, f"All {len(r)} time interval(s) apply on at least one day.")
+
+
+def zpa_23(cl):
+    """User portals show an acceptable use policy
+
+    zpa/user_portal_aup.py list_user_portal_aup GET /userportal/aup (name,
+    aup, enabled; SDK model). Assumed: the AUP is tenant-wide (the model
+    names no portal), so one enabled AUP with text covers the portals."""
+    portals, c = _zpa_list(cl, "/zpa/userPortal")
+    if c == 404:
+        return R(R.INFO, "ZPA user portals are not licensed or not enabled on this tenant (N/A).")
+    if c not in _OK:
+        return R(R.INFO, f"The ZPA user portals could not be read (HTTP {c}).")
+    on = [p for p in portals if str(_fv(p, "enabled")).lower() != "false"]
+    if not on:
+        return R(R.INFO, "No enabled ZPA user portal: nothing to check (N/A).")
+    aups, ac = _zpa_list(cl, "/zpa/userportal/aup")
+    if ac not in _OK:
+        return R(R.INFO, f"Unknown: the user portal acceptable use policies could not be read (HTTP {ac}). Nothing was judged.")
+    live = [a for a in aups if str(_fv(a, "enabled")).lower() != "false" and str(_fv(a, "aup") or "").strip()]
+    if not live:
+        return R(R.WARN, f"{len(on)} enabled user portal(s) but no enabled acceptable use policy: {_few(_nm(p) for p in on)}. People, including "
+                 "contractors and partners, reach private apps without accepting the terms of use. Best Practice: add an acceptable use "
+                 "policy in ZPA (User Portals → Acceptable Use Policy) and enable it." + _ZPA_GUIDE)
+    return R(R.PASS, f"{len(on)} enabled user portal(s); {len(live)} acceptable use polic{'y is' if len(live) == 1 else 'ies are'} enabled.")
+
+
+def zpa_24(cl):
+    """User portal links point at an enabled user portal
+
+    zpa/user_portal_link.py list_portal_link GET /userPortalLink
+    (userPortals, userPortalId, enabled); a link on no enabled portal is
+    shown to nobody, or was left behind when its portal went."""
+    links, c = _zpa_list(cl, "/zpa/userPortalLink")
+    if c not in _OK:
+        return R(R.INFO, f"The ZPA user portal links could not be read (HTTP {c}).")
+    on = [x for x in links if str(_fv(x, "enabled")).lower() != "false"]
+    if not on:
+        return R(R.INFO, "No enabled user portal link: nothing to check (N/A).")
+    portals, pc = _zpa_list(cl, "/zpa/userPortal")
+    if pc not in _OK:
+        return R(R.INFO, f"Unknown: the user portals could not be read (HTTP {pc}), so the links' portals were not checked.")
+    live = {str(_fv(p, "id")) for p in portals if str(_fv(p, "enabled")).lower() != "false"}
+    lost = []
+    for x in on:
+        ids = _ids(_fv(x, "userPortals")) + ([str(_fv(x, "userPortalId"))] if _fv(x, "userPortalId") not in (None, "") else [])
+        if not any(i in live for i in ids):
+            lost.append(_nm(x))
+    if lost:
+        return R(R.WARN, f"{len(lost)} of {len(on)} user portal link(s) are on no enabled user portal: {_few(lost)}. Nobody sees them, or they "
+                 "outlived their portal. Best Practice: add each to an enabled portal or delete it." + _ZPA_GUIDE)
+    return R(R.PASS, f"All {len(on)} user portal link(s) are on an enabled user portal.")
+
+
+# ── Item 8: scored checks for objects read until now only by backup and
+# Terraform. Each one flags an object that cannot do its job (an empty group,
+# a profile with nothing in it, an exhausted address pool, an expired
+# certificate); a missing field is unknown, never a pass. Still informational
+# (no single field makes one wrong): CBI banners (look and wording only), CBI
+# profiles (judged on the Browser security page), ZTW network services (a port
+# range is right or wrong only against the rules that use it).
+
+def _empty_objects(rows, field):
+    """(empty names, unknown names) of objects whose list `field` is empty or missing."""
+    empty, unknown = [], []
+    for x in rows:
+        v = _fv(x, field)
+        if v is None:
+            unknown.append(_nm(x))
+        elif not [e for e in (v if isinstance(v, list) else [v]) if e not in (None, "", {}, [])]:
+            empty.append(_nm(x))
+    return empty, unknown
+
+
+def fw_11(cl):
+    """DNS application groups name at least one DNS application
+
+    zia/dns_application_groups.py list_groups GET /dnsApplicationGroups
+    (DnsApplicationGroups: name, dnsApplications). Assumed: a DNS Control
+    rule scoped to an empty group matches no DNS application."""
+    r, c = _items(cl, "/zia/dnsApplicationGroups")
+    na = _unlicensed("DNS application groups", c)
+    if na:
+        return na
+    if c not in _OK:
+        return R(R.INFO, f"The DNS application groups could not be read (HTTP {c}).")
+    if not r:
+        return R(R.INFO, "No DNS application group is defined: nothing to check (N/A).")
+    empty, unknown = _empty_objects(r, "dnsApplications")
+    tail = f" Also unknown (no application list in the answer): {_few(unknown)}." if unknown else ""
+    if empty:
+        return R(R.WARN, f"{len(empty)} of {len(r)} DNS application group(s) name no DNS application: {_few(empty)}. A DNS Control rule "
+                 "scoped to one matches nothing, so the tunnelling or resolver traffic it was meant to block or allow is decided by a "
+                 "later rule. Best Practice: add the DNS applications, or remove the group and its use from the rules." + tail + _FW_BP)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} DNS application group(s) give no application list: {_few(unknown)}. Nothing was judged.")
+    return R(R.PASS, f"All {len(r)} DNS application group(s) name at least one DNS application.")
+
+
+def _expression_tags(x):
+    """The number of tags in a workload group's expressionJson, or None when it has none to read."""
+    ej = _fv(x, "expressionJson")
+    if not isinstance(ej, dict):
+        return None
+    n = 0
+    for cont in _fv(ej, "expressionContainers") or []:
+        tc = _fv(cont, "tagContainer") if isinstance(cont, dict) else None
+        if isinstance(tc, dict):
+            n += len([t for t in (_fv(tc, "tags") or []) if isinstance(t, dict) and str(_fv(t, "key") or "").strip()])
+    return n
+
+
+def fw_12(cl):
+    """Workload groups have tag criteria
+
+    zia/workload_groups.py list_groups GET /workloadGroups (WorkloadGroups:
+    name, expression, expressionJson.expressionContainers[].tagContainer.tags
+    [{key, value}]). A group with no tag says nothing about which workloads
+    it holds, so the rules that name it (Cloud Firewall, URL filtering, DLP)
+    do not do what their names say. Assumed: an empty expression selects no
+    workload (the SDK does not say)."""
+    r, c = _items(cl, "/zia/workloadGroups")
+    na = _unlicensed("Workload groups", c)
+    if na:
+        return na
+    if c not in _OK:
+        return R(R.INFO, f"The workload groups could not be read (HTTP {c}).")
+    if not r:
+        return R(R.INFO, "No workload group is defined: nothing to check (N/A).")
+    empty, unknown = [], []
+    for x in r:
+        tags, expr = _expression_tags(x), _fv(x, "expression")
+        if tags is None and expr is None:
+            unknown.append(_nm(x))
+        elif not tags and not str(expr or "").strip():
+            empty.append(_nm(x))
+    tail = f" Also unknown (no expression in the answer): {_few(unknown)}." if unknown else ""
+    if empty:
+        return R(R.WARN, f"{len(empty)} of {len(r)} workload group(s) have no tag criteria: {_few(empty)}. Which cloud workloads they hold is "
+                 "not defined, so a rule scoped to one does not cover the workloads it is named for. Best Practice: give each group the "
+                 "workload tags it stands for (for example an account, VPC or application tag), or remove it." + tail + _FW_BP)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} workload group(s) give no expression: {_few(unknown)}. Nothing was judged.")
+    return R(R.PASS, f"All {len(r)} workload group(s) have tag criteria.")
+
+
+def ca_6(cl):
+    """HTTP header insertion profiles are complete
+
+    zia/http_header_control.py list_http_header_profiles GET
+    /httpHeaderProfile (HttpHeaderProfile: name, httpHeaderProfileCriteria,
+    profileReadyForUse, deleted) and list_http_header_action_profiles GET
+    /httpHeaderActionProfile (HttpHeaderActionProfile: name,
+    httpHeaderActionProfileKeys [{key, value}], profileReadyForUse, deleted).
+    Header insertion carries tenant restrictions to SaaS apps: a profile with
+    no criteria or no header inserts nothing. Assumed: profileReadyForUse
+    false means ZIA does not apply the profile yet."""
+    reads = (("/zia/httpHeaderProfile", "httpHeaderProfileCriteria", "header profile", "no criteria"),
+             ("/zia/httpHeaderActionProfile", "httpHeaderActionProfileKeys", "header action profile", "no header to insert"))
+    found, bad, unknown, unread, codes = 0, [], [], [], []
+    for path, field, what, why in reads:
+        rows, c = _items(cl, path)
+        codes.append(c)
+        if c not in _OK:
+            unread.append(f"the {what}s (HTTP {c})")
+            continue
+        rows = [x for x in rows if not _truthy(_fv(x, "deleted"))]
+        found += len(rows)
+        empty, unk = _empty_objects(rows, field)
+        bad += [f"{n} ({what}: {why})" for n in empty]
+        bad += [f"{_nm(x)} ({what}: not ready for use)" for x in rows
+                if str(_fv(x, "profileReadyForUse")).lower() == "false" and _nm(x) not in empty]
+        unknown += [f"{n} ({what})" for n in unk]
+    if codes == [404, 404]:
+        return R(R.INFO, "HTTP header insertion is not licensed or not enabled on this tenant (the API answered 404), so it is not assessed.")
+    tail = (f" Also unknown: {_few(unknown)} (no list in the answer)." if unknown else "") \
+        + (f" Not readable: {', '.join(unread)}." if unread else "")
+    if bad:
+        return R(R.WARN, f"{len(bad)} HTTP header insertion profile(s) cannot insert anything: {_few(bad)}. A Cloud App Control rule that uses "
+                 "one sends no header, so a tenant restriction it should carry (for example Microsoft 365 or Google Workspace tenant "
+                 "restrictions) is not enforced. Best Practice: complete the profile (criteria and the header and value to insert) or "
+                 "remove it. Ref: https://help.zscaler.com/zia/about-cloud-app-control" + tail)
+    if unread or unknown:
+        return R(R.INFO, "Unknown:" + tail + " Nothing was judged.")
+    if not found:
+        return R(R.INFO, "No HTTP header insertion profile is defined: nothing to check (N/A).")
+    return R(R.PASS, f"All {found} HTTP header insertion profile(s) have criteria or a header to insert, and are ready for use.")
+
+
+C2C_FULL = 0.9   # assumed: a client-to-client range 90 % used asks for review
+
+
+def zpa_25(cl):
+    """Client-to-client IP ranges have addresses left
+
+    zpa/c2c_ip_ranges.py list_ip_ranges GET {customer}/v2/ipRanges
+    (IpRanges: name, enabled, isDeleted, ipRangeBegin, ipRangeEnd,
+    totalIps, usedIps, availableIps). Assumed: a range with no address left
+    cannot give one to the next client that needs a client-to-client IP."""
+    rows, c = _zpa_list(cl, "/zpa/ipRanges")
+    if c == 404:
+        return R(R.INFO, "Client-to-client IP ranges are not licensed or not enabled on this tenant (the API answered 404), so they are not assessed.")
+    if c not in _OK:
+        return R(R.INFO, f"The client-to-client IP ranges could not be read (HTTP {c}).")
+    live = [x for x in rows if str(_fv(x, "enabled")).lower() != "false" and not _truthy(_fv(x, "isDeleted"))]
+    if not live:
+        return R(R.INFO, "No enabled client-to-client IP range: nothing to check (N/A).")
+    full, unknown = [], []
+    for x in live:
+        total, used, avail = _int(_fv(x, "totalIps")), _int(_fv(x, "usedIps")), _int(_fv(x, "availableIps"))
+        if avail is None and total is not None and used is not None:
+            avail = total - used
+        if avail is None:
+            unknown.append(_nm(x))
+        elif avail <= 0:
+            full.append(f"{_nm(x)} (no address left)")
+        elif total and used is not None and used / total >= C2C_FULL:
+            full.append(f"{_nm(x)} ({used} of {total} used)")
+    tail = f" Also unknown (no address counts): {_few(unknown)}." if unknown else ""
+    if full:
+        return R(R.WARN, f"{len(full)} of {len(live)} client-to-client IP range(s) are full or nearly full: {_few(full)}. A client that needs a "
+                 "client-to-client address when none is left cannot be reached by its peers (help desk, VoIP, remote support). Best Practice: "
+                 "widen the range or add another before it runs out." + tail + _ZPA_GUIDE)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} client-to-client IP range(s) give no address counts: {_few(unknown)}. Nothing was judged.")
+    return R(R.PASS, f"All {len(live)} client-to-client IP range(s) have addresses left.")
+
+
+CERT_SOON_DAYS = 30            # assumed review window before an isolation certificate expires
+_PEM_MAX = 64 * 1024           # an isolation certificate's PEM is untrusted text: larger is not parsed
+_PEM_CERT = re.compile(r"-----BEGIN CERTIFICATE-----[A-Za-z0-9+/=\s]{16,65536}?-----END CERTIFICATE-----")
+
+
+def _now_s():
+    """The isolation certificate check's clock (one seam, so tests inject the date)."""
+    return _time.time()
+
+
+def _pem_not_after(pem):
+    """The end of validity (epoch seconds) of the first certificate in `pem`,
+    or None when there is none to parse. Only the public certificate block is
+    read; nothing of it is kept or shown."""
+    if not isinstance(pem, str) or len(pem) > _PEM_MAX:
+        return None
+    m = _PEM_CERT.search(pem)
+    if not m:
+        return None
+    try:
+        import datetime as _dt
+        from cryptography import x509
+        cert = x509.load_pem_x509_certificate(m.group(0).encode("ascii"))
+        end = getattr(cert, "not_valid_after_utc", None) or cert.not_valid_after.replace(tzinfo=_dt.timezone.utc)
+        return end.timestamp()
+    except Exception:  # noqa: BLE001 — a certificate that does not parse is unknown, never a crash
+        return None
+
+
+def zpa_26(cl):
+    """Isolation certificates are not expired or about to expire
+
+    zpa/cbi_certificate.py list_cbi_certificates GET
+    /zpa/cbiconfig/cbi/api/customers/{id}/certificates (CBICertificate: id,
+    name, pem, isDefault). The PEM is a public certificate; only its end of
+    validity is read (cryptography), and no part of it is shown or kept in
+    a result. Assumed: isolation uses the certificate to trust the sites it
+    opens, so an expired one breaks them; 30 days is the review window."""
+    rows, c = _zpa_list(cl, "/zpa/cbiconfig/certificates")
+    if c == 404:
+        return R(R.INFO, "Cloud browser isolation is not licensed or not enabled on this tenant (the API answered 404), so its certificates are not assessed.")
+    if c not in _OK:
+        return R(R.INFO, f"The isolation certificates could not be read (HTTP {c}).")
+    if not rows:
+        return R(R.INFO, "No isolation certificate is defined: nothing to check (N/A).")
+    now = _now_s()
+    expired, soon, unknown = [], [], []
+    for x in rows:
+        end = _pem_not_after(_fv(x, "pem"))
+        name = _nm(x) + (" (default)" if _truthy(_fv(x, "isDefault")) else "")
+        if end is None:
+            unknown.append(name)
+        elif end <= now:
+            expired.append(f"{name}, expired {int((now - end) // 86400)} day(s) ago")
+        elif end - now <= CERT_SOON_DAYS * 86400:
+            soon.append(f"{name}, expires in {int((end - now) // 86400)} day(s)")
+    tail = f" Also unknown (no certificate that could be read): {_few(unknown)}." if unknown else ""
+    fix = (" Fix: upload a renewed certificate in ZPA (Cloud Browser Isolation → Certificates), make it the default where the old one "
+           "was, then delete the old one." + _ZPA_GUIDE)
+    if expired:
+        return R(R.FAIL, f"{len(expired)} of {len(rows)} isolation certificate(s) have expired: {_few(expired)}"
+                 + (f"; {len(soon)} more expire soon: {_few(soon)}" if soon else "") + ". Isolated sessions that rely on them fail or "
+                 "show certificate errors." + tail + fix)
+    if soon:
+        return R(R.WARN, f"{len(soon)} of {len(rows)} isolation certificate(s) expire within {CERT_SOON_DAYS} days: {_few(soon)}." + tail + fix)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} isolation certificate(s) carry no certificate that could be read: {_few(unknown)}. Nothing was judged.")
+    return R(R.PASS, f"All {len(rows)} isolation certificate(s) are valid for more than {CERT_SOON_DAYS} days.")
+
+
+def ztw_9(cl):
+    """Cloud & Branch Connector IP groups hold at least one address
+
+    ztw/ip_groups.py list_ip_groups GET /ztw/api/v1/ipGroups (IPGroups:
+    name, ipAddresses). A forwarding or DNS rule scoped to an empty group
+    matches no traffic, so workload traffic falls to a later rule."""
+    rows, c = _items(cl, "/ztw/api/v1/ipGroups")
+    if c == 404:
+        return R(R.INFO, "Cloud & Branch Connector is not licensed or not enabled on this tenant (the API answered 404): not applicable.")
+    if c not in _OK:
+        return R(R.INFO, f"The Cloud & Branch Connector IP groups could not be read (HTTP {c}).")
+    if not rows:
+        return R(R.INFO, "No Cloud & Branch Connector IP group is defined: nothing to check (N/A).")
+    empty, unknown = _empty_objects(rows, "ipAddresses")
+    tail = f" Also unknown (no address list in the answer): {_few(unknown)}." if unknown else ""
+    if empty:
+        return R(R.WARN, f"{len(empty)} of {len(rows)} Cloud & Branch Connector IP group(s) hold no address: {_few(empty)}. A forwarding or DNS "
+                 "rule scoped to one matches nothing, so the workload traffic it names is decided by a later rule (often the default). "
+                 "Best Practice: add the addresses or remove the group and its use from the rules." + tail)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} IP group(s) give no address list: {_few(unknown)}. Nothing was judged.")
+    return R(R.PASS, f"All {len(rows)} Cloud & Branch Connector IP group(s) hold at least one address.")
+
+
+COVERAGE_REG = [
+    ("FW.10", "ZIA — Firewall", "Time intervals apply on at least one day", fw_10),
+    ("FW.11", "ZIA — Firewall", "DNS application groups not empty", fw_11),
+    ("FW.12", "ZIA — Firewall", "Workload groups have tag criteria", fw_12),
+    ("CA.6", "ZIA — Cloud Apps", "HTTP header insertion profiles complete", ca_6),
+    ("THR.12", "ZIA — Security", "Partner integrations not left disabled", thr_12),
+    ("GOV.9", "ZIA — Governance", "Traffic capture rules not left enabled (privacy)", gov_9),
+    ("ZPA.22", "ZPA — App Access", "ZIA cloud link configured for ZIA inspection", zpa_22),
+    ("ZPA.23", "ZPA — App Access", "User portals show an acceptable use policy", zpa_23),
+    ("ZPA.24", "ZPA — App Access", "User portal links on an enabled portal", zpa_24),
+    ("HLT.5", "ZPA — Tenant health", "Disconnected connectors deleted automatically", hlt_5),
+    ("HLT.6", "ZPA — Tenant health", "Connector groups on a current version profile", hlt_6),
+    ("ZPA.25", "ZPA — App Access", "Client-to-client IP ranges have addresses left", zpa_25),
+    ("ZPA.26", "ZPA — App Access", "Isolation certificates not expired", zpa_26),
+    ("ZTW.9", "ZTW — Cloud & Branch Connector", "Connector IP groups not empty", ztw_9),
+]
+PLATFORM_REG = PLATFORM_REG + guard_registry(COVERAGE_REG)
+# Endpoint DLP (DLP scope, Endpoint DLP channel): run with the Ch.B checks.
+COVERAGE_DLP_REG = [
+    ("B.17", "Ch.B — Endpoint", "Rules scoped to empty or missing resource groups", b_17),
+]
+DLP_EXTRA_REG = DLP_EXTRA_REG + guard_registry(COVERAGE_DLP_REG)

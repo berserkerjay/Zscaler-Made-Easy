@@ -621,6 +621,77 @@ def aig_6(cl):
     return R(R.PASS, f"Every LLM application ({len(apps)}) has a credential ({len(creds)} in all; key values are never read).")
 
 
+# Provider credential age (assumed thresholds: a key older than a year with no
+# expiry is due for rotation; one expiring within 30 days needs planning).
+CRED_ROTATE_DAYS = 365
+CRED_SOON_DAYS = 30
+_DAY_MS = 86400 * 1000
+
+
+def _now_ms():
+    """The clock AIG.7 judges ages by (one seam, so tests inject the time)."""
+    import time
+    return int(time.time() * 1000)
+
+
+def _ms(v):
+    try:
+        n = int(float(v))
+    except (TypeError, ValueError):
+        return None
+    return n * 1000 if 0 < n < 10 ** 11 else (n if n > 0 else None)   # seconds or milliseconds
+
+
+def aig_7(cl):
+    """LLM provider credentials are not expired, expiring soon or unrotated
+
+    client.aiguard.llm_provider_credentials.list_credentials() GET
+    /aiguard/v1/llm-provider-credentials (LlmProviderCredentials: providerId,
+    name, expireTimeMillis, apiCredentials). Only names and dates are kept
+    (ai_guard.provider_credential_metadata): the key under apiCredentials
+    never reaches this check, a result, a log or a snapshot."""
+    import ai_guard
+    rows, c = _aig(cl, "llm-provider-credentials")
+    if c not in (200, 204):
+        return _aig_unread(c, "LLM provider credentials")
+    creds = ai_guard.provider_credential_metadata(rows)
+    if not creds:
+        return R(R.INFO, "No LLM provider credential is stored in AI Guard: nothing to check (N/A).")
+    now = _now_ms()
+
+    def nm(x):
+        s = "".join(ch for ch in str(x.get("name") or x.get("id") or "?") if ch.isprintable())
+        return s[:60]
+    expired, soon, old, unknown = [], [], [], []
+    for x in creds:
+        exp, made = _ms(x.get("expireTimeMillis")), _ms(x.get("createTimeMillis"))
+        if exp:
+            if exp <= now:
+                expired.append(nm(x))
+            elif exp - now <= CRED_SOON_DAYS * _DAY_MS:
+                soon.append(f"{nm(x)} ({max(0, (exp - now) // _DAY_MS)} day(s) left)")
+        elif made:
+            if now - made > CRED_ROTATE_DAYS * _DAY_MS:
+                old.append(f"{nm(x)} ({(now - made) // _DAY_MS} days old, no expiry)")
+        else:
+            unknown.append(nm(x))
+    few = lambda xs: ", ".join(xs[:5]) + (f" and {len(xs) - 5} more" if len(xs) > 5 else "")
+    if expired:
+        return R(R.FAIL, f"{len(expired)} of {len(creds)} LLM provider credential(s) have expired: {few(expired)}. Applications that use them "
+                 "cannot reach their model through AI Guard. Fix: issue a new key at the provider and replace the credential in AI Guard "
+                 "(key values are never read by this app)." + _AIG_REF)
+    if soon or old:
+        parts = ([f"expiring within {CRED_SOON_DAYS} days: {few(soon)}"] if soon else []) + \
+                ([f"older than {CRED_ROTATE_DAYS} days with no expiry: {few(old)}"] if old else [])
+        return R(R.WARN, f"LLM provider credential(s) {'; '.join(parts)}. Fix: rotate the provider key and update the credential in AI Guard "
+                 "before it lapses, and give new keys an expiry." + _AIG_REF)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} of {len(creds)} LLM provider credential(s) state no expiry or creation date ({few(unknown)}); "
+                 f"the other {len(creds) - len(unknown)} are current. Not judged as current.")
+    return R(R.PASS, f"All {len(creds)} LLM provider credential(s) are current (none expired, expiring within {CRED_SOON_DAYS} days "
+             f"or older than {CRED_ROTATE_DAYS} days without expiry). Key values are never read.")
+
+
 AIGUARD_REG = guard_registry([
     ("AIG.1", "AI Guard — Detection", "A detection policy is in use", aig_1),
     ("AIG.2", "AI Guard — Detection", "Prompt injection detected", aig_2),
@@ -628,4 +699,5 @@ AIGUARD_REG = guard_registry([
     ("AIG.4", "AI Guard — Detection", "Answers inspected too", aig_4),
     ("AIG.5", "AI Guard — Applications", "Stored prompts encrypted", aig_5),
     ("AIG.6", "AI Guard — Applications", "Applications have a credential", aig_6),
+    ("AIG.7", "AI Guard — Applications", "Provider credentials current (metadata only)", aig_7),
 ])

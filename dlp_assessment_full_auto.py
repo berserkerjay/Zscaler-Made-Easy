@@ -122,6 +122,9 @@ _ZPA_MAP = {
     # PRA credential pools are served by another service, not mgmtconfig
     # (zpa/pra_credential_pool.py: /zpa/waap-pra-config/v1/admin/customers/{id}/credential-pool).
     "credential-pool":                ("v1", "credential-pool", "waap-pra-config"),
+    # Client-to-client IP ranges sit under a /v2 segment of the v1 customer base
+    # (zpa/c2c_ip_ranges.py: {base}/v2/ipRanges).
+    "ipRanges":                       ("v1", "v2/ipRanges"),
 }
 
 # ZIdentity endpoints — from zscaler-sdk-python/zid/, served at
@@ -175,6 +178,10 @@ def _resolve_ep(ep, customer_id="", legacy=False):
         suffix = ep[5:]
         mapped = _ZID_MAP.get(suffix, suffix)
         return "/ziam/admin/api/v1/" + mapped
+    if ep.startswith("/zpa/cbiconfig/"):
+        # Cloud browser isolation has its own base (zpa/cbi_certificate.py and the other
+        # cbi_*.py: /zpa/cbiconfig/cbi/api/customers/{id}/...), with no admin segment.
+        return f"/zpa/cbiconfig/cbi/api/customers/{customer_id}/" + ep[len("/zpa/cbiconfig/"):]
     if ep.startswith("/zpa/"):
         version, suffix, *service = _ZPA_MAP.get(ep[5:], ("v1", ep[5:]))
         service = service[0] if service else "mgmtconfig"
@@ -182,6 +189,47 @@ def _resolve_ep(ep, customer_id="", legacy=False):
             return f"/zpa/{service}/{version}/admin/customers/{customer_id}/" + suffix
         return f"/zpa/{service}/{version}/" + suffix
     return ep
+
+# Answers kept only as metadata the moment they are read: their objects
+# carry a key, so only these fields are cached, judged or saved.
+# AI Guard LLM provider credentials (zscaler/aiguard/llm_provider_credentials.py,
+# LlmProviderCredentials: providerId, name, expireTimeMillis, apiCredentials)
+# and ZIA partner integrations (zscaler/zia/partner_integrations.py,
+# IntegrationPartner: id, name, type, disabled; partners are API-key
+# integrations, so any other field is dropped). id and the create/update
+# times of a provider credential are assumed (not named by the SDK model).
+_METADATA_ONLY = {
+    "/aiguard/v1/llm-provider-credentials": ("id", "name", "providerId", "expireTimeMillis", "createTimeMillis", "updateTimeMillis"),
+    "/zia/api/v1/integrationPartners": ("id", "name", "type", "disabled"),
+}
+
+
+def metadata_only(path, body):
+    """`body` with only the metadata fields when `path` (a real or short
+    path) is in _METADATA_ONLY; anything else unchanged. Values are kept
+    only as plain text, numbers or true/false, so nothing nested survives."""
+    p = str(path or "").removeprefix("raw:").split("?", 1)[0].rstrip("/")
+    if p.startswith("/zia/") and not p.startswith("/zia/api/"):
+        p = "/zia/api/v1/" + p[5:]
+    fields = _METADATA_ONLY.get(p)
+    if fields is None:
+        return body
+    rows = body
+    wrap = None
+    if isinstance(body, dict):
+        for key in ("items", "list"):
+            if isinstance(body.get(key), list):
+                rows, wrap = body[key], key
+                break
+        else:
+            rows = []
+    want = {_nk(f): f for f in fields}
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        if isinstance(r, dict):
+            out.append({want[_nk(k)]: (v[:200] if isinstance(v, str) else v) for k, v in r.items()
+                        if _nk(k) in want and isinstance(v, (str, int, float, bool))})
+    return {wrap: out} if wrap else out
 
 # What a read answers once the run is stopped (Client.stop, or the stop
 # hook data_flow.stop_on binds): nothing was sent. Never cached, so a list
@@ -552,7 +600,7 @@ class Client:
             with zia_rate.stopping_on(s._stopped):   # a Stop also ends a wait for ZIA's rate limit: Cancelled, nothing sent
                 r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=s.TIMEOUT)
             if r.status_code == 200:
-                try: res = (r.json(), 200)
+                try: res = (metadata_only(real_ep, r.json()), 200)
                 except Exception: res = ([], 200)
             elif r.status_code == 204:
                 res = ([], 204)
