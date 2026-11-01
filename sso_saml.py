@@ -42,7 +42,8 @@ checked, and refused when it fails (verify_response):
   * Issuer, Audience (this SP's entity ID), bearer SubjectConfirmation
     with Recipient = the ACS URL, InResponseTo = a request this server
     sent (and has not seen answered), NotBefore / NotOnOrAfter with
-    CLOCK_SKEW_SECONDS of leeway, Status Success, Destination;
+    CLOCK_SKEW_SECONDS of leeway, Status Success, Destination (required
+    when the Response is signed), and a RelayState (checked at the ACS);
   * one-time use: the request is consumed and the assertion ID is
     remembered until it expires, so a replayed response is refused.
 
@@ -577,6 +578,9 @@ def verify_response(xml: bytes, *, relay_state: str = "") -> Dict[str, Any]:
     dest = root.get("Destination")
     if dest is not None and dest != acs:
         raise SamlError("The SAML response was sent to another address than this server's ACS URL.")
+    if dest is None and root.find("ds:Signature", namespaces=NS) is not None:
+        # SAML bindings 3.5.5.2: a signed Response must name its Destination.
+        raise SamlError("The SAML response is signed but names no Destination (this server's ACS URL).")
     r_issuer = root.find("saml:Issuer", namespaces=NS)
     if r_issuer is not None and _text(r_issuer) != idp:
         raise SamlError("The SAML response comes from another identity provider than the configured one.")

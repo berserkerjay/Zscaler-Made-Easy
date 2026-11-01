@@ -93,6 +93,8 @@ _SCRYPT_MAXMEM = 128 * 1024 * 1024
 # Per client address: at most this many sign-in attempts in the window (429 after).
 LOGIN_IP_ATTEMPTS = 20
 LOGIN_IP_WINDOW = 300.0
+START_IP_ATTEMPTS = 60       # passkey and SAML sign-ins started per address in LOGIN_IP_WINDOW (each fills a capped map)
+SAML_LINK_SECONDS = 900      # an administrator account may be linked to SAML this long after an administrator allows it
 
 
 def enabled() -> bool:
@@ -296,6 +298,7 @@ def public_user(u: Dict[str, Any]) -> Dict[str, Any]:
             "locked_until": u.get("locked_until") if float(u.get("locked_until") or 0) > now else None,
             "failed_logins": int(u.get("failed") or 0), "sso_linked": bool(u.get("oidc_sub") or u.get("saml_sub")),
             "saml_linked": bool(u.get("saml_sub")),
+            "saml_link_allowed": not u.get("saml_sub") and float(u.get("saml_link_until") or 0) > _clock(),
             "passkeys": [{"id": str(k.get("id") or "")[:24] + ("…" if len(str(k.get("id") or "")) > 24 else ""),
                           "key": str(k.get("id") or ""), "name": k.get("name") or "", "created": k.get("created"),
                           "last_used": k.get("last_used"), "backed_up": bool(k.get("backed_up"))}
@@ -387,6 +390,12 @@ def update_user(uid: str, *, by: str = "", **fields: Any) -> Dict[str, Any]:
                 v = _clean(fields[k]).lower() if k == "email" else _clean(fields[k])
                 if v != (u.get(k) or ""):
                     changed[k] = v
+        if fields.get("allow_saml_link") is not None:
+            if fields["allow_saml_link"] is not True:
+                raise TeamError("allow_saml_link must be true.")
+            if u.get("saml_sub"):
+                raise TeamError("This account is already linked to a SAML sign-in.", 409)
+            changed["saml_link_until"] = _clock() + SAML_LINK_SECONDS
         if "username" in fields and fields["username"] is not None:
             name = _check_username(fields["username"])
             if name != u.get("username"):
@@ -401,6 +410,8 @@ def update_user(uid: str, *, by: str = "", **fields: Any) -> Dict[str, Any]:
     if changed.get("active") is False or "role" in changed or "username" in changed:
         _end_sessions(uid)
     _audit("team_user_updated", actor=by or None, user=u.get("username"), changes=sorted(changed))
+    if "saml_link_until" in changed:
+        _audit("team_saml_link_allowed", actor=by or None, user=u.get("username"), minutes=SAML_LINK_SECONDS // 60)
     return u
 
 
@@ -786,11 +797,11 @@ _LOGIN_LOCK = threading.Lock()
 _clock = time.time   # tests replace it
 
 
-def _ip_allowed(ip: str) -> bool:
+def _ip_allowed(ip: str, limit: Optional[int] = None) -> bool:
     now = _clock()
     with _LOGIN_LOCK:
         recent = [t for t in _IP_ATTEMPTS.get(ip, []) if now - t < LOGIN_IP_WINDOW]
-        if len(recent) >= LOGIN_IP_ATTEMPTS:
+        if len(recent) >= (LOGIN_IP_ATTEMPTS if limit is None else limit):
             _IP_ATTEMPTS[ip] = recent
             return False
         recent.append(now)
@@ -865,10 +876,12 @@ def authenticate(username: Any, password: Any, client_ip: str) -> Dict[str, Any]
 def second_factor_needed(user: Dict[str, Any]) -> Optional[str]:
     """After a right password: "passkey" when the account has a passkey (it
     is asked for next), "enroll" when an administrator requires passkeys and
-    the account has none yet (one is added next), else None (signed in)."""
-    import team_passkeys
+    the account has none yet (one is added next), else None (signed in).
+    An account with a passkey always gets "passkey", even while passkeys are
+    not set up on the server (ZSCALER_TEAM_PASSKEY_ORIGIN removed): the
+    sign-in then fails closed instead of falling back to the password alone."""
     has = any(isinstance(k, dict) and k.get("id") for k in user.get("passkeys") or [])
-    if has and team_passkeys.configured():
+    if has:
         return "passkey"
     if require_passkey():
         return "enroll"
@@ -988,7 +1001,10 @@ def link_saml(claims: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     else the one whose user name or email is the asserted email (then linked
     to the NameID). None: no account, it is turned off, or it is linked to
     another NameID. The email comes from the signed assertion of the one
-    configured identity provider, so it is that provider's statement."""
+    configured identity provider, so it is that provider's statement.
+    An administrator account is never linked by its email alone: only within
+    SAML_LINK_SECONDS after an administrator allowed it (update_user
+    allow_saml_link); otherwise the link is refused (TeamError 403, audited)."""
     issuer, sub = str(claims.get("issuer") or ""), str(claims.get("sub") or "")
     if not issuer or not sub:
         return None
@@ -1004,11 +1020,17 @@ def link_saml(claims: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if isinstance(u, dict) and (normalize_username(u.get("username")) == email or (u.get("email") or "") == email):
             if not u.get("active") or (u.get("saml_sub") and u.get("saml_sub") != link):
                 return None
+            if u.get("role") == "admin" and not float(u.get("saml_link_until") or 0) > _clock():
+                _audit("team_saml_link_refused", actor=u.get("username"), user=u.get("username"),
+                       reason="administrator account not yet allowed to link by an administrator")
+                raise TeamError("This is an administrator account: it is linked to SAML sign-in only after an administrator "
+                                "allows it (Team server page, Allow SAML link). Sign in with your password, or ask an administrator.", 403)
             with _LOCK:
                 d2 = _read()
                 rec = d2["users"].get(u["id"])
                 if isinstance(rec, dict):
                     rec["saml_sub"] = link
+                    rec.pop("saml_link_until", None)
                     _write(d2)
             _audit("team_saml_linked", actor=u.get("username"), user=u.get("username"))
             return get_user(u["id"])

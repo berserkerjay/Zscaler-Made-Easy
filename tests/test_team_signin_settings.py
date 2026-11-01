@@ -228,7 +228,9 @@ def _sign_in_with_saml(c, body_of):
     r = c.get(sso_saml.LOGIN_PATH)
     assert r.status_code == 302, r.text
     rid = _request_id_of(r.headers["location"])
-    r = c.post(sso_saml.ACS_PATH, data={"SAMLResponse": base64.b64encode(body_of(rid)).decode()},
+    from urllib.parse import parse_qs, urlparse
+    relay = parse_qs(urlparse(r.headers["location"]).query)["RelayState"][0]
+    r = c.post(sso_saml.ACS_PATH, data={"SAMLResponse": base64.b64encode(body_of(rid)).decode(), "RelayState": relay},
                headers={"Origin": "https://idp.example.test"})
     return c.get(r.headers["location"]) if r.status_code == 303 else r
 
@@ -430,6 +432,159 @@ def test_sign_in_settings_changes_are_audited(team_on, monkeypatch):
     c.post("/api/team/sign-in", json={"require_passkey": True}, headers=H)
     assert ("team_saml_settings_saved", "root") in [(e, f.get("actor")) for e, f in seen]
     assert ("team_require_passkey", "root") in [(e, f.get("actor")) for e, f in seen]
+
+
+# ── fixes after verify ──────────────────────────────────────────────────
+def test_an_account_with_a_passkey_never_falls_back_to_its_password_when_passkeys_are_not_set_up(team_on, monkeypatch):
+    """ASVS V2.1.1 · V2.8.1 · CWE-636 · WSTG-ATHN-04: the passkey origin is removed (require passkey off): an account with a passkey gets 503 naming the fix and an audit entry, never a password-only session."""
+    _with_passkey()
+    monkeypatch.delenv("ZSCALER_TEAM_PASSKEY_ORIGIN")
+    seen = []
+    monkeypatch.setattr(audit, "record", lambda e, **f: seen.append((e, f)))
+    c = _client()
+    r = _password(c)
+    assert r.status_code == 503 and "remove-passkeys" in r.json()["detail"]
+    assert "set-cookie" not in r.headers and not sso._SESSIONS and c.get("/api/team/me").status_code == 401
+    assert any(e == "team_login_failed" and "has a passkey" in f.get("reason", "") for e, f in seen)
+
+
+def test_an_account_without_a_passkey_still_signs_in_with_its_password_when_passkeys_are_not_set_up(team_on, monkeypatch):
+    """ASVS V2.1.1 · CWE-636 · WSTG-ATHN-04: boundary: passkeys not set up and not required, an account with no passkey signs in with its password."""
+    team.create_user(username="erin", role="viewer", password=PW)
+    monkeypatch.delenv("ZSCALER_TEAM_PASSKEY_ORIGIN")
+    assert _password(_client(), "erin").json()["ok"] is True
+
+
+def _saml_as(c, email):
+    return _sign_in_with_saml(c, lambda rid: xml(response(rid, [sign(assertion(rid, recipient=ACS, audience=SP, nameid=email, email=email),
+                                                                    cert=IDP_CERT)], destination=ACS)))
+
+
+def test_saml_never_links_an_administrator_account_by_its_email_alone(team_on, monkeypatch):
+    """ASVS V2.10.1 · V4.1.3 · CWE-287 · WSTG-ATHN-04: a verified SAML sign-in whose email matches an unlinked administrator account is refused and audited; the account stays unlinked."""
+    _full(_admin())
+    adm = team.create_user(username="boss@corp.example", role="admin", password=PW)
+    seen = []
+    monkeypatch.setattr(audit, "record", lambda e, **f: seen.append((e, f)))
+    c = _client()
+    r = _saml_as(c, "boss@corp.example")
+    assert r.status_code == 403 and "Allow SAML link" in r.text
+    assert c.get("/api/team/me").status_code == 401 and not team.get_user(adm["id"]).get("saml_sub")
+    assert "team_saml_link_refused" in [e for e, _ in seen]
+
+
+def test_saml_still_links_a_non_administrator_by_email(team_on):
+    """ASVS V2.10.1 · CWE-287 · WSTG-ATHN-04: boundary: an operator account is linked by its asserted email on its first SAML sign-in, as before."""
+    _full(_admin())
+    team.create_user(username="olga@corp.example", role="operator")
+    c = _client()
+    assert _saml_as(c, "olga@corp.example").status_code == 303
+    assert c.get("/api/team/me").json()["user"]["saml_linked"] is True
+
+
+def test_an_administrator_account_links_only_after_an_administrator_allows_it_and_only_for_a_while(team_on, monkeypatch):
+    """ASVS V2.10.1 · V4.1.3 · CWE-287 · WSTG-ATHN-04: Allow SAML link lets the next SAML sign-in within the window link the administrator account (audited, used once); after the window it is refused."""
+    root = _admin()
+    _full(root)
+    adm = team.create_user(username="boss@corp.example", role="admin", password=PW)
+    now = [1_000_000.0]
+    monkeypatch.setattr(team, "_clock", lambda: now[0])
+    seen = []
+    monkeypatch.setattr(audit, "record", lambda e, **f: seen.append((e, f)))
+    r = root.post(f"/api/team/users/{adm['id']}", json={"allow_saml_link": True}, headers=H)
+    assert r.status_code == 200 and r.json()["user"]["saml_link_allowed"] is True
+    assert ("team_saml_link_allowed", "root") in [(e, f.get("actor")) for e, f in seen]
+    now[0] += team.SAML_LINK_SECONDS + 1
+    assert _saml_as(_client(), "boss@corp.example").status_code == 403
+    root.post(f"/api/team/users/{adm['id']}", json={"allow_saml_link": True}, headers=H)
+    c = _client()
+    assert _saml_as(c, "boss@corp.example").status_code == 303
+    assert c.get("/api/team/me").json()["user"]["username"] == "boss@corp.example"
+    assert team.get_user(adm["id"]).get("saml_link_until") is None
+    assert root.post(f"/api/team/users/{adm['id']}", json={"allow_saml_link": True}, headers=H).status_code == 409
+
+
+def test_only_an_administrator_can_allow_a_saml_link(team_on):
+    """ASVS V4.1.3 · CWE-285 · WSTG-ATHZ-02: a non-administrator cannot allow a SAML link for an administrator account."""
+    root = _admin()
+    adm = team.create_user(username="boss@corp.example", role="admin", password=PW)
+    team.create_user(username="vic", role="operator", password=PW)
+    c = _client()
+    assert _password(c, "vic").json()["ok"] is True
+    assert c.post(f"/api/team/users/{adm['id']}", json={"allow_saml_link": True}, headers=H).status_code == 403
+    assert not team.get_user(adm["id"]).get("saml_link_until")
+
+
+def test_an_account_with_no_password_adds_a_passkey_only_from_a_recent_sign_in(team_on, monkeypatch):
+    """ASVS V2.5.3 · V3.7.1 · CWE-306 · WSTG-ATHN-04: an SSO or SAML account (no password) cannot add a passkey from a session older than RECENT_SIGN_IN_SECONDS; a fresh one can."""
+    import team_api
+    u = team.create_user(username="sam@corp.example", role="viewer")
+    sid = team.start_session(u, via="saml")
+    c = _client()
+    import security
+    c.cookies.set(security.SSO_SESSION_COOKIE, sid)
+    sso._SESSIONS[sid]["created"] -= team_api.RECENT_SIGN_IN_SECONDS + 1
+    r = c.post("/api/team/me/passkeys/options", json={}, headers=H)
+    assert r.status_code == 403 and "sign in again" in r.json()["detail"]
+    sso._SESSIONS[sid]["created"] = team._clock()
+    assert c.post("/api/team/me/passkeys/options", json={}, headers=H).status_code == 200
+
+
+@pytest.mark.parametrize("start", ["passkey", "saml"])
+def test_starting_sign_ins_is_limited_per_address(team_on, monkeypatch, start):
+    """ASVS V2.2.1 · CWE-770 · WSTG-ATHN-03: an address cannot start unlimited passkey or SAML sign-ins (each fills a capped shared map): over the limit it gets 429."""
+    if start == "saml":
+        _full(_admin())
+    team._IP_ATTEMPTS.clear()
+    monkeypatch.setattr(team, "START_IP_ATTEMPTS", 2)
+    c = _client()
+    go = (lambda: c.post("/api/auth/team/passkey/options", headers=H)) if start == "passkey" else (lambda: c.get(sso_saml.LOGIN_PATH))
+    codes = [go().status_code for _ in range(3)]
+    assert codes[:2] != [429, 429] and codes[2] == 429
+
+
+def test_a_saml_response_without_the_relay_state_is_refused(team_on):
+    """ASVS V3.2.1 · CWE-352 · WSTG-SESS-05: the ACS refuses a valid response that does not carry back the RelayState of the sign-in this server started."""
+    _full(_admin())
+    team.create_user(username="alice@corp.example", role="viewer")
+    c = _client()
+    r = c.get(sso_saml.LOGIN_PATH)
+    rid = _request_id_of(r.headers["location"])
+    body = xml(response(rid, [sign(assertion(rid, recipient=ACS, audience=SP), cert=IDP_CERT)], destination=ACS))
+    r = c.post(sso_saml.ACS_PATH, data={"SAMLResponse": base64.b64encode(body).decode()}, headers={"Origin": "https://idp.example.test"})
+    assert r.status_code == 401 and "RelayState" in r.text and c.get("/api/team/me").status_code == 401
+
+
+def test_audit_records_carry_no_saml_response_or_passkey_credential_bytes(team_on, monkeypatch, caplog, tmp_path):
+    """ASVS V7.1.1 · CWE-532 · WSTG-ERRH-01: after a refused and an accepted SAML sign-in and a password+passkey sign-in, no audit entry or log line holds the SAML response, its signature or any credential bytes."""
+    import json as _json
+    import logging
+    caplog.set_level(logging.DEBUG)
+    _full(_admin())
+    team.create_user(username="alice@corp.example", role="viewer")
+    auth = _with_passkey("pk")
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
+    secrets_ = []
+
+    def body(rid, key=None):
+        kw = {"key": key} if key else {}
+        b = xml(response(rid, [sign(assertion(rid, recipient=ACS, audience=SP), cert=IDP_CERT, **kw)], destination=ACS))
+        secrets_.append(base64.b64encode(b).decode())
+        secrets_.extend(m.decode() for m in re.findall(rb"<ds:SignatureValue>([^<]{20,})</ds:SignatureValue>", b))
+        return b
+    from test_team_saml import EVIL_KEY
+    _sign_in_with_saml(_client(), lambda rid: body(rid, EVIL_KEY))
+    assert _sign_in_with_saml(_client(), body).status_code == 303
+    c = _client()
+    j = _password(c, "pk").json()
+    cred = auth.get(j["options"])
+    secrets_.extend(v for v in cred["response"].values() if isinstance(v, str) and len(v) > 16)
+    assert c.post("/api/auth/team/passkey/login", json={"ceremony": j["ceremony"], "credential": cred}, headers=H).status_code == 200
+    written = audit.tail(10000)
+    assert {"team_login", "team_login_failed", "api"} <= {e.get("event") for e in written} and len(secrets_) >= 6
+    dump = _json.dumps(written, default=str) + caplog.text
+    leaked = [s[:24] for s in secrets_ if s[:40] in dump]
+    assert not leaked, leaked
 
 
 # ── 5. the pages ────────────────────────────────────────────────────────

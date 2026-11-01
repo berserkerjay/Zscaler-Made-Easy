@@ -46,7 +46,7 @@ window.WHATS_NEW = {
       ]
     },
     {
-      "id": "team-sign-in", "release": "2026-11-01", "label": "Sign-in settings",
+      "id": "team-sign-in-settings", "release": "2026-11-01", "label": "Sign-in settings",
       "what": "A Sign-in section on the Team server page: set SAML sign-in up from your identity provider's metadata, test it, turn it on or off, and require a passkey after the password.",
       "changelog": ["Sign-in settings", "Passkey after the password"],
       "marks": [

@@ -9083,6 +9083,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. You are asked to confirm.",
     "effect": "local"
    },
+   "button[data-act=\"samllink\"]": {
+    "what": "Lets this administrator's next SAML sign-in, within 15 minutes, link to the account. Administrator accounts are never linked by email alone.",
+    "input": "Nothing to type. Just click it while the person is signing in. You are asked to confirm.",
+    "effect": "local"
+   },
    "#tmSamlMeta": {
     "what": "Your identity provider's SAML metadata. The server reads its entity ID, sign-on URL and signing certificate from it.",
     "input": "Paste the XML from your identity provider's admin console, up to 256 KB. Files with a DTD or entities are refused.",
@@ -9095,7 +9100,7 @@ window.HELP_CATALOG = {
    },
    "#tmSamlIdp": {
     "what": "The identity provider's entity ID: the name it signs its answers with.",
-    "input": "Copy it from your identity provider, like https://idp.example.com/metadata. Not needed when you give the metadata.",
+    "input": "Copy it from your identity provider: the entity ID its metadata or settings page shows. Not needed when you give the metadata.",
     "effect": "local"
    },
    "#tmSamlSso": {
@@ -9134,7 +9139,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#tmSamlOn": {
-    "what": "Turns SAML sign-in on or off for this server. It can only be turned on when every setting is there.",
+    "what": "Turns SAML sign-in on or off for this server. It can only be turned on when every setting is there. Administrator accounts link only after Allow SAML link.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },

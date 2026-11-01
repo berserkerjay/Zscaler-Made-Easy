@@ -738,7 +738,8 @@ what you get, what to do next.
   this page. On a team server the change queue's four-eyes is always on.
   Its Sign-in section sets SAML sign-in up from the identity provider's
   metadata (or typed values), tests it locally and turns it on or off, and
-  can require a passkey after the password.
+  can require a passkey after the password. An administrator account is
+  linked to SAML only after an administrator clicks Allow SAML link on it.
   Optional in any mode: encryption of the app's stores on disk, with key
   rotation, and FIPS mode. See INSTALL.md and SECURITY.md, "Team server".
 - **Change queue** — the team's shared queue of changes prepared but not

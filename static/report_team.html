@@ -130,6 +130,7 @@
               <button type="button" class="rp-btn" id="tmSamlOn">Turn SAML sign-in on</button>
             </div>
           </form>
+          <p class="tm-status" id="tmSamlLinkNote">A person's first SAML sign-in is linked to the account whose user name or email is the email the identity provider sends. Administrator accounts are never linked that way: click Allow SAML link on the administrator's account below, and their next SAML sign-in within 15 minutes links it.</p>
           <h3 id="tmReqPkH">Passkeys</h3>
           <label class="tm-check" for="tmReqPk"><input type="checkbox" id="tmReqPk"> Require a passkey after the password for every account that signs in with a password</label>
           <p class="tm-status" id="tmReqPkNote"></p>
@@ -259,6 +260,7 @@
         ${u.locked ? `<button type="button" class="rp-btn" data-act="unlock" data-id="${E(u.id)}">Unlock</button>` : ''}
         <button type="button" class="rp-btn" data-act="pw" data-id="${E(u.id)}">Set password</button>
         ${(u.passkeys || []).length ? `<button type="button" class="rp-btn" data-act="pkclear" data-id="${E(u.id)}">Remove passkeys</button>` : ''}
+        ${u.role === 'admin' && !u.saml_linked ? `<button type="button" class="rp-btn" data-act="samllink" data-id="${E(u.id)}">${u.saml_link_allowed ? 'SAML link allowed' : 'Allow SAML link'}</button>` : ''}
         <button type="button" class="rp-btn" data-act="del" data-id="${E(u.id)}">Delete</button></td></tr>`).join('');
       $('tmGrWho').innerHTML = data.users.map(u => `<option value="user:${E(u.id)}">${E(u.username)}</option>`).join('')
         + data.groups.map(g => `<option value="group:${E(g.id)}">group: ${E(g.display_name)}</option>`).join('');
@@ -351,6 +353,7 @@
         if (act === 'off' || act === 'on') await call('POST', `/api/team/users/${id}`, { active: act === 'on' });
         else if (act === 'unlock') await call('POST', `/api/team/users/${id}/unlock`);
         else if (act === 'pkclear') { if (!(await window.dlpDialog.ask({ title: 'Remove this person’s passkeys?', body: 'Every passkey on the account stops working (a lost or stolen device). They can still sign in with a password or SSO, and add a new passkey.', okLabel: 'Remove', tone: 'bad' }))) return; await call('DELETE', `/api/team/users/${id}/passkeys`); }
+        else if (act === 'samllink') { if (!(await window.dlpDialog.ask({ title: 'Allow a SAML link for this administrator?', body: 'Their next SAML sign-in within 15 minutes is linked to this account, matched by the email the identity provider sends. Do this only while they are signing in.', okLabel: 'Allow' }))) return; await call('POST', `/api/team/users/${id}`, { allow_saml_link: true }); }
         else if (act === 'del') { if (!(await window.dlpDialog.ask({ title: 'Delete this account?', body: 'Its access goes with it and its sessions end.', okLabel: 'Delete', tone: 'bad' }))) return; await call('DELETE', `/api/team/users/${id}`); }
         else if (act === 'pw') {
           const pw = await window.dlpDialog.phrase({ title: 'Set a password', body: 'At least 12 characters. The person’s sessions end; tell them the new password in person.', phrase: '', label: 'New password', okLabel: 'Set' });

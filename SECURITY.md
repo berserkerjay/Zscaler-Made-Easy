@@ -327,9 +327,18 @@ too), made with the configured certificate (two during a rotation), RSA or
 ECDSA with SHA-256 or stronger; only the bytes the signature covers are read,
 and exactly one assertion directly in the response is accepted (signature
 wrapping, CWE-347). Issuer, audience, bearer recipient, InResponseTo of a
-request this server sent, NotBefore/NotOnOrAfter (60 seconds of skew), status
-and destination are checked; each request and assertion ID is used once (a
-replay is refused). The parser loads no DTD, expands no entity and reaches no
+request this server sent, NotBefore/NotOnOrAfter (60 seconds of skew), status,
+destination (required when the response is signed) and the RelayState of the
+sign-in this server started are checked; each request and assertion ID is
+used once (a replay is refused). Starting a sign-in is limited per address.
+The account is the one linked to the identity provider's NameID, else the
+one whose user name or email is the asserted email, but **an administrator
+account is never linked by its email alone**: an administrator first clicks
+**Allow SAML link** on that account (Team server page), and only its next
+SAML sign-in within 15 minutes links it; otherwise the sign-in is refused and
+audited (`team_saml_link_refused`). Other accounts are linked by email on
+their first SAML sign-in. Audit entries carry reasons and names, never the
+SAML response, assertion or passkey credential bytes. The parser loads no DTD, expands no entity and reaches no
 network, with size caps. The verified sign-in finishes only in the browser
 that started it (`/api/auth/saml/finish`, login CSRF), and a locked account is
 refused. The ACS is the one change exempt from the Origin check (the
@@ -348,9 +357,13 @@ challenge used once within five minutes, the exact configured origin and RP
 ID (never the Host header), user verification, the signature and the
 signature counter (one that does not go up is refused and audited). Only the
 credential ID, public key, counter, name and dates are stored. Adding a
-passkey needs the current password. Once an account has a passkey, a right
+passkey needs the current password (an account with no password needs a
+sign-in less than 5 minutes old). Once an account has a passkey, a right
 password alone gets no session: the account's own passkey must answer a
-challenge bound to that account. An administrator can **require** a passkey
+challenge bound to that account. If passkeys are then not set up on the
+server (`ZSCALER_TEAM_PASSKEY_ORIGIN` removed), such an account's password
+sign-in fails closed (503, audited) and names the fix, never a password-only
+session. Starting a passkey sign-in is limited per address. An administrator can **require** a passkey
 after the password (refused while passkeys are not set up); an account
 without one then adds one right after its password, before any session. A
 passkey that fails counts towards the account's lockout. If the passkey

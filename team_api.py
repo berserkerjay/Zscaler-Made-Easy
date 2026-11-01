@@ -23,6 +23,7 @@ import team_server as team
 
 SCIM_BASE = "/api/scim/v2"
 SCIM_MEDIA = "application/scim+json"
+RECENT_SIGN_IN_SECONDS = 300   # adding a passkey to an account with no password needs a sign-in this recent
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 
@@ -142,6 +143,14 @@ def register(app: FastAPI) -> None:
             try:
                 nxt = team_passkeys.second_factor_options(u) if step == "passkey" else team_passkeys.enrollment_options(u)
             except team_passkeys.PasskeyError:
+                if step == "passkey":
+                    # Fail closed: an account with a passkey never falls back to its password alone.
+                    audit.record("team_login_failed", actor=security.NOT_SIGNED_IN, attempted_user=u.get("username"),
+                                 reason="the account has a passkey but passkeys are not set up", client=client)
+                    return JSONResponse({"detail": "This account has a passkey, but passkeys are not set up on this server "
+                                                   "(ZSCALER_TEAM_PASSKEY_ORIGIN), so it cannot sign in with a password alone. "
+                                                   "An administrator can set that again, or run python team_server.py "
+                                                   "remove-passkeys <user name> on the server (a lost device)."}, status_code=503)
                 audit.record("team_login_failed", actor=security.NOT_SIGNED_IN, attempted_user=u.get("username"),
                              reason="a passkey is required but passkeys are not set up", client=client)
                 return JSONResponse({"detail": "This server asks for a passkey after the password, but passkeys are not set up on it "
@@ -201,6 +210,10 @@ def register(app: FastAPI) -> None:
         provider with an AuthnRequest (HTTP-Redirect binding), and a cookie
         that ties the answer to this browser."""
         _saml_on()
+        if not team._ip_allowed("start:" + (request.client.host if request.client else "?"), team.START_IP_ATTEMPTS):
+            # Each start fills a capped map of pending requests: limit them per address.
+            raise HTTPException(status_code=429, detail="Too many sign-ins started from this address: wait a few minutes.",
+                                headers={"Retry-After": "60"})
         binding = sso_saml.new_binding()
         try:
             url = sso_saml.start_login(binding)
@@ -228,9 +241,13 @@ def register(app: FastAPI) -> None:
             return _saml_refused(request, "the form is not URL-encoded text", 400)
         if form is None:
             return _saml_refused(request, "the SAML response is too large", 413)
+        relay = (form.get("RelayState") or [""])[0]
+        if not relay:
+            # Every sign-in this server starts sends a RelayState; the answer must carry it back.
+            return _saml_refused(request, "the SAML response has no RelayState: start the sign-in again from the sign-in page")
         try:
             xml = sso_saml.decode_post((form.get("SAMLResponse") or [""])[0])
-            claims = sso_saml.verify_response(xml, relay_state=(form.get("RelayState") or [""])[0])
+            claims = sso_saml.verify_response(xml, relay_state=relay)
         except sso_saml.SamlError as e:
             return _saml_refused(request, str(e))
         except RuntimeError as e:
@@ -253,7 +270,10 @@ def register(app: FastAPI) -> None:
         who = str(claims.get("email") or claims.get("sub") or "unknown")[:200]
         if not sso_saml.sign_in_allowed(claims):
             return _saml_refused(request, f"{who} is not in a group allowed to use this server (ZSCALER_SAML_ALLOWED_GROUPS)", 403)
-        member = team.link_saml(claims)
+        try:
+            member = team.link_saml(claims)
+        except team.TeamError as e:
+            return _saml_refused(request, str(e), e.status)
         if member is None:
             return _saml_refused(request, f"{who} has no active account on this team server. Ask an administrator to add you, "
                                           "or to provision you through SCIM.", 403)
@@ -283,10 +303,14 @@ def register(app: FastAPI) -> None:
         raise HTTPException(status_code=e.status, detail=str(e))
 
     @app.post("/api/auth/team/passkey/options")
-    async def team_passkey_options():
+    async def team_passkey_options(request: Request):
         """Start a passkey sign-in: a one-use challenge for the browser's
-        navigator.credentials.get() (no user name: the passkey names its account)."""
+        navigator.credentials.get() (no user name: the passkey names its account).
+        Limited per address: each challenge fills a capped shared map."""
         _on()
+        if not team._ip_allowed("start:" + (request.client.host if request.client else "?"), team.START_IP_ATTEMPTS):
+            raise HTTPException(status_code=429, detail="Too many sign-ins started from this address: wait a few minutes.",
+                                headers={"Retry-After": "60"})
         try:
             return team_passkeys.authentication_options()
         except team_passkeys.PasskeyError as e:
@@ -329,6 +353,14 @@ def register(app: FastAPI) -> None:
         if u.get("password") and not team.verify_password(str(data.get("current") or ""), u.get("password")):
             audit.record("team_passkey_refused", reason="the current password was wrong")
             raise HTTPException(status_code=403, detail="The current password is not right.")
+        if not u.get("password"):
+            # No password to ask for (an SSO or SAML account): the sign-in itself must be recent,
+            # so a stolen older session cannot add a lasting way in.
+            s = sso.get_session(request.cookies.get(security.SSO_SESSION_COOKIE)) or {}
+            if not team._clock() - float(s.get("created") or 0) <= RECENT_SIGN_IN_SECONDS:
+                audit.record("team_passkey_refused", reason="the sign-in is not recent")
+                raise HTTPException(status_code=403, detail="Sign out and sign in again, then add the passkey within "
+                                                            f"{RECENT_SIGN_IN_SECONDS // 60} minutes.")
         try:
             return {"options": team_passkeys.registration_options(u, request.cookies.get(security.SSO_SESSION_COOKIE))}
         except team_passkeys.PasskeyError as e:
@@ -473,7 +505,10 @@ def register(app: FastAPI) -> None:
     @app.post("/api/team/users/{user_id}")
     async def team_user_update(user_id: str, request: Request):
         """Change an account's role, display name, email, or turn it off or on.
-        A role change or turning it off ends its sessions at once."""
+        A role change or turning it off ends its sessions at once.
+        `allow_saml_link: true` lets the account's next SAML sign-in (within
+        team_server.SAML_LINK_SECONDS) link to it: needed for administrator
+        accounts, which are never linked by their email alone."""
         _on()
         data = await _body(request)
         me = _me()
@@ -481,7 +516,8 @@ def register(app: FastAPI) -> None:
             raise HTTPException(status_code=409, detail="You cannot turn off or demote your own account; ask another administrator.")
         try:
             u = team.update_user(user_id, by=me.get("username"), role=data.get("role"), active=data.get("active"),
-                                 display_name=data.get("display_name"), email=data.get("email"))
+                                 display_name=data.get("display_name"), email=data.get("email"),
+                                 allow_saml_link=data.get("allow_saml_link"))
         except team.TeamError as e:
             _fail(e)
         return {"user": team.public_user(u)}

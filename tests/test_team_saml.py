@@ -411,6 +411,20 @@ def test_response_level_destination_status_and_issuer_are_checked(saml_on, chang
         sso_saml.verify_response(xml(r))
 
 
+def test_a_signed_response_without_a_destination_is_refused(saml_on):
+    """ASVS V2.10.1 · CWE-345 · WSTG-ATHN-04: a Response the identity provider signs must name this server's ACS as its Destination (SAML bindings 3.5.5.2)."""
+    rid = _pending()
+    r = response(rid, [sign(assertion(rid))], destination=None)
+    with pytest.raises(sso_saml.SamlError, match="names no Destination"):
+        sso_saml.verify_response(xml(sign(r)))
+
+
+def test_an_unsigned_response_may_leave_the_destination_out(saml_on):
+    """ASVS V2.10.1 · CWE-345 · WSTG-ATHN-04: boundary: with only the assertion signed, a Response without Destination is still accepted (the bearer Recipient is checked)."""
+    rid = _pending()
+    assert sso_saml.verify_response(xml(response(rid, [sign(assertion(rid))], destination=None)))["sub"]
+
+
 # ── 5. parsing ──────────────────────────────────────────────────────────
 @pytest.mark.parametrize("doc", [
     b'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol">&x;</samlp:Response>',
@@ -527,8 +541,8 @@ def test_acs_failures_are_plain_escaped_and_audited(saml_on, monkeypatch):
     seen = []
     monkeypatch.setattr(audit, "record", lambda e, **f: seen.append((e, f)))
     c = _client()
-    r = c.post(sso_saml.ACS_PATH, data={"SAMLResponse": base64.b64encode(b"<x><script>alert(1)</script></x>").decode()},
-               headers={"Origin": "https://idp.example.test"})
+    r = c.post(sso_saml.ACS_PATH, data={"SAMLResponse": base64.b64encode(b"<x><script>alert(1)</script></x>").decode(),
+                                        "RelayState": "r"}, headers={"Origin": "https://idp.example.test"})
     assert r.status_code == 401 and "<script>" not in r.text and "Traceback" not in r.text
     assert any(e == "team_login_failed" and f.get("via") == "saml" for e, f in seen)
 
