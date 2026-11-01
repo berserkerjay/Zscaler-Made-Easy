@@ -187,7 +187,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 88,
+            "fixed": 95,
             "accepted": 12,
             "records": [
               "c6-api-server",
@@ -482,7 +482,7 @@
     }
   ],
   "counts": {
-    "findings": 717,
+    "findings": 724,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -496,12 +496,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 180,
+        "fixed": 182,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 395,
+        "fixed": 400,
         "accepted": 3
       },
       "info": {
@@ -511,12 +511,12 @@
       }
     },
     "checks": {
-      "pass": 652,
+      "pass": 653,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11324
+    "tests_added": 11336
   },
   "findings": [
     {
@@ -4530,6 +4530,38 @@
       "fix": "team_server.record_failure counts a failed passkey like a wrong password; a right password no longer resets the count while a second factor is still due",
       "test": "tests/test_team_signin_settings.py::test_failed_passkeys_lock_the_account_like_wrong_passwords",
       "commit": "eb1760d",
+      "reason": "",
+      "slug": "w9-team-auth",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W9-TA-05",
+      "title": "An account with a passkey signed in with its password alone when ZSCALER_TEAM_PASSKEY_ORIGIN was unset (silent second-factor downgrade)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-636",
+      "asvs": "V2.8.1",
+      "wcag": "",
+      "fix": "second_factor_needed returns passkey for every account with a passkey; the password step fails closed (503, audited) and names remove-passkeys",
+      "test": "tests/test_team_signin_settings.py::test_an_account_with_a_passkey_never_falls_back_to_its_password_when_passkeys_are_not_set_up",
+      "commit": "3179996",
+      "reason": "",
+      "slug": "w9-team-auth",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W9-TA-06",
+      "title": "SAML linked a first sign-in to an administrator account by the asserted email alone (account takeover through an editable IdP email)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-287",
+      "asvs": "V2.10.1",
+      "wcag": "",
+      "fix": "link_saml refuses (403, audited team_saml_link_refused) an unlinked administrator account unless an administrator allowed the link (allow_saml_link) within the last 15 minutes; used once",
+      "test": "tests/test_team_signin_settings.py::test_an_administrator_account_links_only_after_an_administrator_allows_it_and_only_for_a_while",
+      "commit": "3179996",
       "reason": "",
       "slug": "w9-team-auth",
       "area": "secure_by_design",
@@ -10856,6 +10888,86 @@
       "sub_area": "auth_scope_secrets"
     },
     {
+      "id": "W9-TA-07",
+      "title": "A signed SAML Response without a Destination was accepted",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-345",
+      "asvs": "V2.10.1",
+      "wcag": "",
+      "fix": "verify_response requires Destination when the Response is signed (SAML bindings 3.5.5.2)",
+      "test": "tests/test_team_saml.py::test_a_signed_response_without_a_destination_is_refused",
+      "commit": "3179996",
+      "reason": "",
+      "slug": "w9-team-auth",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W9-TA-08",
+      "title": "An account with no password could add a passkey from any live session, so a stolen session could add a lasting way in",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-306",
+      "asvs": "V2.5.3",
+      "wcag": "",
+      "fix": "adding a passkey to an account with no password needs a sign-in less than RECENT_SIGN_IN_SECONDS (5 minutes) old",
+      "test": "tests/test_team_signin_settings.py::test_an_account_with_no_password_adds_a_passkey_only_from_a_recent_sign_in",
+      "commit": "3179996",
+      "reason": "",
+      "slug": "w9-team-auth",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W9-TA-09",
+      "title": "Unauthenticated passkey and SAML sign-in starts were not limited, so a flood could evict legitimate ceremonies from the capped maps",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-770",
+      "asvs": "V2.2.1",
+      "wcag": "",
+      "fix": "starts are limited per address (START_IP_ATTEMPTS in LOGIN_IP_WINDOW, 429)",
+      "test": "tests/test_team_signin_settings.py::test_starting_sign_ins_is_limited_per_address",
+      "commit": "3179996",
+      "reason": "",
+      "slug": "w9-team-auth",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W9-TA-10",
+      "title": "The RelayState comparison was skipped when the response carried none",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-352",
+      "asvs": "V3.2.1",
+      "wcag": "",
+      "fix": "the ACS refuses a response without RelayState before verifying it",
+      "test": "tests/test_team_signin_settings.py::test_a_saml_response_without_the_relay_state_is_refused",
+      "commit": "3179996",
+      "reason": "",
+      "slug": "w9-team-auth",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W9-TA-11",
+      "title": "Release manifest reused the feature id team-sign-in and a help entry named a remote address",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V14.1.1",
+      "wcag": "",
+      "fix": "new feature id team-sign-in-settings; the help entry describes the entity ID without an address",
+      "test": "tests/test_new_marks.py::test_every_manifest_entry_is_complete_with_a_valid_date",
+      "commit": "3179996",
+      "reason": "",
+      "slug": "w9-team-auth",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13988,9 +14100,9 @@
       "standards": [
         "ASVS 4.0.3 L2 V2.2, V2.8, V2.10, V3.2, V4.1, V5.1, V5.5, V7.2, V12.1, V14.1"
       ],
-      "checks": 6,
-      "findings": 4,
-      "tests_added": 27
+      "checks": 7,
+      "findings": 11,
+      "tests_added": 39
     }
   ],
   "standards": {
