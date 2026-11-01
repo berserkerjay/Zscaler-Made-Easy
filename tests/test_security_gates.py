@@ -186,11 +186,12 @@ def test_the_sign_in_page_has_the_password_change_form():
 # ── plan hash on the older writes ───────────────────────────────────────
 class RawTenant:
     """The raw client a remediation or the Evaluate All enable uses: every
-    call is recorded; the Evaluate All setting lives on one endpoint."""
+    call is recorded; the Evaluate All setting lives on /webDlpGlobalOptions
+    (enableEvaluateAllDlpRules, as zscaler-sdk-python's model names it)."""
 
     def __init__(self):
         self.calls = []
-        self.settings = {"dlpEvaluateAllRules": False, "otherSetting": 7}
+        self.settings = {"enableEvaluateAllDlpRules": False, "otherSetting": 7}
 
     def get(self, endpoint, params=None):
         self.calls.append(("GET", endpoint))
@@ -289,7 +290,7 @@ def test_the_evaluate_all_enable_writes_only_the_field_the_dry_run_found(raw):
     """ASVS V11.1.3 · V1.4.1 · CWE-367 · CWE-20: the dry run reads only; the live run with its plan_hash makes one PUT, to the probed endpoint with only the probed field changed, and reads it back; no blind probe PUT."""
     c = TestClient(srv.app)
     dry = _enable(c, dry_run=True).json()
-    assert dry["status"] == "dry_run" and dry["endpoint"] == "/zia/webDlpGlobalOptions" and dry["field"] == "dlpEvaluateAllRules", dry
+    assert dry["status"] == "dry_run" and dry["endpoint"] == "/zia/webDlpGlobalOptions" and dry["field"] == "enableEvaluateAllDlpRules", dry
     assert not [x for x in raw.calls if x[0] != "GET"], "the dry run wrote"
     raw.calls.clear()
     # Act
@@ -297,7 +298,7 @@ def test_the_evaluate_all_enable_writes_only_the_field_the_dry_run_found(raw):
     # Assert
     assert r.status_code == 200 and r.json()["status"] == "activated", r.text
     assert [x for x in raw.calls if x[0] != "GET"] == [("PUT", "/zia/webDlpGlobalOptions")]
-    assert raw.settings == {"dlpEvaluateAllRules": True, "otherSetting": 7}
+    assert raw.settings == {"enableEvaluateAllDlpRules": True, "otherSetting": 7}
 
 
 def test_the_evaluate_all_enable_writes_nothing_when_no_setting_is_found(raw):
