@@ -287,6 +287,11 @@ CHECK_DOMAIN_MAP = {
     "ZBI.": ["logging_monitoring"],
     "ZCELL.": ["device_compliance"],
     "ZMS.": ["zpa_zero_trust", "firewall"],
+    # Coverage checks (2026-11-01) outside the prefixes above
+    "THR.12": ["device_compliance"],             # partner integrations feed device posture
+    "HLT.5": ["zpa_zero_trust"],                 # disconnected connectors cleaned up
+    "HLT.6": ["zpa_zero_trust"],                 # connector groups on a current version profile
+    "AIG.7": ["ai_governance", "identity_admin"],   # LLM provider credentials rotated
 }
 
 

@@ -183,6 +183,47 @@ def _resolve_ep(ep, customer_id="", legacy=False):
         return f"/zpa/{service}/{version}/" + suffix
     return ep
 
+# Answers kept only as metadata the moment they are read: their objects
+# carry a key, so only these fields are cached, judged or saved.
+# AI Guard LLM provider credentials (zscaler/aiguard/llm_provider_credentials.py,
+# LlmProviderCredentials: providerId, name, expireTimeMillis, apiCredentials)
+# and ZIA partner integrations (zscaler/zia/partner_integrations.py,
+# IntegrationPartner: id, name, type, disabled; partners are API-key
+# integrations, so any other field is dropped). id and the create/update
+# times of a provider credential are assumed (not named by the SDK model).
+_METADATA_ONLY = {
+    "/aiguard/v1/llm-provider-credentials": ("id", "name", "providerId", "expireTimeMillis", "createTimeMillis", "updateTimeMillis"),
+    "/zia/api/v1/integrationPartners": ("id", "name", "type", "disabled"),
+}
+
+
+def metadata_only(path, body):
+    """`body` with only the metadata fields when `path` (a real or short
+    path) is in _METADATA_ONLY; anything else unchanged. Values are kept
+    only as plain text, numbers or true/false, so nothing nested survives."""
+    p = str(path or "").removeprefix("raw:").split("?", 1)[0].rstrip("/")
+    if p.startswith("/zia/") and not p.startswith("/zia/api/"):
+        p = "/zia/api/v1/" + p[5:]
+    fields = _METADATA_ONLY.get(p)
+    if fields is None:
+        return body
+    rows = body
+    wrap = None
+    if isinstance(body, dict):
+        for key in ("items", "list"):
+            if isinstance(body.get(key), list):
+                rows, wrap = body[key], key
+                break
+        else:
+            rows = []
+    want = {_nk(f): f for f in fields}
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        if isinstance(r, dict):
+            out.append({want[_nk(k)]: (v[:200] if isinstance(v, str) else v) for k, v in r.items()
+                        if _nk(k) in want and isinstance(v, (str, int, float, bool))})
+    return {wrap: out} if wrap else out
+
 # What a read answers once the run is stopped (Client.stop, or the stop
 # hook data_flow.stop_on binds): nothing was sent. Never cached, so a list
 # cut short is never kept as the tenant's whole configuration.
@@ -552,7 +593,7 @@ class Client:
             with zia_rate.stopping_on(s._stopped):   # a Stop also ends a wait for ZIA's rate limit: Cancelled, nothing sent
                 r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=s.TIMEOUT)
             if r.status_code == 200:
-                try: res = (r.json(), 200)
+                try: res = (metadata_only(real_ep, r.json()), 200)
                 except Exception: res = ([], 200)
             elif r.status_code == 204:
                 res = ([], 204)

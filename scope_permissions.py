@@ -43,6 +43,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "IDM Profiles",
             "EDM Schemas",
             "Cloud Apps Risk",
+            "Endpoint DLP Resources and Resource Groups (read; check B.17, with Endpoint DLP on Zscaler)",
         ],
         "permissions_write": [],
         "endpoints_used": [
@@ -54,6 +55,13 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/incidentReceiverServers",
             "/zia/idmprofile",
             "/zia/dlpExactDataMatchSchemas",
+            "/zia/endPointDlpRules",
+            # Endpoint DLP resource groups and resources, per channel (B.17; zia/endpoint_dlp_resource_groups.py,
+            # zia/dlp_endpoint_resource.py): read only with Endpoint DLP marked Zscaler.
+            "/zia/endPointDlpResourceGroups/PRINTING", "/zia/endPointDlpResourceGroups/REMOVABLE_DRIVE_TRANSFER",
+            "/zia/endPointDlpResourceGroups/NETWORK_DRIVE_TRANSFER", "/zia/endPointDlpResourceGroups/PERSONAL_CLOUD_STORAGE",
+            "/zia/dlpEndpointResource/PRINTING", "/zia/dlpEndpointResource/REMOVABLE_DRIVE_TRANSFER",
+            "/zia/dlpEndpointResource/NETWORK_DRIVE_TRANSFER", "/zia/dlpEndpointResource/PERSONAL_CLOUD_STORAGE",
             "/zwa/dlp/v1/incidents/search and /zwa/dlp/v1/customer/audit (POST reads; only when Workflow Automation is marked Zscaler)",
             "/zwa/dlp/v1/incidents/{id}, /triggers, /change-history, /tickets (incident drill-down; never /evidence)",
         ],
@@ -106,6 +114,9 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "URL & Cloud App Control Advanced Settings",
             "SaaS Security API (malware rules, tenants, quarantine templates)",
             "Cloud-to-Cloud Incident Forwarding",
+            "Partner Integrations (read; names, types and enabled state only, THR.12)",
+            "Traffic Capture Policy (read; GOV.9)",
+            "Time Intervals (read; FW.10)",
         ],
         "permissions_write": [
             "Only with write mode on and a confirmed Bulk changes plan: User Management (users, groups, departments) and Hosted PAC Files",
@@ -144,6 +155,8 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/riskProfiles/lite", "/zia/adaptiveAccessProfiles",
             "/zia/advancedSettings", "/zia/casbMalwareRules/all", "/zia/quarantineTombstoneTemplate/lite",
             "/zia/casbTenant/lite", "/zia/casbTenant/scanInfo", "/zia/cloudToCloudIR/lite",
+            # Coverage checks (2026-11-01): partner integrations (metadata only), traffic capture rules, time intervals.
+            "/zia/integrationPartners", "/zia/trafficCaptureRules", "/zia/timeIntervals",
         ],
         "license_required": "Standard ZIA license. The NSS checks are N/A without an NSS or Cloud NSS subscription. Custom IPS signatures need Advanced Cloud Firewall; Mobile Malware Protection, "
                             "SaaS Security API (malware scanning) and Cloud Sandbox are separate subscriptions: without them those checks say \"not licensed\".",
@@ -176,6 +189,9 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "Application Servers",
             "Business Continuity, Private Cloud and Private Cloud Controllers",
             "Branch Connectors and Cloud Connectors",
+            "App Connector and Service Edge schedules (auto-delete), Version Profiles (HLT.5, HLT.6)",
+            "ZIA cloud configuration availability (yes/no only; the configuration itself holds ZIA credentials and is never read, ZPA.22)",
+            "User Portal Acceptable Use Policy and User Portal Links (ZPA.23, ZPA.24)",
         ],
         "permissions_write": [],
         "endpoints_used": [
@@ -189,6 +205,9 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zpa/cbiconfig/profiles", "/zpa/cbiconfig/banners", "/zpa/cbiconfig/certificates", "/zpa/cbiconfig/regions",
             "/zpa/isolation/profiles", "/zpa/managedBrowserProfile",
             "/zpa/browserProtectionProfile", "/zpa/praPortal", "/zpa/praConsole", "/zpa/userPortal",
+            # Coverage checks (2026-11-01).
+            "/zpa/connectorSchedule", "/zpa/serviceEdgeSchedule", "/zpa/serviceEdge", "/zpa/visible/versionProfiles",
+            "/zpa/config/isZiaCloudConfigAvailable", "/zpa/userportal/aup", "/zpa/userPortalLink",
         ],
         "license_required": "ZPA subscription.",
         "customer_id_needed": True,
@@ -411,10 +430,10 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
 
     "aiguard": {
         "label": "AI Guard",
-        "description": "Zscaler AI Guard: whether it is licensed and reachable, six scored assessment checks (AIG.1 to AIG.6: detection policy in use, prompt injection, block mode, answers inspected, stored prompts encrypted, application credentials), the AI Guard page (policies, match rules, LLM applications, credential metadata and Test a prompt with synthetic prompts) and the Bulk changes builders that route GenAI apps through it and turn a compliance profile into an AI Guard detection policy.",
+        "description": "Zscaler AI Guard: whether it is licensed and reachable, seven scored assessment checks (AIG.1 to AIG.7: detection policy in use, prompt injection, block mode, answers inspected, stored prompts encrypted, application credentials, provider credentials current), the AI Guard page (policies, match rules, LLM applications, credential metadata and Test a prompt with synthetic prompts) and the Bulk changes builders that route GenAI apps through it and turn a compliance profile into an AI Guard detection policy.",
         "service": "AI Guard (OneAPI) and ZIA",
         "permissions_read": [
-            "AI Guard: detection policies, policy match rules, LLM providers, LLM applications and LLM application credentials (read; credential metadata only)",
+            "AI Guard: detection policies, policy match rules, LLM providers, LLM applications, LLM application credentials and LLM provider credentials (read; credential metadata only: names and dates, never a key)",
             "Test a prompt only: an AI Guard API key in the server's AIGUARD_API_KEY (policy detection is not on OneAPI)",
             "ZIA: proxies and proxy gateways, root certificates, forwarding control (read; ZIA platform ticked)",
         ],
@@ -423,7 +442,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         ],
         "endpoints_used": [
             "/aiguard/v1/detections/policies", "/aiguard/v1/detections/policy-match-rules", "/aiguard/v1/llm-providers",
-            "/aiguard/v1/llm-applications", "/aiguard/v1/llm-application-credentials",
+            "/aiguard/v1/llm-applications", "/aiguard/v1/llm-application-credentials", "/aiguard/v1/llm-provider-credentials",
             "/v1/detection/execute-policy at api.<cloud>.zseclipse.net (Test a prompt, synthetic prompts only)",
             "/zia/api/v1/proxies", "/zia/api/v1/proxyGateways", "/zia/api/v1/rootCertificates (assumed path)", "/zia/api/v1/forwardingRules",
         ],

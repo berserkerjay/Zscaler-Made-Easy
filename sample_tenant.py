@@ -977,6 +977,44 @@ AIG_APP_CREDENTIALS = [
     {"id": 7501, "applicationId": 7401, "providerId": 7301, "providerCredentialsId": 7601, "name": "Quote chatbot to OpenAI",
      "mode": "PROXY", "createTimeMillis": 1767225600000, "updateTimeMillis": 1767225600000},
 ]
+# LLM provider credentials: names and dates only, as the app keeps them (the
+# key under apiCredentials is never kept; the sample carries none). One key
+# was issued on 2025-01-01 with no expiry, so AIG.7 asks for its rotation.
+AIG_PROVIDER_CREDENTIALS = [
+    {"id": 7601, "providerId": 7301, "name": "OpenAI production key", "expireTimeMillis": 2082758400000, "createTimeMillis": 1767225600000},
+    {"id": 7602, "providerId": 7302, "name": "Gemini pilot key", "createTimeMillis": 1735689600000},
+]
+
+# ── Coverage checks (2026-11-01) ──────────────────────────────────────
+# Endpoint DLP resource groups and resources per channel (B.17;
+# zia/models/endpoint_dlp_resource_groups.py, dlp_endpoint_resource.py).
+# No sample Endpoint DLP rule is scoped to a group, so B.17 is N/A here.
+EP_RESOURCES = {"REMOVABLE_DRIVE_TRANSFER": [{"id": 5311, "name": "Larkspur encrypted USB", "channel": "REMOVABLE_DRIVE_TRANSFER",
+                                              "isPredefined": False, "description": "Hardware-encrypted drives issued by IT."}]}
+EP_RESOURCE_GROUPS = {
+    "REMOVABLE_DRIVE_TRANSFER": [{"id": 5301, "name": "Approved encrypted USB drives", "channel": "REMOVABLE_DRIVE_TRANSFER",
+                                  "description": "Drives IT issues.", "resourceCount": 1, "resources": EP_RESOURCES["REMOVABLE_DRIVE_TRANSFER"]}],
+    "PRINTING": [{"id": 5302, "name": "Depot label printers", "channel": "PRINTING", "description": "Not filled in yet.",
+                  "resourceCount": 0, "resources": []}],
+}
+EP_CHANNELS = ("PRINTING", "REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "PERSONAL_CLOUD_STORAGE")
+# Partner integrations (THR.12; zia/models/partner_integrations.py): the
+# SD-WAN integration was left disabled.
+PARTNER_INTEGRATIONS = [{"id": 5401, "name": "Larkspur SD-WAN", "type": "SDWAN", "disabled": True},
+                        {"id": 5402, "name": "Larkspur executive reporting", "type": "EXEC_INSIGHT", "disabled": False}]
+# A traffic capture rule left on after a helpdesk case (GOV.9; zia/models/traffic_capture.py).
+TRAFFIC_CAPTURE_RULES = [{"id": 5501, "name": "Helpdesk capture (Portland)", "order": 1, "rank": 7, "state": "ENABLED", "action": "CAPTURE",
+                          "description": "Case 4471: slow uploads.", "locations": [_ref(1101, "Larkspur HQ (Portland)")]}]
+# Time intervals (FW.10; zia/models/time_intervals.py): one names no day.
+TIME_INTERVALS = [{"id": 881, "name": "Work hours", "startTime": 480, "endTime": 1080, "daysOfWeek": ["MON", "TUE", "WED", "THU", "FRI"]},
+                  {"id": 882, "name": "Holiday change freeze", "startTime": 0, "endTime": 1439, "daysOfWeek": []}]
+# ZPA (HLT.5, HLT.6, ZPA.22-24): auto-delete of disconnected App Connectors
+# was never turned on; the connector groups follow the Default profile.
+ZPA_CONNECTOR_SCHEDULE = {"id": "5601", "enabled": False, "deleteDisabled": False, "frequency": "days", "frequencyInterval": "5"}
+ZPA_SERVICE_EDGE_SCHEDULE = {"id": "5602", "enabled": True, "deleteDisabled": True, "frequency": "days", "frequencyInterval": "7"}
+ZPA_VERSION_PROFILES = [{"id": "0", "name": "Default", "description": "Current release."},
+                        {"id": "1", "name": "Previous Default", "description": "One release behind."},
+                        {"id": "2", "name": "New Release", "description": "Early release."}]
 
 # A made-up detector for "Test a prompt" on the sample: keyword rules only,
 # so the answer is the same every time. Never a real AI Guard verdict.
@@ -1334,6 +1372,19 @@ def responses() -> Dict[str, Any]:
         f"{AIG}/llm-providers": {"items": AIG_PROVIDERS},
         f"{AIG}/llm-applications": {"items": AIG_APPLICATIONS},
         f"{AIG}/llm-application-credentials": {"items": AIG_APP_CREDENTIALS},
+        f"{AIG}/llm-provider-credentials": {"items": AIG_PROVIDER_CREDENTIALS},
+        # Coverage checks (2026-11-01)
+        **{f"{ZIA}/endPointDlpResourceGroups/{ch}": EP_RESOURCE_GROUPS.get(ch, []) for ch in EP_CHANNELS},
+        **{f"{ZIA}/dlpEndpointResource/{ch}": EP_RESOURCES.get(ch, []) for ch in EP_CHANNELS},
+        f"{ZIA}/integrationPartners": PARTNER_INTEGRATIONS,
+        f"{ZIA}/trafficCaptureRules": TRAFFIC_CAPTURE_RULES,
+        f"{ZIA}/timeIntervals": TIME_INTERVALS,
+        f"{ZPA1}/connectorSchedule": ZPA_CONNECTOR_SCHEDULE,
+        f"{ZPA1}/serviceEdgeSchedule": ZPA_SERVICE_EDGE_SCHEDULE,
+        f"{ZPA1}/visible/versionProfiles": _zpa(ZPA_VERSION_PROFILES),
+        f"{ZPA1}/config/isZiaCloudConfigAvailable": True,
+        f"{ZPA1}/userportal/aup": _zpa([]),
+        f"{ZPA1}/userPortalLink": _zpa([]),
         # ZIA DLP indexes (zia/dlp_resources.py: list_edm_schemas, list_dlp_idm_profiles)
         f"{ZIA}/dlpExactDataMatchSchemas": EDM_SCHEMAS,
         f"{ZIA}/idmprofile": IDM_PROFILES,

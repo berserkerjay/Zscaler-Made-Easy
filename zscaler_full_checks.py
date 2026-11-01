@@ -3022,3 +3022,391 @@ DLP_EXTRA_REG = [
 ]
 DLP_EXTRA_REG = guard_registry(DLP_EXTRA_REG)
 
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# COVERAGE: the remaining high-value resources, read and scored
+# (2026-11-01). Every path below is the installed SDK's (zscaler-sdk-python
+# 1.11.3), read through the run's client like every other check: Endpoint
+# DLP resource groups and resources (dlp, Endpoint DLP channel), the ZPA
+# link to ZIA, connector schedules, version profiles, user portal AUP and
+# links (zpa), partner integrations, traffic capture rules and time
+# intervals (zia_extras). Secret-holding answers are never read: the ZPA
+# ZIA cloud configuration (/config/ziaCloudConfig: ZIA password, API key,
+# sandbox token) is skipped for its yes/no availability answer.
+# ═══════════════════════════════════════════════════════════════════════
+_EP_REF = " Ref: https://help.zscaler.com/zia/about-endpoint-dlp"
+_OK = (200, 204)
+# zia/endpoint_dlp_resource_groups.py list_resource_group_tags GET /endPointDlpResourceGroups/{channel};
+# zia/dlp_endpoint_resource.py list_resources_by_channel GET /dlpEndpointResource/{channel}. The
+# channels are the ones the SDK names (there is no list across channels).
+EP_CHANNELS = ("PRINTING", "REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "PERSONAL_CLOUD_STORAGE")
+EP_GROUP_PATHS = tuple(f"/zia/endPointDlpResourceGroups/{c}" for c in EP_CHANNELS)
+EP_RESOURCE_PATHS = tuple(f"/zia/dlpEndpointResource/{c}" for c in EP_CHANNELS)
+
+
+def _ids(v):
+    """The ids of a list of references ({id, name} dicts or bare ids)."""
+    out = []
+    for e in v if isinstance(v, list) else []:
+        i = _fv(e, "id") if isinstance(e, dict) else e
+        if i not in (None, "") and not isinstance(i, (dict, list, bool)):
+            out.append(str(i))
+    return out
+
+
+def _int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def b_17(cl):
+    """Endpoint DLP rules are scoped to resource groups that exist and hold resources
+
+    An Endpoint DLP rule (or sub-rule) scoped to a resource group (printers,
+    removable drives, network shares, personal cloud storage) only applies to
+    the resources in that group: a group that was deleted or emptied makes
+    the rule match nothing, silently. EndpointDlpRules.resourceGroups and
+    subRules[].resourceGroups name the groups (SDK model); a group carries
+    resourceCount and resources."""
+    d, c = cl.get("/zia/endPointDlpRules")
+    if c not in _OK:
+        return R(R.INFO, f"The Endpoint DLP rules could not be read (HTTP {c}), so their resource groups were not checked.")
+    rules = [r for r in _ls(d) if isinstance(r, dict) and _enabled(r)]
+    refs = []   # (rule name, group id, group name)
+    for r in rules:
+        scoped = [(r, g) for g in (_fv(r, "resourceGroups") or []) if isinstance(g, dict)]
+        for sub in _fv(r, "subRules") or []:
+            if isinstance(sub, dict) and _enabled(sub):
+                scoped += [(sub, g) for g in (_fv(sub, "resourceGroups") or []) if isinstance(g, dict)]
+        refs += [(_nm(r), str(_fv(g, "id") or ""), _nm(g)) for _x, g in scoped if _fv(g, "id") not in (None, "")]
+    if not refs:
+        return R(R.INFO, f"No enabled Endpoint DLP rule is scoped to a resource group ({len(rules)} enabled rule(s)): nothing to check (N/A).")
+    groups, unread = {}, []
+    for ch, path in zip(EP_CHANNELS, EP_GROUP_PATHS):
+        rows, gc = _items(cl, path)
+        if gc in _OK:
+            for g in rows:
+                if _fv(g, "id") not in (None, ""):
+                    groups[str(_fv(g, "id"))] = (g, ch)
+        else:
+            unread.append(f"{ch} (HTTP {gc})")
+    resources = {}
+    for ch, path in zip(EP_CHANNELS, EP_RESOURCE_PATHS):
+        rows, rc = _items(cl, path)
+        resources[ch] = {str(_fv(x, "id")) for x in rows if _fv(x, "id") not in (None, "")} if rc in _OK else None
+    missing, empty, unknown = [], [], []
+    for rule, gid, gname in refs:
+        hit = groups.get(gid)
+        label = f"{rule} → {gname}"
+        if hit is None:
+            (unknown if unread else missing).append(label)
+            continue
+        g, ch = hit
+        listed = _ids(_fv(g, "resources"))
+        count = _int(_fv(g, "resourceCount"))
+        known = resources.get(ch)
+        if listed:
+            # Resources the group lists that its channel no longer has count as gone.
+            if not [i for i in listed if known is None or i in known]:
+                empty.append(label)
+        elif count is not None:
+            if count <= 0:
+                empty.append(label)
+        else:
+            unknown.append(label)
+    tail = (f" {len(unknown)} more could not be established ({_few(unknown)}): "
+            + (f"the groups of {', '.join(unread)} were not readable." if unread else "the group lists no resources and no count.")
+            if unknown else "")
+    if missing or empty:
+        parts = ([f"{len(missing)} scoped to a group that no longer exists: {_few(missing)}"] if missing else []) \
+            + ([f"{len(empty)} scoped to a group with no resources: {_few(empty)}"] if empty else [])
+        return R(R.WARN, f"Endpoint DLP rule scoping: {'; '.join(parts)}. Such a rule applies to nothing on that channel, so the data it should "
+                 "stop (printing, USB, network shares, personal cloud storage) passes without a match." + tail
+                 + " Best Practice: add the printers, drives or shares to the group, point the rule at a populated group, or remove the "
+                   "resource-group condition so the rule covers the whole channel." + _EP_REF)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} of {len(refs)} resource-group reference(s) on Endpoint DLP rules could not be checked "
+                 f"({_few(unknown)}): " + (f"the resource groups of {', '.join(unread)} were not readable." if unread
+                                           else "the group lists no resources and no count.") + " Nothing was judged.")
+    return R(R.PASS, f"All {len(refs)} resource-group reference(s) on enabled Endpoint DLP rules point at a group that exists and holds resources.")
+
+
+def zpa_22(cl):
+    """ZPA traffic sent to ZIA for inspection has the ZIA cloud link configured
+
+    A segment with inspectTrafficWithZia (application_segment model) hands
+    its traffic to ZIA, which needs ZPA's ZIA cloud configuration. Only the
+    yes/no answer is read: zpa/zia_customer_config.py check_zia_cloud_config
+    GET /config/isZiaCloudConfigAvailable. Assumed: that this availability
+    is what the inspection hand-off needs (the SDK names no other link)."""
+    segs, c = _zpa_list(cl, "/zpa/application")
+    if c not in _OK:
+        return R(R.INFO, f"The ZPA application segments could not be read (HTTP {c}), so the ZIA link was not checked.")
+    zia = [_nm(s) for s in segs if _truthy(_fv(s, "inspectTrafficWithZia")) and str(_fv(s, "enabled")).lower() != "false"]
+    if not zia:
+        return R(R.INFO, "No enabled ZPA application segment sends its traffic to ZIA for inspection: the ZIA link is not needed (N/A).")
+    d, cc = cl.get("/zpa/config/isZiaCloudConfigAvailable")
+    if cc not in _OK:
+        return R(R.INFO, f"Unknown: {len(zia)} segment(s) send traffic to ZIA for inspection, but whether ZPA's ZIA cloud link is configured "
+                 f"could not be read (HTTP {cc}). Nothing was judged.")
+    val = d.get("value", d.get("available")) if isinstance(d, dict) else d
+    if isinstance(val, str) and val.strip().lower() in ("true", "false"):
+        val = val.strip().lower() == "true"
+    if val is True:
+        return R(R.PASS, f"{len(zia)} segment(s) send traffic to ZIA for inspection and ZPA's ZIA cloud link is configured.")
+    if val is False:
+        return R(R.FAIL, f"ZIA cloud/SAML link for ZPA not configured, yet {len(zia)} segment(s) send their traffic to ZIA for inspection: "
+                 f"{_few(zia)}. Without the link the hand-off fails silently. Fix: in ZPA (Administration → ZIA cloud configuration) "
+                 "link the ZIA cloud, then confirm the segments' traffic shows in the ZIA logs." + _ZPA_GUIDE)
+    return R(R.INFO, "Unknown: ZPA answered the ZIA cloud link question with a value this app does not know. Nothing was judged.")
+
+
+def _schedule(cl, path, what):
+    """('on' | 'off' | 'unknown', detail) of one auto-delete schedule."""
+    d, c = _one(cl, path)
+    if d is None:
+        return "unknown", f"{what}: not readable (HTTP {c})"
+    on = _fv(d, "enabled")
+    if on is None:
+        return "unknown", f"{what}: the answer has no enabled field"
+    if _truthy(on):
+        n = _fv(d, "frequencyInterval")
+        return "on", f"{what}: on" + (f" (after {n} {str(_fv(d, 'frequency') or 'days').lower()})" if n not in (None, "") else "")
+    return "off", f"{what}: off"
+
+
+def hlt_5(cl):
+    """Disconnected App Connectors and Service Edges are deleted automatically
+
+    zpa/app_connector_schedule.py get_connector_schedule GET /connectorSchedule
+    and zpa/service_edge_schedule.py get_service_edge_schedule GET
+    /serviceEdgeSchedule (enabled, frequency, frequencyInterval,
+    deleteDisabled). The Service Edge schedule is judged only when the
+    tenant has Private Service Edges."""
+    rows = [_schedule(cl, "/zpa/connectorSchedule", "App Connectors")]
+    edges, ec = _items(cl, "/zpa/serviceEdge")
+    if ec not in _OK or edges:
+        rows.append(_schedule(cl, "/zpa/serviceEdgeSchedule", "Private Service Edges"))
+    off = [t for s, t in rows if s == "off"]
+    unknown = [t for s, t in rows if s == "unknown"]
+    if off:
+        return R(R.WARN, f"Automatic deletion of disconnected connectors is off ({'; '.join(off)}). Connectors that were rebuilt or retired stay "
+                 "listed as disconnected, hide real outages in the health views and keep their enrolment. Fix: in ZPA (Configuration → "
+                 "Connector auto-delete) turn on the schedule, for example after 5 days disconnected."
+                 + (f" Also unknown: {'; '.join(unknown)}." if unknown else "") + _ZPA_GUIDE)
+    if unknown:
+        return R(R.INFO, f"Unknown: {'; '.join(unknown)}. Nothing was judged.")
+    return R(R.PASS, "Disconnected connectors are deleted automatically (" + "; ".join(t for _s, t in rows) + ").")
+
+
+# ZPA's visible version profiles (zpa/customer_version_profile.py list_version_profiles
+# GET /visible/versionProfiles). Assumed: "Previous Default" is the profile that holds
+# connectors back a release (ZPA's three standard profiles are Default, Previous
+# Default and New Release); a profile whose version is lower than Default's is old too.
+OLD_VERSION_PROFILES = ("previous default",)
+
+
+def _ver(p):
+    parts = re.findall(r"\d+", str(_fv(p, "version") or ""))
+    return tuple(int(x) for x in parts[:4]) if parts else None
+
+
+def hlt_6(cl):
+    """App Connector groups are not pinned to an old version profile
+
+    An App Connector group (versionProfileId, versionProfileName,
+    overrideVersionProfile) follows a version profile; one held on an older
+    profile misses fixes the Default profile already carries."""
+    groups, gc = _items(cl, "/zpa/appConnectorGroup")
+    if gc not in _OK:
+        return R(R.INFO, f"The App Connector groups could not be read (HTTP {gc}).")
+    live = [g for g in groups if str(_fv(g, "enabled")).lower() != "false"]
+    if not live:
+        return R(R.INFO, "No enabled App Connector group: nothing to check (N/A).")
+    profs, pc = _items(cl, "/zpa/visible/versionProfiles")
+    if pc not in _OK:
+        return R(R.INFO, f"Unknown: the ZPA version profiles could not be read (HTTP {pc}), so the connector groups' profiles were not judged.")
+    by_id = {str(_fv(p, "id")): p for p in profs if _fv(p, "id") not in (None, "")}
+    by_name = {str(_fv(p, "name") or "").strip().lower(): p for p in profs if _fv(p, "name")}
+    default = by_name.get("default")
+    old, unknown = [], []
+    for g in live:
+        pid, pname = _fv(g, "versionProfileId"), _fv(g, "versionProfileName")
+        p = by_id.get(str(pid)) if pid not in (None, "") else None
+        p = p or (by_name.get(str(pname).strip().lower()) if pname else None)
+        if p is None:
+            unknown.append(_nm(g))
+            continue
+        name = str(_fv(p, "name") or "").strip().lower()
+        older = default is not None and p is not default and _ver(p) and _ver(default) and _ver(p) < _ver(default)
+        if name in OLD_VERSION_PROFILES or older:
+            old.append(f"{_nm(g)} ({_nm(p)})")
+    if old:
+        return R(R.WARN, f"{len(old)} of {len(live)} App Connector group(s) are held on an older version profile: {_few(old)}. Their connectors "
+                 "upgrade later than the rest and keep fixed defects longer. Fix: move each group back to the Default profile unless a "
+                 "documented reason holds it back, and check the connector versions afterwards (HLT.4 and the ZPA analysis)."
+                 + (f" Unknown profile for: {_few(unknown)}." if unknown else "") + _ZPA_GUIDE)
+    if unknown:
+        return R(R.INFO, f"Unknown: the version profile of {len(unknown)} App Connector group(s) is not in the profiles ZPA lists: {_few(unknown)}. "
+                 "Nothing was judged.")
+    return R(R.PASS, f"All {len(live)} App Connector group(s) follow a current version profile.")
+
+
+def thr_12(cl):
+    """Partner integrations are not left disabled
+
+    zia/partner_integrations.py list_integration_partners GET
+    /integrationPartners (IntegrationPartner: id, name, type, disabled; read
+    as metadata only). Assumed: the API states no expiry, so "expired" is
+    not judged; a disabled partner is the signal this check can read."""
+    r, c = _items(cl, "/zia/integrationPartners")
+    na = _unlicensed("Partner integrations", c)
+    if na:
+        return na
+    if c not in _OK:
+        return R(R.INFO, f"The partner integrations could not be read (HTTP {c}).")
+    if not r:
+        return R(R.INFO, "No partner integration. ZIA then receives no partner signal (for example an EDR's device risk for device posture, "
+                         "or an SD-WAN's tunnels); connect one when the organisation uses such a product. Expiry is not in the API.")
+    state = [x for x in r if _fv(x, "disabled") is not None]
+    off = [_nm(x) + (f" ({_nm(x, 'type')})" if _fv(x, "type") else "") for x in state if _truthy(_fv(x, "disabled"))]
+    if off:
+        return R(R.WARN, f"{len(off)} of {len(r)} partner integration(s) are disabled: {_few(off)}. Whatever they fed ZIA (device posture, "
+                 "SD-WAN tunnels, reporting) has stopped, and policy that relies on it acts on stale or missing signal."
+                 " Best Practice: re-enable each one the organisation still uses, or remove it." + _THREAT_REF)
+    if not state:
+        return R(R.INFO, f"Unknown: {len(r)} partner integration(s), but none says whether it is enabled. Nothing was judged.")
+    return R(R.PASS, f"{len(state)} partner integration(s), none disabled (expiry is not in the API).")
+
+
+# Traffic capture actions that capture nothing (assumed: the SDK names no values;
+# anything else on an enabled rule is treated as capturing, which asks for review).
+_NO_CAPTURE = ("SKIP", "DO_NOT_CAPTURE", "NO_CAPTURE", "BYPASS", "BYPASS_CAPTURE")
+
+
+def gov_9(cl):
+    """Traffic capture rules are not left enabled (privacy)
+
+    zia/traffic_capture.py list_rules GET /trafficCaptureRules (state,
+    action, txnSampling, defaultRule, predefined; SDK model). A capture rule
+    records the content of matching traffic, which can hold personal data;
+    it belongs to a troubleshooting window, not to steady state."""
+    r, c = _items(cl, "/zia/trafficCaptureRules")
+    na = _unlicensed("Traffic capture", c)
+    if na:
+        return na
+    if c not in _OK:
+        return R(R.INFO, f"The traffic capture rules could not be read (HTTP {c}).")
+    if not r:
+        return R(R.PASS, "No traffic capture rule: no traffic content is being recorded.")
+    unknown = [_nm(x) for x in r if _fv(x, "state") is None]
+    live = [x for x in r if str(_fv(x, "state") or "").upper() == "ENABLED"
+            and str(_fv(x, "action") or "").upper() not in _NO_CAPTURE]
+    if live:
+        names = [_nm(x) + (f" (sampling {_nm(x, 'txnSampling')})" if _fv(x, "txnSampling") else "") for x in live]
+        return R(R.WARN, f"{len(live)} traffic capture rule(s) are enabled: {_few(names)}. They record the content of matching traffic, which "
+                 "can include personal data, for as long as they stay on. Best Practice: enable a capture rule only for a dated "
+                 "troubleshooting window, scoped to the users or locations concerned, then disable it." + _POLICY_GUIDE)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} traffic capture rule(s) state no enabled or disabled state: {_few(unknown)}. Nothing was judged.")
+    return R(R.PASS, f"{len(r)} traffic capture rule(s), none enabled to capture.")
+
+
+def fw_10(cl):
+    """Time intervals apply on at least one day
+
+    zia/time_intervals.py list_time_intervals GET /timeIntervals (name,
+    startTime, endTime, daysOfWeek). An interval with no day never applies,
+    so a rule scoped to it never matches."""
+    r, c = _items(cl, "/zia/timeIntervals")
+    if c not in _OK:
+        return R(R.INFO, f"The time intervals could not be read (HTTP {c}).")
+    if not r:
+        return R(R.INFO, "No time interval is defined: nothing to check (N/A).")
+    never, unknown = [], []
+    for x in r:
+        days = _fv(x, "daysOfWeek", "dayOfWeek")
+        if days is None:
+            unknown.append(_nm(x))
+        elif not [d for d in (days if isinstance(days, list) else [days]) if d not in (None, "")]:
+            never.append(_nm(x))
+    if never:
+        return R(R.WARN, f"{len(never)} of {len(r)} time interval(s) name no day: {_few(never)}. They never apply, so a rule scoped to one "
+                 "never matches (a block that never blocks, an allow that never allows). Best Practice: pick the days, or remove the "
+                 "interval and its use from the rules." + _FW_BP)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} time interval(s) state no days: {_few(unknown)}. Nothing was judged.")
+    return R(R.PASS, f"All {len(r)} time interval(s) apply on at least one day.")
+
+
+def zpa_23(cl):
+    """User portals show an acceptable use policy
+
+    zpa/user_portal_aup.py list_user_portal_aup GET /userportal/aup (name,
+    aup, enabled; SDK model). Assumed: the AUP is tenant-wide (the model
+    names no portal), so one enabled AUP with text covers the portals."""
+    portals, c = _zpa_list(cl, "/zpa/userPortal")
+    if c == 404:
+        return R(R.INFO, "ZPA user portals are not licensed or not enabled on this tenant (N/A).")
+    if c not in _OK:
+        return R(R.INFO, f"The ZPA user portals could not be read (HTTP {c}).")
+    on = [p for p in portals if str(_fv(p, "enabled")).lower() != "false"]
+    if not on:
+        return R(R.INFO, "No enabled ZPA user portal: nothing to check (N/A).")
+    aups, ac = _zpa_list(cl, "/zpa/userportal/aup")
+    if ac not in _OK:
+        return R(R.INFO, f"Unknown: the user portal acceptable use policies could not be read (HTTP {ac}). Nothing was judged.")
+    live = [a for a in aups if str(_fv(a, "enabled")).lower() != "false" and str(_fv(a, "aup") or "").strip()]
+    if not live:
+        return R(R.WARN, f"{len(on)} enabled user portal(s) but no enabled acceptable use policy: {_few(_nm(p) for p in on)}. People, including "
+                 "contractors and partners, reach private apps without accepting the terms of use. Best Practice: add an acceptable use "
+                 "policy in ZPA (User Portals → Acceptable Use Policy) and enable it." + _ZPA_GUIDE)
+    return R(R.PASS, f"{len(on)} enabled user portal(s); {len(live)} acceptable use polic{'y is' if len(live) == 1 else 'ies are'} enabled.")
+
+
+def zpa_24(cl):
+    """User portal links point at an enabled user portal
+
+    zpa/user_portal_link.py list_portal_link GET /userPortalLink
+    (userPortals, userPortalId, enabled); a link on no enabled portal is
+    shown to nobody, or was left behind when its portal went."""
+    links, c = _zpa_list(cl, "/zpa/userPortalLink")
+    if c not in _OK:
+        return R(R.INFO, f"The ZPA user portal links could not be read (HTTP {c}).")
+    on = [x for x in links if str(_fv(x, "enabled")).lower() != "false"]
+    if not on:
+        return R(R.INFO, "No enabled user portal link: nothing to check (N/A).")
+    portals, pc = _zpa_list(cl, "/zpa/userPortal")
+    if pc not in _OK:
+        return R(R.INFO, f"Unknown: the user portals could not be read (HTTP {pc}), so the links' portals were not checked.")
+    live = {str(_fv(p, "id")) for p in portals if str(_fv(p, "enabled")).lower() != "false"}
+    lost = []
+    for x in on:
+        ids = _ids(_fv(x, "userPortals")) + ([str(_fv(x, "userPortalId"))] if _fv(x, "userPortalId") not in (None, "") else [])
+        if not any(i in live for i in ids):
+            lost.append(_nm(x))
+    if lost:
+        return R(R.WARN, f"{len(lost)} of {len(on)} user portal link(s) are on no enabled user portal: {_few(lost)}. Nobody sees them, or they "
+                 "outlived their portal. Best Practice: add each to an enabled portal or delete it." + _ZPA_GUIDE)
+    return R(R.PASS, f"All {len(on)} user portal link(s) are on an enabled user portal.")
+
+
+COVERAGE_REG = [
+    ("FW.10", "ZIA — Firewall", "Time intervals apply on at least one day", fw_10),
+    ("THR.12", "ZIA — Security", "Partner integrations not left disabled", thr_12),
+    ("GOV.9", "ZIA — Governance", "Traffic capture rules not left enabled (privacy)", gov_9),
+    ("ZPA.22", "ZPA — App Access", "ZIA cloud link configured for ZIA inspection", zpa_22),
+    ("ZPA.23", "ZPA — App Access", "User portals show an acceptable use policy", zpa_23),
+    ("ZPA.24", "ZPA — App Access", "User portal links on an enabled portal", zpa_24),
+    ("HLT.5", "ZPA — Tenant health", "Disconnected connectors deleted automatically", hlt_5),
+    ("HLT.6", "ZPA — Tenant health", "Connector groups on a current version profile", hlt_6),
+]
+PLATFORM_REG = PLATFORM_REG + guard_registry(COVERAGE_REG)
+# Endpoint DLP (DLP scope, Endpoint DLP channel): run with the Ch.B checks.
+COVERAGE_DLP_REG = [
+    ("B.17", "Ch.B — Endpoint", "Rules scoped to empty or missing resource groups", b_17),
+]
+DLP_EXTRA_REG = DLP_EXTRA_REG + guard_registry(COVERAGE_DLP_REG)

@@ -1318,6 +1318,16 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     # (ids only), each application's week of score and metrics, every admin's
     # entitlements and every group's member ids. See _capture_per_object.
     + [(("zdx",), "/zdx/alerts/historical"), (("zdx",), PER_OBJECT_ZDX), (("zidentity",), PER_OBJECT_ZID)]
+    # Coverage checks (2026-11-01; zscaler_full_checks B.17, THR.12, GOV.9, FW.10, ZPA.22-24,
+    # HLT.5-6, zscaler_genai_checks AIG.7). The Endpoint DLP lists pass the channel
+    # guard only with Endpoint DLP on Zscaler; partner integrations and provider
+    # credentials are read as metadata only (dlp_assessment_full_auto.metadata_only).
+    + [(("dlp",), f"/zia/{x}/{ch}") for x in ("endPointDlpResourceGroups", "dlpEndpointResource")
+       for ch in ("PRINTING", "REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "PERSONAL_CLOUD_STORAGE")]
+    + [(_ZIA, f"/zia/{x}") for x in ("integrationPartners", "trafficCaptureRules", "timeIntervals")]
+    + [(("zpa",), f"/zpa/{x}") for x in ("connectorSchedule", "serviceEdgeSchedule", "visible/versionProfiles",
+                                         "config/isZiaCloudConfigAvailable", "userPortal", "userportal/aup", "userPortalLink")]
+    + [(("aiguard",), "/aiguard/v1/llm-provider-credentials")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}
@@ -1326,7 +1336,10 @@ _PARAMS = {"raw:/zdx/v1/config/applications/supported": {"type": "PREDEFINED"},
 _ZIA_PAGED = {"/zia/users", "/zia/groups", "/zia/departments", "/zia/cloudApplications/policy"}
 # ZPA reads that are one answer, not a paged list: a settings object, and the
 # emergency access list, which pages by page id (zpa/emergency_access.py).
-_ZPA_SINGLE = {"/zpa/ssoLoginOptions", "/zpa/emergencyAccess/users"}
+_ZPA_SINGLE = {"/zpa/ssoLoginOptions", "/zpa/emergencyAccess/users",
+               # settings objects and a yes/no answer (zpa/app_connector_schedule.py, service_edge_schedule.py,
+               # zia_customer_config.py check_zia_cloud_config)
+               "/zpa/connectorSchedule", "/zpa/serviceEdgeSchedule", "/zpa/config/isZiaCloudConfigAvailable"}
 ZWA_CAPTURE_DAYS = 30
 ZWA_CAPTURE_INCIDENTS = 25                # incidents whose triggers, history and tickets are saved (metadata only; never evidence)
 _UNANSWERED = (0, 429, 502, 503, 504)
