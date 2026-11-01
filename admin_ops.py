@@ -2320,6 +2320,9 @@ def _execute(client, spec, *, plan_hash, scope, confirm_text, assessor, tenant_l
     else:
         status = "nothing_to_do"
     result = dict(prepared)
+    # A plan that activates as its own step (activation_step) reports that activation, so the run's audit entry carries it.
+    if activation is None and prepared.get("activation_step_result"):
+        activation = dict(prepared["activation_step_result"])
     result.update(status=status, items=items, counts_run=counts, activation=activation, activation_status=settled,
                   verification=verification, stopped=run.halt, created=run.created, logs=logs,
                   elapsed_seconds=round(time.time() - started, 1),

@@ -23,7 +23,13 @@ One operation type on /report/operations, under "Change":
     action create      created as asked (a dictionary or engine matches
                        nothing until a rule uses it); Undo deletes it.
     action update      the object is sent back as read with only the asked
-                       fields changed (PUT); Undo puts them back.
+                       fields changed (PUT); Undo puts them back. A change
+                       to what it matches (phrases, patterns, match type,
+                       proximity, confidence, expression) while an enabled
+                       DLP rule uses it (an engine directly, a dictionary
+                       through an engine) asks "APPLY <n> CHANGES" typed; a
+                       rule policy not in scope or unreadable cannot be
+                       checked, so it counts as used.
     action delete      typed "DELETE <name>"; refused while anything uses it:
                        a dictionary named by any engine's expression, an
                        engine named by any DLP rule (Web, Endpoint, Email and
@@ -142,6 +148,25 @@ def state(row: Dict[str, Any], obj: str) -> Dict[str, Any]:
 
 def engine_dict_ids(expr: str) -> List[str]:
     return sorted({m.group(1) for m in ee._ID_TERM_RE.finditer(str(expr or ""))})
+
+
+MATCHING_FIELDS = ("phrases", "patterns", "custom_phrase_match_type", "proximity", "confidence_threshold", "expression")
+
+
+def live_users(zia: Any, scope: Dict[str, Any], say: LogFn, cancel: Optional[threading.Event], obj: str, row: Dict[str, Any],
+               engines: List[Dict[str, Any]]) -> Tuple[List[str], List[str]]:
+    """(enabled DLP rules that use the object, directly for an engine or
+    through an engine for a dictionary; what could not be checked). A rule
+    policy not in scope or not readable cannot be checked, so it is listed:
+    unknown is treated as used (the typed phrase is asked)."""
+    oid = str(row.get("id"))
+    eids = {oid} if obj == "engine" else {str(e.get("id")) for e in engines if oid in engine_dict_ids(e.get("engine_expression"))}
+    if not eids:
+        return [], []
+    refs, rerr, out = rule_engine_refs(zia, scope, say, cancel)
+    live = [f"{r['policy_label']} rule {r['order']} '{r['name']}'" for eid in sorted(eids) for r in refs.get(eid, []) if r["state"] == "ENABLED"]
+    unknown = ([f"{', '.join(out)} not in scope on the Scope page"] if out else []) + [f"could not be read: {e}" for e in rerr]
+    return live, unknown
 
 
 def rule_engine_refs(zia: Any, scope: Dict[str, Any], say: LogFn, cancel: Optional[threading.Event]) -> Tuple[Dict[str, List[Dict[str, Any]]], List[str], List[str]]:
@@ -357,7 +382,7 @@ def plan(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say: LogFn, c
     if err:
         raise ao.OperationError(f"The DLP dictionaries could not be read: {err}. Nothing was written.")
     engines: List[Dict[str, Any]] = []
-    if obj == "engine" or act == "delete":
+    if obj == "engine" or act in ("delete", "update"):
         say("Reading the DLP engines…")
         engines, err = read_all(zia, "engine")
         if err:
@@ -443,6 +468,16 @@ def plan(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say: LogFn, c
                     warnings.append("What this dictionary matches changes at once (after activation) for every engine and rule that uses it.")
                 if obj == "engine" and "expression" in changed:
                     warnings.append("What this engine detects changes at once (after activation) for every DLP rule that uses it.")
+                if any(k in changed for k in MATCHING_FIELDS):
+                    live, unknown = live_users(zia, scope, say, cancel, obj, row, engines)
+                    if live or unknown:
+                        # A change to what an enabled rule detects acts on traffic at activation: typed, as ip_group_edit does.
+                        confirm = f"APPLY {len(changed)} CHANGE{'' if len(changed) == 1 else 'S'}"
+                        impact.append({"object": cur["name"], "id": row.get("id"), "used_by": live,
+                                       "detail": (f"Used by {len(live)} enabled DLP rule{'s' if len(live) != 1 else ''}: what "
+                                                  f"{'they detect' if len(live) != 1 else 'it detects'} changes at activation. " if live else "")
+                                                 + (f"Not checked ({'; '.join(unknown)}), so it is treated as used. " if unknown else "")
+                                                 + f"Type {confirm} to confirm."})
         else:
             title = f"Delete the DLP {label} '{cur['name']}'"
             if not is_custom(row, obj):

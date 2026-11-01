@@ -1,6 +1,7 @@
 /* Day-to-day ZIA admin on Bulk changes (/report/operations, "Day-to-day admin").
-   Two forms on the shared engine: users, groups and departments
-   (ops_zia_directory.py) and hosted PAC files (ops_zia_pac.py). The page does
+   Three forms on the shared engine: users, groups and departments
+   (ops_zia_directory.py), hosted PAC files (ops_zia_pac.py) and activating
+   pending ZIA changes (ops_zia_activation.py, typed ACTIVATE, no Undo). The page does
    the rest: Read from the tenant, Preview (every item before and after; for a
    PAC the line diff and both checks), the four gates, Apply, Undo.
    Every tenant string is escaped (H.E); a PAC's text is only ever shown as
@@ -183,6 +184,20 @@
     if (html) where.appendChild(box);
   }
 
+  // ── ZIA activation (ops_zia_activation.py) ──
+  // Nothing to fill in: the status is read, and the preview asks ACTIVATE.
+  function renderActivation(res, where, S, H) {
+    const E = H.E, st = String(res.status || '');
+    const words = { PENDING: 'Changes are saved but not live yet. You can activate them.', ACTIVE: 'Nothing is waiting. There is nothing to activate.',
+      INPROGRESS: 'ZIA is activating now. Wait a minute, then read again.' }[st] || 'The status is unknown, so nothing can be activated here.';
+    where.innerHTML = `${errs(H, res)}
+      <div class="bp-card${st === 'PENDING' ? ' warn' : ''}" id="zaStatus" role="status"><div class="t">ZIA activation status: ${E(st || 'unknown')}</div><div>${E(words)}</div></div>
+      <p class="df-hint">${E(res.note || '')}</p>
+      ${st === 'PENDING' ? `<div class="bp-card warn"><div class="t">Cannot be undone</div><div>${E(res.no_undo || '')}</div><div>${E(res.whose || '')}</div>
+        <div>Click Preview, then type ACTIVATE to confirm.</div></div>` : ''}`;
+  }
+
   window.OPS_PLUGINS.register({ type: 'zia_directory', render: (res, where, S, H) => renderDirectory(res, where, S, H), spec: S => specDirectory(S) });
   window.OPS_PLUGINS.register({ type: 'zia_pac', render: (res, where, S, H) => renderPac(res, where, S, H), spec: S => specPac(S), plan: (p, where, H) => planPac(p, where, H) });
+  window.OPS_PLUGINS.register({ type: 'zia_activation', render: (res, where, S, H) => renderActivation(res, where, S, H), spec: () => ({ type: 'zia_activation' }) });
 }());

@@ -304,6 +304,40 @@ def test_an_engine_delete_is_blocked_when_dlp_rules_are_not_in_scope():
     assert p["status"] == "blocked" and t.writes == []
 
 
+def test_a_dictionary_an_enabled_rule_uses_through_an_engine_needs_the_typed_phrase():
+    """ASVS V4.1.3 · CWE-841 · WSTG-BUSL-01: dictionary 101 is in engine 201, which the enabled Web DLP rule uses: a phrase change asks APPLY 1 CHANGE and names the rule; without it nothing is sent."""
+    t = Tenant()
+    spec = {"type": dl.TYPE, "object": "dictionary", "action": "update", "id": 101, "fields": {"phrases": [{"phrase": "Kestrel", "action": "all"}]}}
+    p = preview(t, spec)
+    assert p["confirm_phrase"] == "APPLY 1 CHANGE"
+    assert p["impact"][-1]["used_by"] == ["Inline Web DLP rule 1 'Web projects'"] and "enabled DLP rule" in p["impact"][-1]["detail"]
+    _p, r = apply(t, spec, prepared=p, phrase="")
+    assert r["status"] == "refused" and t.writes == []
+
+
+def test_an_engine_expression_used_by_an_enabled_rule_needs_the_phrase_and_an_unused_one_does_not():
+    """ASVS V4.1.3 · CWE-841: engine 201 (an enabled rule uses it) asks the phrase for a new expression; engine 202 (no rule) does not."""
+    t = Tenant()
+    used = preview(t, {"type": dl.TYPE, "object": "engine", "action": "update", "id": 201, "fields": {"expression": "(D101.S > 0)"}})
+    unused = preview(t, {"type": dl.TYPE, "object": "engine", "action": "update", "id": 202, "fields": {"expression": "(D101.S > 0)"}})
+    assert used["confirm_phrase"] == "APPLY 1 CHANGE" and unused["confirm_phrase"] == ""
+
+
+def test_a_description_change_never_asks_the_phrase():
+    """ASVS V4.1.3 · CWE-841: a change that does not alter what is matched (the description) acts on no traffic: no phrase."""
+    t = Tenant()
+    p = preview(t, {"type": dl.TYPE, "object": "dictionary", "action": "update", "id": 101, "fields": {"description": "new words"}})
+    assert p["status"] == "ready" and p["confirm_phrase"] == ""
+
+
+def test_rules_that_cannot_be_checked_count_as_using_the_engine():
+    """ASVS V4.1.3 · CWE-863 · CWE-754: DLP rules not in scope cannot be checked: unknown is treated as used, so even an unused engine asks the phrase."""
+    t = Tenant()
+    narrow = ao.scope_for(["dlp"], {"web_dlp": "zscaler"})
+    p = preview(t, {"type": dl.TYPE, "object": "engine", "action": "update", "id": 202, "fields": {"expression": "(D101.S > 0)"}}, scope=narrow)
+    assert p["confirm_phrase"] == "APPLY 1 CHANGE" and "Not checked" in p["impact"][-1]["detail"]
+
+
 def test_an_object_changed_after_the_preview_is_left_alone():
     """ASVS V11.1.4 · CWE-367: a change since the preview gives plan_changed; at the re-read it is a conflict; nothing is written."""
     t = Tenant()
