@@ -6,20 +6,20 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 **Overall: 100 / 100, grade A (Strong).** Tests pass, no serious finding is open and the standards are well covered.
 
-Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 errors, 14 skipped, 2714.5 s.
+Run: commit `ce89374`, 2026-11-01T07:45:14. 30058 passed, 0 failed, 0 errors, 17 skipped, 3114.6 s.
 
 ## Scores by area
 
 | Area | Sub-area | Score | Tests | Findings (open) | Standards covered | Based on |
 |---|---|---|---|---|---|---|
-| Regression (100, weight 25) | Regression | **100** | 100 (21711 passed, 0 failed) | 100 (0) | 100 (4 of 4) | tests, findings, coverage |
-| Secure by design (100, weight 35) | Write paths | **100** | 100 (2477 passed, 0 failed) | 100 (0) | 100 (9 of 9) | tests, findings, coverage |
-| Secure by design (100, weight 35) | Untrusted input | **100** | 100 (2902 passed, 0 failed) | 100 (0) | 100 (13 of 13) | tests, findings, coverage |
-| Secure by design (100, weight 35) | Auth, scope and secrets | **100** | 100 (4212 passed, 0 failed) | 100 (0) | 100 (12 of 12) | tests, findings, coverage |
-| Secure by design (100, weight 35) | Supply chain | **100** | 100 (322 passed, 0 failed) | 100 (0) | 100 (15 of 15) | tests, findings, coverage |
-| Functionality (99.5, weight 25) | Traffic analysis | **98.4** | 100 (3738 passed, 0 failed) | 96 (2) | 100 (5 of 5) | tests, findings, coverage |
-| Functionality (99.5, weight 25) | Builders | **100** | 100 (1723 passed, 0 failed) | 100 (0) | 100 (6 of 6) | tests, findings, coverage |
-| Functionality (99.5, weight 25) | UI and accessibility | **100** | 100 (2336 passed, 0 failed) | 100 (0) | 100 (11 of 11) | tests, findings, coverage |
+| Regression (100, weight 25) | Regression | **100** | 100 (30058 passed, 0 failed) | 100 (0) | 100 (4 of 4) | tests, findings, coverage |
+| Secure by design (100, weight 35) | Write paths | **100** | 100 (3808 passed, 0 failed) | 100 (0) | 100 (9 of 9) | tests, findings, coverage |
+| Secure by design (100, weight 35) | Untrusted input | **100** | 100 (3586 passed, 0 failed) | 100 (0) | 100 (13 of 13) | tests, findings, coverage |
+| Secure by design (100, weight 35) | Auth, scope and secrets | **100** | 100 (6610 passed, 0 failed) | 100 (0) | 100 (12 of 12) | tests, findings, coverage |
+| Secure by design (100, weight 35) | Supply chain | **100** | 100 (383 passed, 0 failed) | 100 (0) | 100 (15 of 15) | tests, findings, coverage |
+| Functionality (99.5, weight 25) | Traffic analysis | **98.4** | 100 (5046 passed, 0 failed) | 96 (2) | 100 (5 of 5) | tests, findings, coverage |
+| Functionality (99.5, weight 25) | Builders | **100** | 100 (3513 passed, 0 failed) | 100 (0) | 100 (6 of 6) | tests, findings, coverage |
+| Functionality (99.5, weight 25) | UI and accessibility | **100** | 100 (2925 passed, 0 failed) | 100 (0) | 100 (11 of 11) | tests, findings, coverage |
 | Motion (100, weight 15) | Motion | **100** | 100 (833 passed, 0 failed) | 100 (0) | 100 (6 of 6) | tests, findings, coverage |
 
 ## Findings

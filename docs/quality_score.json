@@ -2,13 +2,13 @@
   "schema_version": 1,
   "generated_by": "tools/quality_score.py",
   "run": {
-    "commit": "d568741bfef8",
-    "date": "2026-10-30T06:34:19",
-    "passed": 21711,
+    "commit": "ce89374",
+    "date": "2026-11-01T07:45:14",
+    "passed": 30058,
     "failed": 0,
     "errors": 0,
-    "skipped": 14,
-    "duration_s": 2714.5
+    "skipped": 17,
+    "duration_s": 3114.6
   },
   "overall": {
     "score": 100,
@@ -36,9 +36,9 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 21711,
+            "passed": 30058,
             "failed": 0,
-            "skipped": 14,
+            "skipped": 17,
             "files": null
           },
           "findings": {
@@ -80,10 +80,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2477,
+            "passed": 3808,
             "failed": 0,
             "skipped": 0,
-            "files": 14
+            "files": 20
           },
           "findings": {
             "score": 100.0,
@@ -129,10 +129,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2902,
+            "passed": 3586,
             "failed": 0,
             "skipped": 0,
-            "files": 18
+            "files": 23
           },
           "findings": {
             "score": 100.0,
@@ -179,10 +179,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 4212,
+            "passed": 6610,
             "failed": 0,
             "skipped": 0,
-            "files": 13
+            "files": 25
           },
           "findings": {
             "score": 100.0,
@@ -233,10 +233,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 322,
+            "passed": 383,
             "failed": 0,
             "skipped": 1,
-            "files": 8
+            "files": 11
           },
           "findings": {
             "score": 100.0,
@@ -288,10 +288,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 3738,
+            "passed": 5046,
             "failed": 0,
             "skipped": 0,
-            "files": 24
+            "files": 43
           },
           "findings": {
             "score": 96.0,
@@ -340,10 +340,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 1723,
+            "passed": 3513,
             "failed": 0,
-            "skipped": 3,
-            "files": 26
+            "skipped": 4,
+            "files": 66
           },
           "findings": {
             "score": 100.0,
@@ -400,10 +400,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2336,
+            "passed": 2925,
             "failed": 0,
-            "skipped": 4,
-            "files": 20
+            "skipped": 6,
+            "files": 22
           },
           "findings": {
             "score": 100.0,
