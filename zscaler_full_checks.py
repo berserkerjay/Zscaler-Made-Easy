@@ -1639,6 +1639,26 @@ def fwd_4(cl):
     return R(R.WARN, f"{len(act)} data centre exclusion(s) in force, each with an end date: {_zf.short([x['name'] for x in act])}." + why + fix)
 
 
+VIP_PAGE_SIZE = 1000   # the /vips maximum; the default page is only 100
+VIP_MAX_PAGES = 20
+
+
+def _vip_rows(cl):
+    """Every public VIP, page by page (page / pageSize until a short page),
+    and whether the list may be incomplete (a page could not be read, or
+    the page cap was reached)."""
+    rows = []
+    for page in range(1, VIP_MAX_PAGES + 1):
+        d, c = cl.get("/zia/vips", {"page": page, "pageSize": VIP_PAGE_SIZE})
+        if c not in (200, 204):
+            return rows, True
+        chunk = [x for x in (_ls(d) if c == 200 else []) if isinstance(x, dict)]
+        rows.extend(chunk)
+        if len(chunk) < VIP_PAGE_SIZE:
+            return rows, False
+    return rows, True
+
+
 def fwd_5(cl):
     """GRE tunnels use diverse data centres (primary and secondary VIP)"""
     tunnels, bad = _fwd_rows(cl, "/zia/greTunnels", "GRE tunnels")
@@ -1646,7 +1666,7 @@ def fwd_5(cl):
         return bad
     if not tunnels:
         return R(R.INFO, _NA + "no GRE tunnels are configured (sites use IPsec, a connector or Client Connector).")
-    vips, _vbad = _fwd_rows(cl, "/zia/vips", "Zscaler public VIPs")
+    vips, partial = _vip_rows(cl)
     g = _zf.gre_diversity(tunnels, vips)
     why = (" Why it matters: a GRE tunnel's secondary VIP is its failover; in the same data centre as the primary (or missing), one data "
            "centre outage takes the site off the internet or out of inspection.")
@@ -1658,8 +1678,10 @@ def fwd_5(cl):
                 ([f"both VIPs in one data centre: {_zf.short(g['same_dc'])}"] if g["same_dc"] else [])
         return R(R.FAIL, f"{len(bad_)} of {len(tunnels)} GRE tunnel(s) have no data centre diversity; " + "; ".join(parts) + "." + why + fix)
     if g["unknown_dc"]:
+        note = (f" Only the first {len(vips or [])} public VIPs could be read, so some data centres may simply be on a later page."
+                if partial else "")
         return R(R.WARN, f"{len(g['unknown_dc'])} GRE tunnel(s) have two VIPs whose data centres could not be placed: {_zf.short(g['unknown_dc'])}."
-                 + why + fix)
+                 + note + why + fix)
     return R(R.PASS, f"All {len(tunnels)} GRE tunnel(s) have a secondary VIP in a different data centre.")
 
 

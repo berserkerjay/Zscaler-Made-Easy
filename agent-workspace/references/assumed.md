@@ -478,29 +478,29 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `zscaler_full_checks.py:515` | """'good', 'bad' or None (not graded / not understood) for one audit grade (assumed scale).""" |
 | `zscaler_full_checks.py:519` | return "good" if v >= 80 else "bad"   # assumed: a 0-100 score |
 | `zscaler_full_checks.py:649` | or IN_TRIAL (nss_servers.add_nss_server docstring); state is assumed to be |
-| `zscaler_full_checks.py:1781` | not model is marked "assumed". A 404 answer means the feature is not |
-| `zscaler_full_checks.py:1834` | not modelled by the SDK (assumed: blockedFileHashesCount, remainingFileHashes). |
-| `zscaler_full_checks.py:1931` | field names follow the attributes its update docstring lists (assumed). |
-| `zscaler_full_checks.py:1954` | alertDefinitions (status; its values are not enumerated: "ENABLED" assumed). |
-| `zscaler_full_checks.py:2096` | is listed by the SDK's update docstring but not modelled (assumed). |
-| `zscaler_full_checks.py:2148` | Only OFLCASB_AVP_REPORT_MALWARE is named by the SDK; any action with QUARANTINE in it is assumed to quarantine. |
-| `zscaler_full_checks.py:2267` | _INS_APP_LIMIT = 500           # applications asked per check (assumed accepted by Z-Insights; the SDK states no maximum) |
-| `zscaler_full_checks.py:2268` | _INS_HIGH_RISK = 4             # risk index 1 (low) to 5 (high): 4 and 5 are high (SDK zia/shadow_it_report.py lists 1-5; the direction i… |
-| `zscaler_full_checks.py:2271` | _CASB_SKUS = ("Z_CASB", "Z_CASB_BASIC")   # readiness.SKU_INFO (subscription ids assumed as seen on tenants) |
-| `zscaler_full_checks.py:2273` | values a tenant of that app carries. ASSUMED: the SDK lists neither side's values. |
-| `zscaler_full_checks.py:3143` | GET /config/isZiaCloudConfigAvailable. Assumed: that this availability |
-| `zscaler_full_checks.py:3206` | GET /visible/versionProfiles). Assumed: "Previous Default" is the profile that holds |
-| `zscaler_full_checks.py:3214` | profile itself has no version field). Assumed: App Connectors carry a role |
-| `zscaler_full_checks.py:3289` | as metadata only). Assumed: the API states no expiry, so "expired" is |
-| `zscaler_full_checks.py:3313` | Traffic capture actions that capture nothing (assumed: the SDK names no values; |
-| `zscaler_full_checks.py:3386` | aup, enabled; SDK model). Assumed: the AUP is tenant-wide (the model |
-| `zscaler_full_checks.py:3458` | (DnsApplicationGroups: name, dnsApplications). Assumed: a DNS Control |
-| `zscaler_full_checks.py:3499` | do not do what their names say. Assumed: an empty expression selects no |
-| `zscaler_full_checks.py:3535` | no criteria or no header inserts nothing. Assumed: profileReadyForUse |
-| `zscaler_full_checks.py:3569` | C2C_FULL = 0.9   # assumed: a client-to-client range 90 % used asks for review |
-| `zscaler_full_checks.py:3577` | totalIps, usedIps, availableIps). Assumed: a range with no address left |
-| `zscaler_full_checks.py:3608` | CERT_SOON_DAYS = 30            # assumed review window before an isolation certificate expires |
-| `zscaler_full_checks.py:3644` | a result. Assumed: isolation uses the certificate to trust the sites it |
+| `zscaler_full_checks.py:1803` | not model is marked "assumed". A 404 answer means the feature is not |
+| `zscaler_full_checks.py:1856` | not modelled by the SDK (assumed: blockedFileHashesCount, remainingFileHashes). |
+| `zscaler_full_checks.py:1953` | field names follow the attributes its update docstring lists (assumed). |
+| `zscaler_full_checks.py:1976` | alertDefinitions (status; its values are not enumerated: "ENABLED" assumed). |
+| `zscaler_full_checks.py:2118` | is listed by the SDK's update docstring but not modelled (assumed). |
+| `zscaler_full_checks.py:2170` | Only OFLCASB_AVP_REPORT_MALWARE is named by the SDK; any action with QUARANTINE in it is assumed to quarantine. |
+| `zscaler_full_checks.py:2289` | _INS_APP_LIMIT = 500           # applications asked per check (assumed accepted by Z-Insights; the SDK states no maximum) |
+| `zscaler_full_checks.py:2290` | _INS_HIGH_RISK = 4             # risk index 1 (low) to 5 (high): 4 and 5 are high (SDK zia/shadow_it_report.py lists 1-5; the direction i… |
+| `zscaler_full_checks.py:2293` | _CASB_SKUS = ("Z_CASB", "Z_CASB_BASIC")   # readiness.SKU_INFO (subscription ids assumed as seen on tenants) |
+| `zscaler_full_checks.py:2295` | values a tenant of that app carries. ASSUMED: the SDK lists neither side's values. |
+| `zscaler_full_checks.py:3165` | GET /config/isZiaCloudConfigAvailable. Assumed: that this availability |
+| `zscaler_full_checks.py:3228` | GET /visible/versionProfiles). Assumed: "Previous Default" is the profile that holds |
+| `zscaler_full_checks.py:3236` | profile itself has no version field). Assumed: App Connectors carry a role |
+| `zscaler_full_checks.py:3311` | as metadata only). Assumed: the API states no expiry, so "expired" is |
+| `zscaler_full_checks.py:3335` | Traffic capture actions that capture nothing (assumed: the SDK names no values; |
+| `zscaler_full_checks.py:3408` | aup, enabled; SDK model). Assumed: the AUP is tenant-wide (the model |
+| `zscaler_full_checks.py:3480` | (DnsApplicationGroups: name, dnsApplications). Assumed: a DNS Control |
+| `zscaler_full_checks.py:3521` | do not do what their names say. Assumed: an empty expression selects no |
+| `zscaler_full_checks.py:3557` | no criteria or no header inserts nothing. Assumed: profileReadyForUse |
+| `zscaler_full_checks.py:3591` | C2C_FULL = 0.9   # assumed: a client-to-client range 90 % used asks for review |
+| `zscaler_full_checks.py:3599` | totalIps, usedIps, availableIps). Assumed: a range with no address left |
+| `zscaler_full_checks.py:3630` | CERT_SOON_DAYS = 30            # assumed review window before an isolation certificate expires |
+| `zscaler_full_checks.py:3666` | a result. Assumed: isolation uses the certificate to trust the sites it |
 | `zscaler_genai_checks.py:624` | Provider credential age (assumed thresholds: a key older than a year with no |
 | `zscaler_ip_ranges.py:45` | the field names are ASSUMED: not reachable from here to |
 | `zscaler_ip_ranges.py:50` | JSON paths and key ASSUMED); |

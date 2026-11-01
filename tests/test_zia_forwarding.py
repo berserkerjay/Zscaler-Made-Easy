@@ -434,3 +434,56 @@ def test_the_ui_names_the_new_step_and_marks_the_features():
     man = json.loads(re.search(r"window\.WHATS_NEW\s*=\s*(\{.*?\n\});", wn, re.S).group(1))
     ids = {f["id"]: f for f in man["features"]}
     assert ids["zia-forwarding-checks"]["release"] == ids["path-forwarding-step"]["release"] == "2026-10-31"
+
+
+class _PagedVips:
+    """GRE tunnels plus a /vips list served page by page like ZIA (the SDK's default page is 100)."""
+
+    def __init__(self, vips, tunnels, fail_page=None):
+        self.vips, self.tunnels, self.fail_page, self.calls = vips, tunnels, fail_page, []
+
+    def get(self, ep, p=None):
+        p = p or {}
+        if ep == "/zia/greTunnels":
+            return self.tunnels, 200
+        if ep == "/zia/vips":
+            page, size = int(p.get("page", 1)), int(p.get("pageSize", 100))
+            self.calls.append((page, size))
+            if page == self.fail_page:
+                return {"message": "busy"}, 429
+            return self.vips[(page - 1) * size: page * size], 200
+        return None, 404
+
+
+def _many_vips(n):
+    return [{"dataCenter": f"DC{i}", "greIps": [f"198.51.{i // 250}.{i % 250 + 1}"]} for i in range(n)]
+
+
+def _tunnel_on(vips, a, b):
+    return [{"sourceIp": "192.0.2.10",
+             "primaryDestVip": {"virtualIp": vips[a]["greIps"][0]},
+             "secondaryDestVip": {"virtualIp": vips[b]["greIps"][0]}}]
+
+
+def test_gre_diversity_reads_every_vip_page_not_just_the_first_100():
+    """ASVS V1.14.6 · CWE-1284 · WSTG-BUSL-01: a GRE tunnel whose VIPs sit past the first page of /vips is still placed in its data centres."""
+    # Arrange: 2,500 public VIPs; the tunnel's two VIPs are numbers 1,200 and 2,400
+    vips = _many_vips(2500)
+    cl = _PagedVips(vips, _tunnel_on(vips, 1200, 2400))
+    # Act
+    r = zfc.fwd_5(cl)
+    # Assert
+    assert r.status == r.PASS, r.detail
+    assert cl.calls == [(1, 1000), (2, 1000), (3, 1000)]
+
+
+def test_gre_diversity_says_the_vip_list_may_be_incomplete_when_a_page_fails():
+    """ASVS V1.14.6 · CWE-1284 · WSTG-BUSL-01: when a later VIP page cannot be read, an unplaced tunnel is a warning that says the list was partial, never a pass."""
+    # Arrange
+    vips = _many_vips(2500)
+    cl = _PagedVips(vips, _tunnel_on(vips, 1200, 2400), fail_page=2)
+    # Act
+    r = zfc.fwd_5(cl)
+    # Assert
+    assert r.status == r.WARN
+    assert "Only the first 1000 public VIPs could be read" in r.detail
