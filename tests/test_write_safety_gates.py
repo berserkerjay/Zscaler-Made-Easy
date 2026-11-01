@@ -120,6 +120,7 @@ SCOPE = {"scopes": ["dlp", "zia_extras", "zpa"],
 ASSESSOR = "Jane Doe"
 PACK = "cjis_policy_pack"
 HASH = "a" * 64
+DELETE_PHRASE = "DELETE 1 OBJECTS"   # the typed phrase of a removal (its number is checked against the re-made plan, a stubbed sink here)
 WRITER = {"sub": "w-1", "email": "writer@example.com", "groups": ["dlp-writers"]}
 WRITER_2 = {"sub": "w-2", "email": "second@example.com", "groups": ["dlp-writers"]}
 READER = {"sub": "r-1", "email": "reader@example.com", "groups": ["dlp-readers"]}
@@ -335,11 +336,11 @@ WRITE_CASES: List[WriteCase] = [
     ("undo-deployment", "POST", "/api/deployments/{dep_id}/undo",
      lambda w: (f"/api/deployments/{_deployment(w)}/undo", _b(confirm=True)), BOOL),
     ("removal", "POST", "/api/dlp-packs/removal/apply",
-     lambda w: ("/api/dlp-packs/removal/apply", _b(pack_ids=[PACK], plan_hash=HASH, confirm=True)), BOOL),
+     lambda w: ("/api/dlp-packs/removal/apply", _b(pack_ids=[PACK], plan_hash=HASH, confirm=True, confirm_phrase=DELETE_PHRASE)), BOOL),
     ("removal-job", "POST", "/api/dlp-packs/removal/apply/start",
-     lambda w: ("/api/dlp-packs/removal/apply/start", _b(pack_ids=[PACK], plan_hash=HASH, confirm=True)), BOOL),
+     lambda w: ("/api/dlp-packs/removal/apply/start", _b(pack_ids=[PACK], plan_hash=HASH, confirm=True, confirm_phrase=DELETE_PHRASE)), BOOL),
     ("removal-undo-deployment", "POST", "/api/dlp-packs/removal/apply",
-     lambda w: ("/api/dlp-packs/removal/apply", _b(deployment_id=_deployment(w), plan_hash=HASH, confirm=True)), BOOL),
+     lambda w: ("/api/dlp-packs/removal/apply", _b(deployment_id=_deployment(w), plan_hash=HASH, confirm=True, confirm_phrase=DELETE_PHRASE)), BOOL),
     ("proposal-apply", "POST", "/api/proposals/{tenant}/{pid}/apply",
      lambda w: (f"/api/proposals/{_proposal_tenant(w)}/p-1/apply", _b(confirm=True)), BOOL),
     ("proposal-rollback", "POST", "/api/proposals/{tenant}/{pid}/rollback",
@@ -371,12 +372,12 @@ WRITE_CASES: List[WriteCase] = [
     ("self-heal", "POST", "/api/self-heal/tenant/heal",
      lambda w: ("/api/self-heal/tenant/heal", dict(_b(**SCOPE), ids=[_heal_proposal(w)], confirm=PHRASE)), PHRASE),
     ("remediation", "POST", "/api/remediation/execute",
-     lambda w: ("/api/remediation/execute", _b(check_id="FW-01", criteria={}, dry_run=False, confirm=True,
+     lambda w: ("/api/remediation/execute", _b(check_id="FW-01", criteria={}, dry_run=False, confirm=True, plan_hash=HASH,
                                              scopes=["zia_extras"], channels={}, from_page=True)), BOOL),
     ("migrate-enable", "POST", "/api/migrate/enable",
-     lambda w: ("/api/migrate/enable", dict(_b(**SCOPE), dry_run=False, confirm=True)), BOOL),
+     lambda w: ("/api/migrate/enable", dict(_b(**SCOPE), dry_run=False, confirm=True, plan_hash=HASH)), BOOL),
     ("migrate-delete-all", "POST", "/api/migrate/delete-all",
-     lambda w: ("/api/migrate/delete-all", dict(_b(**SCOPE), dry_run=False, confirm=True, plan_hash=HASH)), BOOL),
+     lambda w: ("/api/migrate/delete-all", dict(_b(**SCOPE), dry_run=False, confirm=True, plan_hash=HASH, confirm_phrase="DELETE 1 RULES")), BOOL),
     ("zdx-analysis-start", "POST", "/api/zdx/analysis/start",
      lambda w: ("/api/zdx/analysis/start", _b(**ZDX_SCOPE, app_id="3002", confirm=True, confirm_text="START ANALYSIS")), BOOL),
     ("zdx-analysis-stop", "POST", "/api/zdx/analysis/stop",
@@ -517,8 +518,8 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/tenant-health/start"): "reads (tenant health checks)",
     ("DELETE", "/api/traffic-logs/report/{report_id}"): "forgets a traffic log report held in memory (no tenant)",
     ("POST", "/api/traffic-logs/report/{report_id}/save"): "keeps a traffic log report as a local file (no tenant)",
-    ("POST", "/api/traffic-logs/saved/{name}/open"): "opens a saved traffic log report (local file)",
-    ("DELETE", "/api/traffic-logs/saved/{name}"): "deletes a saved traffic log report (local file)",
+    ("POST", "/api/traffic-logs/saved/{saved_name}/open"): "opens a saved traffic log report (local file)",
+    ("DELETE", "/api/traffic-logs/saved/{saved_name}"): "deletes a saved traffic log report (local file)",
     ("POST", "/api/console-index"): "reads (extension allow-list)",
     ("POST", "/api/workspace/notes"): "local notes",
     ("DELETE", "/api/workspace/notes"): "local notes",
@@ -571,7 +572,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/report/findings-csv"): "report",
     ("POST", "/api/zcc/fleet/start"): "reads",
     ("POST", "/api/zcc/install"): "builds an install command; with app_profile_id it reads that profile's policy token (scope-gated)",
-    ("POST", "/api/zcc/otp"): "reads one device's one-time passwords (scope-gated, writer, assessor, typed phrase, rate-limited; tests/test_zcc_otp.py); writes nothing",
+    ("POST", "/api/zcc/otp"): "reads one device's one-time passwords (scope-gated, writer, assessor, write mode, typed phrase, rate-limited; tests/test_zcc_otp.py); writes nothing",
     ("POST", "/api/zcc/device-details"): "reads one device's service state (scope-gated)",
     ("POST", "/api/zcc/disable-reasons"): "reads the disable-reason report and counts it (scope-gated)",
     ("POST", "/api/zdx/cloudpath"): "reads ZDX applications and one measured cloud path (scope-gated)",

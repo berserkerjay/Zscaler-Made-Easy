@@ -3,7 +3,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-439 markers.
+440 markers.
 
 | File:line | Note |
 |---|---|
@@ -77,7 +77,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `compliance_profiles.py:798` | rows.append({"control": cid, "title": c.get("title", ""), "status": status, "assumed": bool(c.get("assumed")), |
 | `compliance_profiles.py:812` | "map_pack_rule", "applies", "controls", "assumed", "assessment_view", "get", "key_of", "ProfileError", "FEDERAL_KEYS"] |
 | `config_backup.py:58` | one exists). Assumed, not verifiable without a tenant: that the SDK's add_ / |
-| `config_backup.py:321` | "path /rootCertificates (assumed); never updated", uses=()), |
+| `config_backup.py:327` | "path /rootCertificates (assumed); never updated", uses=()), |
 | `data_flow.py:950` | enters the tunnel. A host name is not resolved: it is assumed to |
 | `data_flow.py:964` | "it is not resolved and is assumed to resolve outside them") |
 | `data_flow.py:1021` | nis["zcc"] + " How the device forwards this traffic is not assessed; a tunnel to ZIA is assumed.", None, why="not in scope")) |
@@ -86,10 +86,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `detection_health.py:1017` | assumed from one: |
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
-| `dlp_api_server.py:3826` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
-| `dlp_api_server.py:9201` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
-| `dlp_api_server.py:9203` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
-| `dlp_api_server.py:9311` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
+| `dlp_api_server.py:3845` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
+| `dlp_api_server.py:9324` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
+| `dlp_api_server.py:9326` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
+| `dlp_api_server.py:9434` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
 | `dns_forward_zones.py:47` | * Assumed (not in the SDK or Zscaler's API reference): that the resolver |
 | `insights.py:670` | ASSUMED: Shadow IT's sanctioned_state spells the two states as |
 | `offline_tenant.py:475` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
@@ -278,9 +278,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `readiness.py:219` | ZPA object classes the ZPA builder creates (matched on the role's friendly names; assumed). |
 | `readiness.py:240` | ZPA object classes this app reads or writes (matched on the role's friendly names; assumed). |
 | `readiness.py:242` | Client Connector role fields this app reads (0 none, 1 view, 2 full; names assumed). |
-| `remediation.py:359` | A free-text field with no max_length of its own is still capped (assumed: |
-| `remediation.py:363` | GAMBLING or CUSTOM_01 (assumed: a little wider here, the tenant refuses the rest). |
-| `remediation.py:505` | No PATCH: ZIA updates a rule with a PUT of the whole rule (assumed: |
+| `remediation.py:364` | A free-text field with no max_length of its own is still capped (assumed: |
+| `remediation.py:368` | GAMBLING or CUSTOM_01 (assumed: a little wider here, the tenant refuses the rest). |
+| `remediation.py:546` | No PATCH: ZIA updates a rule with a PUT of the whole rule (assumed: |
 | `rule_csv.py:35` | (assumed). |
 | `rule_csv.py:50` | MAX_CELL = 10240             # characters in one cell (ZIA's description limit, assumed) |
 | `rule_editor.py:34` | says, the value is marked assumed below and the tenant refuses what it |
@@ -294,6 +294,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `rule_editor.py:525` | out.append("ZIA shows a Caution page for downloads only: set Applies to Download, or pick Allow or Block.")   # assumed |
 | `rule_editor.py:591` | body["type"] = "FORWARDING"   # forwarding_control_policy.ForwardingControlRule.type; FORWARDING is the rule kind ZIA lists (assumed) |
 | `rule_fields.py:125` | timers) and metadata. restrictionType is taken as metadata (assumed: |
+| `rule_migrator.py:1067` | ASSUMED (not verified against the SDK or Zscaler's documentation): the |
 | `sample_tenant.py:429` | WebPolicy model (assumed: the readers ask for it, and a device reports it). |
 | `sample_tenant.py:471` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
 | `sample_tenant.py:686` | not in the SDK: its shapes are ops_zdx's (assumed there). |

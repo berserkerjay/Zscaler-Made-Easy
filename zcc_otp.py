@@ -8,6 +8,8 @@ sensitive read, guarded like a write except that nothing is written
   - Client Connector ticked on the Scope page (400 before sign-in),
   - a person allowed to change the tenant (security.require_writer),
   - the named assessor,
+  - write mode on (ENABLE_WRITE_ACTIONS, security.writes_enabled), as for
+    a change to the tenant (owner decision, wave 9),
   - the typed confirmation "SHOW OTP <device>",
   - at most RATE_PER_ACTOR reads per actor in RATE_WINDOW seconds and
     RATE_GLOBAL in RATE_WINDOW_GLOBAL (429 with Retry-After).

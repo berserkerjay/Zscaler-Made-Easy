@@ -874,6 +874,7 @@ class RemediationExecuteRequest(BaseModel):
     confirm: bool = False      # dry_run=false needs confirm=true, the assessor, a writer and write mode
     assessor: str = ""
     profile_id: str = ""
+    plan_hash: str = ""        # dry_run=false also needs the previewed plan's hash (POST /api/remediation/plan or a dry run)
     scopes: List[str] = []     # the Scope page selection (user rule 1): a live fix writes only a policy in scope
     channels: Dict[str, Any] = {}
     from_page: bool = False
@@ -940,19 +941,36 @@ async def remediation_plan(req: RemediationPlanRequest):
 
 
 @app.post("/api/remediation/execute")
-async def remediation_execute(req: RemediationExecuteRequest):
-    """Plan + optionally execute. dry_run=True returns the plan only;
-    dry_run=False needs a writer, confirm=true, the assessor's name and
-    write mode, all checked before the tenant is signed in to."""
+async def remediation_execute(req: RemediationExecuteRequest, request: Request):
+    """Plan + optionally execute. dry_run=True returns the plan only (with
+    its plan_hash); dry_run=False needs a writer, confirm=true, the
+    assessor's name, write mode and the previewed plan_hash, all checked
+    before the tenant is signed in to. The call is re-planned and its hash
+    compared (409 plan_changed when the plan moved), then the tenant is
+    re-read before the write (remediation.execute), and the result audited."""
     try:
-        from remediation import execute
+        import remediation
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Applying a remediation")
         _require_remediation_in_scope(req)
+        want = str(req.plan_hash or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", want):
+            raise HTTPException(status_code=400, detail="Applying a remediation needs the plan you previewed: preview the plan first "
+                                                        "(Preview plan), then apply it; the request must carry that preview's plan_hash. "
+                                                        "Nothing was read or written.")
+        planned = remediation.plan(req.check_id, req.criteria)
+        if planned.get("ok") and planned.get("plan_hash") != want:
+            return JSONResponse({"status": "plan_changed", "message": remediation.PLAN_CHANGED, "plan_hash": planned.get("plan_hash")},
+                                status_code=409)
     client = await asyncio.to_thread(_build_client, req)
-    result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)
+    result = await asyncio.to_thread(remediation.execute, client, req.check_id, req.criteria, req.dry_run,
+                                     None if req.dry_run else str(req.plan_hash).strip().lower())
+    if not req.dry_run:
+        _audit.record("remediation_applied", actor=_actor(request), check_id=str(req.check_id)[:40], status=result.get("status"),
+                      method=result.get("method"), endpoint=str(result.get("endpoint") or "")[:200], plan_hash=result.get("plan_hash"),
+                      http_status=result.get("http_status"), profile=str(req.profile_id or "")[:48] or None)
     return result
 
 
@@ -1366,6 +1384,7 @@ class PackRemovalRequest(TenantCredsRequest):
     all: bool = False      # everything Zscaler Made Easy ever put in the tenant, not just the listed packs
     rules: List[Dict[str, Any]] = []   # pick mode: the rules ({channel, id}) to remove with their engines and dictionaries
     deployment_id: str = ""            # undo mode: what one recorded deployment created
+    confirm_phrase: str = ""           # the typed phrase the preview shows (DELETE <n> OBJECTS); checked against the re-made plan
 
 
 def _writes_disabled_msg() -> str:
@@ -3916,17 +3935,33 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest, request: Request):
     if not req.pack_ids and not req.rules and not req.deployment_id:
         raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
     _require_tenant_write(req, confirmed=req.confirm, what="Removal")
+    _require_removal_phrase(req)
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     _refuse_offline_apply(creds)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
     result = await asyncio.to_thread(_as_actor, _actor(request), _run_removal, client, req, rec, packs, None, None)
+    if result.get("phrase_mismatch"):
+        raise HTTPException(status_code=400, detail="; ".join(result.get("blockers") or ["Type the phrase the preview shows."]))
     if result.get("status") == "blocked":
         raise HTTPException(status_code=403, detail="; ".join(result.get("blockers") or ["Removal blocked."]))
     if result.get("status") == "stale":
         raise HTTPException(status_code=409, detail="; ".join(result.get("blockers") or ["The removal plan is stale; run the preview again."]))
     return result
+
+
+REMOVAL_PHRASE_NEEDED = ("A removal deletes objects: type the phrase the preview shows (DELETE <n> OBJECTS, where n is the number "
+                         "of objects the removal deletes) to confirm it. Nothing was read or deleted.")
+
+
+def _require_removal_phrase(req: PackRemovalRequest) -> None:
+    """400 before sign-in when the typed phrase is missing or not of the
+    form DELETE <n> OBJECTS; its number is checked against the plan the
+    removal re-makes from a fresh read (pack_removal._execute_run)."""
+    import pack_removal
+    if not pack_removal.PHRASE_SHAPE.match(str(req.confirm_phrase or "")):
+        raise HTTPException(status_code=400, detail=REMOVAL_PHRASE_NEEDED)
 
 
 def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Dict[str, Any]:
@@ -3942,15 +3977,18 @@ def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Di
             log(line)
 
     if rec is not None:
-        result = pack_removal.remove_deployment(client, rec, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel)
+        result = pack_removal.remove_deployment(client, rec, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel,
+                                                confirm_text=req.confirm_phrase)
         if result.get("status") not in ("blocked", "stale", "stopped"):
             import deployments
             updated = deployments.mark_undo(rec["id"], result.get("results") or [], complete=bool((result.get("verification") or {}).get("clean")))
             result["deployment"] = deployments.summary(updated) if updated else None
     elif req.rules:
-        result = pack_removal.remove_selected(client, req.rules, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel)
+        result = pack_removal.remove_selected(client, req.rules, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel,
+                                              confirm_text=req.confirm_phrase)
     else:
-        result = pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel, everything=bool(req.all))
+        result = pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel, everything=bool(req.all),
+                                     confirm_text=req.confirm_phrase)
     result["logs"] = logs
     if result.get("status") in ("blocked", "stale"):
         result["message"] = "; ".join(result.get("blockers") or [
@@ -3969,6 +4007,7 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest, request: Request
     if not req.pack_ids and not req.rules and not req.deployment_id:
         raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
     _require_tenant_write(req, confirmed=req.confirm, what="Removal")
+    _require_removal_phrase(req)
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     _refuse_offline_apply(creds)
@@ -4680,8 +4719,10 @@ class ConfigTemplateExportRequest(BaseModel):
 
 
 class ConfigTemplateImportRequest(BaseModel):
-    """A template file chosen in the browser (checked as untrusted)."""
+    """A template file chosen in the browser (checked as untrusted), and
+    optionally the tenant profile it is kept for (team mode: who may see it)."""
     content: str = ""
+    profile_id: str = ""
 
 
 class ConfigRehearseRequest(BaseModel):
@@ -4721,9 +4762,37 @@ def _cfg_offline_doc(source_id: str) -> Dict[str, Any]:
     return cb.from_offline(st)
 
 
+_CFG_NOT_YOURS = "Not found, or not yours to see."
+
+
+def _cfg_reach(ref: str, action: str = "read") -> None:
+    """Team mode: a saved side named outside the access check's own fields
+    (a diff side, a rehearsal's target, an operation's source) is checked
+    the same way: its tenant profile, or its maker for one with none. 404
+    otherwise, so another tenant's backup is not even confirmed to exist."""
+    if not _team.enabled():
+        return
+    import config_backup as cb
+    import tenant_profiles
+    ref = str(ref or "")
+    if cb.BACKUP_ID.match(ref):
+        ok = _team.may_reach("backup_id", ref, action)
+    elif cb.TEMPLATE_ID.match(ref):
+        ok = _team.may_reach("template_id", ref, action)
+    elif ref.startswith("cache:"):
+        ok = _team.may(action, ref[6:])
+    elif ref != _offline.SAMPLE and (tenant_profiles.SNAPSHOT_ID.match(ref) or _offline.SOURCE_RE.match(ref)):
+        ok = _team.may_reach("snapshot_id", ref, action)   # a saved snapshot (its profile) or a file opened here (its opener)
+    else:
+        ok = True   # the sample tenant: made up, nobody's
+    if not ok:
+        raise HTTPException(status_code=404, detail=_CFG_NOT_YOURS)
+
+
 def _cfg_side(ref: str) -> Dict[str, Any]:
     import config_backup as cb
     ref = str(ref or "")
+    _cfg_reach(ref)
     try:
         if cb.BACKUP_ID.match(ref):
             return cb.load_backup(ref)
@@ -4757,13 +4826,22 @@ async def config_backups_list():
     try:
         import tenant_profiles
         for p in tenant_profiles.list_profiles():
+            if not _team.may("read", p.get("id")):
+                continue   # team mode: only the caches of tenant profiles this person may read
             got = cb.cache_summary(p["id"]) if cb.CACHE_KEY.match(str(p.get("id") or "")) else None
             if got:
                 caches[p["id"]] = got
     except Exception:  # noqa: BLE001 - an unreadable profile store lists no caches
         caches = {}
-    return {"backups": cb.list_backups(), "templates": cb.list_templates(), "schedules": cb.schedules(), "caches": caches,
-            "coverage": cb.coverage()}
+    # Team mode: every backup and template names its tenant profile (and its
+    # maker); a person sees only those of the profiles they may read.
+    try:
+        backups = [b for b in cb.list_backups() if _team.may_reach_record(_team.record_profiles(b), b.get("owner_id"))]
+        templates = [t for t in cb.list_templates() if _team.may_reach("template_id", t.get("id"))]
+        schedules = {pid: v for pid, v in cb.schedules().items() if _team.may("read", pid)}
+    except cb.BackupError as e:   # a sealed list whose key is not on this computer
+        raise _cfg_err(e, 409)
+    return {"backups": backups, "templates": templates, "schedules": schedules, "caches": caches, "coverage": cb.coverage()}
 
 
 @app.post("/api/config-backups/save/start")
@@ -4787,6 +4865,7 @@ async def config_backup_save_start(req: ConfigBackupSaveRequest, request: Reques
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)
     pid = req.profile_id if (req.profile_id and tenant_profiles.get(req.profile_id)) else ""
+    owner = _team.current_owner_id()
 
     def run(log, cancel):
         got = cb.capture(client, products, scope, log, cancel)
@@ -4795,7 +4874,7 @@ async def config_backup_save_start(req: ConfigBackupSaveRequest, request: Reques
         if not got["types"]:
             raise RuntimeError("Nothing could be read from the tenant, so no backup was saved.")
         meta = {"tenant_label": label, "saved_at": cb._now(), "products": products, "kind": "manual", "profile_id": pid,
-                "scopes": scope.get("scopes"), "unread": got["unread"], "note": req.note}
+                "scopes": scope.get("scopes"), "unread": got["unread"], "note": req.note, "owner_id": owner}
         meta.update(tenant_fingerprint.record_ids(creds))
         entry = cb.save_backup(cb.build_doc(got["types"], meta))
         if pid:
@@ -4858,8 +4937,20 @@ async def config_backup_from_snapshot(req: ConfigFromSnapshotRequest):
     if not (sid == _offline.SAMPLE or tenant_profiles.SNAPSHOT_ID.match(sid)):
         raise HTTPException(status_code=404, detail="Pick a saved snapshot or the sample tenant.")
     doc = await asyncio.to_thread(_cfg_offline_doc, sid)
-    if req.profile_id and tenant_profiles.get(req.profile_id):
+    # The backup belongs to the snapshot's own tenant profile: a snapshot of
+    # tenant B never becomes a backup listed under tenant A.
+    snap_pid = ""
+    if sid != _offline.SAMPLE:
+        snap_pid = next((str(r.get("profile_id") or "") for r in tenant_profiles.list_snapshots(None) if r.get("id") == sid), "")
+    if snap_pid and req.profile_id and req.profile_id != snap_pid:
+        raise HTTPException(status_code=409, detail="That snapshot belongs to another tenant profile than the one named; keep it as a "
+                                                    "backup of its own tenant profile. Nothing was saved.")
+    if snap_pid:
+        doc["meta"]["profile_id"] = snap_pid
+    elif req.profile_id and tenant_profiles.get(req.profile_id):
         doc["meta"]["profile_id"] = req.profile_id
+    if _team.current_owner_id():
+        doc["meta"]["owner_id"] = _team.current_owner_id()
     try:
         entry = await asyncio.to_thread(cb.save_backup, doc)
     except cb.BackupError as e:
@@ -4960,7 +5051,11 @@ async def config_template_export(req: ConfigTemplateExportRequest):
         doc = await asyncio.to_thread(cb.load_backup, req.backup_id)
         tpl = cb.make_template(doc, req.objects, name=req.name, description=req.description, strip_prefix=req.strip_prefix,
                                with_dependencies=req.with_dependencies)
-        return {"template": await asyncio.to_thread(cb.save_template, tpl)}
+        m = doc.get("meta") or {}
+        saved = await asyncio.to_thread(cb.save_template, tpl, profile_id=str(m.get("profile_id") or ""), owner_id=_team.current_owner_id(),
+                                        tenant_ids={k: m.get(k) for k in ("tenant_key", "tenant_fp") if m.get(k)})
+        _team.set_owner("template", saved["id"])
+        return {"template": saved}
     except cb.BackupError as e:
         raise _cfg_err(e)
 
@@ -4970,9 +5065,13 @@ async def config_template_import(req: ConfigTemplateImportRequest):
     """Keep a template file chosen in the browser (an untrusted file: size,
     nesting, format, types and every reference are checked)."""
     import config_backup as cb
+    import tenant_profiles
     try:
         tpl = cb.parse_template(req.content)
-        return {"template": await asyncio.to_thread(cb.save_template, tpl)}
+        pid = req.profile_id if (req.profile_id and tenant_profiles.get(req.profile_id)) else ""
+        saved = await asyncio.to_thread(cb.save_template, tpl, profile_id=pid, owner_id=_team.current_owner_id())
+        _team.set_owner("template", saved["id"])
+        return {"template": saved}
     except cb.BackupError as e:
         raise _cfg_err(e)
 
@@ -4991,6 +5090,14 @@ async def config_template_download(template_id: str):
 @app.post("/api/config-templates/{template_id}/delete")
 async def config_template_delete(template_id: str):
     import config_backup as cb
+    if _team.enabled() and not _team.is_admin():
+        # Team mode: a template is deleted by the person who kept it (or an
+        # administrator); others who may use it may not remove it for everyone.
+        meta = cb.template_meta(template_id) or {}
+        owner = str(meta.get("owner_id") or "")
+        if owner and owner != _team.current_owner_id():
+            raise HTTPException(status_code=403, detail="Only the person who kept this template (or a team server administrator) "
+                                                        "may delete it. Nothing was deleted.")
     try:
         ok = cb.delete_template(template_id)
     except cb.BackupError as e:
@@ -5014,6 +5121,7 @@ async def config_backup_rehearse(req: ConfigRehearseRequest):
     if product is None:
         raise HTTPException(status_code=400, detail="Pick ZIA, ZPA or Client Connector.")
     target = await asyncio.to_thread(_cfg_side, req.target)
+    _cfg_source_reach(op)
     try:
         nspec = ocr.check_spec(dict(op, target_profile_id=op.get("target_profile_id") or ("rehearsal" if op.get("target") == "other" else "")),
                                product)
@@ -5036,6 +5144,16 @@ def _cfg_profile_matches(profile_id: str, creds: Dict[str, Any]) -> bool:
     return tenant_fingerprint.same_tenant(rec, creds)
 
 
+def _cfg_source_reach(op: Dict[str, Any]) -> None:
+    """Team mode: the source of a restore, clone or template apply (a kept
+    backup or template) must be one the person may read: a user of tenant A
+    never clones tenant B's backup into A."""
+    src = op.get("source") if isinstance(op.get("source"), dict) else {}
+    for kind in ("backup", "template"):
+        if kind in src:
+            _cfg_reach(str(src.get(kind) or ""))
+
+
 def _cfg_restore_gate(req: Any, creds: Dict[str, Any], *, apply: bool) -> None:
     """Every refusal a restore, clone or template apply makes before it signs
     in: a rehearsal on the sample or a snapshot is plan only; "same" must be
@@ -5046,6 +5164,7 @@ def _cfg_restore_gate(req: Any, creds: Dict[str, Any], *, apply: bool) -> None:
     op = req.operation if isinstance(req.operation, dict) else {}
     if str(op.get("type") or "") not in ocr.PRODUCT_OF:
         return
+    _cfg_source_reach(op)
     if _offline.is_offline_creds(creds):
         if apply:
             raise HTTPException(status_code=409, detail="Rehearsal only: this browser is using the sample tenant or a snapshot, so the "
@@ -8514,6 +8633,8 @@ async def tenant_health_start(req: TenantHealthRequest, request: Request):
     creds["customer_id"] = validate_customer_id(req.customer_id) if req.customer_id else (creds.get("customer_id") or "")
     label = tenant_auth.record_label(creds)
     method = creds["auth_method"]
+    import tenant_profiles
+    bind_profile = str(req.profile_id or "") if (req.profile_id and tenant_profiles.get(req.profile_id, with_secret=False)) else ""
     client = await asyncio.to_thread(_build_sdk_client, creds)
 
     def fn(log, cancel):
@@ -8523,6 +8644,8 @@ async def tenant_health_start(req: TenantHealthRequest, request: Request):
         finally:
             _close_quietly(client)
         if out.get("status") == "done":
+            if bind_profile:
+                out["profile_id"] = bind_profile   # team mode: only people who may read this profile see it in /latest
             _TENANT_HEALTH.pop(label, None)
             _TENANT_HEALTH[label] = out
             while len(_TENANT_HEALTH) > _TENANT_HEALTH_MAX:
@@ -8537,7 +8660,7 @@ async def tenant_health_latest():
     """The latest tenant-health answers this server holds (memory only,
     newest first, at most 8 tenants), and the thresholds in force. No tenant call."""
     import tenant_health
-    return JSONResponse({"results": [dict(v) for v in reversed(list(_TENANT_HEALTH.values()))],
+    return JSONResponse({"results": [dict(v) for v in _team.visible(reversed(list(_TENANT_HEALTH.values())))],
                          "thresholds": dict(zip(("warning_days", "critical_days"), tenant_health.thresholds()))},
                         headers={"Cache-Control": "no-store"})
 
@@ -9555,7 +9678,9 @@ async def traffic_logs_save(report_id: str, req: TrafficLogsSaveRequest, request
     import traffic_logs as tl
     rep = _tlogs_report(report_id)
     try:
-        saved = await asyncio.to_thread(tl.save_report, rep, req.title, req.names)
+        bound = _team.bound(report_id) or ("", "")
+        saved = await asyncio.to_thread(tl.save_report, rep, req.title, req.names, profile_id=bound[1] or _team.current_profile(),
+                                        owner_id=_team.current_owner_id())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     _audit.record("traffic_logs_saved", actor=_actor(request), name=saved["name"], names=saved["names"],
@@ -9566,13 +9691,17 @@ async def traffic_logs_save(report_id: str, req: TrafficLogsSaveRequest, request
 @app.get("/api/traffic-logs/saved")
 async def traffic_logs_saved():
     import traffic_logs as tl
-    return {"reports": await asyncio.to_thread(tl.list_saved)}
+    rows = await asyncio.to_thread(tl.list_saved)
+    # Team mode: a saved report is its maker's (and, when made for a tenant
+    # profile, readable by whoever may read that profile).
+    return {"reports": [r for r in rows if _team.may_reach_record(_team.record_profiles(r), r.get("owner_id"))]}
 
 
-@app.post("/api/traffic-logs/saved/{name}/open")
-async def traffic_logs_open_saved(name: str):
+@app.post("/api/traffic-logs/saved/{saved_name}/open")
+async def traffic_logs_open_saved(saved_name: str):
     """Open a saved report: it is read as untrusted (name, size, format) and held in memory like a new analysis."""
     import traffic_logs as tl
+    name = saved_name
     try:
         rep = await asyncio.to_thread(tl.load_saved, name)
     except FileNotFoundError:
@@ -9583,9 +9712,10 @@ async def traffic_logs_open_saved(name: str):
     return _REPORTS[rid]
 
 
-@app.delete("/api/traffic-logs/saved/{name}")
-async def traffic_logs_delete_saved(name: str, request: Request):
+@app.delete("/api/traffic-logs/saved/{saved_name}")
+async def traffic_logs_delete_saved(saved_name: str, request: Request):
     import traffic_logs as tl
+    name = saved_name
     try:
         gone = await asyncio.to_thread(tl.delete_saved, name)
     except ValueError as e:
@@ -9952,35 +10082,43 @@ async def migrate_optimize(req: OptimizeRequest):
 # ── Step 4: Enable Evaluate All Rules ────────────────────────────
 class EnableRequest(MigrateRequest):
     """Body for enabling Evaluate All Rules (dry run by default; dry_run=false
-    needs confirm=true, the assessor, a writer and write mode)."""
+    needs confirm=true, the assessor, a writer, write mode and the dry run's
+    plan_hash)."""
     dry_run: bool = True
     confirm: bool = False
     assessor: str = ""
+    plan_hash: str = ""
 
 
 @app.post("/api/migrate/enable")
 async def migrate_enable(req: EnableRequest):
-    """Step 4: Enable Evaluate All Rules in ZIA Advanced Settings (dry-run by default)."""
+    """Step 4: Enable Evaluate All Rules in ZIA's settings (dry-run by
+    default). The dry run finds the one setting that holds the mode (reads
+    only) and answers the planned write with its plan_hash; a live run
+    needs that plan_hash, re-reads the setting (plan_changed when it moved)
+    and writes only the field the dry run found. Never a guessed endpoint."""
     try:
         from rule_migrator import enable_evaluate_all_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Enabling Evaluate All Rules")
+        _require_migrate_plan_hash(req)
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
+    return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run, None if req.dry_run else str(req.plan_hash).strip())
 
 
 # ── Step 4b: Delete All Existing Rules (gated) ───────────────────────
 class DeleteAllRequest(MigrateRequest):
     """Body for deleting every Web DLP rule (dry run by default; dry_run=false
-    needs confirm=true, the assessor, a writer, write mode and the dry
-    run's plan_hash)."""
+    needs confirm=true, the assessor, a writer, write mode, the dry run's
+    plan_hash and the typed phrase it shows, DELETE <n> RULES)."""
     dry_run: bool = True
     confirm: bool = False
     assessor: str = ""
     plan_hash: str = ""
+    confirm_phrase: str = ""
 
 
 @app.post("/api/migrate/delete-all")
@@ -9993,9 +10131,17 @@ async def migrate_delete_all(req: DeleteAllRequest):
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Deleting every Inline Web DLP rule")
         _require_migrate_plan_hash(req)
+        from rule_migrator import DELETE_PHRASE_SHAPE
+        if not DELETE_PHRASE_SHAPE.match(str(req.confirm_phrase or "")):
+            raise HTTPException(status_code=400, detail="Deleting every Inline Web DLP rule needs the typed phrase the dry run shows "
+                                                        "(DELETE <n> RULES, where n is the number of rules it deletes). Nothing was read or deleted.")
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(delete_all_rules, client, req.dry_run, None if req.dry_run else req.plan_hash)
+    out = await asyncio.to_thread(delete_all_rules, client, req.dry_run, None if req.dry_run else req.plan_hash,
+                                  None if req.dry_run else req.confirm_phrase)
+    if out.get("status") == "phrase_mismatch":
+        raise HTTPException(status_code=400, detail=out.get("message") or "Type the phrase the dry run shows. Nothing was deleted.")
+    return out
 
 
 def _require_migrate_plan_hash(req: Any) -> None:
@@ -10875,6 +11021,9 @@ async def zcc_fleet_history_forget(req: ZccFleetHistoryForget):
     import zcc_fleet_history as zh
     if req.confirm is not True:
         raise HTTPException(status_code=400, detail="Confirm that the fleet history of this tenant should be removed from this computer.")
+    if not _team.may_reach("tenant", req.tenant[:120], "plan"):
+        # Team mode: the body's tenant is checked like the query's (its tenant profile, plan at least).
+        raise HTTPException(status_code=404, detail="Not found, or not yours to see.")
     return {"tenant": req.tenant[:120], "removed": await asyncio.to_thread(zh.forget, req.tenant[:120])}
 
 
@@ -10890,7 +11039,8 @@ async def zcc_fleet_history_save(job_id: str):
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     tenant = str(res.get("tenant_label") or "tenant")
-    hist = await asyncio.to_thread(zh.record, tenant, snap)
+    bound = _team.bound(job_id) or ("", "")
+    hist = await asyncio.to_thread(zh.record, tenant, snap, profile_id=bound[1] or _team.current_profile())
     return {"tenant": zh.tenant_key(tenant), "history": hist, "trend": zh.trend(hist), "keep": zh.HISTORY_KEEP}
 
 
@@ -11236,6 +11386,7 @@ class ZccOtpRequest(ScopedTenantCredsRequest):
 ZCC_OTP_WHAT = "Client Connector one-time passwords"
 ZCC_OTP_ASSESSOR = ("Enter the assessor's name before showing a one-time password: the audit log names the person who asked "
                     "for it. Nothing was read.")
+ZCC_OTP_WRITE_MODE = "Showing a one-time password needs write mode on, like a change to the tenant. Nothing was read. "
 
 
 @app.post("/api/zcc/otp")
@@ -11243,7 +11394,8 @@ async def zcc_otp_show(req: ZccOtpRequest, request: Request):
     """A device's one-time passwords (uninstall, turn a service off, exit,
     as the API provides them) for help-desk use: a sensitive read guarded
     like a write. Refused before sign-in unless ZCC is in scope, the caller
-    may change the tenant, the assessor is named, "SHOW OTP <device>" is
+    may change the tenant, the assessor is named, write mode is on,
+    "SHOW OTP <device>" is
     typed and the rate limit allows it. The values are in this answer only
     (no-store): never logged, stored or cached; the audit entry names who,
     when and which device, never a value (zcc_otp)."""
@@ -11256,6 +11408,10 @@ async def zcc_otp_show(req: ZccOtpRequest, request: Request):
     by = _assessor(req)
     if not by:
         raise HTTPException(status_code=400, detail=ZCC_OTP_ASSESSOR)
+    if not writes_enabled():
+        # Owner decision (wave 9): an OTP unlocks a device's protection, so it
+        # needs write mode like a write does, on top of the other gates.
+        raise HTTPException(status_code=403, detail=ZCC_OTP_WRITE_MODE + _writes_disabled_msg())
     try:
         user = zcc_otp.clean(req.user, "enrolled user name")
         device = zcc_otp.clean(req.device, "device's host name or UDID")
@@ -12206,6 +12362,7 @@ async def bulk_test_fix(job_id: str, req: BulkFixRequest):
         rec = bulk_test.fix_handoff(rn, rows=req.rows, area=req.area, purpose=req.purpose, in_scope=in_scope)
     except bulk_test.ListError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    _team.bind(rec["id"])   # team mode: the fix is its maker's (and the read's tenant profile's), like the run it came from
     return {"fix_id": rec["id"], "urls": len(rec["urls"]), "excluded": rec["excluded"], "over_limit": rec["over_limit"],
             "open": f"/report/operations?fix={rec['id']}", "note": rec["note"],
             "fixes": [{"area": f["area"], "area_label": f["area_label"], "purpose": f["purpose"], "destinations": len(f["destinations"]),
@@ -14945,6 +15102,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     if tls and store_crypto.fips_mode():
         ssl_args["ssl_ciphers"] = store_crypto.FIPS_TLS_CIPHERS   # TLS 1.2 suites; TLS 1.3 suites are the platform OpenSSL's
         print("  FIPS mode: only FIPS-approved algorithms in this app's own choices (see SECURITY.md for what that does not cover).")
+    if tls and tls.get("acme"):
+        # Renew the ACME certificate while the server runs and load it into
+        # the running TLS context (uvicorn's ssl_context_factory, where this
+        # uvicorn has it; otherwise a renewal says a restart is needed).
+        import inspect
+        import server_acme
+        if "ssl_context_factory" in inspect.signature(uvicorn.Config.__init__).parameters:
+            ssl_args["ssl_context_factory"] = server_acme.context_factory
+        server_acme.start_renewal()
+        print(f"  ACME: the certificate is checked every {server_acme.check_seconds() / 3600:g} hours and renewed in place "
+              f"when fewer than {server_acme.RENEW_DAYS} days are left.")
     try:
         if not is_debug():
             # Suppress access log spam in production mode (one line per request)

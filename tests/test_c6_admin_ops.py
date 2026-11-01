@@ -810,7 +810,7 @@ def test_a_client_error_is_reported_without_a_traceback(monkeypatch):
     class Boom(_RawClient):
         def post(self, ep, body=None):
             raise RuntimeError("connection reset " + "x" * 500)
-    out = remediation.execute(Boom(), "FW-01", GOOD_FW, dry_run=False)
+    out = remediation.execute(Boom(current=[]), "FW-01", GOOD_FW, dry_run=False)   # the policy re-read is empty; the create then raises
     assert out["status"] == "error" and len(out["error"]) < 260 and "Traceback" not in out["error"]
 
 
@@ -1025,7 +1025,7 @@ def fix_route(monkeypatch):
     signed = []
     monkeypatch.setattr(srv, "_build_client", lambda req: signed.append(1) or object())
     monkeypatch.setattr(srv, "writes_enabled", lambda: True)
-    monkeypatch.setattr(remediation, "execute", lambda client, check_id, criteria, dry_run: {"status": "completed"})
+    monkeypatch.setattr(remediation, "execute", lambda client, check_id, criteria, dry_run, plan_hash=None: {"status": "completed"})
     return TestClient(srv.app), signed
 
 
@@ -1058,7 +1058,8 @@ def test_a_live_fix_in_scope_reaches_the_write(fix_route, check_id, criteria, po
     # Arrange
     api, signed = fix_route
     # Act
-    r = api.post("/api/remediation/execute", json=dict(_FIX_BASE, **_FIX_POLICY_SCOPE[policy], check_id=check_id, criteria=criteria))
+    r = api.post("/api/remediation/execute", json=dict(_FIX_BASE, **_FIX_POLICY_SCOPE[policy], check_id=check_id, criteria=criteria,
+                                                       plan_hash=remediation.plan(check_id, criteria).get("plan_hash") or "a" * 64))
     # Assert
     assert r.status_code == 200 and r.json()["status"] == "completed" and signed == [1], r.text
 
@@ -1109,7 +1110,7 @@ _Q_OUT_OF_SCOPE = [
     ("RULE-DESC", {"rule_type": "webDlpRules", "rule_id": "7", "description": "d"}),
 ]
 _Q_IN_SCOPE = [
-    ("FW-01", dict(GOOD_FW), [("POST", "/zia/firewallFilteringRules")]),
+    ("FW-01", dict(GOOD_FW), [("GET", "/zia/firewallFilteringRules"), ("POST", "/zia/firewallFilteringRules")]),   # the policy re-read, then the create
     ("RULE-DESC", {"rule_type": "firewallFilteringRules", "rule_id": "7", "description": "d"},
      [("GET", "/zia/firewallFilteringRules/7"), ("PUT", "/zia/firewallFilteringRules/7")]),
 ]
@@ -1123,6 +1124,8 @@ class _QueueRaw:
 
     def get(self, endpoint):
         self.calls.append(("GET", endpoint))
+        if not endpoint.rstrip("/").split("/")[-1].isdigit():
+            return [], 200   # a rule policy (the re-read before a create): no rule of that name yet
         return {"id": 7, "name": "r", "order": 1, "state": "ENABLED"}, 200
 
     def put(self, endpoint, body):

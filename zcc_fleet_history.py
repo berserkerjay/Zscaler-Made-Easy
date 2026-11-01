@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional
 
 import safe_files
+import store_crypto
 import zcc_fleet as zf
 
 HISTORY_KEEP = 60          # snapshots kept per tenant
@@ -161,15 +162,47 @@ def clean_entry(e: Any) -> Optional[Dict[str, Any]]:
             "score_equal": _pct(e.get("score_equal")), "score_weighted": _pct(e.get("score_weighted"))}
 
 
-def _load_all(path: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
-    p = path or history_path()
+_PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
+
+
+def _read_doc(p: str, strict: bool = False) -> Any:
+    """The file's JSON (a sealed file, store_crypto, opened first), or None.
+    `strict` (a writer): a sealed file whose key is not here raises
+    StoreLocked instead of reading as no history, so it is never replaced."""
     try:
-        if os.path.getsize(p) > MAX_FILE_BYTES:
-            return {}
+        if os.path.getsize(p) > MAX_FILE_BYTES * 4 // 3 + 256:
+            return None
         with open(p, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            text = store_crypto.open_text(f.read())
+        if len(text) > MAX_FILE_BYTES:
+            return None
+        return json.loads(text)
+    except store_crypto.StoreLocked:
+        if strict:
+            raise
+        return None
     except (OSError, ValueError, RecursionError):
+        return None
+
+
+def _profiles(p: str, strict: bool = False) -> Dict[str, str]:
+    """{tenant label: tenant profile id} for the labels a profile was named for."""
+    data = _read_doc(p, strict)
+    pr = data.get("profiles") if isinstance(data, dict) else None
+    if not isinstance(pr, dict):
         return {}
+    return {str(k)[:120]: str(v) for k, v in list(pr.items())[:HISTORY_TENANTS] if isinstance(v, str) and _PROFILE_ID.match(v)}
+
+
+def profile_of(tenant: Any, path: Optional[str] = None) -> str:
+    """The tenant profile a tenant label's history was kept for ("" when
+    none was named: a history from before, or an upload with no profile)."""
+    return _profiles(path or history_path()).get(tenant_key(tenant), "")
+
+
+def _load_all(path: Optional[str] = None, strict: bool = False) -> Dict[str, List[Dict[str, Any]]]:
+    p = path or history_path()
+    data = _read_doc(p, strict)
     t = data.get("tenants") if isinstance(data, dict) else None
     if not isinstance(t, dict):
         return {}
@@ -186,23 +219,27 @@ def load(tenant: Any, path: Optional[str] = None) -> List[Dict[str, Any]]:
     return list(_load_all(path).get(tenant_key(tenant), []))
 
 
-def record(tenant: Any, snap: Dict[str, Any], path: Optional[str] = None) -> List[Dict[str, Any]]:
+def record(tenant: Any, snap: Dict[str, Any], path: Optional[str] = None, *, profile_id: str = "") -> List[Dict[str, Any]]:
     """Add a snapshot for `tenant` (a record label, never a login) and
     return that tenant's history, oldest first. The same read saved twice
-    (same time and source) is kept once."""
+    (same time and source) is kept once. `profile_id`: the tenant profile
+    the read was made with (team mode: who may see this history)."""
     clean = clean_entry(snap)
     if clean is None:
         raise ValueError("The snapshot is not valid.")
     key = tenant_key(tenant)
     p = path or history_path()
     with _LOCK:
-        data = _load_all(p)
+        data = _load_all(p, strict=True)
         hist = [h for h in data.pop(key, []) if not (h["at"] == clean["at"] and h["source"] == clean["source"])]
         hist = sorted(hist + [clean], key=lambda r: r["at"])[-HISTORY_KEEP:]
         data[key] = hist
         while len(data) > HISTORY_TENANTS:
             data.pop(next(iter(data)))
-        _write(p, {"version": 1, "tenants": data})
+        profs = {k: v for k, v in _profiles(p, strict=True).items() if k in data}
+        if _PROFILE_ID.match(str(profile_id or "")):
+            profs[key] = profile_id
+        _write(p, {"version": 1, "tenants": data, "profiles": profs})
     return hist
 
 
@@ -211,10 +248,10 @@ def forget(tenant: Any, path: Optional[str] = None) -> int:
     key = tenant_key(tenant)
     p = path or history_path()
     with _LOCK:
-        data = _load_all(p)
+        data = _load_all(p, strict=True)
         gone = len(data.pop(key, []))
         if gone:
-            _write(p, {"version": 1, "tenants": data})
+            _write(p, {"version": 1, "tenants": data, "profiles": {k: v for k, v in _profiles(p).items() if k in data}})
     return gone
 
 
@@ -228,7 +265,7 @@ def _write(p: str, doc: Dict[str, Any]) -> None:
         except (AttributeError, OSError):   # Windows: the folder's own access rules apply
             pass
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(doc, f, indent=1)
+            f.write(store_crypto.seal_text(json.dumps(doc, indent=1)))   # sealed when store encryption is on
         for attempt in range(20):
             try:
                 os.replace(tmp, p)

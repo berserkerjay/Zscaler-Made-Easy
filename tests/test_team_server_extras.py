@@ -46,11 +46,54 @@ def _fill_every_store(tmp_path):
     with proposals._locked():
         proposals._write(dict(proposals._read(), marker="PROP-PLAIN"))
     audit.record("enc_test", marker="AUDIT-PLAIN")
+    # (wave 9) configuration backups with their index, a template and a configuration cache, and scheduled sync jobs
+    import config_backup as cb
+    import sync_jobs
+    doc = cb.build_doc({"zia.rule_labels": [{"id": 1, "name": "BK-PLAIN label"}]}, {"tenant_label": "BK-PLAIN", "profile_id": pid})
+    cb.save_backup(doc)
+    cb.save_template(cb.make_template(doc, [{"type": "zia.rule_labels", "name": "BK-PLAIN label"}], name="TPL-PLAIN"), profile_id=pid)
+    cb.refresh_cache(pid, {"zia.rule_labels": [{"id": 1, "name": "CACHE-PLAIN label"}]}, {"tenant_label": "CACHE-PLAIN"})
+    with sync_jobs._locked():
+        sync_jobs._write({"version": 1, "jobs": {"job-enc": {"id": "job-enc", "name": "SYNC-PLAIN"}}})
     return pid
 
 
 def _store_files():
     return [e["path"] for e in store_crypto._store_paths()]
+
+
+def sync_jobs_name():
+    import sync_jobs
+    return os.path.basename(sync_jobs.store_path())
+
+
+def test_a_sealed_backup_list_without_its_key_is_an_error_not_an_empty_list(world, monkeypatch):
+    """ASVS V6.2.2 · V7.4.1 · CWE-311 · CWE-459: a sealed backup index whose key is not here refuses (409 on the list) instead of reading as empty, and a new backup never replaces it."""
+    import config_backup as cb
+    monkeypatch.setenv("DLP_CHECK_STORE_ENCRYPTION", "1")
+    doc = cb.build_doc({"zia.rule_labels": [{"id": 1, "name": "L"}]}, {"tenant_label": "acme"})
+    cb.save_backup(doc)
+    index = os.path.join(cb.backups_dir(), "index.json")
+    with open(index, "w", encoding="utf-8") as f:
+        f.write("ZMEENC1:deadbeef:AAAA")   # sealed with a key this computer does not hold
+    with pytest.raises(cb.BackupError, match="encrypted"):
+        cb.list_backups()
+    with pytest.raises(cb.BackupError):
+        cb.save_backup(doc)
+    assert open(index, encoding="utf-8").read() == "ZMEENC1:deadbeef:AAAA", "the sealed list was not replaced"
+    r = _login("root").get("/api/config-backups")
+    assert r.status_code == 409 and "encrypted" in r.json()["detail"]
+
+
+def test_sealed_sync_jobs_without_their_key_are_never_overwritten(team_on, monkeypatch):
+    """ASVS V6.2.2 · CWE-311 · CWE-459: a sealed sync job store whose key is not here raises instead of reading as no jobs, so a write never replaces it."""
+    import sync_jobs
+    monkeypatch.setenv("DLP_CHECK_STORE_ENCRYPTION", "1")
+    os.makedirs(os.path.dirname(sync_jobs.store_path()), exist_ok=True)
+    with open(sync_jobs.store_path(), "w", encoding="utf-8") as f:
+        f.write("ZMEENC1:deadbeef:AAAA")
+    with pytest.raises(store_crypto.StoreLocked):
+        sync_jobs._read()
 
 
 def test_every_store_is_sealed_readable_and_survives_key_rotation(team_on, monkeypatch, tmp_path):
@@ -62,6 +105,9 @@ def test_every_store_is_sealed_readable_and_survives_key_rotation(team_on, monke
     for want in ("tenant_profiles.json", "change_requests.json", "deployments.json", "proposals.json", "team_server.json", "audit.log"):
         assert want in names, (want, names)
     assert any(n.startswith("snap-") for n in names) and any("workspace_notes" in n for n in names)
+    assert {"index.json", sync_jobs_name()} <= names, names
+    for prefix in ("bk-", "tpl-", "cache-"):
+        assert any(n.startswith(prefix) for n in names), (prefix, names)
     key_file = store_crypto.key_file()
     assert stat.S_IMODE(os.stat(key_file).st_mode) == 0o600
     old_key = store_crypto.status()["key"]
@@ -80,6 +126,14 @@ def test_every_store_is_sealed_readable_and_survives_key_rotation(team_on, monke
         assert workspace_notes.list_notes("NOTES-PLAIN")
         assert proposals._read()["marker"] == "PROP-PLAIN"
         assert any(e.get("marker") == "AUDIT-PLAIN" for e in audit.tail(50))
+        import config_backup as cb
+        import sync_jobs
+        (bk,) = cb.list_backups(pid)
+        assert bk["tenant_label"] == "BK-PLAIN" and cb.load_backup(bk["id"])["types"]["zia.rule_labels"][0]["name"] == "BK-PLAIN label"
+        (tpl,) = cb.list_templates()
+        assert tpl["name"] == "TPL-PLAIN" and cb.load_template(tpl["id"])["meta"]["name"] == "TPL-PLAIN"
+        assert cb.read_cache(pid)["meta"]["tenant_label"] == "CACHE-PLAIN"
+        assert sync_jobs._read()["jobs"]["job-enc"]["name"] == "SYNC-PLAIN"
     team._CACHE.update(key=None, data=None)
     read_everything()
     out = store_crypto.rotate()
@@ -108,7 +162,7 @@ def test_a_tampered_or_keyless_store_is_refused_and_self_healing_does_not_eat_se
     res = self_heal.check_stores()
     assert not any("Tenant profiles" in a for a in res.get("actions") or []), res
     body = raw[raw.rindex(":") + 1:]
-    flipped = raw[:raw.rindex(":") + 1] + ("A" if body[5] != "A" else "B") + body[1:5] + body[5:]
+    flipped = raw[:raw.rindex(":") + 1] + ("A" if body[0] != "A" else "B") + body[1:]   # always a different first character
     with pytest.raises(store_crypto.StoreLocked):
         store_crypto.open_text(flipped)
     with pytest.raises(store_crypto.StoreLocked):
@@ -398,3 +452,92 @@ def test_acme_refuses_plain_http_other_hosts_and_a_missing_token(acme_env, monke
 def test_acme_is_off_by_default():
     """ASVS V14.1.1 · CWE-1188: no ACME and no outbound call unless ZSCALER_TLS=acme."""
     assert not server_acme.requested() and server_tls.ensure() is None
+
+
+# ── ACME renewal while the server runs (renew_once, the daily check) ─────
+def _cert_with_days_left(folder, days):
+    """A served certificate (and its key) in the TLS folder that has `days` left."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "team.example.test")])
+    now = dt.datetime.now(dt.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key()).serial_number(7)
+            .not_valid_before(now - dt.timedelta(days=60)).not_valid_after(now + dt.timedelta(days=days, hours=1))
+            .sign(key, hashes.SHA256()))
+    os.makedirs(folder, exist_ok=True)
+    cert_path, key_path = os.path.join(folder, server_tls.CERT_FILE), os.path.join(folder, server_tls.KEY_FILE)
+    with open(key_path, "wb") as f:
+        f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    with open(cert_path, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    return server_tls.fingerprint(cert_path)
+
+
+class _FakeTlsContext:
+    """Stands in for the running server's ssl.SSLContext: records the
+    certificate chains loaded into it."""
+
+    def __init__(self):
+        self.loaded = []
+
+    def load_cert_chain(self, certfile, keyfile=None):
+        self.loaded.append((certfile, keyfile))
+
+
+def test_acme_renew_once_renews_a_certificate_with_29_days_left_and_reloads_the_served_context(acme_env, monkeypatch):
+    """ASVS V9.1.2 · V14.1.1 · CWE-298 · WSTG-CRYP-01: with 29 days left the check renews through the fake ACME server, loads the new certificate into the running TLS context (no restart) and audits it."""
+    old_fp = _cert_with_days_left(str(acme_env), 29)
+    ctx = _FakeTlsContext()
+    monkeypatch.setattr(server_acme, "_CONTEXTS", [])
+    server_acme.register_context(ctx)
+    out = server_acme.renew_once(session=FakeNet(), log=lambda *a: None)
+    assert out["renewed"] and out["reloaded"] == 1 and not out["restart_needed"] and out["days_left"] > 30
+    assert out["fingerprint"] != old_fp
+    assert ctx.loaded == [(os.path.join(str(acme_env), server_tls.CERT_FILE), os.path.join(str(acme_env), server_tls.KEY_FILE))]
+    ev = [e for e in audit.tail(20) if e.get("event") == "acme_certificate_reloaded"]
+    assert ev and ev[-1]["contexts"] == 1
+    assert CF_TOKEN not in open(audit.path(), encoding="utf-8").read()
+
+
+def test_acme_renew_once_with_a_failed_renewal_keeps_the_old_certificate_and_audits_it(acme_env, monkeypatch):
+    """ASVS V7.2.2 · V9.1.2 · CWE-298 · CWE-778: a renewal that fails (no Cloudflare token) keeps serving the old certificate, reloads nothing and writes an audit event."""
+    old_fp = _cert_with_days_left(str(acme_env), 29)
+    os.unlink(os.path.join(str(acme_env), server_acme.TOKEN_FILE))
+    ctx = _FakeTlsContext()
+    monkeypatch.setattr(server_acme, "_CONTEXTS", [])
+    server_acme.register_context(ctx)
+    out = server_acme.renew_once(session=FakeNet(), log=lambda *a: None)
+    assert not out["renewed"] and out["reloaded"] == 0 and out["fingerprint"] == old_fp and 28 < out["days_left"] <= 30
+    assert server_tls.fingerprint(os.path.join(str(acme_env), server_tls.CERT_FILE)) == old_fp and ctx.loaded == []
+    assert any(e.get("event") == "acme_renewal_failed" for e in audit.tail(20))
+
+
+def test_acme_renew_once_says_restart_needed_when_no_context_can_be_reloaded(acme_env, monkeypatch):
+    """ASVS V14.1.1 · CWE-298: a renewal with no reloadable TLS context says a restart is needed and audits that."""
+    _cert_with_days_left(str(acme_env), 29)
+    monkeypatch.setattr(server_acme, "_CONTEXTS", [])
+    out = server_acme.renew_once(session=FakeNet(), log=lambda *a: None)
+    assert out["renewed"] and out["restart_needed"] and out["reloaded"] == 0
+    assert any(e.get("event") == "acme_certificate_renewed_restart_needed" for e in audit.tail(20))
+
+
+def test_acme_a_certificate_with_more_than_30_days_left_is_not_renewed(acme_env, monkeypatch):
+    """ASVS V9.1.2 · CWE-298: with 45 days left the check fetches nothing and reloads nothing."""
+    fp = _cert_with_days_left(str(acme_env), 45)
+    ctx = _FakeTlsContext()
+    monkeypatch.setattr(server_acme, "_CONTEXTS", [ctx])
+    net = FakeNet()
+    out = server_acme.renew_once(session=net, log=lambda *a: None)
+    assert not out["renewed"] and out["fingerprint"] == fp and ctx.loaded == [] and net.n == 0
+
+
+def test_acme_the_check_runs_daily_by_default_within_bounds(monkeypatch):
+    """ASVS V14.1.1 · CWE-1188: the background check runs every 24 hours unless set, held between 1 and 168 hours."""
+    monkeypatch.delenv("ZSCALER_ACME_CHECK_HOURS", raising=False)
+    assert server_acme.check_seconds() == 24 * 3600
+    for raw, hours in (("6", 6), ("0", 1), ("9999", 168), ("soon", 24)):
+        monkeypatch.setenv("ZSCALER_ACME_CHECK_HOURS", raw)
+        assert server_acme.check_seconds() == hours * 3600, raw

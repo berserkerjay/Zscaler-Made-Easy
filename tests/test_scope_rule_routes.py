@@ -332,10 +332,12 @@ class Route:
 
     def __init__(self, path: str, body: Optional[Dict[str, Any]] = None, *, partial: Optional[Dict[str, Any]] = WEB,
                  out: tuple = WEB_OUT, nothing: int = 400, setup: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
-                 why: str = "", ok: int = 200) -> None:
+                 why: str = "", ok: int = 200, write_mode: bool = False) -> None:
         self.path, self.body, self.partial, self.out, self.nothing, self.setup, self.why = path, body or {}, partial, out, nothing, setup, why
         # The answer once the part in scope is read (the OTP route's fake device list has no such device: 404 after the read).
         self.ok = ok
+        # A sensitive read that also needs write mode (the OTP route, wave 9): on for the cases that read the part in scope.
+        self.write_mode = write_mode
 
     def request(self, sel: Dict[str, Any]) -> Dict[str, Any]:
         if self.setup is not None:
@@ -466,7 +468,7 @@ ROUTES: List[Route] = [
     Route("/api/zcc/install", {"app_profile_id": "21"}, partial=ZCC, out=ZCC_OUT),
     # One device's one-time passwords (zcc_otp): a sensitive read, ZCC only.
     Route("/api/zcc/otp", {"assessor": "QA tester", "user": "jdoe@acme.example", "device": "LT-1", "confirm_text": "SHOW OTP LT-1"},
-          partial=ZCC, out=ZCC_OUT, ok=404),
+          partial=ZCC, out=ZCC_OUT, ok=404, write_mode=True),
     # ZDX cloud path and score analysis (zdx_insights); Client Connector device details and disable reasons (zcc_devices)
     Route("/api/zdx/cloudpath", {"app_id": "3002", "host": "billing.example.com"}, partial=ZDX, out=ZDX_OUT),
     Route("/api/zdx/analysis/status", {"analysis_id": "90001"}, partial=ZDX, out=ZDX_OUT),
@@ -541,9 +543,11 @@ PARTIAL = [r for r in ROUTES if r.partial is not None]
 
 
 @pytest.mark.parametrize("route", PARTIAL, ids=_ids)
-def test_part_in_scope_reads_only_that_part(tenant, route):
+def test_part_in_scope_reads_only_that_part(tenant, route, monkeypatch):
     """ASVS V4.1.3 · ASVS V1.4.4 · CWE-272 · CWE-201: part in scope -> a client is built and only the in-scope part is read."""
     # Arrange
+    if route.write_mode:
+        monkeypatch.setattr(srv, "writes_enabled", lambda: True)
     body = route.request(route.partial)
     # Act
     r = TestClient(srv.app).post(route.path, json=body)
@@ -555,9 +559,11 @@ def test_part_in_scope_reads_only_that_part(tenant, route):
 
 
 @pytest.mark.parametrize("route", [r for r in PARTIAL if r.setup is None], ids=_ids)
-def test_part_in_scope_of_a_saved_profile_reads_only_that_part(tenant, route):
+def test_part_in_scope_of_a_saved_profile_reads_only_that_part(tenant, route, monkeypatch):
     """ASVS V4.1.3 · CWE-272: with no Scope page selection sent, the saved profile's partial selection is honoured just as narrowly."""
     # Arrange: the page sends nothing; the chosen profile holds the partial selection.
+    if route.write_mode:
+        monkeypatch.setattr(srv, "writes_enabled", lambda: True)
     import tenant_profiles
     pid = tenant_profiles.upsert({"name": "Partial", "cloud": "production", "vanity_domain": "acme", "client_id": CREDS["client_id"],
                                   "scopes": route.partial["scopes"], "channels": route.partial["channels"]},

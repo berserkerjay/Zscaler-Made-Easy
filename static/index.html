@@ -2223,8 +2223,16 @@ function reorderReset() {
 }
 
 async function step3bDeleteAll(dryRun) {
+  let typedPhrase = '';
   if (!dryRun) {
-    if (!confirm('⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON backup).\n\nThis cannot be undone via API. Continue?')) return;
+    // The typed phrase names how many rules go (from the dry run); the server
+    // checks it against the rules it reads again right before deleting.
+    const phrase = window._step3bPhrase || '';
+    if (!phrase) { alert('Run the deletion preview (dry run) first: it shows what would be deleted and the phrase to type.'); return; }
+    const msg = `⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON backup).\n\nThis cannot be undone via API.`;
+    if (window.dlpDialog && window.dlpDialog.phrase) typedPhrase = await window.dlpDialog.phrase({ title: 'Delete every Inline Web DLP rule?', body: msg, phrase, okLabel: 'Delete now', tone: 'bad' });
+    else { try { typedPhrase = window.prompt(`${msg}\n\nType ${phrase} to continue:`, ''); } catch (e) { typedPhrase = null; } }
+    if (!typedPhrase) return;
     const n = (typeof migrateRules !== 'undefined' && Array.isArray(migrateRules) && migrateRules.length) || 1;
     if (window.zdRateGate && !(await window.zdRateGate({ delete: n, activate: 1 }, migrateCredBody(), `Delete ${n} Inline Web DLP rule(s).`))) return;
   }
@@ -2233,7 +2241,7 @@ async function step3bDeleteAll(dryRun) {
   // banner accurate when the user re-runs the preview.
   clearPendingAction('step3b');
   body.dry_run = dryRun;
-  if (!dryRun) { tenantWriteBody(body); body.plan_hash = window._step3bPlanHash || ''; }   // deletes only what the dry run listed
+  if (!dryRun) { tenantWriteBody(body); body.plan_hash = window._step3bPlanHash || ''; body.confirm_phrase = String(typedPhrase).trim(); }   // deletes only what the dry run listed
   const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
   try {
@@ -2242,6 +2250,7 @@ async function step3bDeleteAll(dryRun) {
     const r = await resp.json();
     if (r.status === 'dry_run') {
       window._step3bPlanHash = r.plan_hash || '';
+      window._step3bPhrase = r.confirm_phrase || '';
       const list = (r.would_delete || []).slice(0, 30).map(x => `<li><code style="color:var(--dim);">${escapeHtml(String(x.rule_id ?? ''))}</code> · ${escapeHtml(x.rule_name)} (${escapeHtml(String(x.action ?? ''))})</li>`).join('');
       el.innerHTML = `
         <div style="color:#dc2626;font-weight:600;">DRY-RUN: would delete ${r.would_delete_count} rule(s).</div>
@@ -2423,6 +2432,13 @@ async function step4EnablePlan() {
       el.innerHTML = `<div style="color:var(--pass);font-weight:600;">✓ Already enabled — no activation needed.</div><div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || '')}</div>`;
       return;
     }
+    if (r.status !== 'dry_run' || !r.plan_hash) {
+      // No setting found to write (this app never writes a guessed field or endpoint): nothing to activate.
+      _step4Plan = null;
+      clearPendingAction('step4');
+      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Nothing to activate from here.</div><div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || '')}</div>`;
+      return;
+    }
     // Plan exists → offer inline activate prompt
     const planSrc = r.plan_source ? `<div style="margin-bottom:0.4rem;font-size:0.78rem;color:var(--dim);">Plan source: <code style="color:var(--accent);">${escapeHtml(r.plan_source)}</code></div>` : '';
     el.innerHTML = `
@@ -2445,13 +2461,14 @@ async function step4Activate() {
     alert('⚠  No plan staged\n\nRun ② Enable (dry run) first to build the activation plan.');
     return;
   }
-  if (!confirm('This will attempt to enable "Evaluate All DLP Rules" via API write.\n\nThe tool will try the exact field it detected first, then blind-probe candidate endpoints/fields. Every attempt is logged.\n\nContinue?')) return;
-  if (window.zdRateGate && !(await window.zdRateGate({ write: 1, activate: 1 }, migrateCredBody(), 'Enable "Evaluate All DLP Rules" (one write, or a few if the field has to be probed).'))) return;
+  if (!confirm(`This will enable "Evaluate All DLP Rules" with one API write:\n\n${_step4Plan.endpoint} → ${_step4Plan.field} = ${JSON.stringify(_step4Plan.value)}\n\nThe setting is read again first; if it changed since the dry run, nothing is written. Continue?`)) return;
+  if (window.zdRateGate && !(await window.zdRateGate({ write: 1, activate: 1 }, migrateCredBody(), 'Enable "Evaluate All DLP Rules" (one write).'))) return;
   const body = migrateValidateCreds(); if (!body) return;
   body.dry_run = false;
+  body.plan_hash = _step4Plan.plan_hash || '';   // writes only what the dry run showed
   tenantWriteBody(body);
   const el = document.getElementById('step4Result'); el.style.display = 'block';
-  el.innerHTML = '<span style="color:var(--dim);">③ Activating via API... (trying found field, then candidate combinations)</span>';
+  el.innerHTML = '<span style="color:var(--dim);">③ Activating via API... (re-reading the setting, then one write and a read-back)</span>';
   try {
     const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
@@ -2472,6 +2489,12 @@ async function step4Activate() {
           Wrote: <code>${escapeHtml(r.via || '')}</code> → <code>${escapeHtml(r.field || '')}</code> = <code>true</code> (verified by re-GET).
         </div>
         ${attemptsHtml}`;
+      return;
+    }
+    if (r.status === 'plan_changed') {
+      _step4Plan = null;
+      clearPendingAction('step4');
+      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">The setting changed since the dry run: nothing was written.</div><div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>`;
       return;
     }
     if (r.status === 'blocked') {
@@ -3494,6 +3517,7 @@ function renderChecks(checks, filter) {
 
 window._remediationCatalog = null;
 let _currentRemediationCheckId = null;
+let _remediationPlanHash = '';   // the previewed plan's hash: a live apply sends it back (the server re-plans and compares)
 
 async function _loadRemediationCatalog() {
   if (window._remediationCatalog) return window._remediationCatalog;
@@ -3620,6 +3644,7 @@ async function remediationPreview() {
         <div style="font-size:0.82rem;margin-top:0.4rem;"><strong>Body:</strong></div>
         <pre style="background:var(--well);padding:0.5rem;border-radius:4px;font-size:0.75rem;overflow-x:auto;margin-top:0.2rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
       </div>`;
+    _remediationPlanHash = data.plan_hash || '';
     document.getElementById('remediationActivateBtn').style.display = 'inline-flex';
   } catch(e) {
     resultEl.innerHTML = `<div style="color:var(--fail);">Preview failed: ${escapeHtml(e.message)}</div>`;
@@ -3640,6 +3665,7 @@ async function remediationActivate() {
   body.check_id = check_id;
   body.criteria = criteria;
   body.dry_run = false;
+  body.plan_hash = _remediationPlanHash;
   Object.assign(body, scopePageSelection());   // a live fix writes only a rule policy in scope on the Scope page
   tenantWriteBody(body);
   const resultEl = document.getElementById('remediationResult');
@@ -3647,7 +3673,7 @@ async function remediationActivate() {
   try {
     const r = await fetch('/api/remediation/execute', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(data.detail || data.message || `HTTP ${r.status}`);
     if (data.status === 'completed') {
       resultEl.innerHTML = `<div style="padding:0.6rem 0.8rem;background:rgba(16,185,129,0.08);border-left:3px solid var(--pass);border-radius:4px;">
         <strong style="color:var(--pass);">✓ Applied (HTTP ${data.http_status})</strong>
@@ -3906,6 +3932,7 @@ async function wizardPreview() {
         ${data.note ? `<div style="margin-top:0.3rem;">${escapeHtml(data.note)}</div>` : ''}
         <pre style="background:var(--well);padding:0.4rem;border-radius:4px;font-size:0.72rem;overflow-x:auto;margin-top:0.3rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
       </div>`;
+    _remediationPlanHash = data.plan_hash || '';
     _wizardPlanReady(true);
   } catch(e) {
     resultEl.innerHTML = `<div style="color:var(--fail);">Preview failed: ${escapeHtml(e.message)}</div>`;
@@ -3923,6 +3950,7 @@ async function wizardApply() {
   body.check_id = check_id;
   body.criteria = _collectWizardCriteria();
   body.dry_run = false;
+  body.plan_hash = _remediationPlanHash;
   Object.assign(body, scopePageSelection());   // a live fix writes only a rule policy in scope on the Scope page
   tenantWriteBody(body);
   const resultEl = document.getElementById('wizardResult');
@@ -3930,7 +3958,7 @@ async function wizardApply() {
   try {
     const r = await fetch('/api/remediation/execute', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(data.detail || data.message || `HTTP ${r.status}`);
     let outcome;
     if (data.status === 'completed') {
       outcome = {check_id, label: recipe.label, status: 'applied', message: data.message || '', http: data.http_status};

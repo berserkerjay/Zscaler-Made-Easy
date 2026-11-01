@@ -7,6 +7,7 @@ in team_routes.py (enforced by team_server.TeamAccessMiddleware).
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -69,6 +70,7 @@ def status_fields(request: Request) -> Dict[str, Any]:
             "user": u.get("username") if u else None, "role": u.get("role") if u else None,
             "may_write": bool(u and "apply" in team.ROLE_ACTIONS.get(str(u.get("role")), ())),
             "is_admin": bool(u and u.get("role") == "admin"),
+            "password_change_required": team.must_change_password(u),
             "sso_login_url": "/login", "logout_url": "/api/auth/logout",
             "oidc": sso.sso_enabled(), "oidc_login_url": "/api/auth/sso/login" if sso.sso_enabled() else None}
 
@@ -117,9 +119,11 @@ def register(app: FastAPI) -> None:
             headers = {"Retry-After": "60"} if e.status in (423, 429) else None
             return JSONResponse({"detail": str(e)}, status_code=e.status, headers=headers)
         sid = team.start_session(u, via="password", previous_sid=request.cookies.get(security.SSO_SESSION_COOKIE))
-        resp = JSONResponse({"ok": True, "user": u.get("username"), "role": u.get("role")})
+        must = team.must_change_password(u)
+        resp = JSONResponse({"ok": True, "user": u.get("username"), "role": u.get("role"), "must_change_password": must})
         security.set_session_cookie(resp, request, sid)
-        audit.record("team_login", actor=u.get("username"), via="password", role=u.get("role"), client=client)
+        audit.record("team_login", actor=u.get("username"), via="password", role=u.get("role"), client=client,
+                     **({"must_change_password": True} if must else {}))
         return resp
 
     @app.get("/api/team/me")
@@ -148,6 +152,8 @@ def register(app: FastAPI) -> None:
         if not u.get("password") or not team.verify_password(str(data.get("current") or ""), u.get("password")):
             audit.record("team_password_change_refused", reason="the current password was wrong")
             raise HTTPException(status_code=403, detail="The current password is not right.")
+        if isinstance(data.get("new"), str) and data.get("new") == data.get("current"):
+            raise HTTPException(status_code=400, detail="Choose a password different from the current one.")
         try:
             team.set_password(u["id"], data.get("new"), by=u.get("username"))
         except team.TeamError as e:
@@ -180,8 +186,11 @@ def register(app: FastAPI) -> None:
         _on()
         data = await _body(request)
         try:
+            # A password an administrator types is theirs, not the new person's:
+            # its owner chooses their own at first sign-in.
             u = team.create_user(username=data.get("username"), role=data.get("role") or "viewer", password=data.get("password") or None,
-                                 display_name=data.get("display_name") or "", email=data.get("email") or "", by=security.current_actor())
+                                 display_name=data.get("display_name") or "", email=data.get("email") or "", by=security.current_actor(),
+                                 must_change=True)
         except team.TeamError as e:
             _fail(e)
         return {"user": team.public_user(u)}
@@ -217,11 +226,13 @@ def register(app: FastAPI) -> None:
 
     @app.post("/api/team/users/{user_id}/password")
     async def team_user_password(user_id: str, request: Request):
-        """Set an account's password (an administrator's reset). Its sessions end."""
+        """Set an account's password (an administrator's reset). Its sessions
+        end, and its owner must choose their own password at the next sign-in."""
         _on()
         data = await _body(request)
         try:
-            team.set_password(user_id, data.get("password"), by=security.current_actor())
+            me = team.current_user() or {}
+            team.set_password(user_id, data.get("password"), by=security.current_actor(), must_change=user_id != me.get("id"))
         except team.TeamError as e:
             _fail(e)
         return {"ok": True}
@@ -436,9 +447,53 @@ def register_resolvers() -> None:
         return None
 
     def tenant_key(tenant: str, _params) -> Optional[set]:
+        """A proposal queue's key, or a tenant label a local history is kept
+        under (Client Connector fleet history, SSL coverage history): the
+        profile the history was kept for, else the profiles of that label."""
         import proposals
-        return team.profiles_for_keys([proposals.tenant_key(tenant)]) or None
+        out = set(team.profiles_for_keys([proposals.tenant_key(tenant)]))
+        try:
+            import zcc_fleet_history
+            pid = zcc_fleet_history.profile_of(tenant)
+            if pid:
+                out.add(pid)
+        except Exception:  # noqa: BLE001 - an unreadable history names no profile
+            pass
+        out |= team.profiles_for_label(tenant)
+        return out or None
 
+    def backup(backup_id: str, _params) -> Optional[dict]:
+        import config_backup as cb
+        meta = cb.backup_meta(backup_id)
+        if meta is None:
+            return None
+        return {"profiles": team.record_profiles(meta), "owner": meta.get("owner_id") or ""}
+
+    def template(template_id: str, _params) -> Optional[dict]:
+        import config_backup as cb
+        if cb.TEMPLATE_ID.match(str(template_id or "")):
+            meta = cb.template_meta(template_id)
+            if meta is None:
+                return None
+            return {"profiles": team.record_profiles(meta), "owner": meta.get("owner_id") or "", "share": "template"}
+        # A POV template (pov.py) is a plan with no tenant in it: its owner,
+        # whom it is shared with, or (made before team mode) anyone signed in.
+        rec = team.sharing("template", template_id) if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", str(template_id or "")) else None
+        if not rec:
+            import pov
+            return {"profiles": set(), "anyone": True} if any(t.get("id") == template_id for t in pov.list_templates()) else None
+        return {"profiles": set(), "owner": rec.get("owner") or "", "share": "template"}
+
+    def saved_report(name: str, _params) -> Optional[dict]:
+        import traffic_logs
+        meta = traffic_logs.saved_meta(name)
+        if meta is None:
+            return None
+        return {"profiles": team.record_profiles(meta), "owner": meta.get("owner_id") or ""}
+
+    team.register_resolver("backup_id", backup)
+    team.register_resolver("template_id", template)
+    team.register_resolver("saved_name", saved_report)
     team.register_resolver("rid", change_request)
     team.register_resolver("dep_id", deployment)
     team.register_resolver("op_id", operation)

@@ -142,11 +142,22 @@ def _tenant(client, packs: Sequence[Dict[str, Any]], tenant_cache: Optional[Dict
     return snap
 
 
+def confirm_phrase(n: int) -> str:
+    """The phrase a person types to confirm a removal of `n` objects (the
+    server checks it against the plan it re-made, never the page's count)."""
+    return f"DELETE {int(n)} OBJECTS"
+
+
+PHRASE_SHAPE = re.compile(r"\A\s*DELETE\s+\d{1,6}\s+OBJECTS\s*\Z", re.IGNORECASE)
+
+
 def _with_rate(plan: Dict[str, Any], client: Any = None) -> Dict[str, Any]:
     """Add how this removal meets ZIA's rate limits, from the requests this
-    app sent in the last hour: its deletes plus the one activation."""
+    app sent in the last hour: its deletes plus the one activation. Also
+    the typed phrase that confirms it (DELETE <n> OBJECTS)."""
     import zia_rate
-    n = int(plan.get("remove_count") or 0)
+    n = int(plan.get("remove_count") or sum(1 for it in plan.get("items") or [] if it.get("status") == "remove"))
+    plan["confirm_phrase"] = confirm_phrase(n)
     f = zia_rate.forecast({"delete": n, "activate": 1}, key=zia_rate.key_of(client), tenant_label=zia_rate.labels_of(client)) if n and not plan.get("blockers") else None
     if f:
         f["detail"] = zia_rate.history_text(f)
@@ -438,7 +449,7 @@ def plan_removal_deployment(client, record: Dict[str, Any], *, tenant_cache: Opt
 
 def remove_deployment(client, record: Dict[str, Any], *, plan_hash: str, writes_enabled: Optional[bool] = None,
                       log: pd.LogFn = None, settle_seconds: float = 45.0, cancel: Optional[threading.Event] = None,
-                      tenant_held: bool = False) -> Dict[str, Any]:
+                      tenant_held: bool = False, confirm_text: Optional[str] = None) -> Dict[str, Any]:
     """Undo one recorded deployment through the guided path: the plan
     previewed by plan_removal_deployment, tiered deletes with activation,
     then the same read-back verification as a pack removal.
@@ -447,7 +458,8 @@ def remove_deployment(client, record: Dict[str, Any], *, plan_hash: str, writes_
     the lock, which is not re-entrant, is not taken a second time."""
     planner = lambda c=client: plan_removal_deployment(c, record)  # noqa: E731
     run = _execute_locked if tenant_held else _execute
-    return run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
+    return run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel,
+               confirm_text=confirm_text)
 
 
 def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
@@ -774,7 +786,7 @@ def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_
 
 def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
            log: pd.LogFn = None, settle_seconds: float = 45.0, everything: bool = False,
-           cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+           cancel: Optional[threading.Event] = None, confirm_text: Optional[str] = None) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal. Re-reads the tenant,
     verifies the plan_hash still matches, then deletes each object in
     reverse dependency order, re-checking that the id still carries the
@@ -786,20 +798,21 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     the result's `stopped` says why."""
     return _execute(client, lambda c=client: plan_removal(c, packs, everything=everything),
                     plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel,
-                    require_hash=True)
+                    require_hash=True, confirm_text=confirm_text)
 
 
 def remove_selected(client, selected: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
-                    log: pd.LogFn = None, settle_seconds: float = 45.0, cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+                    log: pd.LogFn = None, settle_seconds: float = 45.0, cancel: Optional[threading.Event] = None,
+                    confirm_text: Optional[str] = None) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal_selected: the chosen
     rules, then the engines and dictionaries only they used."""
     return _execute(client, lambda c=client: plan_removal_selected(c, selected),
                     plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel,
-                    require_hash=True)
+                    require_hash=True, confirm_text=confirm_text)
 
 
 def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
-             cancel: Optional[threading.Event] = None, require_hash: bool = False) -> Dict[str, Any]:
+             cancel: Optional[threading.Event] = None, require_hash: bool = False, confirm_text: Optional[str] = None) -> Dict[str, Any]:
     """Run one removal under pack_ops run control (see pack_deploy.apply),
     on the client's own tenant's ZIA rate limits. Every delete and the
     run's summary go to the audit log (pack_ops.audited_run).
@@ -811,11 +824,11 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
             ops.audit_refusal("removal", client, plan_hash=plan_hash, reason=ops.BUSY_REASON)
             return ops.busy_result(plan_hash=plan_hash)
         return _execute_locked(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log,
-                               settle_seconds=settle_seconds, cancel=cancel, require_hash=require_hash)
+                               settle_seconds=settle_seconds, cancel=cancel, require_hash=require_hash, confirm_text=confirm_text)
 
 
 def _execute_locked(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
-                    cancel: Optional[threading.Event] = None, require_hash: bool = False) -> Dict[str, Any]:
+                    cancel: Optional[threading.Event] = None, require_hash: bool = False, confirm_text: Optional[str] = None) -> Dict[str, Any]:
     """The removal run of _execute, for a caller that already holds
     ops.tenant_run(client): the client's ZIA rate limits, run control and
     the audit log, around _execute_run."""
@@ -823,7 +836,7 @@ def _execute_locked(client, planner, *, plan_hash: str, writes_enabled: Optional
     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("removal", client, plan_hash=plan_hash, cancel=cancel) as run:
         run["result"] = _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log,
                                      settle_seconds=settle_seconds, cancel=cancel,
-                                     require_hash=require_hash)
+                                     require_hash=require_hash, confirm_text=confirm_text)
         return run["result"]
 
 
@@ -839,7 +852,7 @@ def _plan_with(planner, client: Any) -> Dict[str, Any]:
 
 
 def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
-                 cancel: Optional[threading.Event] = None, require_hash: bool = False) -> Dict[str, Any]:
+                 cancel: Optional[threading.Event] = None, require_hash: bool = False, confirm_text: Optional[str] = None) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     if writes_enabled is not True:
         # Deny by default: only an explicit True (the server's write gate) deletes.
@@ -864,6 +877,15 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
         return {"status": "stale", "blockers": [
             "The tenant changed since the preview (the removal plan no longer matches). Run the preview again and confirm the new plan."],
             "results": [], "plan_hash": plan["plan_hash"]}
+    if confirm_text is not None:
+        # The typed phrase names the number of objects of the plan re-made
+        # here from a fresh read, never the page's count: a phrase for
+        # another number deletes nothing.
+        import security
+        want = plan.get("confirm_phrase") or confirm_phrase(sum(1 for it in plan["items"] if it["status"] == "remove"))
+        if not security.typed_phrase_matches(confirm_text, want):
+            return {"status": "blocked", "phrase_mismatch": True, "confirm_phrase": want, "results": [], "blockers": [
+                f"Type {want} to confirm this removal (the number of objects it deletes). Nothing was deleted."]}
 
     zia = client.zia
     to_remove = [it for it in plan["items"] if it["status"] == "remove"]

@@ -51,6 +51,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 import safe_files
+import store_crypto
 
 try:  # POSIX
     import fcntl  # type: ignore
@@ -130,9 +131,12 @@ def _locked() -> Iterator[None]:
 
 
 def _read() -> Dict[str, Any]:
+    """The jobs (a sealed store, store_crypto, is opened with its key; a
+    store whose key is not here raises StoreLocked rather than reading as
+    empty, so the next write never replaces jobs it could not read)."""
     try:
         with open(store_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = store_crypto.load_json(f)
         if isinstance(data, dict) and isinstance(data.get("jobs"), dict):
             return data
     except (OSError, ValueError):
@@ -146,7 +150,7 @@ def _write(data: Dict[str, Any]) -> None:
     fd, tmp = tempfile.mkstemp(prefix=".sync_jobs.", suffix=".tmp", dir=folder)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=1)
+            store_crypto.dump_json(data, f, indent=1)   # sealed when store encryption is on
             f.flush()
             os.fsync(f.fileno())
         with contextlib.suppress(OSError):

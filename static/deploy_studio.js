@@ -1610,10 +1610,18 @@ async function _dzRemovalApply() {
   const rules = remove.filter(i => i.kind === 'policy').map(i => i.name);
   const others = remove.length - rules.length;
   const named = rules.slice(0, 8).map(n => `  • ${n}`).join('\n') + (rules.length > 8 ? `\n  … and ${rules.length - 8} more` : '');
-  if (!window.confirm(`Final confirmation.\n\nPermanently remove ${rules.length} rule(s) from ${R.plan.tenant_label || 'this tenant'}:\n${named || '  (none)'}\n\nplus ${others} engine(s) and dictionar${others === 1 ? 'y' : 'ies'} that nothing else uses (checked again right before each one goes).\n\n${R.plan.rate_forecast ? _dzRateText(R.plan.rate_forecast) + '\n\n' : ''}This cannot be undone from here. Click OK to remove, or Cancel to stop.`)) return;
+  // The typed phrase names how many objects go; the server checks it
+  // against the plan it re-makes from a fresh read before deleting anything.
+  const phrase = R.plan.confirm_phrase || `DELETE ${remove.length} OBJECTS`;
+  const body = `Permanently remove ${rules.length} rule(s) from ${R.plan.tenant_label || 'this tenant'}:\n${named || '  (none)'}\n\nplus ${others} engine(s) and dictionar${others === 1 ? 'y' : 'ies'} that nothing else uses (checked again right before each one goes).\n\n${R.plan.rate_forecast ? _dzRateText(R.plan.rate_forecast) + '\n\n' : ''}This cannot be undone from here.`;
+  let typed = '';
+  const dlg = _dzDlg();
+  if (dlg && dlg.phrase) typed = await dlg.phrase({ title: 'Final confirmation', body, phrase, okLabel: 'Remove now' });
+  else { try { typed = window.prompt(`Final confirmation.\n\n${body}\n\nType ${phrase} to remove:`, ''); } catch (e) { typed = null; } }
+  if (!typed) return;
   DZ.busy = true; R.step = 3; DZ.job = null; _dzRemovalRender();
   try {
-    const snap = await _dzRunJob('/api/dlp-packs/removal/apply/start', { ..._dzRemovalScope(), plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() });
+    const snap = await _dzRunJob('/api/dlp-packs/removal/apply/start', { ..._dzRemovalScope(), plan_hash: R.plan.plan_hash, confirm: true, confirm_phrase: String(typed).trim(), ..._dzCreds() });
     if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The run ended without a result.');
     const data = snap.result;
     if (data.status === 'blocked' || data.status === 'stale') throw new Error(data.message || (data.blockers || []).join('; ') || `Removal ${data.status}.`);

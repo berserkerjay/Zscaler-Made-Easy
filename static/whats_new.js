@@ -26,7 +26,7 @@ window.WHATS_NEW = {
     "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score"
   },
   "skipped": {
-    "2026-11-01": "The agent workspace for the AI agents that build the app: files in the repository, nothing in the app to mark",
+    "2026-11-01": "The agent workspace (files in the repository) and security gates (stricter checks on existing controls, and a password form shown only at a first sign-in): nothing to mark yet, so the two releases above stay",
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },

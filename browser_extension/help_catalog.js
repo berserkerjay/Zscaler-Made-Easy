@@ -9015,6 +9015,26 @@ window.HELP_CATALOG = {
     "what": "Signs you in through your organisation's identity provider instead of a password.",
     "input": "Nothing to type. Just click it. Your identity provider may ask you to sign in there.",
     "effect": "nav"
+   },
+   "#lgCur": {
+    "what": "The password you just signed in with, the one an administrator set for you. Nothing else is open to you until you choose your own.",
+    "input": "Required. Already filled in when you came here from signing in.",
+    "effect": "local"
+   },
+   "#lgNew": {
+    "what": "The password you want from now on, known only to you. Saving it ends your sessions, so you sign in again with it.",
+    "input": "Required. At least 12 characters, not your user name and not the password you signed in with.",
+    "effect": "local"
+   },
+   "#lgNew2": {
+    "what": "The new password once more, to catch a typing slip.",
+    "input": "Required. The same as the new password.",
+    "effect": "local"
+   },
+   "#lgChangeGo": {
+    "what": "Saves your new password on this team server. It does not touch any tenant.",
+    "input": "Nothing to type. Just click it once both new passwords match.",
+    "effect": "local"
    }
   },
   "/report/team": {
