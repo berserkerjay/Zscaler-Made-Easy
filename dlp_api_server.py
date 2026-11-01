@@ -5090,6 +5090,14 @@ async def config_template_download(template_id: str):
 @app.post("/api/config-templates/{template_id}/delete")
 async def config_template_delete(template_id: str):
     import config_backup as cb
+    if _team.enabled() and not _team.is_admin():
+        # Team mode: a template is deleted by the person who kept it (or an
+        # administrator); others who may use it may not remove it for everyone.
+        meta = cb.template_meta(template_id) or {}
+        owner = str(meta.get("owner_id") or "")
+        if owner and owner != _team.current_owner_id():
+            raise HTTPException(status_code=403, detail="Only the person who kept this template (or a team server administrator) "
+                                                        "may delete it. Nothing was deleted.")
     try:
         ok = cb.delete_template(template_id)
     except cb.BackupError as e:

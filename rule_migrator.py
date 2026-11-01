@@ -1061,6 +1061,12 @@ ENABLE_NOT_FOUND = ("The Evaluate All Rules setting was not found in any ZIA set
                     "mode, or check the ZIA Admin Portal (Policy > Data Loss Prevention).")
 
 
+# ASSUMED (not verified against the installed SDK or Zscaler's documentation):
+# the Evaluate All DLP Rules mode lives in one field of one ZIA settings
+# object that _probe_eval_all_field finds by reading candidate endpoints, and
+# a PUT of that whole object with only that field changed switches it. The
+# SDK has no call for it. The enable therefore writes only the probed
+# endpoint and field, after a dry run with its plan hash, and reads it back.
 def _enable_target(found_via: Optional[str]) -> Optional[Tuple[str, str]]:
     """(endpoint, field) from the probe's "endpoint → field = value", or None."""
     if not found_via or "→" not in found_via:
