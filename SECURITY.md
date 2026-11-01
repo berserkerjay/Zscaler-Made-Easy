@@ -233,8 +233,9 @@ plan, apply; approver: read, approve; administrator: everything and the
 server itself) and grants of read, plan, apply and approve per tenant profile
 to a user or a SCIM group (or `*` for every profile). What a person may do on
 a profile is their role's actions AND what is granted there: deny by default.
-Sign-in with a password, or through the existing OpenID Connect SSO (`sso.py`),
-matched to an account by subject or a verified email.
+Sign-in with a password, through the existing OpenID Connect SSO (`sso.py`),
+matched to an account by subject or a verified email, through SAML 2.0
+(`sso_saml.py`), or with a passkey (`team_passkeys.py`); both described below.
 
 **Enforcement.** Every route has an access rule in `team_routes.py`
 (public, session, read, plan, apply, approve, admin, scim). The access
@@ -336,19 +337,66 @@ platform provides one and runs in FIPS mode (for example FIPS-enabled RHEL
 with its validated OpenSSL). The TLS 1.3 cipher suites are the platform
 OpenSSL's choice.
 
-**Not available, said plainly.** SAML sign-in is not built in: verifying
-SAML assertions safely needs an XML-signature library (xmlsec), which is not
-in the pinned dependencies and cannot be added safely here; use your identity
-provider's OpenID Connect app instead (every major SAML provider offers one).
-Passkeys (WebAuthn) are not built in: no vetted WebAuthn library is in the
-pinned dependencies, and adding one (with its CBOR and attestation
-dependencies) to the hash-pinned lock was not done in this change.
+**SAML 2.0 sign-in** (`sso_saml.py`; team servers only, off until an
+administrator turns it on in the Sign-in section of the Team server page, or
+`ZSCALER_SAML_ENABLED` sets it, in which case the page shows it read-only and
+nothing is mixed). SP-initiated: HTTP-Redirect out, HTTP-POST back to
+`/api/auth/saml/acs`. The XML signature is checked by signxml (pure Python
+on lxml and cryptography; hash-pinned in `requirements.lock`): it must be
+over the assertion itself (a response signature, if present, must verify
+too), made with the configured certificate (two during a rotation), RSA or
+ECDSA with SHA-256 or stronger; only the bytes the signature covers are read,
+and exactly one assertion directly in the response is accepted (signature
+wrapping, CWE-347). Issuer, audience, bearer recipient, InResponseTo of a
+request this server sent, NotBefore/NotOnOrAfter (60 seconds of skew), status,
+destination (required when the response is signed) and the RelayState of the
+sign-in this server started are checked; each request and assertion ID is
+used once (a replay is refused). Starting a sign-in is limited per address.
+The account is the one linked to the identity provider's NameID, else the
+one whose user name or email is the asserted email, but **an administrator
+account is never linked by its email alone**: an administrator first clicks
+**Allow SAML link** on that account (Team server page), and only its next
+SAML sign-in within 15 minutes links it; otherwise the sign-in is refused and
+audited (`team_saml_link_refused`). Other accounts are linked by email on
+their first SAML sign-in. Audit entries carry reasons and names, never the
+SAML response, assertion or passkey credential bytes. The parser loads no DTD, expands no entity and reaches no
+network, with size caps. The verified sign-in finishes only in the browser
+that started it (`/api/auth/saml/finish`, login CSRF), and a locked account is
+refused. The ACS is the one change exempt from the Origin check (the
+identity provider's page posts it); it signs nobody in by itself, and refused
+responses count towards the address's sign-in limit. The identity provider's
+metadata uploaded on the page is untrusted: at most 256 KB, refused with a
+DTD or entity, nothing fetched; its own signature is not checked (the
+administrator downloads it from their identity provider's console). IdP
+values are shown with `textContent`. **Test** checks the settings locally and
+calls nothing outside. Encrypted assertions and single logout are not
+supported.
+
+**Passkeys** (`team_passkeys.py`; on when `ZSCALER_TEAM_PASSKEY_ORIGIN` names
+the server's address). WebAuthn ceremonies verified by py_webauthn: a random
+challenge used once within five minutes, the exact configured origin and RP
+ID (never the Host header), user verification, the signature and the
+signature counter (one that does not go up is refused and audited). Only the
+credential ID, public key, counter, name and dates are stored. Adding a
+passkey needs the current password (an account with no password needs a
+sign-in less than 5 minutes old). Once an account has a passkey, a right
+password alone gets no session: the account's own passkey must answer a
+challenge bound to that account. If passkeys are then not set up on the
+server (`ZSCALER_TEAM_PASSKEY_ORIGIN` removed), such an account's password
+sign-in fails closed (503, audited) and names the fix, never a password-only
+session. Starting a passkey sign-in is limited per address. An administrator can **require** a passkey
+after the password (refused while passkeys are not set up); an account
+without one then adds one right after its password, before any session. A
+passkey that fails counts towards the account's lockout. If the passkey
+origin is later removed while passkeys are required, password sign-in fails
+closed (503) and names the fix: `python team_server.py require-passkey off`;
+`python team_server.py remove-passkeys <user>` clears a lost device.
 
 ### Threat model
 
 | Threat | What stops it |
 |---|---|
-| Someone on the network signs in as another person | Per-person accounts; scrypt (or PBKDF2) hashes; lockout enforced; per-address sign-in limit; same answer and timing for unknown names; OIDC sign-in only through a linked subject or a verified email |
+| Someone on the network signs in as another person | Per-person accounts; scrypt (or PBKDF2) hashes; lockout enforced (failed passkeys count too); per-address sign-in limit (refused SAML responses count too); same answer and timing for unknown names; OIDC sign-in only through a linked subject or a verified email; SAML only with a signed, unexpired, unreplayed assertion for this server; a passkey after the password, required if the administrator says so |
 | A stolen or fixated session cookie | Random 256-bit ids kept server-side; a new id at every sign-in; HttpOnly, SameSite=Strict, Secure over HTTPS; idle and absolute timeouts; HSTS |
 | Passwords or cookies read on the wire | HTTPS required beyond loopback; refusal to start otherwise; HTTP only redirects |
 | Cross-site request forgery, DNS rebinding | SameSite=Strict; the origin check; a cookie-bearing change must carry this server's Origin |

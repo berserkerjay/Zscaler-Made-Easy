@@ -1189,8 +1189,19 @@ Python itself a validated module, see SECURITY.md.
 Sessions end after 15 quiet minutes (a warning comes first) and after 8 hours
 at most; five wrong passwords lock an account for 15 minutes
 (`python team_server.py unlock <name>`, or **Unlock** on the Team server
-page). Restarting the server signs everyone out. SAML and passkeys are not
-built in: use your identity provider's OpenID Connect app. SECURITY.md,
+page). Restarting the server signs everyone out.
+
+SAML 2.0 sign-in: on the Team server page, Sign-in section, paste or choose
+your identity provider's metadata, check this server's entity ID and ACS URL
+(enter both at your identity provider), save, **Test the settings**, then
+**Turn SAML sign-in on**. Administrator accounts are not linked by email:
+click **Allow SAML link** on the account, then sign in with SAML within 15
+minutes. Passkeys: set `ZSCALER_TEAM_PASSKEY_ORIGIN` to the
+address people open the server at (for example `https://zme.example.com`);
+each person adds one on the Team server page, and the same section can
+require one after the password. A lost device: **Remove passkeys** on the
+page, or `python team_server.py remove-passkeys <name>`; `python
+team_server.py require-passkey off` stops requiring them. SECURITY.md,
 "Team server", has the details and the threat model.
 
 ## Connecting to a Zscaler tenant

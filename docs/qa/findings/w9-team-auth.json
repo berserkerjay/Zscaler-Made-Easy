@@ -1,0 +1,190 @@
+{
+ "area": "Team server sign-in: SAML 2.0 (signxml) set up on the Team server page or by the environment, passkeys (py_webauthn) alone or after the password, and an administrator's passkey requirement",
+ "title": "Wave 9: SAML 2.0 sign-in and passkeys for team servers, with the identity provider's metadata treated as untrusted input",
+ "files": [
+  "sso_saml.py",
+  "team_passkeys.py",
+  "team_server.py",
+  "team_api.py",
+  "team_routes.py",
+  "security.py",
+  "static/report_team.html",
+  "static/login.html"
+ ],
+ "standards": [
+  "ASVS 4.0.3 L2 V2.2, V2.8, V2.10, V3.2, V4.1, V5.1, V5.5, V7.2, V12.1, V14.1"
+ ],
+ "coverage": {
+  "before": 0.0,
+  "after": 100.0,
+  "how": "acceptance tests 1-5 of the spec each mapped to a test: tests/test_team_saml.py (assertion validation and signature wrapping), tests/test_team_passkeys.py (software authenticator), tests/test_team_signin_settings.py (page settings, metadata, second factor, required passkeys, lockout)"
+ },
+ "checks": [
+  {
+   "id": "W9-TA-C01",
+   "what": "An unsigned, wrongly signed, SHA-1, expired, wrong-audience, wrong-recipient, unsolicited or replayed assertion is refused; a signed one signs the mapped account in, with environment or page-saved settings",
+   "standard": "ASVS V2.10.1",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C02",
+   "what": "Oversized metadata and metadata with a DTD, an internal, external or parameter entity are refused before anything is expanded or fetched",
+   "standard": "ASVS V5.5.2",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C03",
+   "what": "A registered passkey signs in; a replayed challenge, a wrong origin or RP ID, no user verification or a counter that does not go up is refused",
+   "standard": "ASVS V2.8.1",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C04",
+   "what": "With require passkey on, a password-only sign-in of a local account gets no session; an account with a passkey needs its own passkey after the password",
+   "standard": "ASVS V2.2.3",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C05",
+   "what": "The new public routes (SAML ACS, metadata, login, finish; passkey options, login, enroll) are on the public route list and in team_routes; the administrator routes refuse every other role",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C06",
+   "what": "SAML cannot be turned on half set up; the local test makes no outbound call",
+   "standard": "ASVS V14.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "W9-TA-C07",
+   "what": "Audit records written after refused and accepted SAML sign-ins and a password+passkey sign-in hold no SAML response, signature value or passkey credential bytes",
+   "standard": "ASVS V7.1.1",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W9-TA-01",
+   "title": "A locked account could still finish a SAML sign-in: the lockout was checked on password and passkey sign-in only",
+   "severity": "medium",
+   "cwe": "CWE-307",
+   "asvs": "V2.2.1",
+   "status": "fixed",
+   "fix": "The SAML finish step refuses a locked account (423)",
+   "test": "tests/test_team_signin_settings.py::test_a_locked_account_cannot_sign_in_with_saml",
+   "commit": "eb1760d"
+  },
+  {
+   "id": "W9-TA-02",
+   "title": "A passkey that failed to verify did not count towards the account's lockout, so a known credential could be retried without limit apart from the per-address limit",
+   "severity": "medium",
+   "cwe": "CWE-307",
+   "asvs": "V2.2.1",
+   "status": "fixed",
+   "fix": "team_server.record_failure counts a failed passkey like a wrong password; a right password no longer resets the count while a second factor is still due",
+   "test": "tests/test_team_signin_settings.py::test_failed_passkeys_lock_the_account_like_wrong_passwords",
+   "commit": "eb1760d"
+  },
+  {
+   "id": "W9-TA-03",
+   "title": "Refused SAML responses were not rate limited, so the assertion consumer service could be hammered with forged responses",
+   "severity": "low",
+   "cwe": "CWE-307",
+   "asvs": "V2.2.1",
+   "status": "fixed",
+   "fix": "A refused response counts towards the address's sign-in limit; over it the ACS answers 429 before parsing",
+   "test": "tests/test_team_signin_settings.py::test_refused_saml_responses_are_rate_limited_per_address",
+   "commit": "eb1760d"
+  },
+  {
+   "id": "W9-TA-04",
+   "title": "The assertion consumer service read its form body inside the route, outside the deny-by-default body readers the contract test enforces",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "team_api._saml_form reads the size-capped URL-encoded body (ASCII, at most ten fields)",
+   "test": "tests/test_api_contracts.py::test_no_endpoint_parses_its_body_by_hand",
+   "commit": "eb1760d"
+  },
+  {
+   "id": "W9-TA-05",
+   "title": "An account with a passkey signed in with its password alone when ZSCALER_TEAM_PASSKEY_ORIGIN was unset (silent second-factor downgrade)",
+   "severity": "medium",
+   "cwe": "CWE-636",
+   "asvs": "V2.8.1",
+   "status": "fixed",
+   "fix": "second_factor_needed returns passkey for every account with a passkey; the password step fails closed (503, audited) and names remove-passkeys",
+   "test": "tests/test_team_signin_settings.py::test_an_account_with_a_passkey_never_falls_back_to_its_password_when_passkeys_are_not_set_up",
+   "commit": "3179996"
+  },
+  {
+   "id": "W9-TA-06",
+   "title": "SAML linked a first sign-in to an administrator account by the asserted email alone (account takeover through an editable IdP email)",
+   "severity": "medium",
+   "cwe": "CWE-287",
+   "asvs": "V2.10.1",
+   "status": "fixed",
+   "fix": "link_saml refuses (403, audited team_saml_link_refused) an unlinked administrator account unless an administrator allowed the link (allow_saml_link) within the last 15 minutes; used once",
+   "test": "tests/test_team_signin_settings.py::test_an_administrator_account_links_only_after_an_administrator_allows_it_and_only_for_a_while",
+   "commit": "3179996"
+  },
+  {
+   "id": "W9-TA-07",
+   "title": "A signed SAML Response without a Destination was accepted",
+   "severity": "low",
+   "cwe": "CWE-345",
+   "asvs": "V2.10.1",
+   "status": "fixed",
+   "fix": "verify_response requires Destination when the Response is signed (SAML bindings 3.5.5.2)",
+   "test": "tests/test_team_saml.py::test_a_signed_response_without_a_destination_is_refused",
+   "commit": "3179996"
+  },
+  {
+   "id": "W9-TA-08",
+   "title": "An account with no password could add a passkey from any live session, so a stolen session could add a lasting way in",
+   "severity": "low",
+   "cwe": "CWE-306",
+   "asvs": "V2.5.3",
+   "status": "fixed",
+   "fix": "adding a passkey to an account with no password needs a sign-in less than RECENT_SIGN_IN_SECONDS (5 minutes) old",
+   "test": "tests/test_team_signin_settings.py::test_an_account_with_no_password_adds_a_passkey_only_from_a_recent_sign_in",
+   "commit": "3179996"
+  },
+  {
+   "id": "W9-TA-09",
+   "title": "Unauthenticated passkey and SAML sign-in starts were not limited, so a flood could evict legitimate ceremonies from the capped maps",
+   "severity": "low",
+   "cwe": "CWE-770",
+   "asvs": "V2.2.1",
+   "status": "fixed",
+   "fix": "starts are limited per address (START_IP_ATTEMPTS in LOGIN_IP_WINDOW, 429)",
+   "test": "tests/test_team_signin_settings.py::test_starting_sign_ins_is_limited_per_address",
+   "commit": "3179996"
+  },
+  {
+   "id": "W9-TA-10",
+   "title": "The RelayState comparison was skipped when the response carried none",
+   "severity": "low",
+   "cwe": "CWE-352",
+   "asvs": "V3.2.1",
+   "status": "fixed",
+   "fix": "the ACS refuses a response without RelayState before verifying it",
+   "test": "tests/test_team_signin_settings.py::test_a_saml_response_without_the_relay_state_is_refused",
+   "commit": "3179996"
+  },
+  {
+   "id": "W9-TA-11",
+   "title": "Release manifest reused the feature id team-sign-in and a help entry named a remote address",
+   "severity": "low",
+   "cwe": "CWE-1164",
+   "asvs": "V14.1.1",
+   "status": "fixed",
+   "fix": "new feature id team-sign-in-settings; the help entry describes the entity ID without an address",
+   "test": "tests/test_new_marks.py::test_every_manifest_entry_is_complete_with_a_valid_date",
+   "commit": "3179996"
+  }
+ ],
+ "tests_added": 39
+}

@@ -10,12 +10,19 @@
 <style>
   .tm-sec { padding: 0.2rem 0.2rem 1rem; }
   .tm-sec h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
+  .tm-sec h3 { font-size: 0.95rem; margin: 1rem 0 0.4rem; }
   .tm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 0.6rem; }
   .tm-tile { background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
   .tm-tile .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
   .tm-tile .v { font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; }
   .tm-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 0.5rem 0.8rem; align-items: end; margin: 0.6rem 0; }
   .tm-form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: var(--dim); }
+  .tm-form textarea { font: inherit; font-size: 0.8rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 5rem; background: var(--well); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.3rem 0.5rem; min-width: 0; resize: vertical; }
+  .tm-form .wide { grid-column: 1 / -1; }
+  .tm-form details { grid-column: 1 / -1; font-size: 0.85rem; }
+  .tm-form details > .tm-form { margin-top: 0.4rem; }
+  .tm-check { display: flex; gap: 0.5rem; align-items: center; font-size: 0.88rem; margin: 0.6rem 0; }
+  .tm-list { margin: 0.4rem 0; padding-left: 1.2rem; font-size: 0.86rem; }
   .tm-form input, .tm-form select { font: inherit; font-size: 0.88rem; min-height: 2.2rem; background: var(--well); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.3rem 0.5rem; min-width: 0; }
   .tm-form fieldset { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.3rem 0.6rem; margin: 0; display: flex; gap: 0.7rem; flex-wrap: wrap; font-size: 0.85rem; }
   .tm-form fieldset label { flex-direction: row; align-items: center; color: var(--text); }
@@ -61,6 +68,16 @@
           <label for="tmPwNew">New password<input id="tmPwNew" type="password" autocomplete="new-password" minlength="12" maxlength="1024"></label>
           <button type="submit" class="rp-btn" id="tmPwGo">Change my password</button>
         </form>
+        <div id="tmPk" hidden>
+          <h3 id="tmPkH">Your passkeys</h3>
+          <p class="tm-status">A passkey uses your device's PIN, fingerprint or face. Once you have one, this server asks for it after your password, and you can also sign in with it alone. It only works on this server's own address, so a look-alike site cannot use it.</p>
+          <div class="tm-wrap"><table class="tm-t" id="tmPkList"><caption class="sr-only">Your passkeys</caption><thead><tr><th scope="col">Name</th><th scope="col">Added</th><th scope="col">Last used</th><th scope="col">Actions</th></tr></thead><tbody></tbody></table></div>
+          <form class="tm-form" id="tmPkForm" novalidate>
+            <label for="tmPkName">Name for the passkey<input id="tmPkName" autocomplete="off" maxlength="60" placeholder="Work laptop"></label>
+            <label for="tmPkCur">Current password<input id="tmPkCur" type="password" autocomplete="current-password" maxlength="1024"></label>
+            <button type="submit" class="rp-btn" id="tmPkAdd">Add a passkey</button>
+          </form>
+        </div>
       </section>
 
       <section class="tm-sec" aria-labelledby="tmShareH">
@@ -85,6 +102,38 @@
             <label for="tmNuPass">Password (blank: SSO only)<input id="tmNuPass" type="password" autocomplete="new-password" maxlength="1024"></label>
             <button type="submit" class="rp-btn primary" id="tmNuGo">Add account</button>
           </form>
+        </section>
+
+        <section class="tm-sec" aria-labelledby="tmSignInH">
+          <h2 id="tmSignInH">Sign-in</h2>
+          <p class="tm-status">How people prove who they are. This changes only this server, never a tenant.</p>
+          <h3 id="tmSamlH">SAML sign-in</h3>
+          <div class="tm-grid" id="tmSamlState"></div>
+          <ul class="tm-list" id="tmSamlProblems" aria-live="polite"></ul>
+          <div id="tmSamlEnv" class="tm-note" hidden>SAML sign-in is set by this server's settings (ZSCALER_SAML_ENABLED and the other ZSCALER_SAML_* settings), so it is shown here but not changed here.</div>
+          <form class="tm-form" id="tmSamlForm" novalidate>
+            <label for="tmSamlMeta" class="wide">Identity provider metadata (XML)<textarea id="tmSamlMeta" spellcheck="false" autocomplete="off" maxlength="262144" placeholder="Paste the metadata XML from your identity provider, or choose the file"></textarea></label>
+            <label for="tmSamlFile">Metadata file<input id="tmSamlFile" type="file" accept=".xml,application/xml,text/xml,application/samlmetadata+xml"></label>
+            <details id="tmSamlManual"><summary>Or type the identity provider's values</summary>
+              <div class="tm-form">
+                <label for="tmSamlIdp">Identity provider entity ID<input id="tmSamlIdp" autocomplete="off" spellcheck="false" maxlength="512"></label>
+                <label for="tmSamlSso">Sign-on URL (HTTP-Redirect)<input id="tmSamlSso" type="url" autocomplete="off" spellcheck="false" maxlength="512" placeholder="https://"></label>
+                <label for="tmSamlCert" class="wide">Signing certificate (PEM)<textarea id="tmSamlCert" spellcheck="false" autocomplete="off" maxlength="65536" placeholder="-----BEGIN CERTIFICATE-----"></textarea></label>
+              </div>
+            </details>
+            <label for="tmSamlSp">This server's entity ID<input id="tmSamlSp" autocomplete="off" spellcheck="false" maxlength="512"></label>
+            <label for="tmSamlAcs">This server's ACS URL<input id="tmSamlAcs" type="url" autocomplete="off" spellcheck="false" maxlength="512"></label>
+            <label for="tmSamlGroups">Only these groups (optional)<input id="tmSamlGroups" autocomplete="off" spellcheck="false" maxlength="512" placeholder="zme-users, zme-admins"></label>
+            <div class="tm-row-actions wide">
+              <button type="submit" class="rp-btn primary" id="tmSamlSave">Save SAML settings</button>
+              <button type="button" class="rp-btn" id="tmSamlTest">Test the settings</button>
+              <button type="button" class="rp-btn" id="tmSamlOn">Turn SAML sign-in on</button>
+            </div>
+          </form>
+          <p class="tm-status" id="tmSamlLinkNote">A person's first SAML sign-in is linked to the account whose user name or email is the email the identity provider sends. Administrator accounts are never linked that way: click Allow SAML link on the administrator's account below, and their next SAML sign-in within 15 minutes links it.</p>
+          <h3 id="tmReqPkH">Passkeys</h3>
+          <label class="tm-check" for="tmReqPk"><input type="checkbox" id="tmReqPk"> Require a passkey after the password for every account that signs in with a password</label>
+          <p class="tm-status" id="tmReqPkNote"></p>
         </section>
 
         <section class="tm-sec" aria-labelledby="tmAccessH">
@@ -188,11 +237,15 @@
       $('tmMine').querySelector('tbody').innerHTML = (me.profiles || []).map(p => `<tr><td>${E(p.name)}</td><td>${E(p.actions.join(', '))}</td></tr>`).join('')
         || '<tr><td colspan="2">No tenant profile yet. Ask an administrator for access.</td></tr>';
       people = me.people || [];
+      $('tmPk').hidden = !(st.passkeys && window.PublicKeyCredential && navigator.credentials);
+      $('tmPkList').querySelector('tbody').innerHTML = (me.user.passkeys || []).map(k => `<tr><td>${E(k.name)}</td><td>${E(k.created || '')}</td><td>${E(k.last_used || 'never')}</td>
+        <td class="tm-row-actions"><button type="button" class="rp-btn" data-pk-del="${E(k.key)}">Remove</button></td></tr>`).join('')
+        || '<tr><td colspan="4">No passkey yet.</td></tr>';
       await loadShare();
       if (me.user.role !== 'admin') { $('tmAdmin').hidden = true; say(''); return; }
       $('tmAdmin').hidden = false;
       data = await call('GET', '/api/team/overview');
-      render(); say('');
+      render(); renderSaml(data.sign_in); say('');
     }
     function nameOf(principal) {
       const [kind, id] = String(principal).split(':');
@@ -202,10 +255,12 @@
     function render() {
       $('tmUsers').querySelector('tbody').innerHTML = data.users.map(u => `<tr><td>${E(u.username)}${u.display_name ? `<br><span class="tm-status">${E(u.display_name)}</span>` : ''}</td>
         <td><select data-role="${E(u.id)}" aria-label="Role of ${E(u.username)}">${data.roles.map(r => `<option value="${E(r.id)}"${r.id === u.role ? ' selected' : ''}>${E(r.id)}</option>`).join('')}</select></td>
-        <td>${u.active ? 'on' : 'turned off'}${u.locked ? ' · locked' : ''}</td><td>${E(u.source)}${u.sso_linked ? ' · SSO' : ''}</td>
+        <td>${u.active ? 'on' : 'turned off'}${u.locked ? ' · locked' : ''}</td><td>${E(u.source)}${u.sso_linked ? (u.saml_linked ? ' · SAML' : ' · SSO') : ''}${(u.passkeys || []).length ? ` · ${(u.passkeys || []).length} passkey(s)` : ''}</td>
         <td class="tm-row-actions"><button type="button" class="rp-btn" data-act="${u.active ? 'off' : 'on'}" data-id="${E(u.id)}">${u.active ? 'Turn off' : 'Turn on'}</button>
         ${u.locked ? `<button type="button" class="rp-btn" data-act="unlock" data-id="${E(u.id)}">Unlock</button>` : ''}
         <button type="button" class="rp-btn" data-act="pw" data-id="${E(u.id)}">Set password</button>
+        ${(u.passkeys || []).length ? `<button type="button" class="rp-btn" data-act="pkclear" data-id="${E(u.id)}">Remove passkeys</button>` : ''}
+        ${u.role === 'admin' && !u.saml_linked ? `<button type="button" class="rp-btn" data-act="samllink" data-id="${E(u.id)}">${u.saml_link_allowed ? 'SAML link allowed' : 'Allow SAML link'}</button>` : ''}
         <button type="button" class="rp-btn" data-act="del" data-id="${E(u.id)}">Delete</button></td></tr>`).join('');
       $('tmGrWho').innerHTML = data.users.map(u => `<option value="user:${E(u.id)}">${E(u.username)}</option>`).join('')
         + data.groups.map(g => `<option value="group:${E(g.id)}">group: ${E(g.display_name)}</option>`).join('');
@@ -223,6 +278,70 @@
         + tile('FIPS mode', data.fips.on ? 'on: FIPS-approved algorithms only' : 'off') + (data.fips.on ? `<div class="tm-note" style="grid-column:1/-1">${E(data.fips.honest_note)}</div>` : '');
       $('tmStoreRotate').disabled = !data.stores.enabled;
     }
+    // Sign-in: the identity provider's values are untrusted text, so every one
+    // is written with textContent (never innerHTML).
+    function textTile(k, v) {
+      const d = document.createElement('div'); d.className = 'tm-tile';
+      const a = document.createElement('div'); a.className = 'k'; a.textContent = k;
+      const b = document.createElement('div'); b.className = 'v'; b.textContent = v;
+      d.append(a, b); return d;
+    }
+    function renderSaml(si) {
+      const s = (si && si.saml) || {}, env = s.source === 'environment';
+      const certs = (s.certificates || []).map(c => `${c.subject}, until ${c.not_after}${c.expired ? ' (expired)' : ''}`).join(' · ');
+      $('tmSamlState').replaceChildren(textTile('SAML sign-in', s.enabled ? 'on' : 'off'), textTile('Identity provider', s.idp_entity_id || 'not set'),
+        textTile('Sign-on URL', s.idp_sso_url || 'not set'), textTile('Signing certificate', certs || 'not set'),
+        textTile('This server\'s metadata', location.origin + (s.metadata_path || '')));
+      $('tmSamlProblems').replaceChildren(...(s.errors || []).map(t => { const li = document.createElement('li'); li.textContent = t; return li; }));
+      $('tmSamlEnv').hidden = !env;
+      $('tmSamlForm').querySelectorAll('input, textarea, button').forEach(el => { if (el.id !== 'tmSamlTest') el.disabled = env; });
+      $('tmSamlIdp').value = s.idp_entity_id || ''; $('tmSamlSso').value = s.idp_sso_url || '';
+      $('tmSamlSp').value = s.sp_entity_id || (location.origin + (s.metadata_path || ''));
+      $('tmSamlAcs').value = s.acs_url || (location.origin + (s.acs_path || ''));
+      $('tmSamlGroups').value = s.allowed_groups || '';
+      $('tmSamlOn').textContent = s.enabled ? 'Turn SAML sign-in off' : 'Turn SAML sign-in on';
+      $('tmSamlOn').dataset.on = s.enabled ? '1' : '';
+      const pk = (si && si.passkeys) || {};
+      $('tmReqPk').checked = !!(si && si.require_passkey);
+      $('tmReqPk').disabled = !pk.enabled && !$('tmReqPk').checked;
+      $('tmReqPkNote').textContent = pk.enabled
+        ? 'An account without a passkey adds one the next time it signs in with its password. Sign-in through SAML or SSO is not affected.'
+        : 'Passkeys are not set up on this server (ZSCALER_TEAM_PASSKEY_ORIGIN), so they cannot be required.';
+    }
+    function samlBody() {
+      const b = { sp_entity_id: $('tmSamlSp').value.trim(), acs_url: $('tmSamlAcs').value.trim(), allowed_groups: $('tmSamlGroups').value.trim() };
+      if ($('tmSamlMeta').value.trim()) b.metadata = $('tmSamlMeta').value;
+      else { b.idp_entity_id = $('tmSamlIdp').value.trim(); b.idp_sso_url = $('tmSamlSso').value.trim(); if ($('tmSamlCert').value.trim()) b.idp_cert_pem = $('tmSamlCert').value; }
+      return b;
+    }
+    $('tmSamlFile').addEventListener('change', async () => {
+      const f = $('tmSamlFile').files[0]; if (!f) return;
+      if (f.size > 262144) { say('That metadata file is larger than 256 KB.', true); $('tmSamlFile').value = ''; return; }
+      $('tmSamlMeta').value = await f.text(); say('Metadata read. Check the values below, then save.');
+    });
+    $('tmSamlForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      try { renderSaml(await call('POST', '/api/team/sign-in', { saml: samlBody() })); $('tmSamlMeta').value = ''; $('tmSamlFile').value = ''; say('SAML settings saved.'); }
+      catch (err) { say(err.message, true); }
+    });
+    $('tmSamlTest').addEventListener('click', async () => {
+      try {
+        const t = await call('POST', '/api/team/sign-in/test-saml');
+        $('tmSamlProblems').replaceChildren(...(t.problems || []).map(x => { const li = document.createElement('li'); li.textContent = x; return li; }));
+        say(t.ok ? `The settings are complete. This server sends people to ${t.request.destination} and takes them back at ${t.request.acs_url}.${t.enabled ? ' Try Sign in with SAML in a private window.' : ' Turn SAML sign-in on, then try it in a private window.'}`
+                 : 'The settings are not ready: see the list above.', !t.ok);
+      } catch (err) { say(err.message, true); }
+    });
+    $('tmSamlOn').addEventListener('click', async () => {
+      const on = !$('tmSamlOn').dataset.on;
+      try { renderSaml(await call('POST', '/api/team/sign-in', { saml: { enabled: on } })); say(on ? 'SAML sign-in is on.' : 'SAML sign-in is off.'); }
+      catch (err) { say(err.message, true); }
+    });
+    $('tmReqPk').addEventListener('change', async () => {
+      const on = $('tmReqPk').checked;
+      try { renderSaml(await call('POST', '/api/team/sign-in', { require_passkey: on })); say(on ? 'A passkey is now asked for after every password.' : 'Passkeys are optional again.'); }
+      catch (err) { $('tmReqPk').checked = !on; say(err.message, true); }
+    });
     $('tmUsers').addEventListener('change', async e => {
       const id = e.target.getAttribute('data-role'); if (!id) return;
       try { await call('POST', `/api/team/users/${encodeURIComponent(id)}`, { role: e.target.value }); say('Role saved; that person signs in again.'); await load(); } catch (err) { say(err.message, true); await load(); }
@@ -233,6 +352,8 @@
       try {
         if (act === 'off' || act === 'on') await call('POST', `/api/team/users/${id}`, { active: act === 'on' });
         else if (act === 'unlock') await call('POST', `/api/team/users/${id}/unlock`);
+        else if (act === 'pkclear') { if (!(await window.dlpDialog.ask({ title: 'Remove this person’s passkeys?', body: 'Every passkey on the account stops working (a lost or stolen device). They can still sign in with a password or SSO, and add a new passkey.', okLabel: 'Remove', tone: 'bad' }))) return; await call('DELETE', `/api/team/users/${id}/passkeys`); }
+        else if (act === 'samllink') { if (!(await window.dlpDialog.ask({ title: 'Allow a SAML link for this administrator?', body: 'Their next SAML sign-in within 15 minutes is linked to this account, matched by the email the identity provider sends. Do this only while they are signing in.', okLabel: 'Allow' }))) return; await call('POST', `/api/team/users/${id}`, { allow_saml_link: true }); }
         else if (act === 'del') { if (!(await window.dlpDialog.ask({ title: 'Delete this account?', body: 'Its access goes with it and its sessions end.', okLabel: 'Delete', tone: 'bad' }))) return; await call('DELETE', `/api/team/users/${id}`); }
         else if (act === 'pw') {
           const pw = await window.dlpDialog.phrase({ title: 'Set a password', body: 'At least 12 characters. The person’s sessions end; tell them the new password in person.', phrase: '', label: 'New password', okLabel: 'Set' });
@@ -264,6 +385,33 @@
       e.preventDefault();
       try { await call('POST', '/api/team/me/password', { current: $('tmPwCur').value, new: $('tmPwNew').value }); window.location.href = '/login'; }
       catch (err) { say(err.message, true); } finally { $('tmPwCur').value = ''; $('tmPwNew').value = ''; }
+    });
+    // Passkeys: base64url strings from the server, bytes for the browser's WebAuthn API.
+    const fromB64u = s => { const b = atob(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+    const toB64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    $('tmPkForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      $('tmPkAdd').disabled = true;
+      try {
+        const o = (await call('POST', '/api/team/me/passkeys/options', { current: $('tmPkCur').value })).options;
+        say('Follow your device’s prompt…');
+        const cred = await navigator.credentials.create({ publicKey: { challenge: fromB64u(o.challenge), rp: o.rp, timeout: o.timeout, attestation: o.attestation,
+          user: { id: fromB64u(o.user.id), name: o.user.name, displayName: o.user.displayName }, pubKeyCredParams: o.pubKeyCredParams,
+          authenticatorSelection: o.authenticatorSelection, excludeCredentials: (o.excludeCredentials || []).map(c => ({ type: c.type, id: fromB64u(c.id) })) } });
+        if (!cred) { say('No passkey was made.', true); return; }
+        const credential = { id: cred.id, rawId: toB64u(cred.rawId), type: cred.type, clientExtensionResults: {},
+          response: { clientDataJSON: toB64u(cred.response.clientDataJSON), attestationObject: toB64u(cred.response.attestationObject),
+                      transports: cred.response.getTransports ? cred.response.getTransports() : [] } };
+        await call('POST', '/api/team/me/passkeys', { credential, name: $('tmPkName').value.trim() });
+        $('tmPkName').value = ''; say('Passkey added. Next time choose "Sign in with a passkey".'); await load();
+      } catch (err) { say(err && err.name === 'NotAllowedError' ? 'The passkey request was cancelled or timed out.' : (err.message || 'The passkey could not be added.'), true); }
+      finally { $('tmPkCur').value = ''; $('tmPkAdd').disabled = false; }
+    });
+    $('tmPkList').addEventListener('click', async e => {
+      const b = e.target.closest('button[data-pk-del]'); if (!b) return;
+      if (!(await window.dlpDialog.ask({ title: 'Remove this passkey?', body: 'It stops signing you in. Your password and any other passkey still work.', okLabel: 'Remove', tone: 'bad' }))) return;
+      try { await call('DELETE', `/api/team/me/passkeys/${encodeURIComponent(b.getAttribute('data-pk-del'))}`); say('Passkey removed.'); await load(); }
+      catch (err) { say(err.message, true); }
     });
     $('tmSignOut').addEventListener('click', async () => { try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) { /* gone */ } window.location.href = '/login'; });
     $('tmRefresh').addEventListener('click', load);

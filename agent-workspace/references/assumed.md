@@ -86,10 +86,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `detection_health.py:1017` | assumed from one: |
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
-| `dlp_api_server.py:3845` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
-| `dlp_api_server.py:9324` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
-| `dlp_api_server.py:9326` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
-| `dlp_api_server.py:9434` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
+| `dlp_api_server.py:3850` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
+| `dlp_api_server.py:9329` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
+| `dlp_api_server.py:9331` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
+| `dlp_api_server.py:9439` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
 | `dns_forward_zones.py:47` | * Assumed (not in the SDK or Zscaler's API reference): that the resolver |
 | `insights.py:670` | ASSUMED: Shadow IT's sanctioned_state spells the two states as |
 | `offline_tenant.py:475` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |

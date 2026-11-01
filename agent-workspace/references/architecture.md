@@ -133,10 +133,12 @@ Find the files a change touches here, then read only those.
 | `ssl_coverage.py` | SSL coverage investigation: how much traffic is NOT inspected, why, and |
 | `ssl_flow.py` | SSL Inspection Flow — what is decrypted, what is not, and where inline |
 | `sso.py` | Optional SSO (OpenID Connect, Authorization Code + PKCE) — off by |
+| `sso_saml.py` | Team server SAML 2.0 sign-in (SP-initiated Web Browser SSO profile, |
 | `standalone_main.py` | Entry point of the standalone (no-install) edition of Zscaler Made Easy. |
 | `store_crypto.py` | Encryption at rest for the app's own local stores (optional; off by |
 | `sync_jobs.py` | Scheduled sync, done safely: plans for a person to approve, never an |
 | `team_api.py` | The team server's own routes (team_server.py): sign-in with a local |
+| `team_passkeys.py` | Passkeys (WebAuthn) for team server accounts: a person registers a |
 | `team_routes.py` | The access rule of every route in team server mode (team_server.py). |
 | `team_server.py` | Team server mode: several named people on one server, each with a role |
 | `tenant_auth.py` | Tenant credentials: the two ways Zscaler Made Easy can sign in to a ZIA tenant. |

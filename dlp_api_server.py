@@ -213,6 +213,11 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 # while claiming SSO is required.
 import sso as _sso
 _sso.require_configured()
+# The same for team server SAML sign-in and passkeys (off unless configured).
+import sso_saml as _sso_saml
+import team_passkeys as _team_passkeys
+_sso_saml.require_configured()
+_team_passkeys.require_configured()
 
 # A server bound beyond loopback needs its own front-door authentication;
 # the UI token alone is a bearer secret, not MFA. Fail closed here too.

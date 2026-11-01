@@ -50,6 +50,13 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/auth/sso/callback": PUBLIC,
     "POST /api/auth/logout": PUBLIC,
     "POST /api/auth/team/login": PUBLIC,
+    "POST /api/auth/team/passkey/options": PUBLIC,
+    "POST /api/auth/team/passkey/login": PUBLIC,
+    "POST /api/auth/team/passkey/enroll": PUBLIC,   # needs the one-use ceremony a right password returned
+    "GET /api/auth/saml/login": PUBLIC,
+    "POST /api/auth/saml/acs": PUBLIC,      # the identity provider's POST; verified in full, signs nobody in by itself
+    "GET /api/auth/saml/finish": PUBLIC,    # needs the sign-in's binding cookie
+    "GET /api/auth/saml/metadata": PUBLIC,
     "GET /login": PUBLIC,
     "GET /": PUBLIC,
     "GET /app.css": PUBLIC,
@@ -99,13 +106,19 @@ ROUTE_RULES: Dict[str, str] = {
     # ── the team server itself ──
     "GET /api/team/me": SESSION,
     "POST /api/team/me/password": SESSION,
+    "POST /api/team/me/passkeys/options": SESSION,
+    "POST /api/team/me/passkeys": SESSION,
+    "DELETE /api/team/me/passkeys/{passkey_id}": SESSION,
     "GET /api/team/overview": ADMIN,
     "POST /api/team/users": ADMIN,
     "POST /api/team/users/{user_id}": ADMIN,
     "DELETE /api/team/users/{user_id}": ADMIN,
     "POST /api/team/users/{user_id}/password": ADMIN,
     "POST /api/team/users/{user_id}/unlock": ADMIN,
+    "DELETE /api/team/users/{user_id}/passkeys": ADMIN,
     "POST /api/team/grants": ADMIN,
+    "POST /api/team/sign-in": ADMIN,
+    "POST /api/team/sign-in/test-saml": ADMIN,
     "POST /api/team/scim-token": ADMIN,
     "POST /api/team/store-key/rotate": ADMIN,
     "POST /api/team/share": SESSION,          # only the owner or an administrator may share (team_server.share)

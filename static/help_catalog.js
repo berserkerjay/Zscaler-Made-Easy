@@ -9035,6 +9035,21 @@ window.HELP_CATALOG = {
     "what": "Saves your new password on this team server. It does not touch any tenant.",
     "input": "Nothing to type. Just click it once both new passwords match.",
     "effect": "local"
+   },
+   "#lgSamlBtn": {
+    "what": "Signs you in through your organisation's identity provider with SAML. You come back here signed in to your own account.",
+    "input": "Nothing to type. Just click it. Your identity provider may ask you to sign in there.",
+    "effect": "nav"
+   },
+   "#lgPasskeyBtn": {
+    "what": "Signs you in with a passkey on this device: your PIN, fingerprint or face, no password. Add one first on the Team server page.",
+    "input": "Nothing to type. Just click it, then follow your device's prompt.",
+    "effect": "local"
+   },
+   "#lgPkGo": {
+    "what": "Finishes signing in with your passkey after your password. If the server asks for a passkey and you have none yet, it adds one on this device first.",
+    "input": "Nothing to type. Just click it, then follow your device's prompt for its PIN, fingerprint or face.",
+    "effect": "local"
    }
   },
   "/report/team": {
@@ -9061,6 +9076,96 @@ window.HELP_CATALOG = {
    "#tmPwGo": {
     "what": "Changes your own password on this server. It changes nothing in any tenant.",
     "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmPkName": {
+    "what": "A name for the new passkey, so you can tell your devices apart.",
+    "input": "Optional. Up to 60 characters, like Work laptop.",
+    "effect": "local"
+   },
+   "#tmPkCur": {
+    "what": "Your current password, to prove it is you before a new way to sign in is added.",
+    "input": "Required when your account has a password.",
+    "effect": "local"
+   },
+   "#tmPkAdd": {
+    "what": "Adds a passkey to your account. Your device asks for its PIN, fingerprint or face. It changes nothing in any tenant.",
+    "input": "Type your current password first, then click it and follow your device's prompt.",
+    "effect": "local"
+   },
+   "button[data-pk-del]": {
+    "what": "Removes this passkey from your account. It stops signing you in.",
+    "input": "Nothing to type. Just click it. You are asked to confirm.",
+    "effect": "local"
+   },
+   "button[data-act=\"pkclear\"]": {
+    "what": "Removes every passkey of this account, for a lost or stolen device. A password or SSO still works.",
+    "input": "Nothing to type. Just click it. You are asked to confirm.",
+    "effect": "local"
+   },
+   "button[data-act=\"samllink\"]": {
+    "what": "Lets this administrator's next SAML sign-in, within 15 minutes, link to the account. Administrator accounts are never linked by email alone.",
+    "input": "Nothing to type. Just click it while the person is signing in. You are asked to confirm.",
+    "effect": "local"
+   },
+   "#tmSamlMeta": {
+    "what": "Your identity provider's SAML metadata. The server reads its entity ID, sign-on URL and signing certificate from it.",
+    "input": "Paste the XML from your identity provider's admin console, up to 256 KB. Files with a DTD or entities are refused.",
+    "effect": "local"
+   },
+   "#tmSamlFile": {
+    "what": "Reads your identity provider's metadata file into the box above, so you do not have to paste it.",
+    "input": "Pick the .xml metadata file, up to 256 KB.",
+    "effect": "local"
+   },
+   "#tmSamlIdp": {
+    "what": "The identity provider's entity ID: the name it signs its answers with.",
+    "input": "Copy it from your identity provider: the entity ID its metadata or settings page shows. Not needed when you give the metadata.",
+    "effect": "local"
+   },
+   "#tmSamlSso": {
+    "what": "Where the server sends people to sign in at the identity provider (the HTTP-Redirect sign-on URL).",
+    "input": "An https:// address from your identity provider. Not needed when you give the metadata.",
+    "effect": "local"
+   },
+   "#tmSamlCert": {
+    "what": "The identity provider's signing certificate. Only answers signed with it are trusted. Two are allowed while it is being changed.",
+    "input": "The certificate as PEM text, starting with -----BEGIN CERTIFICATE-----. Not needed when you give the metadata.",
+    "effect": "local"
+   },
+   "#tmSamlSp": {
+    "what": "This server's own entity ID. The identity provider must name it as the audience of every answer.",
+    "input": "Filled in for you with this server's metadata address. Enter the same value at your identity provider.",
+    "effect": "local"
+   },
+   "#tmSamlAcs": {
+    "what": "This server's ACS URL: where the identity provider sends people back, signed in.",
+    "input": "Filled in for you. It must end with /api/auth/saml/acs and match what your identity provider has.",
+    "effect": "local"
+   },
+   "#tmSamlGroups": {
+    "what": "Only people in one of these identity provider groups may sign in with SAML. Empty: everyone with an account here.",
+    "input": "Optional. Group names, separated by commas.",
+    "effect": "local"
+   },
+   "#tmSamlSave": {
+    "what": "Saves the SAML settings on this server. It changes nothing in any tenant.",
+    "input": "Give the metadata or the three identity provider values first, then click it.",
+    "effect": "local"
+   },
+   "#tmSamlTest": {
+    "what": "Checks the saved SAML settings on this server: every value there and safe, and the certificate in date. It signs nobody in and calls nothing outside.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmSamlOn": {
+    "what": "Turns SAML sign-in on or off for this server. It can only be turned on when every setting is there. Administrator accounts link only after Allow SAML link.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmReqPk": {
+    "what": "Asks every account that signs in with a password for its passkey too. An account without one adds one at its next sign-in. SAML and SSO sign-in are not affected.",
+    "input": "Tick it to require passkeys, clear it to make them optional. Passkeys must be set up on the server first.",
     "effect": "local"
    },
    "select[data-role]": {

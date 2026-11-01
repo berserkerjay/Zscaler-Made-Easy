@@ -93,6 +93,8 @@ _SCRYPT_MAXMEM = 128 * 1024 * 1024
 # Per client address: at most this many sign-in attempts in the window (429 after).
 LOGIN_IP_ATTEMPTS = 20
 LOGIN_IP_WINDOW = 300.0
+START_IP_ATTEMPTS = 60       # passkey and SAML sign-ins started per address in LOGIN_IP_WINDOW (each fills a capped map)
+SAML_LINK_SECONDS = 900      # an administrator account may be linked to SAML this long after an administrator allows it
 
 
 def enabled() -> bool:
@@ -235,7 +237,7 @@ def store_path() -> str:
 
 
 def _empty() -> Dict[str, Any]:
-    return {"version": 1, "users": {}, "groups": {}, "grants": [], "scim": {}}
+    return {"version": 1, "users": {}, "groups": {}, "grants": [], "scim": {}, "sign_in": {}}
 
 
 def _read() -> Dict[str, Any]:
@@ -257,7 +259,7 @@ def _read() -> Dict[str, Any]:
             # A damaged store is no store: nobody signs in (fail closed),
             # and the file is left for the operator to inspect.
             return _empty()
-        for k, empty in (("users", {}), ("groups", {}), ("grants", []), ("scim", {})):
+        for k, empty in (("users", {}), ("groups", {}), ("grants", []), ("scim", {}), ("sign_in", {})):
             if not isinstance(data.get(k), type(empty)):
                 data[k] = empty
         _CACHE.update(key=key, data=data)
@@ -295,7 +297,13 @@ def public_user(u: Dict[str, Any]) -> Dict[str, Any]:
             "must_change_password": bool(u.get("must_change_password") and u.get("password")),
             "locked": float(u.get("locked_until") or 0) > now,
             "locked_until": u.get("locked_until") if float(u.get("locked_until") or 0) > now else None,
-            "failed_logins": int(u.get("failed") or 0), "sso_linked": bool(u.get("oidc_sub"))}
+            "failed_logins": int(u.get("failed") or 0), "sso_linked": bool(u.get("oidc_sub") or u.get("saml_sub")),
+            "saml_linked": bool(u.get("saml_sub")),
+            "saml_link_allowed": not u.get("saml_sub") and float(u.get("saml_link_until") or 0) > _clock(),
+            "passkeys": [{"id": str(k.get("id") or "")[:24] + ("…" if len(str(k.get("id") or "")) > 24 else ""),
+                          "key": str(k.get("id") or ""), "name": k.get("name") or "", "created": k.get("created"),
+                          "last_used": k.get("last_used"), "backed_up": bool(k.get("backed_up"))}
+                         for k in (u.get("passkeys") or []) if isinstance(k, dict)]}
 
 
 def list_users() -> List[Dict[str, Any]]:
@@ -387,6 +395,12 @@ def update_user(uid: str, *, by: str = "", **fields: Any) -> Dict[str, Any]:
                 v = _clean(fields[k]).lower() if k == "email" else _clean(fields[k])
                 if v != (u.get(k) or ""):
                     changed[k] = v
+        if fields.get("allow_saml_link") is not None:
+            if fields["allow_saml_link"] is not True:
+                raise TeamError("allow_saml_link must be true.")
+            if u.get("saml_sub"):
+                raise TeamError("This account is already linked to a SAML sign-in.", 409)
+            changed["saml_link_until"] = _clock() + SAML_LINK_SECONDS
         if "username" in fields and fields["username"] is not None:
             name = _check_username(fields["username"])
             if name != u.get("username"):
@@ -401,6 +415,8 @@ def update_user(uid: str, *, by: str = "", **fields: Any) -> Dict[str, Any]:
     if changed.get("active") is False or "role" in changed or "username" in changed:
         _end_sessions(uid)
     _audit("team_user_updated", actor=by or None, user=u.get("username"), changes=sorted(changed))
+    if "saml_link_until" in changed:
+        _audit("team_saml_link_allowed", actor=by or None, user=u.get("username"), minutes=SAML_LINK_SECONDS // 60)
     return u
 
 
@@ -870,11 +886,11 @@ _LOGIN_LOCK = threading.Lock()
 _clock = time.time   # tests replace it
 
 
-def _ip_allowed(ip: str) -> bool:
+def _ip_allowed(ip: str, limit: Optional[int] = None) -> bool:
     now = _clock()
     with _LOGIN_LOCK:
         recent = [t for t in _IP_ATTEMPTS.get(ip, []) if now - t < LOGIN_IP_WINDOW]
-        if len(recent) >= LOGIN_IP_ATTEMPTS:
+        if len(recent) >= (LOGIN_IP_ATTEMPTS if limit is None else limit):
             _IP_ATTEMPTS[ip] = recent
             return False
         recent.append(now)
@@ -883,6 +899,15 @@ def _ip_allowed(ip: str) -> bool:
             for k in [k for k, v in _IP_ATTEMPTS.items() if not v or now - v[-1] > LOGIN_IP_WINDOW]:
                 _IP_ATTEMPTS.pop(k, None)
         return True
+
+
+def ip_blocked(ip: str) -> bool:
+    """This address has used up its sign-in attempts (checked without
+    counting one: for the SAML assertion consumer service, where only a
+    refused response counts, via _ip_allowed)."""
+    now = _clock()
+    with _LOGIN_LOCK:
+        return len([t for t in _IP_ATTEMPTS.get(ip or "?", []) if now - t < LOGIN_IP_WINDOW]) >= LOGIN_IP_ATTEMPTS
 
 
 class LoginRefused(Exception):
@@ -927,31 +952,106 @@ def authenticate(username: Any, password: Any, client_ip: str) -> Dict[str, Any]
     if not ok or not u.get("active"):
         if not u.get("password"):
             _burn_time(pw)
-        with _LOCK:
-            data = _read()
-            rec = data["users"].get(u["id"])
-            if isinstance(rec, dict):
-                rec["failed"] = int(rec.get("failed") or 0) + 1
-                locked = rec["failed"] >= lockout_attempts()
-                if locked:
-                    rec["locked_until"] = now + lockout_seconds()
-                    rec["failed"] = 0
-                _write(data)
-                if locked:
-                    _audit("team_account_locked", actor=u.get("username"), user=u.get("username"), minutes=lockout_seconds() // 60,
-                           client=client_ip)
+        record_failure(u["id"], client_ip)
         why = "account turned off" if not u.get("active") else "wrong password"
         if store_crypto.fips_mode() and str(u.get("password") or "").startswith("scrypt$"):
             why = "password saved before FIPS mode (scrypt): an administrator must set it again"
         raise LoginRefused(GENERIC_FAILURE, 401, why)
-    if int(u.get("failed") or 0) or u.get("locked_until"):
-        with _LOCK:
-            data = _read()
-            rec = data["users"].get(u["id"])
-            if isinstance(rec, dict):
-                rec.update(failed=0, locked_until=0)
-                _write(data)
+    if not second_factor_needed(u):
+        clear_failures(u["id"])     # with a second factor still to come, only the full sign-in resets the count
     return u
+
+
+def second_factor_needed(user: Dict[str, Any]) -> Optional[str]:
+    """After a right password: "passkey" when the account has a passkey (it
+    is asked for next), "enroll" when an administrator requires passkeys and
+    the account has none yet (one is added next), else None (signed in).
+    An account with a passkey always gets "passkey", even while passkeys are
+    not set up on the server (ZSCALER_TEAM_PASSKEY_ORIGIN removed): the
+    sign-in then fails closed instead of falling back to the password alone."""
+    has = any(isinstance(k, dict) and k.get("id") for k in user.get("passkeys") or [])
+    if has:
+        return "passkey"
+    if require_passkey():
+        return "enroll"
+    return None
+
+
+def record_failure(uid: str, client_ip: str = "") -> bool:
+    """One failed sign-in for an account (a wrong password, or a passkey that
+    did not verify): after lockout_attempts() in a row the account is locked
+    for lockout_seconds(). Returns True when this failure locked it."""
+    now = _clock()
+    with _LOCK:
+        data = _read()
+        rec = data["users"].get(uid)
+        if not isinstance(rec, dict):
+            return False
+        rec["failed"] = int(rec.get("failed") or 0) + 1
+        locked = rec["failed"] >= lockout_attempts()
+        if locked:
+            rec["locked_until"] = now + lockout_seconds()
+            rec["failed"] = 0
+        _write(data)
+    if locked:
+        _audit("team_account_locked", actor=rec.get("username"), user=rec.get("username"), minutes=lockout_seconds() // 60,
+               client=client_ip)
+    return locked
+
+
+def clear_failures(uid: str) -> None:
+    """A complete sign-in resets the failure count."""
+    with _LOCK:
+        data = _read()
+        rec = data["users"].get(uid)
+        if isinstance(rec, dict) and (int(rec.get("failed") or 0) or rec.get("locked_until")):
+            rec.update(failed=0, locked_until=0)
+            _write(data)
+
+
+def is_locked(user: Optional[Dict[str, Any]]) -> bool:
+    return bool(user) and float(user.get("locked_until") or 0) > _clock()
+
+
+# ── sign-in settings (the Team server page's Sign-in section) ───────────
+def saml_settings() -> Dict[str, Any]:
+    """The SAML settings saved on the Team server page (sso_saml.save_settings
+    validates them first). Public values only: entity IDs, addresses, the
+    identity provider's certificate (PEM) and on/off."""
+    s = (_read().get("sign_in") or {}).get("saml")
+    return dict(s) if isinstance(s, dict) else {}
+
+
+def save_saml_settings(values: Dict[str, Any], *, by: str = "") -> None:
+    with _LOCK:
+        data = _read()
+        before = (data.get("sign_in") or {}).get("saml") or {}
+        data.setdefault("sign_in", {})["saml"] = dict(values, updated=_now_iso(), updated_by=by)
+        _write(data)
+    _audit("team_saml_settings_saved", actor=by or None, enabled=bool(values.get("enabled")),
+           was_enabled=bool(isinstance(before, dict) and before.get("enabled")), idp=str(values.get("idp_entity_id") or "")[:200])
+
+
+def require_passkey() -> bool:
+    """An administrator requires a passkey after the password for every
+    local (password) sign-in."""
+    return (_read().get("sign_in") or {}).get("require_passkey") is True
+
+
+def set_require_passkey(on: Any, *, by: str = "") -> bool:
+    if not isinstance(on, bool):
+        raise TeamError("require_passkey must be true or false.")
+    if on:
+        import team_passkeys
+        if not team_passkeys.enabled():
+            raise TeamError("Passkeys are not set up on this server (ZSCALER_TEAM_PASSKEY_ORIGIN), so they cannot be required: "
+                            "nobody could sign in with a password.", 409)
+    with _LOCK:
+        data = _read()
+        data.setdefault("sign_in", {})["require_passkey"] = on
+        _write(data)
+    _audit("team_require_passkey", actor=by or None, on=on)
+    return on
 
 
 def link_oidc(claims: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -984,15 +1084,63 @@ def link_oidc(claims: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
-def start_session(user: Dict[str, Any], *, via: str, previous_sid: Optional[str] = None, token_groups: Iterable[str] = ()) -> str:
+def link_saml(claims: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The account a verified SAML sign-in (sso_saml.verify_response)
+    belongs to: the one already linked to this identity provider's NameID,
+    else the one whose user name or email is the asserted email (then linked
+    to the NameID). None: no account, it is turned off, or it is linked to
+    another NameID. The email comes from the signed assertion of the one
+    configured identity provider, so it is that provider's statement.
+    An administrator account is never linked by its email alone: only within
+    SAML_LINK_SECONDS after an administrator allowed it (update_user
+    allow_saml_link); otherwise the link is refused (TeamError 403, audited)."""
+    issuer, sub = str(claims.get("issuer") or ""), str(claims.get("sub") or "")
+    if not issuer or not sub:
+        return None
+    link = f"{issuer}!{sub}"[:600]
+    data = _read()
+    for u in data["users"].values():
+        if isinstance(u, dict) and u.get("saml_sub") == link:
+            return u if u.get("active") else None
+    email = normalize_username(claims.get("email"))
+    if not email:
+        return None
+    for u in data["users"].values():
+        if isinstance(u, dict) and (normalize_username(u.get("username")) == email or (u.get("email") or "") == email):
+            if not u.get("active") or (u.get("saml_sub") and u.get("saml_sub") != link):
+                return None
+            if u.get("role") == "admin" and not float(u.get("saml_link_until") or 0) > _clock():
+                _audit("team_saml_link_refused", actor=u.get("username"), user=u.get("username"),
+                       reason="administrator account not yet allowed to link by an administrator")
+                raise TeamError("This is an administrator account: it is linked to SAML sign-in only after an administrator "
+                                "allows it (Team server page, Allow SAML link). Sign in with your password, or ask an administrator.", 403)
+            with _LOCK:
+                d2 = _read()
+                rec = d2["users"].get(u["id"])
+                if isinstance(rec, dict):
+                    rec["saml_sub"] = link
+                    rec.pop("saml_link_until", None)
+                    _write(d2)
+            _audit("team_saml_linked", actor=u.get("username"), user=u.get("username"))
+            return get_user(u["id"])
+    return None
+
+
+def start_session(user: Dict[str, Any], *, via: str, previous_sid: Optional[str] = None, token_groups: Iterable[str] = (),
+                  max_seconds: Optional[float] = None) -> str:
     """A fresh session for `user` (rotation: the browser's earlier session,
-    if any, ends here). Returns the new random id, the cookie's only content."""
+    if any, ends here). Returns the new random id, the cookie's only content.
+    `max_seconds` can only shorten the server's own absolute limit (a SAML
+    SessionNotOnOrAfter)."""
     import sso
     if previous_sid:
         sso.end_session(previous_sid)
+    limit = session_seconds()
+    if max_seconds is not None and math.isfinite(max_seconds):
+        limit = max(60, min(limit, int(max_seconds)))
     return sso.create_session({"sub": user.get("id"), "email": user.get("email") or None},
                               team_user=user.get("id"), via=via, groups=list(token_groups or ()),
-                              idle=idle_seconds(), max_seconds=session_seconds())
+                              idle=idle_seconds(), max_seconds=limit)
 
 
 def _end_sessions(uid: str) -> None:
@@ -1715,14 +1863,30 @@ def bootstrap_needed() -> bool:
 def _cli(argv: Optional[List[str]] = None) -> int:
     """python team_server.py add-admin <user name>   (asks for the password twice)
     python team_server.py reset-password <user name>
-    python team_server.py unlock <user name>"""
+    python team_server.py unlock <user name>
+    python team_server.py remove-passkeys <user name>   (a lost device)
+    python team_server.py require-passkey off"""
     import getpass
     import sys
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 2 or args[0] not in ("add-admin", "reset-password", "unlock"):
+    if len(args) != 2 or args[0] not in ("add-admin", "reset-password", "unlock", "remove-passkeys", "require-passkey") \
+            or (args[0] == "require-passkey" and args[1] != "off"):
         print(_cli.__doc__)
         return 2
     cmd, name = args
+    if cmd == "require-passkey":
+        set_require_passkey(False, by="command line")
+        print("Passkeys are no longer required after the password.")
+        return 0
+    if cmd == "remove-passkeys":
+        u = find_user(name)
+        if not u:
+            print("No such account.")
+            return 1
+        import team_passkeys
+        n = team_passkeys.remove_all(u["id"], by="command line")
+        print(f"{n} passkey(s) of {u['username']} removed.")
+        return 0
     if cmd == "unlock":
         u = find_user(name)
         if not u:

@@ -56,9 +56,22 @@
         </div>
         <div class="lg-msg" id="lgChangeMsg" role="alert" aria-live="assertive"></div>
       </form>
+      <div id="lgStep2" hidden>
+        <p id="lgStep2Text">Your password is right. Now use your passkey: your device asks for its PIN, fingerprint or face.</p>
+        <div class="lg-actions">
+          <button type="button" class="rp-btn primary" id="lgPkGo">Use my passkey</button>
+        </div>
+      </div>
+      <div id="lgPasskey" hidden>
+        <p class="lg-or">Or sign in with a passkey you added on the Team server page:</p>
+        <button type="button" class="rp-btn" id="lgPasskeyBtn">Sign in with a passkey</button>
+      </div>
       <div id="lgSso" hidden>
         <p class="lg-or">Or sign in through your organisation's identity provider:</p>
-        <a class="rp-btn" id="lgSsoBtn" href="/api/auth/sso/login">Sign in with SSO</a>
+        <div class="lg-actions">
+          <a class="rp-btn" id="lgSsoBtn" href="/api/auth/sso/login" hidden>Sign in with SSO</a>
+          <a class="rp-btn" id="lgSamlBtn" href="/api/auth/saml/login" hidden>Sign in with SAML</a>
+        </div>
       </div>
       <p class="lg-foot">Too many wrong passwords lock the account for a while. A session ends after a quiet spell, and always at the end of the working day; you are warned first.</p>
     </main>
@@ -80,8 +93,74 @@
       if (!s.team) { msg('This server is not a team server, so there is no account to sign in to here. Open the app instead.', true); $('lgGo').disabled = true; return; }
       if (s.unlocked && s.password_change_required) { askForNewPassword(); return; }
       if (s.unlocked) { window.location.replace('/'); return; }
-      if (s.oidc) $('lgSso').hidden = false;
+      if (s.oidc) { $('lgSso').hidden = false; $('lgSsoBtn').hidden = false; }
+      if (s.saml) { $('lgSso').hidden = false; $('lgSamlBtn').hidden = false; }
+      if (s.passkeys && window.PublicKeyCredential && navigator.credentials) $('lgPasskey').hidden = false;
     }).catch(() => {});
+    // Passkeys: the server's options carry base64url strings; the browser's
+    // WebAuthn API wants bytes, and the answer goes back as base64url again.
+    const fromB64u = s => { const b = atob(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+    const toB64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const post = (url, body) => fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const assertion = cred => ({ id: cred.id, rawId: toB64u(cred.rawId), type: cred.type, clientExtensionResults: {},
+      response: { clientDataJSON: toB64u(cred.response.clientDataJSON), authenticatorData: toB64u(cred.response.authenticatorData), signature: toB64u(cred.response.signature),
+                  userHandle: cred.response.userHandle ? toB64u(cred.response.userHandle) : undefined } });
+    // After a right password: the account's passkey answers (step "passkey"), or,
+    // when this server requires passkeys and the account has none, one is added
+    // (step "enroll_passkey"). Either way there is no session until it is done.
+    let step = null;
+    function showStep(j) {
+      step = j;
+      $('lgForm').hidden = true; $('lgPasskey').hidden = true; $('lgSso').hidden = true; $('lgStep2').hidden = false;
+      $('lgStep2Text').textContent = j.next === 'passkey'
+        ? 'Your password is right. Now use your passkey: your device asks for its PIN, fingerprint or face.'
+        : 'Your password is right. This server also asks for a passkey, and your account has none yet. Add one now on this device (its PIN, fingerprint or face); next time you use it after your password.';
+      $('lgPkGo').textContent = j.next === 'passkey' ? 'Use my passkey' : 'Add a passkey and sign in';
+      msg(''); $('lgPkGo').focus();
+    }
+    $('lgPkGo').addEventListener('click', async () => {
+      if (!step || !(window.PublicKeyCredential && navigator.credentials)) { msg('This browser cannot use passkeys. Try another browser.', true); return; }
+      $('lgPkGo').disabled = true; msg('Waiting for your passkey…');
+      try {
+        const o = step.options; let r;
+        if (step.next === 'passkey') {
+          const cred = await navigator.credentials.get({ publicKey: { challenge: fromB64u(o.challenge), rpId: o.rpId, timeout: o.timeout,
+            userVerification: o.userVerification, allowCredentials: (o.allowCredentials || []).map(c => ({ type: c.type, id: fromB64u(c.id) })) } });
+          if (!cred) { msg('No passkey was chosen.', true); return; }
+          r = await post('/api/auth/team/passkey/login', { ceremony: step.ceremony, credential: assertion(cred) });
+        } else {
+          const cred = await navigator.credentials.create({ publicKey: { challenge: fromB64u(o.challenge), rp: o.rp, timeout: o.timeout, attestation: o.attestation,
+            user: { id: fromB64u(o.user.id), name: o.user.name, displayName: o.user.displayName }, pubKeyCredParams: o.pubKeyCredParams,
+            authenticatorSelection: o.authenticatorSelection, excludeCredentials: [] } });
+          if (!cred) { msg('No passkey was made.', true); return; }
+          r = await post('/api/auth/team/passkey/enroll', { ceremony: step.ceremony, name: 'Passkey', credential: { id: cred.id, rawId: toB64u(cred.rawId), type: cred.type,
+            clientExtensionResults: {}, response: { clientDataJSON: toB64u(cred.response.clientDataJSON), attestationObject: toB64u(cred.response.attestationObject),
+            transports: cred.response.getTransports ? cred.response.getTransports() : [] } } });
+        }
+        let j = {}; try { j = await r.json(); } catch (err) { /* not json */ }
+        if (r.ok) { msg('Signed in.'); window.location.replace('/'); return; }
+        msg((typeof j.detail === 'string' ? j.detail : 'Sign-in failed.') + ' Sign in with your password again.', true);
+        step = null; $('lgStep2').hidden = true; $('lgForm').hidden = false;
+      } catch (err) { msg(err && err.name === 'NotAllowedError' ? 'The passkey request was cancelled or timed out. Try again.' : 'The passkey could not be used here.', true); }
+      finally { $('lgPkGo').disabled = false; }
+    });
+    $('lgPasskeyBtn').addEventListener('click', async () => {
+      $('lgPasskeyBtn').disabled = true; msg('Waiting for your passkey…');
+      try {
+        let r = await post('/api/auth/team/passkey/options');
+        let j = {}; try { j = await r.json(); } catch (err) { /* not json */ }
+        if (!r.ok) { msg(typeof j.detail === 'string' ? j.detail : 'Passkey sign-in is not available.', true); return; }
+        const o = j.options;
+        const cred = await navigator.credentials.get({ publicKey: { challenge: fromB64u(o.challenge), rpId: o.rpId, timeout: o.timeout,
+          userVerification: o.userVerification, allowCredentials: (o.allowCredentials || []).map(c => ({ type: c.type, id: fromB64u(c.id) })) } });
+        if (!cred) { msg('No passkey was chosen.', true); return; }
+        r = await post('/api/auth/team/passkey/login', { ceremony: j.ceremony, credential: assertion(cred) });
+        j = {}; try { j = await r.json(); } catch (err) { /* not json */ }
+        if (r.ok) { msg('Signed in.'); window.location.replace('/'); return; }
+        msg(typeof j.detail === 'string' ? j.detail : 'Sign-in failed.', true);
+      } catch (err) { msg(err && err.name === 'NotAllowedError' ? 'The passkey request was cancelled or timed out.' : 'The passkey could not be used here.', true); }
+      finally { $('lgPasskeyBtn').disabled = false; }
+    });
     $('lgForm').addEventListener('submit', async e => {
       e.preventDefault();
       const username = $('lgUser').value.trim(), password = $('lgPass').value;
@@ -92,10 +171,11 @@
           body: JSON.stringify({ username, password }) });
         let body = {}; try { body = await r.json(); } catch (err) { /* not json */ }
         if (r.ok && body.must_change_password) { msg(''); $('lgCur').value = password; askForNewPassword(); $('lgNew').focus(); return; }
+        if (r.ok && body.next && body.ceremony) { $('lgPass').value = ''; showStep(body); return; }
         if (r.ok) { $('lgPass').value = ''; msg('Signed in.'); window.location.replace('/'); return; }
         msg(typeof body.detail === 'string' ? body.detail : 'Sign-in failed.', true);
       } catch (err) { msg('The server did not answer. Is it running?', true); }
-      finally { $('lgGo').disabled = false; $('lgPass').value = ''; if (!$('lgForm').hidden) $('lgPass').focus(); }
+      finally { $('lgGo').disabled = false; $('lgPass').value = ''; if (!step && !$('lgForm').hidden) $('lgPass').focus(); }
     });
     $('lgChange').addEventListener('submit', async e => {
       e.preventDefault();
