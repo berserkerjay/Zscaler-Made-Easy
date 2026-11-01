@@ -1625,6 +1625,7 @@ def _h_order(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
         run.mark(units, "failed", "", error="the installed zscaler-sdk-python has no policies.bulk_reorder_rules")
         run.counts["failed"] += 1
         return
+    # One write for the whole order (assumed, as ops_rule_csv: the list names every rule but the Default rule, top first).
     out = ops.call(fn, "access", new, op="update", kind="zpa_access_rule", name="access policy order", log=run.log)
     ops._audit_write("update", "zpa_access_rule", rid, f"access policy order ({t['name']})", None, out)
     if run.outcome(units, out, "update"):

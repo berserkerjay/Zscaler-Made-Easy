@@ -1540,19 +1540,15 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             tid = _rid(pc._field(tgt, "id"))
             nspec.update(target=tid, domains=doms)
             adds[tid] = list(doms)
-            src = sid = None
         elif action == "remove":
             src = seg(spec.get("source"), "source")
             sid = _rid(pc._field(src, "id"))
             nspec.update(source=sid, domains=doms)
             removes[sid] = list(doms)
-        else:
+        elif action == "clone":
             src = seg(spec.get("source"), "source")
             sid = _rid(pc._field(src, "id"))
             nspec.update(source=sid, domains=doms)
-        if action in ("add", "remove"):
-            pass
-        elif action == "clone":
             name = _object_name(spec.get("name"), "new segment's")
             if not name:
                 raise OperationError("Name the new segment.")
@@ -1564,6 +1560,9 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             if move:
                 removes[sid] = [d for d in doms]
         else:
+            src = seg(spec.get("source"), "source")
+            sid = _rid(pc._field(src, "id"))
+            nspec.update(source=sid, domains=doms)
             tgt = seg(spec.get("target"), "target")
             tid = _rid(pc._field(tgt, "id"))
             if tid == sid:

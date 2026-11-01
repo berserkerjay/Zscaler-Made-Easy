@@ -49,9 +49,12 @@ This module:
 
 "Fix selected" (`fix_handoff`) only prepares the chosen rows for the Bulk
 changes page: a URL category operation (admin_ops) for the URL filtering
-and Cloud App Control rows, and the "Fix rows from Test a list" operation
-(ops_list_fix) for the Cloud Firewall, DNS Control and ATP rows. Bulk
-changes previews and applies them behind its own four write gates;
+and Cloud App Control rows, the "Fix rows from Test a list" operation
+(ops_list_fix) for the Cloud Firewall, DNS Control and ATP rows and for
+the URL filtering rows again (a custom URL category with the URL
+filtering rule that uses it), and the ZPA segment domains operation
+(admin_ops zpa_domains) for the rows ZPA carries. Bulk changes previews
+and applies them behind its own four write gates;
 `prove` tests the same rows again afterwards. Nothing in this module
 writes to a tenant.
 """
@@ -1821,6 +1824,8 @@ FIX_MAX = 20
 # Firewall or DNS Control rules, and the ATP allow and deny lists.
 FIX_AREAS = ("URL", "Cloud App")
 OP_FIX_AREAS = {"Firewall": "firewall", "DNS": "dns", "ATP": "atp"}
+FIX_ORDER = ("firewall", "dns", "atp", "url")   # the sections of "Fix rows from Test a list", in the page's order
+MAX_ZPA_SECTIONS = 20
 _FIX_ID = re.compile(r"^[a-f0-9]{24}$")
 RETEST_COLUMNS = ("destination", "port", "protocol", "source_ip", "location", "dest_country", "category", "user", "group", "department",
                   "label", "expected")
@@ -1843,7 +1848,7 @@ def _fix_indexes(rn: Run, rows: Sequence[int], area: str, purpose: str) -> List[
     a = AREA_KEYS.get(area, area)
     if a not in AREAS:
         raise ListError(f"Unknown area '{area[:40]}'. Use one of: {', '.join(AREA_KEYS)}.")
-    if a not in FIX_AREAS and a not in OP_FIX_AREAS:
+    if a not in FIX_AREAS and a not in OP_FIX_AREAS and a != "ZPA":
         raise ListError(f"{AREA_LABELS[a]} is not changed from here: copy its list and paste it into {AREA_PASTE[a]}.")
     want = "BLOCK" if purpose == "block" else "ALLOW"
     out = []
@@ -1874,14 +1879,18 @@ def _retest_line(rn: Run, i: int, expected: str) -> List[str]:
 def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: str = "block", now: Optional[float] = None,
                 in_scope: Optional[Dict[str, Optional[str]]] = None) -> Dict[str, Any]:
     """The chosen rows, as Bulk changes takes them, kept for an hour under a
-    random id: `urls` for the URL category operation (admin_ops.normalize_url)
-    and `fixes` for the "Fix rows from Test a list" operation (ops_list_fix):
-    one section per area (Cloud Firewall, DNS Control, ATP) and purpose,
-    with each destination's row numbers. Each row is fixed for what the file
-    expected of it (`purpose` only for a row with no expectation), in the
-    area its recommendation names; a row already as expected, not tested, or
-    in an area changed elsewhere (ZPA, Client Connector) is excluded with
-    the reason. `in_scope` ({url, firewall, dns, atp: None or why not})
+    random id: `urls` for the URL category operation (admin_ops.normalize_url),
+    `fixes` for the "Fix rows from Test a list" operation (ops_list_fix):
+    one section per area (Cloud Firewall, DNS Control, ATP, URL filtering)
+    and purpose, with each destination's row numbers and the rules that
+    decided them, and `zpa` for the ZPA segment domains operation: one
+    section per application segment and purpose (block: take the domains
+    out of the segment, so ZIA's policy applies; allow: add them to the
+    segment that publishes the application). Each row is fixed for what the
+    file expected of it (`purpose` only for a row with no expectation), in
+    the area its recommendation names; a row already as expected, not
+    tested, or in an area changed elsewhere (Client Connector) is excluded
+    with the reason. `in_scope` ({url, firewall, dns, atp, zpa: None or why not})
     excludes what the Scope page does not put in scope. `retest_text` is the
     rows as a list to test again after the change (prove()). Writes
     nothing: Bulk changes previews the change and applies it only behind its
@@ -1899,6 +1908,7 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
     seen = set()
     excluded: List[Dict[str, Any]] = []
     sections: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    zpa: Dict[Tuple[str, str], Dict[str, Any]] = {}
     before: Dict[str, Dict[str, Any]] = {}
     retest: List[List[str]] = []
     retest_rows: List[int] = []
@@ -1926,14 +1936,24 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
             if scope_why.get("url"):
                 drop(r, scope_why["url"])
                 continue
-            if exp != pick_exp:
+            if exp != pick_exp and rec_area != "URL":
                 drop(r, f"expected to {how}: a URL category change takes one purpose, so pick it again with '{'Blocked' if how == 'block' else 'Allowed'}'")
                 continue
             u, why = admin_ops.normalize_url(r["target"])
             if why:
                 drop(r, f"cannot go into a custom URL category: it {why}")
                 continue
-            if u.lower() not in seen:
+            if rec_area == "URL":
+                # Also a URL filtering section of "Fix rows from Test a list":
+                # the category with the rule that uses it, so the fix changes
+                # the answer and not just a list.
+                sec = sections.setdefault(("url", how), {"area": "url", "area_label": AREA_LABELS["URL"], "purpose": how, "destinations": {},
+                                                         "rows": [], "decided_by": {}, "recommendation": rec})
+                sec["destinations"].setdefault(u, []).append(r["row"])
+                sec["rows"].append(r["row"])
+                if r["rule"] and r["area"] == "URL":
+                    sec["decided_by"][r["rule"]] = sec["decided_by"].get(r["rule"], 0) + 1
+            if exp == pick_exp and u.lower() not in seen:
                 seen.add(u.lower())
                 urls.append(u)
         elif rec_area in OP_FIX_AREAS:
@@ -1947,6 +1967,24 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
             sec["rows"].append(r["row"])
             if r["rule"] and r["area"] == rec_area:
                 sec["decided_by"][r["rule"]] = sec["decided_by"].get(r["rule"], 0) + 1
+        elif rec_area == "ZPA":
+            if scope_why.get("zpa"):
+                drop(r, scope_why["zpa"])
+                continue
+            seg = str(r.get("segment") or "")
+            if not seg:
+                drop(r, "ZPA carries it, but the application segment is not known: test it again with ZPA in scope")
+                continue
+            if (seg, how) not in zpa and len(zpa) >= MAX_ZPA_SECTIONS:
+                drop(r, f"more than {MAX_ZPA_SECTIONS} ZPA segments in one hand-off: pick fewer rows")
+                continue
+            zs = zpa.setdefault((seg, how), {"segment": seg[:200], "purpose": how, "domains": [], "rows": [], "decided_by": {}, "recommendation": rec})
+            host = str(r["target"]).strip().lower()[:253]
+            if host not in zs["domains"]:
+                zs["domains"].append(host)
+            zs["rows"].append(r["row"])
+            if r["rule"]:
+                zs["decided_by"][r["rule"]] = zs["decided_by"].get(r["rule"], 0) + 1
         else:
             drop(r, f"changed in {AREA_LABELS.get(rec_area, rec_area or 'another place')}, not from here: "
                     + (AREA_PASTE.get(rec_area) or "see the row's recommendation"))
@@ -1958,12 +1996,15 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
     over = max(0, len(urls) - admin_ops.MAX_URLS)
     urls = urls[:admin_ops.MAX_URLS]
     fixes = []
-    for (_k, _p), sec in sorted(sections.items(), key=lambda kv: (list(OP_FIX_AREAS.values()).index(kv[0][0]), kv[0][1])):
+    for (_k, _p), sec in sorted(sections.items(), key=lambda kv: (FIX_ORDER.index(kv[0][0]), kv[0][1])):
         fixes.append({"area": sec["area"], "area_label": sec["area_label"], "purpose": sec["purpose"], "rows": sec["rows"][:MAX_FIX_ROWS],
                       "destinations": [{"value": v, "rows": rs[:50]} for v, rs in sec["destinations"].items()],
                       "decided_by": [n for n, _c in sorted(sec["decided_by"].items(), key=lambda kv: -kv[1])[:5]],
                       "recommendation": sec["recommendation"]})
-    if not urls and not fixes:
+    zpa_out = [{"segment": z["segment"], "purpose": z["purpose"], "domains": z["domains"][:admin_ops.MAX_DOMAINS],
+                "rows": z["rows"][:MAX_FIX_ROWS], "decided_by": [n for n, _c in sorted(z["decided_by"].items(), key=lambda kv: -kv[1])[:5]],
+                "recommendation": z["recommendation"]} for z in zpa.values()]
+    if not urls and not fixes and not zpa_out:
         why = "; ".join(sorted({e["why"] for e in excluded})[:3])
         raise ListError("None of the picked rows can be fixed from here" + (f": {why}." if why else "."))
     import csv_safe
@@ -1973,7 +2014,7 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
     w.writerows(retest)
     fid = secrets.token_hex(12)
     rec = {"id": fid, "urls": urls, "excluded": excluded[:100], "over_limit": over, "purpose": purpose, "created": now,
-           "tenant_label": rn.tenant_label, "fixes": fixes, "rows_before": before, "retest_text": buf.getvalue(), "retest_rows": retest_rows,
+           "tenant_label": rn.tenant_label, "fixes": fixes, "zpa": zpa_out, "rows_before": before, "retest_text": buf.getvalue(), "retest_rows": retest_rows,
            "network": rn.network, "platform": rn.platform,
            "note": ("From the Path analyzer's Test a list view: " +
                     (f"{len(urls)} destination(s) for the custom URL category a " + ("Block" if purpose == "block" else "Allow")
@@ -1981,6 +2022,9 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
                     + (f"{sum(len(f['destinations']) for f in fixes)} destination(s) for "
                        + ", ".join(f"{f['area_label']} ({'to block' if f['purpose'] == 'block' else 'to allow'})" for f in fixes) + ". "
                        if fixes else "")
+                    + (f"{sum(len(z['domains']) for z in zpa_out)} destination(s) for the ZPA segment domains change ("
+                       + ", ".join(f"{z['segment']}, {'to block' if z['purpose'] == 'block' else 'to allow'}" for z in zpa_out) + "). "
+                       if zpa_out else "")
                     + "Nothing is written until you preview and apply in write mode and confirm.")}
     with _FIX_LOCK:
         for k in [k for k, v in _FIXES.items() if now - v["created"] > FIX_KEEP_SECONDS]:

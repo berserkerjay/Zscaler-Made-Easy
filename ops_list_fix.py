@@ -368,7 +368,9 @@ def _rule_ref(rule: Any, action: str) -> Optional[Dict[str, Any]]:
     return {"id": _oid(rule.get("id"), "The rule")}
 
 
-_CAT_ID = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
+# A custom category id: CUSTOM_nn as ZIA names them (any upper-case id is
+# taken), or a number (the offline sample store numbers what it creates).
+_CAT_ID = re.compile(r"^(?:[A-Z][A-Z0-9_]{1,63}|[0-9]{1,20})$")
 
 
 def _cat_ref(v: Any) -> Optional[Dict[str, Any]]:
@@ -992,8 +994,12 @@ def _plan_rule(P: _Planner, fx: Dict[str, Any], targets: List[Tuple[str, List[st
         P.items.append(cu)
         payload = {"name": nr["name"], "state": state, "action": act, "rank": NEW_RULE_RANK, field: [ref for ref, _ in targets]}
         if area == "url":
-            # Every protocol and request method, as the ZIA baseline's URL rules (ops_zia_baseline.payload).
-            payload.update(protocols=["ANY_RULE"], request_methods=list(zb.ALL_METHODS), block_override=False)
+            # Every protocol (ANY_RULE, as the ZIA baseline's URL rules). No
+            # request_methods: the SDK documents "if not specified, the rule
+            # will apply to all methods" (url_filtering.add_rule), and the
+            # Path analyzer then reads the rule as unconditional, so the fix
+            # it proposes is the one it evaluates.
+            payload.update(protocols=["ANY_RULE"], block_override=False)
         if svc_ids:
             payload["nw_services"] = list(svc_ids)
         return [{"key": rkey, "handler": "lf_rule_create", "target": {"area": area, "name": nr["name"], "payload": payload,
@@ -1115,6 +1121,18 @@ def _warn_no_rule(P: _Planner, fx: Dict[str, Any], target: Tuple[str, List[str]]
     if not users:
         P.warnings.append(f"No enabled URL filtering rule with action {'Block' if want == 'block' else 'Allow'} names the category {cid}: "
                           "adding the URLs changes nothing for these rows. Pick a rule or create one under Then.")
+        return
+    # Rules are evaluated by order: a rule naming the category below the
+    # rule that decided the rows never sees them.
+    names = {str(r.get("name") or ""): r for r in P.rules("url")}
+    deciding = [names[x] for x in fx.get("decided_by") or [] if x in names and not ao._is_default(names[x])]
+    top = min((ao._int(d.get("order"), 0) for d in deciding), default=None)
+    if top is not None and all(ao._int(r.get("order"), 0) > top for r in users):
+        first = min(deciding, key=lambda d: ao._int(d.get("order"), 0))
+        P.warnings.append(f"Every enabled {'Block' if want == 'block' else 'Allow'} URL filtering rule that names the category {cid} "
+                          f"({', '.join(repr(str(r.get('name'))) for r in users[:3])}) is below '{first.get('name')}' (order {first.get('order')}), "
+                          f"which decided {_rows_text(sorted({r for d in fx['destinations'] for r in d['rows']})) or 'the rows'}: adding the URLs changes "
+                          "nothing for these rows. Create a rule above it under Then, or move that rule up.")
 
 
 def _plan_atp(P: _Planner, fx: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1655,8 +1673,9 @@ def _inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def _read_targets(client, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     """What a fix can pick, read-only and only what is in scope: the IP
-    destination groups, the Cloud Firewall and DNS Control rules, the
-    network services and the size of the ATP lists."""
+    destination groups, the Cloud Firewall, DNS Control and URL filtering
+    rules, the custom URL categories, the network services and the size of
+    the ATP lists."""
     zia = client.zia
     read, why = areas_in_scope(scope)
     out: Dict[str, Any] = {"areas": read, "not_in_scope_areas": why, "errors": {},

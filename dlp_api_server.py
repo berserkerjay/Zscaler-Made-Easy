@@ -12172,7 +12172,8 @@ async def bulk_test_area_list(job_id: str, area: str = "", purpose: str = "block
 
 
 FIX_NOTHING_IN_SCOPE = ("Nothing Fix selected changes is in scope on the Scope page: custom URL categories (URL filtering: tick DLP or "
-                        "ZIA platform), and the Cloud Firewall, DNS Control and ATP lists (tick ZIA platform). Nothing was read.")
+                        "ZIA platform), the Cloud Firewall, DNS Control and ATP lists (tick ZIA platform), and ZPA application "
+                        "segments (tick ZPA). Nothing was read.")
 
 
 def _fix_scope(req: Any) -> Dict[str, Optional[str]]:
@@ -12185,6 +12186,7 @@ def _fix_scope(req: Any) -> Dict[str, Optional[str]]:
     read, why = ops_list_fix.areas_in_scope(scope)
     out: Dict[str, Optional[str]] = {"url": None if scope["url_categories"] else scope["not_in_scope"]["url_categories"]}
     out.update({a: (None if a in read else why[a]) for a in ops_list_fix.AREA_ORDER})
+    out["zpa"] = None if scope["zpa"] else scope["not_in_scope"]["zpa_segments"]
     if all(out.values()):
         raise HTTPException(status_code=400, detail=FIX_NOTHING_IN_SCOPE)
     return out
@@ -12195,7 +12197,8 @@ async def bulk_test_fix(job_id: str, req: BulkFixRequest):
     """Fix selected: the chosen rows as Bulk changes operations to preview
     (it opens with /report/operations?fix=<id>): the URL filtering and Cloud
     App Control rows as a URL category change, the Cloud Firewall, DNS
-    Control and ATP rows as "Fix rows from Test a list". Each row is fixed
+    Control, ATP and URL filtering rows as "Fix rows from Test a list", the
+    rows ZPA carries as a ZPA segment domains change. Each row is fixed
     for what it was expected to do. Refused (400) when nothing it changes is
     in scope; a part out of scope is left out with the reason. Writes
     nothing: Bulk changes applies only in write mode, for a writer, with the
@@ -12211,6 +12214,8 @@ async def bulk_test_fix(job_id: str, req: BulkFixRequest):
             "open": f"/report/operations?fix={rec['id']}", "note": rec["note"],
             "fixes": [{"area": f["area"], "area_label": f["area_label"], "purpose": f["purpose"], "destinations": len(f["destinations"]),
                        "rows": len(f["rows"])} for f in rec["fixes"]],
+            "zpa": [{"segment": z["segment"], "purpose": z["purpose"], "destinations": len(z["domains"]), "rows": len(z["rows"])}
+                    for z in rec.get("zpa") or []],
             "rows": len(rec["retest_rows"])}
 
 
@@ -12224,6 +12229,7 @@ async def bulk_test_fix_get(fix_id: str):
     if rec is None:
         raise HTTPException(status_code=404, detail="That hand-off is no longer kept (an hour). Pick the rows again on the Path analyzer's Test a list view.")
     out = {k: rec[k] for k in ("urls", "excluded", "over_limit", "purpose", "note", "fixes")}
+    out["zpa"] = rec.get("zpa") or []
     out["rows"] = [dict(rec["rows_before"].get(str(n)) or {}, row=n) for n in rec["retest_rows"][:bulk_test.MAX_FIX_ROWS]]
     return out
 

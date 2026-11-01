@@ -277,6 +277,98 @@ def test_rules_follow_new_segments_on_a_rerun():
     assert [u["field"] for u in p["items"] if u["status"] == "change"] == ["apps"]
 
 
+def _with_access_policy(c: Client) -> dict:
+    """Two access rules that exist before the build (a Deny above an Allow) and the Default rule."""
+    t = c.tenant
+    deny = t.add("rule:access", {"name": "Deny contractors", "action": "DENY", "ruleOrder": "1"})
+    allow = t.add("rule:access", {"name": "Allow staff", "action": "ALLOW", "ruleOrder": "2"})
+    t.add("rule:access", {"name": "Default_Rule", "action": "DENY", "ruleOrder": "3", "defaultRule": True})
+    return {"deny": deny["id"], "allow": allow["id"]}
+
+
+def _access_order(c: Client) -> list:
+    rows = [r for r in c.tenant.rows["rule:access"].values() if not r.get("defaultRule")]
+    return [r["name"] for r in sorted(rows, key=lambda r: int(r["ruleOrder"]))]
+
+
+def _prefixed(c: Client) -> Client:
+    _apply(c, {"type": "zpa_connector_group", "prefix": "pov1"})
+    _apply(c, {"type": "zpa_app_segments", "prefix": "pov1", "wildcard": {"domain": "corp.example.com", "tcp": "443"}})
+    return c
+
+
+def test_a_new_access_rule_with_a_position_lands_above_the_rule_picked_and_undo_restores_the_order():
+    """ASVS V1.4.1 · V11.1.1 · CWE-841 · CWE-670: an access rule built with 'Place it above' is created, then moved just above the picked rule with one bulk_reorder_rules write (the Default rule left out); the Undo deletes it and the other rules keep their order."""
+    c = _prefixed(Client())
+    ids = _with_access_policy(c)
+    spec = {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False, "access_above": ids["deny"]}
+    p, r = _apply(c, spec)
+    move = next(u for u in p["items"] if u["field"] == "position")
+    assert move["status"] == "change" and "above 'Deny contractors'" in move["after"] and move["depends_on"], move
+    assert r["status"] == "applied" and r["verification"]["mismatched"] == [], r
+    assert _access_order(c) == ["pov1-access", "Deny contractors", "Allow staff"]
+    assert [w[0] for w in c.tenant.writes if w[0] == "reorder"] == ["reorder"]
+    _u, undone = _apply(c, r["inverse"])
+    assert undone["status"] == "applied", undone
+    assert _access_order(c) == ["Deny contractors", "Allow staff"]
+
+
+def test_moving_an_existing_access_rule_is_undone_to_where_it_was():
+    """ASVS V7.2.1 · CWE-1188: a rebuild that only moves the existing access rule records where it sat; the Undo puts it back exactly."""
+    c = _prefixed(Client())
+    ids = _with_access_policy(c)
+    _apply(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False})
+    before = _access_order(c)
+    assert before == ["Deny contractors", "Allow staff", "pov1-access"]
+    _p, r = _apply(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False, "access_above": ids["allow"]})
+    assert r["status"] == "applied" and _access_order(c) == ["Deny contractors", "pov1-access", "Allow staff"]
+    assert r["inverse"]["move_back"][0]["above"] is None
+    _u, undone = _apply(c, r["inverse"])
+    assert undone["status"] == "applied" and _access_order(c) == before
+    assert c.tenant.by_name("rule:access", "pov1-access"), "an access rule that existed before is moved back, not deleted"
+
+
+def test_an_access_policy_reordered_after_the_preview_is_a_conflict_and_nothing_moves(monkeypatch):
+    """ASVS V11.1.3 · CWE-367: the order is read again right before the write; a change since the preview is a conflict and the order is left as it is."""
+    c = _prefixed(Client())
+    ids = _with_access_policy(c)
+    _apply(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False})
+    orig = ops_zpa.HANDLERS["zpa_b_order"]
+
+    def someone_reorders_first(run, g, units):
+        rows = c.tenant.rows["rule:access"]
+        rows[ids["deny"]]["ruleOrder"], rows[ids["allow"]]["ruleOrder"] = rows[ids["allow"]]["ruleOrder"], rows[ids["deny"]]["ruleOrder"]
+        return orig(run, g, units)
+
+    monkeypatch.setitem(ao.PLUGIN_HANDLERS, "zpa_b_order", someone_reorders_first)
+    c.tenant.writes.clear()
+    _p, r = _apply(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False, "access_above": ids["deny"]})
+    assert [u["status"] for u in r["items"] if u["field"] == "position"] == ["conflict"]
+    assert not [w for w in c.tenant.writes if w[0] == "reorder"]
+    assert _access_order(c) == ["Allow staff", "Deny contractors", "pov1-access"]
+
+
+@pytest.mark.parametrize("above, why", [("72058304859999999", "not in ZPA now"), ("default", "always last")])
+def test_a_position_that_cannot_be_used_blocks_the_plan(above, why):
+    """ASVS V5.1.3 · CWE-20: a rule to place it above that is gone, or the Default rule, blocks the plan with the reason; a position without the access rule is refused."""
+    c = _prefixed(Client())
+    _with_access_policy(c)
+    if above == "default":
+        above = next(r["id"] for r in c.tenant.rows["rule:access"].values() if r.get("defaultRule"))
+    p = ao.plan(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "access_above": above}, scope=ZPA)
+    assert any(why in b for b in p["blockers"]), p["blockers"]
+    with pytest.raises(ao.OperationError, match="Access"):
+        ao.plan(c, {"type": "zpa_policies", "prefix": "pov1", "access": False, "timeout": True, "access_above": above}, scope=ZPA)
+
+
+def test_the_picker_lists_the_access_policy_in_order_without_the_default_rule():
+    """ASVS V4.1.3 · CWE-272: the builder's 'Place it above' list is the access policy top first; the Default rule is never offered."""
+    c = _prefixed(Client())
+    _with_access_policy(c)
+    out = ao.read_objects(c, ops_zpa.FAMILY, ZPA)
+    assert [r["name"] for r in out["access_rules"]] == ["Deny contractors", "Allow staff"]
+
+
 # ── delete by prefix ────────────────────────────────────────────────────
 
 ORDER = ["rule:access", "rule:timeout", "rule:inspection", "rule:isolation", "inspection_profile", "segment", "server_group", "segment_group",
