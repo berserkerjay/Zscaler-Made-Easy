@@ -12,4 +12,5 @@ Read this table, then load only the files your stage's Inputs name.
 | ui.md | Page conventions: plain words, `?` help marks, `*` release marks, AA contrast, keyboard, 320px, escaping on output |
 | zscaler-sdk.md | Working with the installed Zscaler SDK: verifying calls and fields, the client builders, raw calls outside the SDK, marking assumptions |
 | naming.md | The naming rules: product name, forbidden names, old-name guard |
+| token-efficiency.md | Cutting tokens without cutting proof: targeted reads, short test output, diff-only verify, ≤5-line reports, fresh session per run |
 | git.md | Branches, worktrees, commits, attribution lines, PR flow, what never to do with git |

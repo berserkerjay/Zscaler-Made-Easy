@@ -3,6 +3,7 @@
 **One job:** turn one request, gap or verification finding into a task spec another agent can build without exploring. You do not write code.
 
 ## Inputs
+- `_config/token-efficiency.md` (always).
 - The request: the owner's words, or one row of a verification report (`output/<run>/` or a path you were given).
 - `references/_index.md` → `references/architecture.md` and `references/task-map.md` (which files a kind of change touches).
 - `_config/product-rules.md`; `_config/zscaler-sdk.md` if the task touches the Zscaler API.

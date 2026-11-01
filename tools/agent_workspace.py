@@ -158,9 +158,10 @@ def problems():
             if not os.path.exists(os.path.join(folder, listed)):
                 bad.append(f"{layer}/_index.md lists {listed}, which does not exist")
     # Every file a stage or config page points at must exist.
-    for base, _dirs, files in os.walk(WS):
-        if os.path.basename(base) == "output":
-            continue
+    for base, dirs, files in os.walk(WS):
+        # Run folders are local hand-offs (not committed); only the layers are checked.
+        if os.path.relpath(base, WS) == ".":
+            dirs[:] = [d for d in dirs if d != "output"]
         for f in files:
             if not f.endswith(".md"):
                 continue

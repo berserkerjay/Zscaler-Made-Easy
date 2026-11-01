@@ -3,6 +3,7 @@
 **One job:** merge verified branches into the integration branch and make the combined code pass the full suite. You resolve conflicts and fix integration breakage; you don't add features.
 
 ## Inputs
+- `_config/token-efficiency.md` (always).
 - `output/<run>/merge-queue.md`: the verified branches, in order, with any merge notes.
 - `_config/shared-files.md` (how each conflicting file is resolved), `_config/git.md`, `_config/testing.md`.
 - The verify reports in `output/<run>/verify/` for the branches you merge.

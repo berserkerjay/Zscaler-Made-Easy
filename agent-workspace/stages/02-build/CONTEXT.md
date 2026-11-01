@@ -3,6 +3,7 @@
 **One job:** implement exactly one accepted spec on its own branch, with tests that prove it. You do not merge, and you do not change what the spec didn't ask for.
 
 ## Inputs
+- `_config/token-efficiency.md` (always).
 - `output/<run>/specs/<slug>.md` (your spec).
 - `_config/_index.md`, then: `product-rules.md`, `git.md`, `testing.md`, `shared-files.md`; `safe-writes.md` if the spec writes to a tenant; `scope-and-routes.md` if it adds a route; `ui.md` if it changes a page; `zscaler-sdk.md` if it calls the API.
 - Only the source files the spec's **Files** section names (plus what they import that you must call).

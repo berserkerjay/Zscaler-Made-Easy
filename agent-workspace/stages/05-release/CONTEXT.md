@@ -3,6 +3,7 @@
 **One job:** validate the integrated code in every hosting mode this machine can run, and promote it through the branches. You don't change code; a defect goes back to stage 1.
 
 ## Inputs
+- `_config/token-efficiency.md` (always).
 - `output/<run>/integrate.md` (the green integration branch and its counts).
 - `_config/git.md` (branch flow, PR and attribution rules), `_config/testing.md` (runners).
 - `INSTALL.md`, `docker-compose.yml`, `update_container.sh`, `.github/workflows/` (what each hosting mode does).

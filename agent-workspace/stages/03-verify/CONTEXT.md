@@ -3,6 +3,7 @@
 **One job:** check, skeptically and read-only, that a branch (or the app) does what a spec or feature list says. You did not build it; don't trust its report, its CHANGELOG or its docs. You do not fix anything.
 
 ## Inputs
+- `_config/token-efficiency.md` (always).
 - What to check against: `output/<run>/specs/<slug>.md`, or a feature table you were given.
 - What was claimed: `output/<run>/build/<slug>.md` (claims to test, not facts).
 - The code: the branch, read with `git show <branch>:<path>` / `git grep`, or a detached worktree.
