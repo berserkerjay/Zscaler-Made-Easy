@@ -290,3 +290,68 @@ def test_an_oversized_import_is_refused_by_the_api():
     c = _api()
     r = c.post("/api/vendor-endpoints/import", json={"provider": "zoom", "content": "1" * (ve.MAX_BYTES + 2048)})
     assert r.status_code in (413, 422) and ve.load("zoom") is None
+
+
+# ── The Advanced settings card, in a real browser ─────────────────────
+def _vend_driver() -> str:
+    from test_findings_reflow import CDP_PRELUDE
+    return CDP_PRELUDE + r"""
+const [listFile] = args;
+const out = {};
+const seen = [];
+await send('Runtime.enable');
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+await send('Page.navigate', { url: base + '/report/advanced#vendors' });
+await until(() => ev(`document.readyState === 'complete'`), 'load', 60000);
+await until(() => ev(`!!document.querySelector('#advVendBox strong')`), 'the provider lists', 60000);
+await ev(`(() => { window.dlpDialog = { ask: async () => true };
+  const f = window.fetch; window.__vend = []; window.fetch = (u, o) => { if (String(u).includes('/api/vendor-endpoints')) window.__vend.push([(o && o.method) || 'GET', String(u), (o && o.body) || '']); return f(u, o); }; return 1; })()`);
+out.start = await ev(`({ on: document.getElementById('advVendZoomOn').checked, fetchDisabled: document.getElementById('advVendFetch').disabled,
+  removeDisabled: document.getElementById('advVendRemove').disabled, box: document.getElementById('advVendBox').textContent,
+  switchRole: document.getElementById('advVendZoomOn').getAttribute('role') })`);
+// Import Webex's list from a text file.
+await ev(`(() => { const s = document.getElementById('advVendProv'); s.value = 'webex'; s.dispatchEvent(new Event('change')); return 1; })()`);
+const root = (await send('DOM.getDocument', { depth: 0 })).result.root.nodeId;
+const node = await send('DOM.querySelector', { nodeId: root, selector: '#advVendFile' });
+await send('DOM.setFileInputFiles', { nodeId: node.result.nodeId, files: [listFile] });
+await ev(`(document.getElementById('advVendImport').click(), 1)`);
+await until(() => ev(`document.getElementById('advVendBox').textContent.includes('Imported.')`), 'the import', 30000);
+out.imported = await ev(`({ box: document.getElementById('advVendBox').textContent, removeDisabled: document.getElementById('advVendRemove').disabled })`);
+// Turn fetching Zoom's list on: nothing is fetched by that alone.
+await ev(`(() => { const c = document.getElementById('advVendZoomOn'); c.click(); return 1; })()`);
+await until(() => ev(`!document.getElementById('advVendFetch').disabled`), 'Fetch now enabled', 30000);
+out.on = await ev(`({ box: document.getElementById('advVendBox').textContent, calls: window.__vend.map(c => c[0] + ' ' + c[1].replace(location.origin, '') + ' ' + c[2]) })`);
+// Remove Webex's list again.
+await ev(`(document.getElementById('advVendRemove').click(), 1)`);
+await until(() => ev(`document.getElementById('advVendBox').textContent.includes('Removed.')`), 'the removal', 30000);
+out.removed = await ev(`({ box: document.getElementById('advVendBox').textContent, removeDisabled: document.getElementById('advVendRemove').disabled,
+  calls: window.__vend.map(c => c[0] + ' ' + c[1].replace(location.origin, '')) })`);
+out.names = await ev(`['advVendZoomOn', 'advVendFetch', 'advVendProv', 'advVendFile', 'advVendImport', 'advVendRemove'].map(id => { const e = document.getElementById(id); e.disabled = false; e.focus();
+  return { id, focused: document.activeElement === e, name: ((e.labels && e.labels.length ? e.labels[0].textContent : '') || e.textContent || '').trim() }; })`);
+await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
+await sleep(300);
+out.overflow = await ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+
+def test_the_advanced_settings_card_imports_switches_and_removes_with_zoom_fetching_off_by_default(tmp_path):
+    """ASVS V1.14.6 · V12.6.1 · CWE-918 · WCAG 2.2 SC 4.1.2 · SC 1.4.10: the card exists in Advanced settings, as SECURITY.md says; fetching Zoom's list is off by default and turning it on fetches nothing; a provider's list is imported from a text file and removed; every control is named and reachable; nothing scrolls sideways at 320px."""
+    from test_findings_reflow import run_in_browser
+    lst = tmp_path / "webex.txt"
+    lst.write_text(WEBEX_TXT, encoding="utf-8")
+    (tmp_path / "b").mkdir()
+    out = run_in_browser(tmp_path / "b", _vend_driver(), str(lst), timeout=240)
+    s = out["start"]
+    assert s["on"] is False and s["fetchDisabled"] is True and s["removeDisabled"] is True and s["switchRole"] == "switch"
+    assert "Zoom: no list kept" in s["box"] and "Fetching from assets.zoom.us: off" in s["box"] and "Webex: no list kept" in s["box"]
+    assert "Webex's list, imported" in out["imported"]["box"] and "host names" in out["imported"]["box"] and out["imported"]["removeDisabled"] is False
+    assert "Fetching from assets.zoom.us: on" in out["on"]["box"] and "Nothing is fetched until you click" in out["on"]["box"]
+    assert [c.split(" ")[0] + " " + c.split(" ")[1] for c in out["on"]["calls"]] == ["POST /api/vendor-endpoints/import", "PUT /api/vendor-endpoints/settings"]
+    assert '"provider":"zoom"' in out["on"]["calls"][1] and '"enabled":true' in out["on"]["calls"][1]
+    assert not any("/refresh" in c for c in out["removed"]["calls"]), "turning fetching on never fetches by itself"
+    assert out["removed"]["calls"][-1] == "DELETE /api/vendor-endpoints/webex" and "Webex: no list kept" in out["removed"]["box"]
+    for c in out["names"]:
+        assert c["name"] and c["focused"], c
+    assert out["overflow"] <= 0

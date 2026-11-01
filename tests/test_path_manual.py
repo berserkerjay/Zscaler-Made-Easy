@@ -183,3 +183,66 @@ def test_merge_needs_client_connector_in_scope(api):
     """ASVS V4.1.3 · CWE-863: merging into the tenant's app profiles while Client Connector is not ticked is refused before sign-in."""
     r = api.post("/api/path-analyzer/start", json=dict(BODY, scopes=["dlp"], whatif_bypass={"vpn_gateways": ["vpn.acme.example"], "mode": "merge"}))
     assert r.status_code == 400 and r.json()["detail"] == srv.PATH_MANUAL_MERGE_NOT_IN_SCOPE
+
+
+# ── The page: Manual inputs on the Path analyzer, in a real browser ────
+def _page_driver() -> str:
+    from test_findings_reflow import CDP_PRELUDE
+    return CDP_PRELUDE + r"""
+const out = {};
+const errors = [];
+await send('Runtime.enable');
+const onEv = ws.onmessage;
+ws.onmessage = e => { const m = JSON.parse(e.data); if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.text); onEv(e); };
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1400, deviceScaleFactor: 1, mobile: false });
+await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+await send('Page.navigate', { url: base + '/report/path' });
+await until(() => ev(`document.readyState === 'complete'`), 'load', 60000);
+out.sample = await ev(`fetch('/api/offline/sample', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.status)`);
+await ev(`localStorage.setItem('zassess_scopes_live_v1', JSON.stringify({ scopes: ['dlp', 'zia_extras', 'zcc'] }));
+  localStorage.setItem('zassess_channels_v1', JSON.stringify({ web_dlp: 'zscaler', ssl_inspection: 'zscaler', cloud_app_control: 'zscaler' })); 1`);
+await send('Page.reload');
+await until(() => ev(`document.readyState === 'complete' && !!window.PathExtras && !!window.PathExtras.manual`), 'reload', 60000);
+await ev(`(() => { const f = window.fetch; window.__starts = []; window.fetch = (u, o) => { if (String(u).includes('/api/path-analyzer/start')) window.__starts.push(JSON.parse((o && o.body) || '{}')); return f(u, o); }; return 1; })()`);
+out.empty = await ev(`window.PathExtras.manual()`);
+// 1. A VPN gateway typed for the destination: on its own, next to the tenant's answer.
+await ev(`(() => { const d = document.getElementById('paManual'); d.open = true; const v = document.getElementById('paManVpn'); v.value = 'dropbox.com'; v.dispatchEvent(new Event('input')); return 1; })()`);
+out.note = await ev(`document.getElementById('paManNote').textContent`);
+await ev(`document.getElementById('paDest').value = 'dropbox.com'; document.getElementById('paRun').click(); 1`);
+await until(() => ev(`!!document.getElementById('paManualOut')`), 'the manual inputs block', 90000);
+out.result = await ev(`(() => { const s = document.getElementById('paManualOut'); return { h: document.getElementById('paManOutH').textContent, text: s.textContent.replace(/\\s+/g, ' '),
+  verdict: document.getElementById('paHeadline').textContent }; })()`);
+out.sent = await ev(`window.__starts.map(s => s.whatif_bypass || null)`);
+// 2. A bad entry is refused in words before anything is read.
+await ev(`(() => { const v = document.getElementById('paManIpInc'); v.value = 'not-an-ip'; v.dispatchEvent(new Event('input')); document.getElementById('paRun').click(); return 1; })()`);
+await until(() => ev(`!!document.querySelector('#paBody .bp-card.risk, .bp-card.risk')`), 'the refusal', 60000);
+out.refused = await ev(`document.querySelector('.bp-card.risk').textContent.replace(/\\s+/g, ' ')`);
+// 3. Clear empties everything: the next start sends no manual inputs.
+await ev(`(document.getElementById('paManClear').click(), 1)`);
+out.cleared = await ev(`({ m: window.PathExtras.manual(), vpn: document.getElementById('paManVpn').value, alone: document.getElementById('paManAlone').checked })`);
+out.names = await ev(`['paManAlone', 'paManMerge', 'paManPac', 'paManVpn', 'paManIpInc', 'paManIpExc', 'paManDomInc', 'paManDomExc', 'paManClear'].map(id => { const e = document.getElementById(id); e.focus();
+  return { id, focused: document.activeElement === e, name: ((e.labels && e.labels.length ? e.labels[0].textContent : '') || e.textContent || '').trim() }; })`);
+await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
+await sleep(300);
+out.overflow = await ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+out.errors = errors;
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+
+def test_the_path_analyzer_page_sends_the_manual_inputs_and_shows_what_they_would_do(tmp_path):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01 · WCAG 2.2 SC 4.1.2 · SC 1.4.10: Manual inputs (what-if) on the page: what is typed goes in whatif_bypass, the result block says the typed VPN gateway sends the destination direct (hypothetical, nothing kept), a bad entry is refused in words, Clear empties it, every control is named and reachable, and nothing scrolls sideways at 320px."""
+    from test_findings_reflow import run_in_browser
+    out = run_in_browser(tmp_path, _page_driver(), timeout=300)
+    assert out["sample"] == 200 and out["empty"] is None
+    assert "includes these inputs" in out["note"]
+    assert out["sent"][0] == {"vpn_gateways": "dropbox.com", "mode": "alone"}
+    r = out["result"]
+    assert r["h"].startswith("Manual inputs (what-if): Bypassed"), r
+    assert "would never reach Zscaler (VPN gateway bypass: dropbox.com)" in r["text"] and "nothing you typed is kept" in r["text"]
+    assert "is not an address, a CIDR block or a range" in out["refused"] and "Nothing was read" in out["refused"]
+    assert out["cleared"] == {"m": None, "vpn": "", "alone": True}
+    for c in out["names"]:
+        assert c["name"] and c["focused"], c
+    assert out["overflow"] <= 0 and out["errors"] == []
