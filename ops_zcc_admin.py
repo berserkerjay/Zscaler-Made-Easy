@@ -341,9 +341,22 @@ def read_objects(client: Any, scope: Dict[str, Any], say: Callable[[str], None],
 
 def lookup(client: Any, what: str, query: Dict[str, Any], cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     """Read-only answers to the page's searches: a user's devices, or a list
-    matched against one paged read of the enrolled devices."""
+    (text, or an .xlsx workbook as xlsx_b64) matched against one paged read
+    of the enrolled devices."""
     if what == "match":
-        entries = parse_list(query.get("text"))
+        text = query.get("text")
+        if query.get("xlsx_b64"):
+            import base64
+            import binascii
+            raw = str(query.get("xlsx_b64") or "")
+            if len(raw) > (MAX_XLSX_BYTES * 4) // 3 + 8:
+                raise _err(f"The workbook must be an .xlsx file of at most {MAX_XLSX_BYTES // (1024 * 1024)} MB.")
+            try:
+                data = base64.b64decode(raw, validate=True)
+            except (binascii.Error, ValueError):
+                raise _err("The workbook did not arrive whole; choose the file again.")
+            text = data
+        entries = parse_list(text)
         mode = "force" if query.get("mode") == "force" else "remove"
         dom = str(query.get("domain") or "").strip().lower()
         if dom and not _DOMAIN_RE.match(dom):
@@ -572,7 +585,10 @@ _DOMAIN_RE = re.compile(r"^@?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](
 
 def parse_list(text: Any) -> List[Dict[str, str]]:
     """Entries of a pasted or uploaded list (text or CSV: one entry a line;
-    "user,hostname" is a pair; a header line is skipped). Pure; capped."""
+    "user,hostname" is a pair; a header line is skipped), or the bytes of
+    an Excel .xlsx workbook (read by xlsx_list_text). Pure; capped."""
+    if isinstance(text, (bytes, bytearray)):
+        text = xlsx_list_text(bytes(text))
     if not isinstance(text, str):
         raise _err("Paste the list, or choose a .txt or .csv file.")
     if len(text.encode("utf-8", "ignore")) > MAX_LIST_BYTES:
@@ -603,6 +619,80 @@ def parse_list(text: Any) -> List[Dict[str, str]]:
         if len(out) > MAX_LIST_ENTRIES:
             raise _err(f"At most {MAX_LIST_ENTRIES} entries in one list.")
     return out
+
+
+MAX_XLSX_BYTES = 8 * 1024 * 1024   # an uploaded workbook (the portal's device export)
+_XLSX_HEADERS = {
+    "udid": ("udid", "device id", "device udid", "deviceid"),
+    "user": ("user", "username", "user name", "email", "user id", "login", "user email"),
+    "host": ("hostname", "host", "host name", "machine hostname", "device hostname", "device name", "machine name"),
+}
+
+
+def xlsx_list_text(data: bytes) -> str:
+    """An uploaded Excel workbook (.xlsx: the Client Connector portal's
+    device export, or any sheet of users, host names or device ids) as the
+    list text parse_list reads. With a header row naming a UDID, user or
+    host name column, each row gives its device id, else "user,hostname",
+    else its user or its host name; without one, each row's cells are an
+    entry each. Read by xlsx_reader (zip-bomb and XXE safe, capped)."""
+    import xlsx_reader
+    if not isinstance(data, (bytes, bytearray)) or len(data) > MAX_XLSX_BYTES:
+        raise _err(f"The workbook must be an .xlsx file of at most {MAX_XLSX_BYTES // (1024 * 1024)} MB.")
+    try:
+        rows = xlsx_reader.read_rows(bytes(data))
+    except xlsx_reader.XlsxRefused as e:
+        raise _err(f"The workbook could not be read: {e}.")
+    rows = [[c.strip() for c in r] for r in rows if any(c.strip() for c in r)]
+    if not rows:
+        raise _err("The workbook's first sheet is empty.")
+    head = [re.sub(r"\s+", " ", c.lower()) for c in rows[0]]
+    cols = {k: next((i for i, h in enumerate(head) if h in names), None) for k, names in _XLSX_HEADERS.items()}
+    out: List[str] = []
+    if any(v is not None for v in cols.values()):
+        cell = lambda r, k: r[cols[k]] if cols[k] is not None and cols[k] < len(r) else ""   # noqa: E731
+        for r in rows[1:]:
+            udid, user, host = cell(r, "udid"), cell(r, "user"), cell(r, "host")
+            if udid:
+                out.append(udid)
+            elif user and host:
+                out.append(f"{user},{host}")
+            elif user or host:
+                out.append(user or host)
+    else:
+        out = [",".join(c for c in r if c) for r in rows]
+    return "\n".join(re.sub(r"[\r\n]", " ", x) for x in out)
+
+
+def domain_users(devices: List[Dict[str, Any]], domain: str) -> List[Dict[str, Any]]:
+    """The user names enrolled under one user domain (pure): each user with
+    their device count, the device states and the latest last-seen time.
+    Personal data: the route asks for an explicit opt-in."""
+    dom = str(domain or "").strip().lower().lstrip("@")
+    if not _DOMAIN_RE.match(dom):
+        raise _err("Type the user domain, like acme.com.")
+    by: Dict[str, Dict[str, Any]] = {}
+    for d in devices:
+        u = str(d.get("user") or "").lower()
+        if _domain_of(u) != dom:
+            continue
+        row = by.setdefault(u, {"user": u, "devices": 0, "states": set(), "last_seen": ""})
+        row["devices"] += 1
+        row["states"].add(str(d.get("state") or ""))
+        row["last_seen"] = max(row["last_seen"], str(d.get("last_seen") or ""))
+    return [dict(r, states=", ".join(sorted(x for x in r["states"] if x))) for _u, r in sorted(by.items())]
+
+
+def domain_users_csv(rows: List[Dict[str, Any]], domain: str) -> str:
+    """The user names of one domain as CSV (cells made safe for spreadsheets)."""
+    import csv_safe
+    import io
+    buf = io.StringIO()
+    w = csv_safe.writer(buf)
+    w.writerow(["user", "devices", "device states", "last seen"])
+    for r in rows:
+        w.writerow([r["user"], r["devices"], r["states"], r["last_seen"]])
+    return buf.getvalue()
 
 
 def _domain_of(user: str) -> str:

@@ -498,6 +498,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     # one place a Browser Access key enters the app (held in memory for the next previewed operation; writers only).
     ("POST", "/api/operations/lookup"): "reads (a Client Connector or ZDX search for a form)",
     ("POST", "/api/operations/zdx/deeptrace/follow/start"): "reads (follows a ZDX deep trace, bounded)",
+    ("POST", "/api/operations/zcc/domain-users.csv"): "reads (one paged read of enrolled devices: a domain's user names as CSV, personal-data opt-in)",
     ("POST", "/api/operations/zpa/ba-certificate"): "holds an uploaded certificate and key in this app's memory; reaches no tenant",
     # Rules from a spreadsheet and scheduled sync (rule_csv, ops_rule_csv, sync_jobs): the import itself is an
     # operation type on the engine (WRITE path); a sync job only reads and files plans in the change queue.
@@ -514,6 +515,12 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/zcc/fleet/{job_id}/history"): "keeps a counts-only snapshot of a fleet read (local file)",
     ("POST", "/api/zcc/fleet/history/forget"): "forgets the local fleet history (no tenant)",
     ("POST", "/api/traffic-logs/analyze"): "reads uploaded traffic and session logs (no tenant call)",
+    ("POST", "/api/traffic-logs/watch"): "local settings (the daily report's watched folder; writer, audited)",
+    ("POST", "/api/traffic-logs/watch/run"): "reads local log files into a report (no tenant call; writer, audited)",
+    ("POST", "/api/traffic-logs/syslog/start"): "starts the local syslog listener (no tenant call; writer, audited)",
+    ("POST", "/api/traffic-logs/syslog/stop"): "stops the local syslog listener (no tenant call; writer, audited)",
+    ("POST", "/api/traffic-logs/syslog/clear"): "forgets the syslog lines held in memory (no tenant call; writer, audited)",
+    ("POST", "/api/traffic-logs/syslog/analyze"): "analyses the syslog lines held in memory (no tenant call)",
     ("POST", "/api/tenant-health/start"): "reads (tenant health checks)",
     ("DELETE", "/api/traffic-logs/report/{report_id}"): "forgets a traffic log report held in memory (no tenant)",
     ("POST", "/api/traffic-logs/report/{report_id}/save"): "keeps a traffic log report as a local file (no tenant)",

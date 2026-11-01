@@ -6855,8 +6855,10 @@ class OperationLookupRequest(OperationCredsRequest):
     """A read-only search for a day-to-day admin form: `family` (zcc_admin
     or zdx_trace) and `what` (devices, match; users, apps, app_scores,
     app_score, health, device_app, probes, traces, trace, results). `text`
-    is a list of devices to match (at most 1 MB, checked in code), `mode`
-    remove or force and `domain` an optional user domain filter."""
+    is a list of devices to match (at most 1 MB, checked in code), or
+    `xlsx_b64` an Excel workbook of them (the Client Connector portal's
+    device export; at most 8 MB, read by xlsx_reader), `mode` remove or
+    force and `domain` an optional user domain filter."""
     family: str = ""
     what: str = ""
     user: str = ""
@@ -6864,6 +6866,7 @@ class OperationLookupRequest(OperationCredsRequest):
     app_id: str = ""
     trace_id: str = ""
     text: str = ""
+    xlsx_b64: str = ""
     mode: str = ""
     domain: str = ""
 
@@ -6889,12 +6892,55 @@ async def operations_lookup(req: OperationLookupRequest):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     query = {"user": req.user, "device_id": req.device_id, "app_id": req.app_id, "trace_id": req.trace_id, "text": req.text, "mode": req.mode,
-             "domain": req.domain}
+             "domain": req.domain, "xlsx_b64": req.xlsx_b64}
     try:
         out = await asyncio.to_thread(_keyed, client, fn, client, req.what, query, None)
     except admin_ops.OperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return dict(out, tenant_label=tenant_auth.record_label(creds))
+
+
+class ZccDomainUsersRequest(OperationCredsRequest):
+    """The user domain whose enrolled user names to download, and the
+    explicit acknowledgement that the file is personal data."""
+    domain: str = ""
+    personal_data_ok: bool = False
+
+
+@app.post("/api/operations/zcc/domain-users.csv")
+async def operations_zcc_domain_users(req: ZccDomainUsersRequest, request: Request):
+    """The user names enrolled in Client Connector under one user domain,
+    with each user's device count, device states and last seen, as CSV
+    (cells made safe for spreadsheets). Personal data, so it needs
+    personal_data_ok=true (400 otherwise, before any sign-in). Read-only:
+    one paged read of the enrolled devices; ZCC must be in scope on the
+    Scope page. The audit record holds the domain's user count, never a
+    name."""
+    import admin_ops
+    import ops_zcc_admin
+    _ops_scope(req, ops_zcc_admin.FAMILY)
+    if req.personal_data_ok is not True:
+        raise HTTPException(status_code=400, detail="This file lists people's user names (personal data): tick that you need it, then download it again.")
+    dom = str(req.domain or "").strip().lower().lstrip("@")
+    if not ops_zcc_admin._DOMAIN_RE.match(dom):
+        raise HTTPException(status_code=400, detail="Type the user domain, like acme.com.")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+
+    def read():
+        inv, _pages, err = ops_zcc_admin.inventory(client)
+        if err:
+            raise admin_ops.OperationError(f"The enrolled devices could not be read completely, so no list was made: {err}")
+        return ops_zcc_admin.domain_users(inv, dom)
+    try:
+        rows = await asyncio.to_thread(_keyed, client, read)
+    except admin_ops.OperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("zcc_domain_users_export", actor=_actor(request) or _security.current_actor(), domain=dom, users=len(rows))
+    body = ops_zcc_admin.domain_users_csv(rows, dom).encode("utf-8")
+    return Response(content=body, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="client-connector-users-{dom}-personal-data.csv"',
+                             "Cache-Control": "no-store"})
 
 
 class DeepTraceFollowRequest(OperationCredsRequest):
@@ -9796,10 +9842,13 @@ async def traffic_logs_syslog_stop(req: SyslogStopRequest, request: Request):
 
 
 @app.post("/api/traffic-logs/syslog/clear")
-async def traffic_logs_syslog_clear():
-    """Forget the lines that arrived (they were only ever in memory)."""
+async def traffic_logs_syslog_clear(request: Request):
+    """Forget the lines that arrived (they were only ever in memory; writer only)."""
     import syslog_listener as sl
-    return sl.clear()
+    _security.require_writer()
+    out = sl.clear()
+    _audit.record("traffic_logs_syslog_clear", actor=_actor(request) or _security.current_actor())
+    return out
 
 
 @app.post("/api/traffic-logs/syslog/analyze")

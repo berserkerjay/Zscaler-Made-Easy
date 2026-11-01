@@ -15,7 +15,7 @@
     keyType: 'connector', keyGroup: '', keyName: '', keyMax: 1, keyOn: false,
     certMode: 'upload', certName: '', certDesc: '', upload: null, certId: '', ba: new Set(),
     user: '', devices: [], devPick: new Set(), mode: 'remove',
-    listText: '', listDomain: '', match: null, resolved: {}, batch: 25,
+    listText: '', listXlsx: null, listDomain: '', match: null, resolved: {}, batch: 25,
     appAct: 'create', appId: '', appName: '', appOn: false, appEntries: '',
     svc: 'zpa', all: '', addGroups: '', rmGroups: new Set(),
     zUser: '', zDevices: [], zDev: '', zApps: [], zApp: '', zWeb: [], zPath: [], zWebId: '', zPathId: '', zName: '', zLen: 5, zHealth: false,
@@ -263,29 +263,58 @@
     where.innerHTML = `${errs(H, res)}
       <p class="df-hint">One entry a line: a user's email, a host name, a device id, "email,hostname", or @domain for every device of that domain. Ambiguous entries (a host name enrolled more than once) and unmatched ones are listed for you to settle before the preview.</p>
       <div class="op-row"><label class="op-block"><span class="lbl">List</span><textarea id="admList" rows="5" spellcheck="false" aria-label="List of users, host names, device ids or domains">${E(A.listText)}</textarea></label>
-        <label class="df-ctl"><span class="lbl">or a .txt or .csv file</span><input type="file" id="admListFile" accept=".txt,.csv" aria-label="List file"></label></div>
+        <label class="df-ctl"><span class="lbl">or a .txt, .csv or Excel (.xlsx) file</span><input type="file" id="admListFile" accept=".txt,.csv,.xlsx" aria-label="List file"></label></div>
+      ${A.listXlsx ? `<div class="df-hint" id="admXlsxNote">Excel file ${E(A.listXlsx.name)} chosen: its first sheet is read when you match (a UDID, user or host name column by its header; else every cell). Type in the list to use the text instead.</div>` : ''}
       <div class="op-row"><label class="df-ctl"><span class="lbl">Only users of this domain (optional)</span><input id="admListDomain" value="${E(A.listDomain)}" aria-label="Only users of this domain" placeholder="acme.com"></label>
         <label class="df-ctl"><span class="lbl">Batch size</span><input id="admBatch" type="number" min="1" max="100" value="${E(A.batch)}" aria-label="Devices per call"></label></div>
+      <div class="op-row"><label><input type="checkbox" id="admUsersOk"> I need this domain's user names (personal data)</label>
+        <button type="button" class="rp-btn" id="admDomainUsers">Download the domain's user names (CSV)</button></div>
       <div class="op-row"><fieldset class="op-inline"><legend>Removal</legend>${[['remove', 'Remove'], ['force', 'Force remove']].map(([v, l]) =>
         `<label><input type="radio" name="admBulkMode" value="${E(v)}"${A.mode === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset>
         <button type="button" class="rp-btn" id="admMatch">Match the list</button></div>
       <div id="admMatchOut">${m ? matchHtml(m) : ''}</div>`;
-    where.querySelector('#admList').addEventListener('input', e => { A.listText = e.target.value; });
+    where.querySelector('#admList').addEventListener('input', e => { A.listText = e.target.value; if (A.listXlsx) { A.listXlsx = null; const n = where.querySelector('#admXlsxNote'); if (n) n.remove(); } });
     where.querySelector('#admListDomain').addEventListener('input', e => { A.listDomain = e.target.value; });
     where.querySelector('#admBatch').addEventListener('input', e => { A.batch = e.target.value; });
     where.querySelectorAll('input[name="admBulkMode"]').forEach(r => r.addEventListener('change', () => { A.mode = r.value; }));
     const lf = where.querySelector('#admListFile');
-    lf.addEventListener('change', () => { const f = lf.files && lf.files[0]; if (!f) return; if (f.size > 1048576) { H.say('The list file is larger than 1 MB.'); lf.value = ''; return; }
+    lf.addEventListener('change', () => { const f = lf.files && lf.files[0]; if (!f) return;
+      if (/\.xlsx$/i.test(f.name)) {   // read on the server (xlsx_reader): sent as base64
+        if (f.size > 8 * 1048576) { H.say('The Excel file is larger than 8 MB.'); lf.value = ''; return; }
+        const rb = new FileReader();
+        rb.onload = () => { const bytes = new Uint8Array(rb.result); let bin = ''; for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 32768));
+          A.listXlsx = { name: f.name.slice(0, 120), b64: btoa(bin) }; lf.value = ''; renderBulk(res, where, S, H); H.say(`Chose ${f.name}; match the list to read it.`); };
+        rb.readAsArrayBuffer(f);
+        return;
+      }
+      if (f.size > 1048576) { H.say('The list file is larger than 1 MB.'); lf.value = ''; return; }
+      A.listXlsx = null;
       const rd = new FileReader(); rd.onload = () => { A.listText = String(rd.result || ''); where.querySelector('#admList').value = A.listText; lf.value = ''; H.say(`Loaded ${f.name}.`); }; rd.readAsText(f); });
+    where.querySelector('#admDomainUsers').addEventListener('click', () => domainUsers(where, H));
     const bindAmb = () => where.querySelectorAll('select[data-admamb]').forEach(sel => sel.addEventListener('change', () => { A.resolved[sel.dataset.admamb] = sel.value; }));
     bindAmb();
     where.querySelector('#admMatch').addEventListener('click', async () => {
       const out = where.querySelector('#admMatchOut');
-      try { const d = await lookup(H, 'zcc_admin', 'match', { user: '', text: A.listText, mode: A.mode, domain: A.listDomain.trim() });
+      try { const d = await lookup(H, 'zcc_admin', 'match', { user: '', text: A.listXlsx ? '' : A.listText, xlsx_b64: A.listXlsx ? A.listXlsx.b64 : '', mode: A.mode, domain: A.listDomain.trim() });
         if (d.error) throw new Error(d.error);
         A.match = d; A.resolved = {}; out.innerHTML = matchHtml(d); bindAmb(); H.say(`${d.counts.planned} device(s) matched, ${d.counts.ambiguous} ambiguous, ${d.counts.not_found} not found.`);
       } catch (e) { out.innerHTML = `<div class="bp-card risk" role="alert">${E(e.message)}</div>`; }
     });
+  }
+  async function domainUsers(where, H) {
+    const dom = A.listDomain.trim();
+    if (!dom) { H.say('Type the user domain first (Only users of this domain).'); return; }
+    if (!where.querySelector('#admUsersOk').checked) { H.say("Tick that you need the domain's user names: the file is personal data."); return; }
+    try {
+      const r = await fetch('/api/operations/zcc/domain-users.csv', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+        body: JSON.stringify(H.body({ domain: dom, personal_data_ok: true })) });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(H.detailText ? H.detailText(d, r.status) : (typeof d.detail === 'string' ? d.detail : `HTTP ${r.status}`)); }
+      const blob = await r.blob();
+      const m = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = m ? m[1] : 'client-connector-users.csv';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+      H.say('Downloaded the user names (personal data: keep the file safe).');
+    } catch (e) { H.say(`Not downloaded: ${e.message}`); }
   }
   function matchHtml(m) {
     const c = m.counts || {}, b = m.budget || {};
