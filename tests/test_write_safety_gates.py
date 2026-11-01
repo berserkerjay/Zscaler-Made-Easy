@@ -572,7 +572,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/report/findings-csv"): "report",
     ("POST", "/api/zcc/fleet/start"): "reads",
     ("POST", "/api/zcc/install"): "builds an install command; with app_profile_id it reads that profile's policy token (scope-gated)",
-    ("POST", "/api/zcc/otp"): "reads one device's one-time passwords (scope-gated, writer, assessor, typed phrase, rate-limited; tests/test_zcc_otp.py); writes nothing",
+    ("POST", "/api/zcc/otp"): "reads one device's one-time passwords (scope-gated, writer, assessor, write mode, typed phrase, rate-limited; tests/test_zcc_otp.py); writes nothing",
     ("POST", "/api/zcc/device-details"): "reads one device's service state (scope-gated)",
     ("POST", "/api/zcc/disable-reasons"): "reads the disable-reason report and counts it (scope-gated)",
     ("POST", "/api/zdx/cloudpath"): "reads ZDX applications and one measured cloud path (scope-gated)",

@@ -11378,6 +11378,7 @@ class ZccOtpRequest(ScopedTenantCredsRequest):
 ZCC_OTP_WHAT = "Client Connector one-time passwords"
 ZCC_OTP_ASSESSOR = ("Enter the assessor's name before showing a one-time password: the audit log names the person who asked "
                     "for it. Nothing was read.")
+ZCC_OTP_WRITE_MODE = "Showing a one-time password needs write mode on, like a change to the tenant. Nothing was read. "
 
 
 @app.post("/api/zcc/otp")
@@ -11385,7 +11386,8 @@ async def zcc_otp_show(req: ZccOtpRequest, request: Request):
     """A device's one-time passwords (uninstall, turn a service off, exit,
     as the API provides them) for help-desk use: a sensitive read guarded
     like a write. Refused before sign-in unless ZCC is in scope, the caller
-    may change the tenant, the assessor is named, "SHOW OTP <device>" is
+    may change the tenant, the assessor is named, write mode is on,
+    "SHOW OTP <device>" is
     typed and the rate limit allows it. The values are in this answer only
     (no-store): never logged, stored or cached; the audit entry names who,
     when and which device, never a value (zcc_otp)."""
@@ -11398,6 +11400,10 @@ async def zcc_otp_show(req: ZccOtpRequest, request: Request):
     by = _assessor(req)
     if not by:
         raise HTTPException(status_code=400, detail=ZCC_OTP_ASSESSOR)
+    if not writes_enabled():
+        # Owner decision (wave 9): an OTP unlocks a device's protection, so it
+        # needs write mode like a write does, on top of the other gates.
+        raise HTTPException(status_code=403, detail=ZCC_OTP_WRITE_MODE + _writes_disabled_msg())
     try:
         user = zcc_otp.clean(req.user, "enrolled user name")
         device = zcc_otp.clean(req.device, "device's host name or UDID")

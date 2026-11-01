@@ -1,7 +1,7 @@
 """Client Connector one-time passwords for one device (zcc_otp, /api/zcc/otp).
 
 A sensitive read guarded like a write: ZCC in scope, a person allowed to
-change the tenant, the named assessor, "SHOW OTP <device>" typed, a rate
+change the tenant, write mode on, the named assessor, "SHOW OTP <device>" typed, a rate
 limit; the values only in the answer (no-store), the audit entry naming
 who, when and which device, never a value. A fake SDK stands in for
 zcc.devices.list_devices and zcc.secrets.get_otp (zscaler-sdk-python
@@ -63,6 +63,7 @@ def api(monkeypatch, tmp_path):
     sdk = FakeSdk()
     built = []
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append(1) or sdk)
+    monkeypatch.setattr(srv, "writes_enabled", lambda: True)   # an OTP needs write mode (owner decision, wave 9)
     return TestClient(srv.app), sdk, built, tmp_path
 
 
@@ -143,6 +144,21 @@ def test_a_person_who_may_not_change_the_tenant_is_refused(api, monkeypatch):
     monkeypatch.setattr(security, "may_write", lambda: False)
     r = c.post("/api/zcc/otp", json=BODY)
     assert r.status_code == 403 and "may not change the tenant" in r.json()["detail"] and built == []
+
+
+def test_write_mode_off_refuses_the_otp_before_sign_in_and_audits_nothing_as_shown(api, monkeypatch):
+    """ASVS V4.1.3 · V1.4.1 · CWE-862 · WSTG-ATHZ-02: with a writer, the assessor and the phrase but write mode off, nothing is signed in to or read and nothing is audited as shown; with write mode on it works."""
+    import dlp_api_server as srv
+    c, sdk, built, tmp = api
+    monkeypatch.setattr(srv, "writes_enabled", lambda: False)
+    r = c.post("/api/zcc/otp", json=BODY)
+    assert r.status_code == 403 and "write mode" in r.json()["detail"] and "ENABLE_WRITE_ACTIONS" in r.json()["detail"], r.text
+    assert built == [] and sdk.calls == []
+    assert not any('"result":"shown"' in ln for ln in audit_lines(tmp))
+    assert not _leaks(r.text, CANARIES)
+    monkeypatch.setattr(srv, "writes_enabled", lambda: True)
+    r = c.post("/api/zcc/otp", json=BODY)
+    assert r.status_code == 200 and built == [1] and '"result":"shown"' in audit_lines(tmp)[-1]
 
 
 def test_the_scope_rule_is_checked_first(api, monkeypatch):
