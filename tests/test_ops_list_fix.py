@@ -640,6 +640,18 @@ def test_a_url_fix_creates_a_disabled_rule_above_the_deciding_rule_that_changes_
     assert _path_verdict(t, "friends.example") == ("pass", "Fix: allow friends")
 
 
+def test_how_zia_reads_back_a_url_rule_with_no_request_methods_is_marked_assumed():
+    """ASVS V1.14.1 · CWE-1059: the new URL rule names no request method; how ZIA returns such a rule on read is not knowable offline, so the code next to the payload says it is assumed and what the Path analyzer would show otherwise."""
+    import inspect
+    import re
+    src = inspect.getsource(lf)
+    at = src.index('payload.update(protocols=["ANY_RULE"], block_override=False)')
+    block = src[max(0, at - 900):at]
+    note = re.search(r"# assumed: how ZIA returns such a rule when it is read back\.(?:\n\s*#[^\n]*)+", block)
+    assert note, "the request_methods read-back is not marked # assumed: next to the URL rule payload"
+    assert "request_methods" in note.group(0) and "nine methods" in note.group(0) and "unknown" in note.group(0)
+
+
 def test_a_category_change_that_would_not_change_the_verdict_is_warned():
     """ASVS V1.4.1 · CWE-1059: a category change alone is warned when no enabled rule with the purpose's action names the category, or when every such rule is below the rule that decided the rows."""
     t = Tenant()

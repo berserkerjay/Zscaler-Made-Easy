@@ -1147,28 +1147,60 @@ def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say,
     above = _id(above_raw, "The access rule to place the new one above") if above_raw not in (None, "") else ""
     if above and not want_access:
         raise _err("A position is for the access rule: tick Access as well, or leave 'Place it above' empty.")
+    existing = check_access_segments(spec.get("access_segments"))
+    if existing and not want_access:
+        raise _err("Existing segments are for the access rule: tick Access as well, or pick the segments named with the prefix.")
+    if existing and (want_timeout or want_insp or iso):
+        raise _err("An access rule for existing segments is built on its own: untick Timeout and Inspection and pick no isolation profile.")
     nspec = {"type": "zpa_policies", "prefix": p, "access": want_access, "timeout": want_timeout, "inspection": want_insp,
              "isolation_profile_id": iso, "reauth_timeout": rt, "reauth_idle_timeout": it,
              "access_scim_groups": scim_pick, "access_saml": saml_pick, "access_above": above}
+    if existing:
+        nspec["access_segments"] = existing
     zpa = _zpa(client)
     kinds = ["segment", "segment_group"] + [k for k, on in (("access_rule", want_access), ("timeout_rule", want_timeout), ("inspection_rule", want_insp),
                                             ("inspection_profile", want_insp), ("isolation_rule", bool(iso))) if on]
     data, errors = read(zpa, kinds, say, cancel, optional=["isolation_profiles"] if iso else [])
     plan = _Plan(p)
     others = other_prefixes(p, data)
-    apps = sorted(_oid(s) for s in data["segment"] if owned(p, _name(s), others))
-    # In a POV build, the segments an earlier step of the same plan creates (admin_ops.pending_names).
-    apps = sorted(apps + [t for n, t in ao.pending_names("zpa", "segment").items()
-                          if owned(p, n, others) and _by_name(data["segment"], n) is None])
-    if not apps:
-        plan.blockers.append(f"No application segment named '{p}-…' in ZPA: build the application segments first (Build new: ZPA application segments).")
-    shown = f"{len(apps)} application segment{'s' if len(apps) != 1 else ''} named {p}-…"
+    extra: Dict[str, Any] = {}
+    rule_name = f"{p}-access"
+    if existing:
+        # An access rule over segments that are already in ZPA (Fix selected:
+        # a row ZPA denies, in the segment that already publishes it). The
+        # segments are only named by the rule, never changed; the rule is
+        # named after the first one, so it is told apart from the prefix's
+        # own access rule and the Undo deletes it by the prefix.
+        by_id = {_oid(s): s for s in data["segment"] if _oid(s)}
+        gone = [x for x in existing if x not in by_id]
+        if gone:
+            plan.blockers.append(f"The application segment {gone[0]} is not in ZPA now: read the tenant again and pick it.")
+        apps = sorted(x for x in existing if x in by_id)
+        names = [_name(by_id[x]) for x in existing if x in by_id]
+        shown = "application segment " + ", ".join(repr(n) for n in names[:3]) + (f" and {len(names) - 3} more" if len(names) > 3 else "") if names else "the picked segments"
+        rule_name = access_rule_name(p, names[0] if names else existing[0])
+        if not (scim_pick or saml_pick):
+            plan.warnings.append(f"The access rule allows every user to reach {shown}: pick SCIM groups or SAML values to allow only the users who need it.")
+        # assumed: the SDK's add_access_rule (zscaler-sdk-python 1.11.3, zpa/policies.py) sends no "disabled" field, so the rule
+        # cannot be created disabled; it decides from the moment it is applied. Hence the typed phrase whatever the count.
+        plan.warnings.append("ZPA access rules cannot be created disabled from here (the SDK sends no such field): the rule allows access as soon as it "
+                             "is applied. Undo deletes it.")
+        extra["confirm_always"] = "ALLOW ACCESS NOW"
+    else:
+        apps = sorted(_oid(s) for s in data["segment"] if owned(p, _name(s), others))
+        # In a POV build, the segments an earlier step of the same plan creates (admin_ops.pending_names).
+        apps = sorted(apps + [t for n, t in ao.pending_names("zpa", "segment").items()
+                              if owned(p, n, others) and _by_name(data["segment"], n) is None])
+        if not apps:
+            plan.blockers.append(f"No application segment named '{p}-…' in ZPA: build the application segments first (Build new: ZPA application segments).")
+        shown = f"{len(apps)} application segment{'s' if len(apps) != 1 else ''} named {p}-…"
     if want_access:
         scim_vals, saml_vals, who = _plan_identities(zpa, plan, scim_pick, saml_pick, say, cancel) if (scim_pick or saml_pick) else ([], [], "")
-        akey = plan.ensure("access_rule", f"{p}-access", {"action": "ALLOW", "apps": apps, "scim_groups": scim_vals, "saml": saml_vals},
-                           data["access_rule"], summary=f"allow {shown}" + (f" for {who}" if who else " for every user"))
+        akey = plan.ensure("access_rule", rule_name, {"action": "ALLOW", "apps": apps, "scim_groups": scim_vals, "saml": saml_vals},
+                           data["access_rule"], summary=f"allow {shown}" + (f" for {who}" if who else " for every user"),
+                           blocked="not built: a picked segment is not in ZPA now" if existing and not apps else "")
         if above:
-            plan_position(plan, akey, f"{p}-access", above, data["access_rule"])
+            plan_position(plan, akey, rule_name, above, data["access_rule"])
         if scim_vals and saml_vals:
             plan.warnings.append("The access rule needs both: one of the SCIM groups and one of the SAML values (the SDK puts each kind in its "
                                  "own condition, and a rule's conditions are joined with AND).")
@@ -1205,7 +1237,39 @@ def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say,
         plan.warnings.append("ZPA isolation applies to Browser Access (clientless) users of these applications.")
     plan.warnings.append("New rules are added at the end of each policy (assumed ZPA behaviour); a rule above them still decides first."
                          + (" The access rule is then moved to the position you picked." if above else ""))
+    if existing:
+        return plan.done(f"Allow {shown} with the ZPA access rule {rule_name}", "zpa_policies", nspec, **extra)
     return plan.done(f"Build the ZPA policy rules for {p}", "zpa_policies", nspec)
+
+
+MAX_ACCESS_SEGMENTS = 20
+ACCESS_NAME_MAX = 64    # assumed: a name this short is accepted by ZPA (the builder's own names are of this size)
+
+
+def access_rule_name(p: str, segment: str) -> str:
+    """The name of the access rule over an existing segment: the prefix, then
+    the segment's name, ending in "-rule" so it never ends like a longer
+    prefix's own object (other_prefixes) and stays the prefix's to delete."""
+    room = ACCESS_NAME_MAX - len(p) - len("-allow--rule")
+    slug = _slug(segment)[:room].strip("-") or "segment"
+    return f"{p}-allow-{slug}-rule"
+
+
+def check_access_segments(v: Any) -> List[str]:
+    """The existing application segments (ids) the access rule names
+    instead of the prefix's segments; [] when none is given."""
+    if v in (None, "", []):
+        return []
+    if not isinstance(v, list):
+        raise _err("Give the existing segments as a list of ids.")
+    if len(v) > MAX_ACCESS_SEGMENTS:
+        raise _err(f"At most {MAX_ACCESS_SEGMENTS} existing segments in one access rule.")
+    out: List[str] = []
+    for x in v:
+        i = _id(x, "An existing application segment")
+        if i not in out:
+            out.append(i)
+    return out
 
 
 # ── The access rule's position (policies.bulk_reorder_rules) ───────────
@@ -1841,7 +1905,7 @@ ao.register("zpa_app_segments", label="ZPA application segments", plan=plan_app_
             hint="A segment group, a server group and application segments from a *.domain wildcard, a preset for your sector or a CSV "
                  "(up to 500 rows); optionally Browser Access and Privileged Remote Access consoles.", **_COMMON)
 ao.register("zpa_policies", label="ZPA policy rules", plan=plan_policies, handlers=HANDLERS,
-            hint="Access, timeout, inspection (Zscaler's predefined OWASP controls) and isolation rules over your prefixed segments.", **_COMMON)
+            hint="Access, timeout, inspection (Zscaler's predefined OWASP controls) and isolation rules over your prefixed segments, or an access rule for existing segments.", **_COMMON)
 ao.register("zpa_prefix_delete", label="Delete ZPA objects by prefix", plan=plan_prefix_delete, handlers=HANDLERS,
             hint="Read ZPA again and delete only objects named with your prefix, in dependency order; anything still used elsewhere is kept and named.",
             **_COMMON)

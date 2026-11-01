@@ -194,6 +194,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/zscaler-ranges/build": SESSION,
     "POST /api/zscaler-ranges/download": SESSION,
     "GET /api/m365-endpoints": SESSION,                 # Microsoft's public endpoint list kept on this server
+    "GET /api/vendor-endpoints": SESSION,               # other providers' endpoint lists kept on this server
     "GET /api/tenant-terraform/catalogue": SESSION,
     "GET /api/traffic-logs/info": SESSION,              # the formats and limits
     "GET /api/traffic-logs/siem": SESSION,              # query templates built from what the page sends
@@ -499,6 +500,10 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/m365-endpoints/refresh": ADMIN,
     "POST /api/m365-endpoints/import": ADMIN,
     "DELETE /api/m365-endpoints": ADMIN,
+    "PUT /api/vendor-endpoints/settings": ADMIN,
+    "POST /api/vendor-endpoints/refresh": ADMIN,
+    "POST /api/vendor-endpoints/import": ADMIN,
+    "DELETE /api/vendor-endpoints/{provider}": ADMIN,
     "GET /api/api-calls": ADMIN,                        # every API call this server made, across tenants
     "GET /api/api-calls/export": ADMIN,
 }

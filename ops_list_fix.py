@@ -999,6 +999,9 @@ def _plan_rule(P: _Planner, fx: Dict[str, Any], targets: List[Tuple[str, List[st
             # will apply to all methods" (url_filtering.add_rule), and the
             # Path analyzer then reads the rule as unconditional, so the fix
             # it proposes is the one it evaluates.
+            # assumed: how ZIA returns such a rule when it is read back. The sample tenant gives request_methods
+            # as [] (read as "any"); if a tenant answers with all nine methods instead, the Path analyzer
+            # (zia_path_modules._generic_criteria) shows "Request method: unknown" for this rule after the write.
             payload.update(protocols=["ANY_RULE"], block_override=False)
         if svc_ids:
             payload["nw_services"] = list(svc_ids)
