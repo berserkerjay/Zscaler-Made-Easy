@@ -381,7 +381,9 @@ def _sample(pattern: str) -> str:
     return re.sub(r"\[([^\]]+)\]", lambda m: m.group(1)[0], p).replace("*", "x")
 
 
-@pytest.mark.parametrize("pattern", [p for p in _patterns(".gitignore") if p not in BUILD_INPUTS])
+# A `!` line re-includes a file git keeps (agent-workspace/output/README.md):
+# it names no ignored file, so it is not a pattern to keep out of the image.
+@pytest.mark.parametrize("pattern", [p for p in _patterns(".gitignore") if p not in BUILD_INPUTS and not p.startswith("!")])
 def test_every_git_ignored_file_stays_out_of_the_image(pattern):
     """ASVS V14.1.1 · ASVS V8.3.4 · CWE-538 · SSDF PS.1.1: local state git ignores is not baked into the image by COPY . ."""
     # Arrange
