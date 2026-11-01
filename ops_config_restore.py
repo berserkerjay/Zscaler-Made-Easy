@@ -769,6 +769,8 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
         key = t["key"]
         matched[key] = set()
         rows = [r for r in source.get(key) or [] if not r.get("$stub")]
+        if select.get("label") and "labels" not in cb.refs_of(t):
+            p.notes.append(f"{_label(t)}: carries no rule labels, so a label selection leaves it out.")
         if select:
             rows = [r for r in rows if selected(t, r, src_idx)]
         if picks:

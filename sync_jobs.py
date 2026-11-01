@@ -4,10 +4,24 @@ unattended write.
 A sync job names a source (a saved tenant profile, or a snapshot saved
 beside the profiles; a template once a template provider is registered,
 see register_template_source), one to MAX_TARGETS target tenant profiles,
-what to keep in step (resource groups: ZIA Cloud Firewall rules, ZIA URL
-filtering rules, the ZPA access policy; optionally only the rules carrying
-a rule label, or whose name starts with a prefix) and how often to run
-(never on its own, or every 1, 4, 12, 24 or 168 hours).
+what to keep in step (resource groups, GROUPS below: ZIA Cloud Firewall
+and URL filtering rules and the ZPA access policy through the rule CSV
+format, and ZIA's DNS, IPS, SSL inspection, URL category, Cloud App Control,
+DLP, network object, forwarding, bandwidth, NAT, Sandbox, tenancy, File Type
+and traffic capture groups through the restore and clone engine; optionally
+only the rules carrying a rule label, or whose name starts with a prefix)
+and how often to run (never on its own, or every 1, 4, 12, 24 or 168 hours).
+
+A restore-engine group ("kind": "restore") reads its object types (and the
+types they refer to, for names) from the source once per run, keeps that
+read as a configuration backup of kind "sync" (owner-only, the job's newest
+ten kept), and plans each target with ops_config_restore's clone plan
+(config_restore_zia, target "other", the job's target profile): objects
+matched by name and every reference remapped, created disabled unless the
+job says new rules are enabled, deletes only with include_deletes and only
+within the selection. The request it files carries that operation, so the
+approved apply re-plans it through the same engine (plan hash, re-read
+before each write, read-back, Undo).
 
 Each run only READS. It reads the source once (rules as rows with names,
 not ids: rule_csv's format), then for every target reads the target and
@@ -62,11 +76,42 @@ MAX_JOBS = 50
 MAX_TARGETS = 10
 HISTORY_KEEP = 50
 INTERVALS = (0, 1, 4, 12, 24, 168)        # hours; 0 = only when someone clicks Run now
-GROUPS: Dict[str, Dict[str, str]] = {
-    "zia_firewall": {"policy": "firewall", "label": "ZIA Cloud Firewall rules"},
-    "zia_url_filtering": {"policy": "url_filtering", "label": "ZIA URL filtering rules"},
-    "zpa_access": {"policy": "zpa_access", "label": "ZPA access policy rules"},
+GROUPS: Dict[str, Dict[str, Any]] = {
+    "zia_firewall": {"policy": "firewall", "label": "ZIA Cloud Firewall rules", "kind": "csv", "labels": True},
+    "zia_url_filtering": {"policy": "url_filtering", "label": "ZIA URL filtering rules", "kind": "csv", "labels": True},
+    "zpa_access": {"policy": "zpa_access", "label": "ZPA access policy rules", "kind": "csv", "labels": False},
 }
+# Groups planned by the restore and clone engine (ops_config_restore): its typed writers, one plan per target.
+_RESTORE_GROUPS = (
+    ("zia_dns", "ZIA DNS Control rules", ["zia.firewall_dns_rules"]),
+    ("zia_ips", "ZIA IPS Control rules", ["zia.firewall_ips_rules"]),
+    ("zia_ssl", "ZIA SSL inspection rules", ["zia.ssl_inspection_rules"]),
+    ("zia_url_categories", "ZIA custom URL categories", ["zia.url_categories"]),
+    ("zia_cloud_app_control", "ZIA Cloud App Control rules and app instances", ["zia.cloud_app_instances", "zia.cloud_app_control_rules"]),
+    ("zia_dlp", "ZIA DLP dictionaries, engines and web rules", ["zia.dlp_dictionaries", "zia.dlp_engines", "zia.web_dlp_rules"]),
+    ("zia_network_objects", "ZIA network objects (IP groups, services, apps, labels, time intervals, workload groups)",
+     ["zia.ip_source_groups", "zia.ip_destination_groups", "zia.network_services", "zia.network_service_groups", "zia.network_app_groups",
+      "zia.rule_labels", "zia.time_intervals", "zia.workload_groups"]),
+    ("zia_forwarding", "ZIA forwarding control rules", ["zia.forwarding_rules"]),
+    ("zia_bandwidth", "ZIA bandwidth classes and rules", ["zia.bandwidth_classes", "zia.bandwidth_control_rules"]),
+    ("zia_nat", "ZIA NAT control rules", ["zia.nat_control_rules"]),
+    ("zia_sandbox", "ZIA Sandbox rules", ["zia.sandbox_rules"]),
+    ("zia_tenancy", "ZIA tenancy restriction profiles", ["zia.tenancy_restriction_profiles"]),
+    ("zia_file_type", "ZIA File Type Control rules", ["zia.file_type_rules"]),
+    ("zia_traffic_capture", "ZIA traffic capture rules", ["zia.traffic_capture_rules"]),
+)
+
+def _labelled(key: str) -> bool:
+    """Does this object type carry rule labels (a ZIA rule: its references include labels)?"""
+    import config_backup as cb
+    return "labels" in cb.refs_of(cb.BY_KEY[key])
+
+
+for _g, _label, _types in _RESTORE_GROUPS:
+    # A label selects only the group's rules (the types that carry labels); a group without rules refuses a label.
+    GROUPS[_g] = {"policy": _g, "label": _label, "kind": "restore", "product": "zia", "types": list(_types),
+                  "labels": any(_labelled(k) for k in _types)}
+SYNC_BACKUP_KEEP = 10
 SOURCE_KINDS = ("profile", "snapshot", "template")
 _NAME = re.compile(r"^[^\x00-\x1f\x7f]{1,80}$")
 _SELECT = re.compile(r"^[^\x00-\x1f\x7f]{0,128}$")
@@ -212,7 +257,8 @@ def sources() -> Dict[str, Any]:
             "snapshots": [{"id": k, "label": s.get("tenant_label") or k, "saved_at": s.get("saved_at"), "scopes": s.get("scopes") or []}
                           for k, s in _snapshots().items()],
             "templates": [{"id": k, "name": t.get("name") or k} for k, t in _templates().items()],
-            "groups": [{"id": k, **v} for k, v in GROUPS.items()], "intervals": list(INTERVALS),
+            "groups": [{"id": k, "label": v["label"], "policy": v["policy"], "kind": v["kind"], "labels": v["labels"]}
+                       for k, v in GROUPS.items()], "intervals": list(INTERVALS),
             "templates_available": bool(_TEMPLATE_SOURCE)}
 
 
@@ -261,6 +307,9 @@ def _clean(fields: Dict[str, Any]) -> Dict[str, Any]:
         raise SyncError("The label and the prefix are at most 128 characters, with no control characters.")
     if label and groups == ["zpa_access"]:
         raise SyncError("ZPA access rules have no rule labels: select them by name prefix instead.")
+    unlabelled = [GROUPS[g]["label"] for g in groups if not GROUPS[g]["labels"]]
+    if label and unlabelled:
+        raise SyncError(f"{', '.join(unlabelled[:3])} carry no rule labels: select them by name prefix, or drop the label.")
     try:
         interval = int(fields.get("interval_hours") or 0)
     except (TypeError, ValueError):
@@ -360,14 +409,19 @@ def due_jobs(now: Optional[datetime] = None) -> List[Dict[str, Any]]:
 
 # ── the boundary: source snapshot -> target plan ────────────────────────
 def source_snapshot(client: Any, groups: Sequence[str], selection: Dict[str, Any], say: Callable[[str], None],
-                    cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+                    cancel: Optional[threading.Event] = None, scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Read the source (read-only) and keep the selected rules as rows with
-    names (rule_csv's format), per policy: {policies: {policy: {rows, total}}}."""
+    names (rule_csv's format), per policy: {policies: {policy: {rows, total}}};
+    a restore-engine group keeps its object types and what they refer to
+    (in scope) as {restore: {type key: rows}} and {policies: {group: {types, total}}}."""
     import ops_rule_csv as orc
-    out: Dict[str, Any] = {"policies": {}, "errors": {}}
+    out: Dict[str, Any] = {"policies": {}, "errors": {}, "restore": {}}
     prefix, label = str(selection.get("prefix") or ""), str(selection.get("label") or "")
     for g in groups:
         policy = GROUPS[g]["policy"]
+        if GROUPS[g]["kind"] == "restore":
+            _restore_snapshot(client, g, scope, out, say, cancel)
+            continue
         try:
             rules = orc.read_rules(client, policy, cancel)
         except Exception as e:  # noqa: BLE001 - reported per policy
@@ -385,13 +439,78 @@ def source_snapshot(client: Any, groups: Sequence[str], selection: Dict[str, Any
     return out
 
 
+def _restore_snapshot(client: Any, g: str, scope: Optional[Dict[str, Any]], out: Dict[str, Any], say: Callable[[str], None],
+                      cancel: Optional[threading.Event]) -> None:
+    """Read a restore-engine group's types, and once each the types they
+    refer to (for names: a rule's IP group, label or URL category is matched
+    by name in the target), through config_backup.read_type (read-only)."""
+    import config_backup as cb
+    keys = list(GROUPS[g]["types"])
+    for k in GROUPS[g]["types"]:
+        for target in cb.refs_of(cb.BY_KEY[k]).values():
+            if target in cb.BY_KEY and target.startswith("zia.") and target not in keys:
+                keys.append(target)
+    total = 0
+    for k in keys:
+        t = cb.BY_KEY[k]
+        if k in out["restore"] or (scope is not None and not cb.allowed(t, scope)):
+            continue
+        if cancel is not None and cancel.is_set():
+            break
+        rows, err = cb.read_type(client, t, cancel)
+        if err and not rows:
+            if k in GROUPS[g]["types"]:
+                out["errors"][g] = f"{t['label']}: {str(err)[:200]}"
+            continue
+        out["restore"][k] = rows
+        if k in GROUPS[g]["types"]:
+            total += len(rows)
+    out["policies"][g] = {"types": list(GROUPS[g]["types"]), "total": total}
+    say(f"Source {GROUPS[g]['label']}: {total} objects read.")
+
+
+def _restore_target_plan(snapshot: Dict[str, Any], g: str, client: Any, scope: Dict[str, Any], job: Dict[str, Any],
+                         say: Callable[[str], None], cancel: Optional[threading.Event], target_profile: str) -> Dict[str, Any]:
+    """A restore-engine group's plan for one target: the clone plan of
+    ops_config_restore from the run's sync backup, the job's selection and
+    deletes; read-only (admin_ops.plan)."""
+    import admin_ops
+    import config_backup as cb
+    bid = snapshot.get("backup_id") or ""
+    if not bid:
+        raise admin_ops.OperationError("The source read could not be kept as a backup, so nothing was planned.")
+    types = list(GROUPS[g]["types"])
+    select = {k: v for k, v in (("label", job.get("label") or ""), ("prefix", job.get("prefix") or "")) if v}
+    spec = {"type": "config_restore_zia", "source": {"backup": bid}, "mode": "full" if job.get("include_deletes") else "update_matching",
+            "target": "other", "target_profile_id": target_profile, "types": types, "select": select,
+            "keep_state": bool(job.get("new_rules_enabled")), "activate": True}
+    src = snapshot.get("restore") or {}
+    rows = [r for k in types for r in src.get(k) or []
+            if (not select.get("prefix") or cb.name_of(cb.BY_KEY[k], r).startswith(select["prefix"]))]
+    if not rows and job.get("include_deletes"):
+        raise admin_ops.OperationError("The source has no selected objects, so nothing is planned (with deletes on, an empty source would "
+                                       "remove every selected object of the target).")
+    if not rows:
+        return {"status": "nothing_to_do", "counts": {"change": 0}, "items": [], "spec": spec, "plan_hash": "", "warnings": []}
+    return admin_ops.plan(client, spec, scope=scope, log=say, cancel=cancel)
+
+
+def restore_counts(prepared: Dict[str, Any]) -> Dict[str, int]:
+    """What a restore-engine plan adds, updates and deletes (its write steps)."""
+    n = lambda h: sum(1 for g in prepared.get("groups") or [] if g.get("handler") == h)  # noqa: E731
+    return {"rule_add": n("cfg_create"), "rule_update": n("cfg_update"), "rule_delete": n("cfg_delete"), "rule_move": 0}
+
+
 def target_plan(snapshot: Dict[str, Any], policy: str, client: Any, scope: Dict[str, Any], job: Dict[str, Any],
-                say: Callable[[str], None], cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+                say: Callable[[str], None], cancel: Optional[threading.Event] = None, target_profile: str = "") -> Dict[str, Any]:
     """The change that makes the target's selected rules match the source:
-    a Bulk changes plan (admin_ops.plan) of the CSV import type, read-only."""
+    a Bulk changes plan (admin_ops.plan) of the CSV import type, or of the
+    restore type for a restore-engine group; read-only."""
     import admin_ops
     import ops_rule_csv as orc
     import rule_csv as rc
+    if policy in GROUPS and GROUPS[policy]["kind"] == "restore":
+        return _restore_target_plan(snapshot, policy, client, scope, job, say, cancel, target_profile)
     rows = (snapshot.get("policies", {}).get(policy) or {}).get("rows") or []
     spec = {"type": orc.type_for(policy), "policy": policy, "csv": rc.to_csv(policy, rows),
             "remove_missing": bool(job.get("include_deletes")), "new_rules_enabled": bool(job.get("new_rules_enabled")),
@@ -415,22 +534,49 @@ def profile_scope(profile: Dict[str, Any]) -> Dict[str, Any]:
     return admin_ops.scope_for([s for s in sc if s], ch)
 
 
+def scope_spec(group: str) -> Dict[str, Any]:
+    """The operation a group's plans are (what the Scope page must allow)."""
+    import ops_rule_csv as orc
+    g = GROUPS[group]
+    if g["kind"] == "restore":
+        return {"type": f"config_restore_{g['product']}"}
+    return {"type": orc.type_for(g["policy"]), "policy": g["policy"]}
+
+
 def _policy_in_scope(scope: Dict[str, Any], policy: str) -> Optional[str]:
     import admin_ops
-    import ops_rule_csv as orc
+    group = _group_of(policy)
     try:
-        admin_ops.require_scope({"type": orc.type_for(policy), "policy": policy}, scope)
-        return None
+        admin_ops.require_scope(scope_spec(group), scope)
     except admin_ops.OperationError as e:
         return str(e)
+    if GROUPS[group]["kind"] == "restore":
+        import config_backup as cb
+        off = [cb.BY_KEY[k]["label"] for k in GROUPS[group]["types"] if not cb.allowed(cb.BY_KEY[k], scope)]
+        if off:
+            return f"Not in scope on the Scope page: {', '.join(off[:4])}."
+    return None
 
 
 def queue_items(prepared: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The plan's changes in the queue's item shape (status, kind, name, note)."""
     verbs = {"rule_add": "add", "rule_update": "update", "rule_delete": "delete", "rule_move": "move"}
     out = []
+    seen_groups = set()
     for u in prepared.get("items") or []:
         if u.get("status") != "change":
+            continue
+        if u.get("kind") in ("object", "field"):
+            # a restore-engine plan: one line per object (its field items share the group)
+            g = str(u.get("group") or "")
+            if g in seen_groups:
+                continue
+            seen_groups.add(g)
+            verb = {"create": "add", "update": "update", "delete": "delete"}.get(g.split(":", 1)[0], "change")
+            out.append({"status": verb, "kind": (u.get("object") or {}).get("policy_label") or "", "name": (u.get("object") or {}).get("name") or "",
+                        "note": str(u.get("reason") or "")[:400]})
+            continue
+        if u.get("kind") in ("backup", "activate"):
             continue
         note = ""
         if isinstance(u.get("after"), dict) and isinstance(u.get("before"), dict):
@@ -537,9 +683,11 @@ def run_job(jid: str, *, trigger: str, by: str, deps: Deps, say: Optional[Callab
                     run["errors"].append(f"source: {GROUPS[g]['label']} not in scope: {why}")
                 else:
                     groups.append(g)
-            snap = source_snapshot(src_client, groups, {"label": job.get("label"), "prefix": job.get("prefix")}, log, cancel)
+            snap = source_snapshot(src_client, groups, {"label": job.get("label"), "prefix": job.get("prefix")}, log, cancel, scope=src_scope)
             for p, e in snap["errors"].items():
                 run["errors"].append(f"source {p}: {e}")
+            if snap.get("restore"):
+                snap["backup_id"] = _keep_sync_backup(job, snap, src_label, run_id)
         except SyncError as e:
             run["errors"].append(f"source: {e}")
             snap = {"policies": {}}
@@ -574,6 +722,17 @@ def run_job(jid: str, *, trigger: str, by: str, deps: Deps, say: Optional[Callab
     _audit("run", job, by, run=run_id, trigger=trigger, status=run["status"], filed=run["filed"],
            targets=[{k: t.get(k) for k in ("profile", "policy", "status", "request")} for t in run["targets"]])
     return run
+
+
+def _keep_sync_backup(job: Dict[str, Any], snap: Dict[str, Any], src_label: str, run_id: str) -> str:
+    """Keep the run's source read of the restore-engine groups as a backup
+    (kind "sync", owner-only, the job's newest SYNC_BACKUP_KEEP kept): the
+    plans filed for approval name it, and their apply re-plans from it."""
+    import config_backup as cb
+    meta = {"tenant_label": src_label, "saved_at": _iso(_now()), "products": ["zia"], "kind": "sync", "profile_id": job["id"],
+            "note": f"source of sync job '{job['name']}' ({run_id})"}
+    entry = cb.save_backup(cb.build_doc(snap["restore"], meta), keep=SYNC_BACKUP_KEEP)
+    return entry["id"]
 
 
 def _run_target(job: Dict[str, Any], pid: str, snap: Dict[str, Any], deps: Deps, by: str, run_id: str, log: Callable[[str], None],
@@ -620,11 +779,11 @@ def _run_target(job: Dict[str, Any], pid: str, snap: Dict[str, Any], deps: Deps,
         for p in todo:
             log(f"Target {name}: planning {p}…")
             try:
-                prep = target_plan(snap, p, client, scope, job, log, cancel)
+                prep = target_plan(snap, p, client, scope, job, log, cancel, target_profile=pid)
             except Exception as e:  # noqa: BLE001
                 rec(p, "error", message=_scrub(str(e)[:300], full))
                 continue
-            counts = prep.get("csv_counts") or {}
+            counts = prep.get("csv_counts") or (restore_counts(prep) if GROUPS[_group_of(p)]["kind"] == "restore" else {})
             if prep.get("status") == "nothing_to_do" or not (prep.get("counts") or {}).get("change"):
                 stale = _supersede(job["id"], pid, p, "", by)
                 rec(p, "in_sync", message="nothing to change", superseded=stale, excluded=(prep.get("counts") or {}).get("excluded", 0))
