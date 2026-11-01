@@ -22,9 +22,10 @@ Operation types (`spec["type"]`):
   url_categories  add, remove, move or copy URLs on custom URL categories,
                   optionally into a new category; shows which rules in
                   scope reference each category the change touches.
-  zpa_domains     move or copy domains between ZPA application segments,
-                  or clone a segment's settings with a domain list, with
-                  the FQDN and port overlap check.
+  zpa_domains     add typed domains to an existing ZPA application segment,
+                  remove them from one, move or copy domains between
+                  segments, or clone a segment's settings with a domain
+                  list, with the FQDN and port overlap check.
 
 Cloud application sanction (Sanctioned / Unsanctioned) is the plugin type
 cloud_app_sanction (ops_sanction.py): the SDK can write it
@@ -1482,8 +1483,8 @@ def _clean_domains(raw: Any) -> Tuple[List[str], List[Tuple[str, str]]]:
 
 def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     action = str(spec.get("action") or "").lower()
-    if action not in ("move", "copy", "clone", "revert"):
-        raise OperationError("The ZPA action must be move, copy or clone.")
+    if action not in ("move", "copy", "clone", "add", "remove", "revert"):
+        raise OperationError("The ZPA action must be add, remove, move, copy or clone.")
     say("Reading the ZPA application segments…")
     _check_stop(cancel)
     segs, err = read_segments(zpa, cancel)
@@ -1532,10 +1533,22 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             raise OperationError("List at least one domain.")
         if len(doms) > MAX_DOMAINS:
             raise OperationError(f"At most {MAX_DOMAINS} domains per operation; this one lists {len(doms)}.")
-        src = seg(spec.get("source"), "source")
-        sid = _rid(pc._field(src, "id"))
-        nspec.update(source=sid, domains=doms)
-        if action == "clone":
+        if action == "add":
+            # Typed domains into an existing segment (no source): the same
+            # overlap check, re-read before the write, read-back and Undo.
+            tgt = seg(spec.get("target"), "target")
+            tid = _rid(pc._field(tgt, "id"))
+            nspec.update(target=tid, domains=doms)
+            adds[tid] = list(doms)
+        elif action == "remove":
+            src = seg(spec.get("source"), "source")
+            sid = _rid(pc._field(src, "id"))
+            nspec.update(source=sid, domains=doms)
+            removes[sid] = list(doms)
+        elif action == "clone":
+            src = seg(spec.get("source"), "source")
+            sid = _rid(pc._field(src, "id"))
+            nspec.update(source=sid, domains=doms)
             name = _object_name(spec.get("name"), "new segment's")
             if not name:
                 raise OperationError("Name the new segment.")
@@ -1547,6 +1560,9 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             if move:
                 removes[sid] = [d for d in doms]
         else:
+            src = seg(spec.get("source"), "source")
+            sid = _rid(pc._field(src, "id"))
+            nspec.update(source=sid, domains=doms)
             tgt = seg(spec.get("target"), "target")
             tid = _rid(pc._field(tgt, "id"))
             if tid == sid:
@@ -1599,8 +1615,9 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             k = f"seg:{sid}:-{d}"
             remove_keys[(sid, d)] = k
             if d not in have:
-                items.append(_unit(k, gkey, "domain", ref, "domain_names", False, False, value=d, status="excluded",
-                                   reason="not in the source segment, so there is nothing to move"))
+                items.append(_unit(k, gkey, "domain", ref, "domain_names", False, False, value=d,
+                                   status="noop" if action == "remove" else "excluded",
+                                   reason="not in this segment" if action == "remove" else "not in the source segment, so there is nothing to move"))
             else:
                 items.append(_unit(k, gkey, "domain", ref, "domain_names", True, False, value=d))
         # ZPA keeps at least one domain in a segment: a removal that would
@@ -1710,7 +1727,9 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     n = sum(1 for u in items if u["kind"] == "domain" and u["status"] == "change" and u["after"] is True)
     sname = pc._field(by_id.get(nspec.get("source", ""), {}), "name") if nspec.get("source") else ""
     tname = pc._field(by_id.get(nspec.get("target", ""), {}), "name") if nspec.get("target") else ""
+    n_out = sum(1 for u in items if u["kind"] == "domain" and u["status"] == "change" and u["after"] is False)
     title = {"move": f"Move {n} domain{'s' if n != 1 else ''} from {sname} to {tname}", "copy": f"Copy {n} domain{'s' if n != 1 else ''} from {sname} to {tname}",
+             "add": f"Add {n} domain{'s' if n != 1 else ''} to {tname}", "remove": f"Remove {n_out} domain{'s' if n_out != 1 else ''} from {sname}",
              "clone": f"Clone {sname} as {(clone or {}).get('name')}", "revert": "Undo a ZPA segment change"}[action]
     notes = ["The overlap check assumes ZPA refuses the same domain in two segments on overlapping ports; a wildcard and a more "
              "specific domain may share ports (the most specific match wins)."]

@@ -1186,6 +1186,15 @@ def _app_service_note(res: Dict[str, Any], rules: List[Dict[str, Any]], ctx: Dic
     if not any(app_services.named(r) for r in rules if isinstance(r, dict)):
         return
     lst = ctx.get("app_list")
+    import vendor_endpoints
+    vend = [vendor_endpoints.provider_for(n) for r in rules if isinstance(r, dict) for _, n in app_services.named(r)]
+    kept = vendor_endpoints.current() if any(vend) else {}
+    for pid in sorted({p for p in vend if p}):
+        vl = kept.get(pid)
+        label = vendor_endpoints.PROVIDERS[pid]["label"]
+        res["notes"].append(f"{label} app service groups are matched with {vl.describe()}" + (": it is stale, so it settles nothing." if vl.stale() else ".")
+                            if vl is not None else
+                            f"{label} app service groups are unknown until {label}'s published list is imported (or, for Zoom, fetched) in Advanced settings.")
     if lst is None:
         res["notes"].append("App services and app service groups are Zscaler-managed and the API does not return their members; "
                             "with Microsoft's published Microsoft 365 endpoint list (Advanced settings) the Microsoft 365 ones are evaluated.")

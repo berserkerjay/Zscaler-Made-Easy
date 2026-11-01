@@ -24,6 +24,7 @@
       <a class="rp-btn" href="#update">Update the app</a>
       <a class="rp-btn" href="#server">This server</a>
       <a class="rp-btn" href="#m365">Microsoft 365 endpoint list</a>
+      <a class="rp-btn" href="#vendors">Other providers' lists</a>
       <a class="rp-btn" href="#apicalls">API calls</a>
       <a class="rp-btn" href="#appearance">Appearance</a>
       <a class="rp-btn" href="#sbd">This app's Secure by Design score</a>
@@ -159,6 +160,26 @@
             <label class="adv-field" for="advM365Ver"><span>Its version <small>(optional, ten digits)</small></span><input type="text" id="advM365Ver" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="2026100100"></label>
             <div class="adv-actions"><button type="button" class="rp-btn" id="advM365Import">Import</button></div>
           </div>
+        </section>
+
+        <section id="vendors" aria-labelledby="advVendH">
+          <h2 class="df-h" id="advVendH">Other providers' endpoint lists</h2>
+          <p class="adv-lead">ZIA's UCaaS One Click rule names app service groups such as ZOOM, WEBEX, RINGCENTRAL, GOTO and TALKDESK, and Zscaler's API never says which sites and addresses they hold. With the provider's own list, the Path analyzer and Test a list can say whether a destination is in the group; without it they say "unknown". A list older than 30 days is not trusted until it is fetched or imported again.</p>
+          <p class="adv-lead">Only Zoom publishes its list as a file. Fetching it contacts <code>assets.zoom.us</code> over HTTPS, sends nothing about your tenant, and happens only when you click Fetch now; it is off until you turn it on here. Webex, RingCentral, GoTo and Talkdesk publish theirs as web pages: copy the address ranges and host names into a text file, one per line, and import it.</p>
+          <div id="advVendBox" class="adv-sbd adv-m365-box" role="status" aria-live="polite"><span class="dim">Loading…</span></div>
+          <label class="adv-switch" for="advVendZoomOn"><input type="checkbox" id="advVendZoomOn" role="switch" aria-describedby="advVendBox"><span>Fetch Zoom's list</span></label>
+          <div class="adv-actions">
+            <button type="button" class="rp-btn" id="advVendFetch">Fetch Zoom's list now</button>
+          </div>
+          <div class="adv-m365-import">
+            <label class="adv-field" for="advVendProv"><span>Provider</span><select id="advVendProv"><option value="zoom">Zoom</option><option value="webex">Webex</option><option value="ringcentral">RingCentral</option><option value="goto">GoTo</option><option value="talkdesk">Talkdesk</option></select></label>
+            <label class="adv-field" for="advVendFile"><span>Import its list from a text file</span><input type="file" id="advVendFile" accept=".txt,.csv,text/plain"></label>
+            <div class="adv-actions">
+              <button type="button" class="rp-btn" id="advVendImport">Import</button>
+              <button type="button" class="rp-btn danger" id="advVendRemove">Remove this provider's list</button>
+            </div>
+          </div>
+        </section>
 
         <section id="apicalls" aria-labelledby="advApiH">
           <h2 class="df-h" id="advApiH">API calls</h2>

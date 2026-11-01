@@ -47,8 +47,8 @@ import admin_rank
 
 LogFn = Optional[Callable[[str], None]]
 
-MAX_ENTRIES = 25            # entries per run (each may need one URL lookup)
-MAX_TEXT = 16_000           # characters of input
+MAX_ENTRIES = 100           # entries per run: one POST /urlLookup of up to 100 hosts (bulk_test.LOOKUP_CHUNK), paced
+MAX_TEXT = 64_000           # characters of input (100 entries of up to MAX_ENTRY characters, with separators)
 MAX_ENTRY = 512             # characters per entry
 MAX_RULES_PER_CATEGORY = 300
 MAX_NAME = 200

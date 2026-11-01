@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users), rehearse then simulate, outside-tool gaps closed (Client Connector Terraform, Excel device lists, logs without uploading), and more of the tenant read and scored",
+    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin, rehearse then simulate, Fix selected that changes the answer (URL filtering and ZPA), manual what-if inputs, other providers' endpoint lists, outside-tool gaps closed, and more of the tenant read and scored",
     "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
@@ -197,6 +197,56 @@ window.WHATS_NEW = {
       "what": "The whole-tenant Terraform export writes Client Connector fail-open, device cleanup, web privacy, notification templates and ZIA posture profiles with the beta provider pinned exactly.",
       "changelog": ["Client Connector Terraform"],
       "marks": [{ "page": "/report/exports", "at": "#exTfZccBeta" }]
+    },
+    {
+      "id": "fix-flow-url", "release": "2026-11-01", "label": "URL filtering in Fix rows from Test a list",
+      "what": "Fix selected puts URL filtering rows in a custom URL category and adds that category to a matching rule, or to a new disabled rule above the rule that decided them; the preview warns when the category alone changes nothing.",
+      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing"],
+      "marks": [{ "page": "/report/operations", "at": "select[id^=\"lfCat\"]", "shown": "after Read from the tenant, with URL filtering rows" }]
+    },
+    {
+      "id": "zpa-typed-domains", "release": "2026-11-01", "label": "Add typed domains to a segment",
+      "what": "ZPA segment domains adds typed domains to an application segment or removes picked ones, and Fix selected opens it for rows ZPA carries.",
+      "changelog": ["Add typed domains to a segment", "ZPA rows open the ZPA change", "ZPA segment domains"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opKindZpaH" },
+        { "page": "/report/operations", "at": "#opZAdd", "shown": "when Add typed domains is picked" }
+      ]
+    },
+    {
+      "id": "zpa-access-position", "release": "2026-11-01", "label": "Place it above",
+      "what": "The ZPA builder places its access rule just above a rule you pick in the access policy, and Undo puts the order back.",
+      "changelog": ["Place it above"],
+      "marks": [{ "page": "/report/operations", "at": "#zbAbove", "shown": "after Read from the tenant" }]
+    },
+    {
+      "id": "zpa-allow-existing", "release": "2026-11-01", "label": "An access rule for an existing segment",
+      "what": "ZPA policy rules builds an access rule for a segment already in ZPA, and Fix selected opens it for a Test a list row ZPA denies, with that segment and the rule that denied it picked.",
+      "changelog": ["An access rule for an existing segment", "ZPA policy rules"],
+      "marks": [{ "page": "/report/operations", "at": "#zbSeg", "shown": "after Read from the tenant in ZPA policy rules, with An existing segment picked" }]
+    },
+    {
+      "id": "zpa-handoff-segments", "release": "2026-11-01", "label": "Segment from Test a list",
+      "what": "When rows from Test a list sit in more than one ZPA segment, a picker offers every segment: fix one, then pick the next.",
+      "changelog": ["Segment from Test a list"],
+      "marks": [{ "page": "/report/operations", "at": "#opZHand", "shown": "after Fix selected with rows in two or more ZPA segments" }]
+    },
+    {
+      "id": "path-manual-inputs", "release": "2026-11-01", "label": "Manual inputs (what-if)",
+      "what": "The Path analyzer evaluates a pasted PAC file and typed VPN gateways and Z-Tunnel 2.0 lists, on their own or added to the tenant's app profiles. Nothing is kept or written.",
+      "changelog": ["Manual inputs (what-if)"],
+      "marks": [{ "page": "/report/path", "at": "#paManual > summary" }]
+    },
+    {
+      "id": "vendor-endpoint-lists", "release": "2026-11-01", "label": "Other providers' endpoint lists",
+      "what": "Zoom, Webex, RingCentral, GoTo and Talkdesk lists in Advanced settings, imported from a file or, for Zoom, fetched when you turn it on and click Fetch now, so their app service groups are matched instead of unknown.",
+      "changelog": ["Other providers' endpoint lists", "Fetch Zoom's list"],
+      "marks": [
+        { "page": "/report/advanced", "at": "a.rp-btn[href=\"#vendors\"]" },
+        { "page": "/report/advanced", "at": "#advVendH" },
+        { "page": "/report/advanced", "at": "#advVendZoomOn" },
+        { "page": "/report/advanced", "at": "#advVendFile" }
+      ]
     },
     {
       "id": "category-lookup", "release": "2026-10-31", "label": "Category lookup",

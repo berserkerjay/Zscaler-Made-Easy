@@ -812,8 +812,10 @@ def _zpa_segments_default():
 def _list_fix_default():
     import ops_list_fix
     n = ops_list_fix.normalize({"type": "list_fix", "fixes": [{"area": "firewall", "purpose": "block", "destinations": [{"value": "203.0.113.9"}],
-                                                               "ip_group": {"new": "QA"}, "rule": {"new": {"name": "QA rule"}}}]})
-    return n["fixes"][0]["rule"]["new"]["enabled"] is False
+                                                               "ip_group": {"new": "QA"}, "rule": {"new": {"name": "QA rule"}}},
+                                                              {"area": "url", "purpose": "allow", "destinations": [{"value": "qa.example"}],
+                                                               "category": {"new": "QA URLs"}, "rule": {"new": {"name": "QA URL rule"}}}]})
+    return all(f["rule"]["new"]["enabled"] is False for f in n["fixes"])   # Cloud Firewall, DNS and URL filtering rules alike
 
 
 def _aiguard_policy_default():

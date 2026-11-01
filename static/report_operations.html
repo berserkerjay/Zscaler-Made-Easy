@@ -33,7 +33,7 @@
           <label class="op-kind"><input type="radio" name="opKind" value="rule_state" checked><span><strong>Enable or disable rules</strong><span class="df-hint">Up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control, the four DLP channels, DNS Control and IPS; one field (the state) per operation.</span></span></label>
           <label class="op-kind"><input type="radio" name="opKind" value="reorder"><span><strong>Reorder a policy</strong><span class="df-hint">Put one policy's rules in the order you want; the fewest rules move, the Default, predefined and read-only rules never move, and only the order changes.</span></span></label>
           <label class="op-kind"><input type="radio" name="opKind" value="url_categories"><span><strong>URL category change</strong><span class="df-hint">Add, remove, move or copy URLs on custom URL categories (or into a new one), with the rules in scope that use each category.</span></span></label>
-          <label class="op-kind"><input type="radio" name="opKind" value="zpa_domains"><span><strong>ZPA segment domains</strong><span class="df-hint">Move or copy domains between application segments, or clone a segment with its settings, with the domain and port overlap check. Needs ZPA ticked on the Scope page.</span></span></label>
+          <label class="op-kind"><input type="radio" name="opKind" value="zpa_domains"><span><strong id="opKindZpaH">ZPA segment domains</strong><span class="df-hint">Add typed domains to an application segment, remove them, move or copy domains between segments, or clone a segment with its settings, with the domain and port overlap check. Needs ZPA ticked on the Scope page.</span></span></label>
         </fieldset>
         <fieldset class="op-kinds" id="opBuildKinds" hidden>
           <legend class="df-h">Build new</legend>
@@ -89,7 +89,7 @@
       conflict: ['Conflict, left as it is', 'st-warn'], failed: ['Failed', 'st-fail'], skipped: ['Not attempted', 'st-warn'], rolled_back: ['Created, then removed again', 'st-warn'] };
     const FAMILY = { rule_state: 'rules', reorder: 'rules', url_categories: 'url_categories', zpa_domains: 'zpa_segments' };
     const S = { kind: 'rule_state', objects: {}, selected: new Set(), filter: '', policyFilter: '', order: null, orderPolicy: '', orderType: '',
-      urlPick: new Set(), domPick: new Set(), assessor: '', preview: null, previewJob: null, spec: null, undoOf: null, write: null, busy: false, job: null, stopAsked: false, startToken: null };
+      urlPick: new Set(), domPick: new Set(), zpaIdx: 0, assessor: '', preview: null, previewJob: null, spec: null, undoOf: null, write: null, busy: false, job: null, stopAsked: false, startToken: null };
 
     // The typed confirmation, compared as the server does (security.typed_phrase_matches):
     // surrounding spaces ignored, one character for one, case-insensitive only where the
@@ -245,7 +245,33 @@
     // body(): the tenant sign-in and the Scope page selection a plugin's own read-only lookups send;
     // runJob(): the shared job runner (Stop, the live log) for a plugin's read-only job;
     // read(query): a form that searches (users) reads again with what was typed.
+    // ── The ZPA sections of a Fix selected hand-off: one per segment and
+    // purpose. The picker fills the form with the one picked: a row to block
+    // opens ZPA segment domains (take it out of its segment), a row to allow
+    // opens ZPA policy rules (an access rule for the segment that already
+    // holds it, above the rule that denies it).
+    function zpaSec() { const z = (S.handoff && S.handoff.zpa) || []; return z.length ? z[Math.min(Math.max(0, S.zpaIdx || 0), z.length - 1)] : null; }
+    const zpaKindFor = z => (z && z.purpose === 'allow' ? 'zpa_policies' : 'zpa_domains');
+    function zpaPickerHtml() {
+      const z = (S.handoff && S.handoff.zpa) || [];
+      if (z.length < 2) return '';
+      return `<div class="op-row"><label class="df-ctl"><span class="lbl">Segment from Test a list</span><select id="opZHand" aria-describedby="opZHandHint">
+        ${z.map((x, i) => `<option value="${i}"${i === (S.zpaIdx || 0) ? ' selected' : ''}>${E(x.segment)}: ${(x.domains || []).length} destination(s) ${x.purpose === 'block' ? 'to block' : 'to allow'}</option>`).join('')}</select></label>
+        <span class="df-hint" id="opZHandHint">${E(z.length)} segments came from Test a list. Fix one, then pick the next here.</span></div>`;
+    }
+    function wireZpaPicker() {
+      const el = $('opZHand'); if (!el) return;
+      el.addEventListener('change', () => {
+        S.zpaIdx = Number(el.value) || 0; S.domPick.clear();
+        const want = zpaKindFor(zpaSec()), radio = document.querySelector(`input[name="opKind"][value="${want}"]`);
+        $('opObjects').innerHTML = '';   // the form starts again from the picked segment
+        if (radio && S.kind !== want) { radio.checked = true; onKind(radio); } else renderObjects();
+        say(`Segment ${zpaSec().segment} picked${S.objects[FAMILY[want]] ? '' : ': read from the tenant'}.`);
+        const again = $('opZHand'); if (again) again.focus(); else if (radio) radio.focus();
+      });
+    }
     const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m), body: x => body(x),
+      zpaSec: () => zpaSec(), zpaPicker: () => zpaPickerHtml(), wireZpaPicker: () => wireZpaPicker(),
       runJob: (u, p, w, t) => runJob(u, p, w, t), fail: (w, t, m, f) => fail(w, t, m, f), preview: (u, p) => preview(u, p, null), detailText,
       read: q => { S.query = String(q || '').slice(0, 100); $('opRead').click(); } };
     (async function loadBuilders() {
@@ -289,7 +315,8 @@
       // A ?fix= hand-off picks its own operation, so it wins.
       const q = new URLSearchParams(location.search), want = q.get('build') || '';
       const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && document.querySelector(`input[name="opKind"][value="${want}"]`);
-      if (pick && !pick.checked) { pick.checked = true; onKind(pick); }
+      // The browser may restore a radio's tick on its own (form state): the operation follows S.kind, not the tick.
+      if (pick && (!pick.checked || S.kind !== want)) { pick.checked = true; onKind(pick); }
     })();
 
     // ── Step 2: read and pick ──
@@ -425,21 +452,33 @@
     }
     function renderZpa(res, where) {
       const segs = res.segments || [];
-      const act = ($('opZAct') || {}).value || 'move', src = ($('opZSrc') || {}).value || (segs[0] || {}).id || '', tgt = ($('opZTgt') || {}).value || '';
+      const zh = zpaSec();   // ZPA rows from Test a list (Fix selected): the segment picked (the first one at first)
+      const zseg = zh ? segs.find(s => s.name === zh.segment) : null;
+      const act = ($('opZAct') || {}).value || (zh ? (zh.purpose === 'block' ? 'remove' : 'add') : 'move');
+      const src = ($('opZSrc') || {}).value || (zh && zh.purpose === 'block' && zseg && zseg.id) || (segs[0] || {}).id || '';
+      const tgt = ($('opZTgt') || {}).value || '';
       const name = ($('opZName') || {}).value || '', move = ($('opZMove') || {}).checked || false, typed = ($('opZNew') || {}).value || '';
+      const addText = $('opZAdd') ? $('opZAdd').value : (zh ? (zh.domains || []).join('\n') : '');
       const srcSeg = segs.find(s => String(s.id) === String(src));
-      where.innerHTML = `${errorsHtml(res)}
+      if (zh && zh.purpose === 'block' && !S.domPick.size && srcSeg) (zh.domains || []).forEach(d => { if ((srcSeg.domains || []).includes(d)) S.domPick.add(d); });
+      const acts = [['add', 'Add typed domains to a segment'], ['remove', 'Remove domains from a segment'], ['move', 'Move domains'], ['copy', 'Copy domains'], ['clone', 'Clone a segment']];
+      const pickList = act !== 'add' ? `<div class="op-row"><span class="df-hint">Pick domains from ${E(srcSeg ? srcSeg.name : 'the segment')}:</span><span class="df-chip" id="opZCount">${S.domPick.size} picked</span></div>
+        <ul class="op-checks">${(srcSeg ? srcSeg.domains : []).map(d => `<li><label><input type="checkbox" data-d="${E(d)}"${S.domPick.has(d) ? ' checked' : ''}> ${E(d)}</label></li>`).join('') || '<li class="df-hint">No domains.</li>'}</ul>` : '';
+      where.innerHTML = `${errorsHtml(res)}${zpaPickerHtml()}
         <div class="op-row"><label class="df-ctl"><span class="lbl">Action</span><select id="opZAct" aria-label="ZPA action">
-          ${[['move', 'Move domains'], ['copy', 'Copy domains'], ['clone', 'Clone a segment']].map(([v, l]) => `<option value="${v}"${v === act ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-          <label class="df-ctl"><span class="lbl">From</span><select id="opZSrc" aria-label="Source segment">${segOptions(segs, src)}</select></label>
-          ${act !== 'clone' ? `<label class="df-ctl"><span class="lbl">To</span><select id="opZTgt" aria-label="Target segment">${segOptions(segs.filter(s => String(s.id) !== String(src)), tgt, '<option value="">Pick a segment…</option>')}</select></label>`
-            : `<label class="df-ctl"><span class="lbl">New segment name</span><input id="opZName" value="${E(name)}" aria-label="New segment name"></label>
-               <label class="df-ctl"><input type="checkbox" id="opZMove"${move ? ' checked' : ''}><span>Move the picked domains out of the source</span></label>`}</div>
-        <div class="op-row"><span class="df-hint">Pick domains from ${E(srcSeg ? srcSeg.name : 'the segment')}:</span><span class="df-chip" id="opZCount">${S.domPick.size} picked</span></div>
-        <ul class="op-checks">${(srcSeg ? srcSeg.domains : []).map(d => `<li><label><input type="checkbox" data-d="${E(d)}"${S.domPick.has(d) ? ' checked' : ''}> ${E(d)}</label></li>`).join('') || '<li class="df-hint">No domains.</li>'}</ul>
+          ${acts.map(([v, l]) => `<option value="${v}"${v === act ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          ${act !== 'add' ? `<label class="df-ctl"><span class="lbl">From</span><select id="opZSrc" aria-label="Source segment">${segOptions(segs, src)}</select></label>` : ''}
+          ${act === 'clone' ? `<label class="df-ctl"><span class="lbl">New segment name</span><input id="opZName" value="${E(name)}" aria-label="New segment name"></label>
+               <label class="df-ctl"><input type="checkbox" id="opZMove"${move ? ' checked' : ''}><span>Move the picked domains out of the source</span></label>`
+            : act === 'remove' ? '' : `<label class="df-ctl"><span class="lbl">To</span><select id="opZTgt" aria-label="Target segment">${segOptions(act === 'add' ? segs : segs.filter(s => String(s.id) !== String(src)), tgt, '<option value="">Pick a segment…</option>')}</select></label>`}</div>
+        ${act === 'add' ? `<label class="op-block"><span class="lbl">Domains to add (one per line)</span><textarea id="opZAdd" rows="4" maxlength="60000" spellcheck="false" aria-label="Domains to add to the segment, one per line" aria-describedby="opZAddHint">${E(addText)}</textarea></label>
+          <div class="df-hint" id="opZAddHint">Host names or wildcard domains such as *.corp.example. They take the segment's ports; one already in another segment on overlapping ports is left out, with where it is.</div>` : ''}
+        ${pickList}
         ${act === 'clone' ? `<label class="op-block"><span class="lbl">New domains for the clone (one per line), besides the ones picked above</span><textarea id="opZNew" rows="3" aria-label="New domains for the clone">${E(typed)}</textarea></label>` : ''}
+        ${zh ? `<div class="bp-card info"><div>${E((zh.domains || []).length)} destination(s) from Test a list rows ${E((zh.rows || []).slice(0, 12).join(', '))}, carried by ZPA segment ${E(zh.segment)}${zseg ? '' : ' (not found when read: pick the segment)'}, ${zh.purpose === 'block' ? 'should be blocked: taking them out of the segment hands them to ZIA\'s policy.' : 'should be reachable: ZPA denies them, and they are already in this segment, so adding them to it changes nothing. The fix is an access rule for this segment above the rule that denies them: pick ZPA policy rules under Build new (it opens with this segment picked).'}</div></div>` : ''}
         <div class="df-hint">A domain may sit in two segments only on ports that do not overlap: the preview excludes any domain that would, and says where it already is.</div>`;
       ['opZAct', 'opZSrc', 'opZTgt'].forEach(id => { const el = $(id); if (el) el.addEventListener('change', () => { if (id === 'opZSrc') S.domPick.clear(); renderZpa(res, where); $(id) && $(id).focus(); }); });
+      wireZpaPicker();
       where.querySelectorAll('input[data-d]').forEach(cb => cb.addEventListener('change', () => { cb.checked ? S.domPick.add(cb.dataset.d) : S.domPick.delete(cb.dataset.d); $('opZCount').textContent = `${S.domPick.size} picked`; }));
     }
 
@@ -469,10 +508,13 @@
         if (!spec.urls.length) throw new Error('List or pick at least one URL.');
         return spec;
       }
-      const act = $('opZAct').value, spec = { type: 'zpa_domains', action: act, source: $('opZSrc').value };
+      const act = $('opZAct').value, spec = { type: 'zpa_domains', action: act };
+      if (act !== 'add') spec.source = $('opZSrc').value;
       if (act === 'clone') { spec.name = $('opZName').value; spec.move = $('opZMove').checked; spec.domains = [...S.domPick].concat(lines(($('opZNew') || {}).value)); }
+      else if (act === 'add') { spec.target = $('opZTgt').value; spec.domains = lines(($('opZAdd') || {}).value).slice(0, 500); if (!spec.target) throw new Error('Pick the segment to add the domains to.'); }
+      else if (act === 'remove') { spec.domains = [...S.domPick]; }
       else { spec.target = $('opZTgt').value; spec.domains = [...S.domPick]; if (!spec.target) throw new Error('Pick the target segment.'); }
-      if (!spec.domains.length) throw new Error('Pick at least one domain.');
+      if (!spec.domains.length) throw new Error(act === 'add' ? 'Type at least one domain.' : 'Pick at least one domain.');
       return spec;
     }
 
@@ -720,16 +762,19 @@
     }
 
     // ── A hand-off from the Path analyzer's Test a list view (?fix=<id>):
-    // the Cloud Firewall, DNS Control and ATP rows fill "Fix rows from Test
-    // a list" (picked first), the URL filtering rows the URL category
-    // change's "add" list. It only fills the forms: reading, the preview and
-    // the four write gates are the same as for any change typed here.
+    // the Cloud Firewall, DNS Control, ATP and URL filtering rows fill "Fix
+    // rows from Test a list" (picked first), the URL filtering rows also the
+    // URL category change's "add" list, and the rows ZPA carries, per
+    // segment, ZPA segment domains (to block) or ZPA policy rules (to allow:
+    // an access rule for the segment), picked when nothing else is in the
+    // hand-off. It only fills the forms: reading, the preview and the four
+    // write gates are the same as for any change typed here.
     function pickHandoffKind() {
       const h = S.handoff;
       if (!h) return;
-      const want = (h.fixes || []).length ? 'list_fix' : 'url_categories';
+      const want = (h.fixes || []).length ? 'list_fix' : (h.urls || []).length ? 'url_categories' : (h.zpa || []).length ? zpaKindFor(zpaSec()) : 'list_fix';
       const radio = document.querySelector(`input[name="opKind"][value="${want}"]`);
-      if (radio && !radio.checked) { radio.checked = true; onKind(radio); }
+      if (radio && (!radio.checked || S.kind !== want)) { radio.checked = true; onKind(radio); }
     }
     async function takeHandoff() {
       const id = new URLSearchParams(location.search).get('fix') || '';
@@ -739,12 +784,16 @@
       const note = document.createElement('div');
       note.className = h ? 'bp-card' : 'bp-card warn';
       note.setAttribute('role', 'status');
+      if (h && !Array.isArray(h.zpa)) h.zpa = [];
       if (!h || !Array.isArray(h.urls)) { note.innerHTML = '<div class="t">The list from the Path analyzer is no longer kept</div><div>Pick the rows again on the Path analyzer\'s Test a list view, then Fix selected.</div>'; $('opH1').after(note); return; }
       S.handoff = h; S.handoffId = id;
       const fixes = h.fixes || [], nf = fixes.reduce((a, f) => a + (f.destinations || []).length, 0);
       const parts = [];
       if (fixes.length) parts.push(`${nf} for ${fixes.map(f => `${f.area_label} (${f.purpose === 'block' ? 'to block' : 'to allow'})`).join(', ')}: Fix rows from Test a list is picked`);
-      if (h.urls.length) parts.push(`${h.urls.length} for a custom URL category: ${fixes.length ? 'pick URL category change after this one' : 'URL category change is picked; pick the category in To'}`);
+      const urlFix = fixes.some(f => f.area === 'url');
+      if (h.urls.length && !urlFix) parts.push(`${h.urls.length} for a custom URL category: ${fixes.length ? 'pick URL category change after this one' : 'URL category change is picked; pick the category in To'}`);
+      if (h.urls.length && urlFix) parts.push(`the URL filtering rows can also go into a custom URL category alone with URL category change, but alone that changes nothing unless a rule uses the category`);
+      if (h.zpa.length) parts.push(`${h.zpa.reduce((a, z) => a + (z.domains || []).length, 0)} carried by ZPA (${h.zpa.map(z => `${z.segment}, ${z.purpose === 'block' ? 'to block' : 'to allow'}`).join('; ')}): ${fixes.length || h.urls.length ? 'pick ZPA segment domains (to block) or ZPA policy rules (to allow) after this one' : `${zpaKindFor(zpaSec()) === 'zpa_policies' ? 'ZPA policy rules' : 'ZPA segment domains'} is picked for ${zpaSec().segment}${h.zpa.length > 1 ? '; pick the other segments in the form' : ''}`}`);
       note.innerHTML = `<div class="t">Rows from the Path analyzer's Test a list view</div><div>${E(parts.join('; '))}. ${E(h.note)}${(h.excluded || []).length ? ` ${E(h.excluded.length)} row(s) were left out (each with the reason in the Path analyzer's recommendation).` : ''}${h.over_limit ? ` ${E(h.over_limit)} more URLs were over the limit of one operation.` : ''} Click Read from the tenant, then preview.</div>`;
       $('opH1').after(note);
       pickHandoffKind();

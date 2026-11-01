@@ -12381,6 +12381,7 @@ async def path_analyzer_batch_start(req: PathBatchRequest, request: Request):
     import pack_jobs
     hosts, stats, skipped = _batch_hosts(req)
     scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
+    _path_manual(getattr(req, "whatif_bypass", None), scope)   # a bad what-if input is refused before sign-in too
     creds = _tenant_creds(req)
     snapshot = _kept_path_read(req.report_id, scope, creds, req.platform)
     client = await asyncio.to_thread(_build_client, req)
@@ -12637,7 +12638,8 @@ async def bulk_test_area_list(job_id: str, area: str = "", purpose: str = "block
 
 
 FIX_NOTHING_IN_SCOPE = ("Nothing Fix selected changes is in scope on the Scope page: custom URL categories (URL filtering: tick DLP or "
-                        "ZIA platform), and the Cloud Firewall, DNS Control and ATP lists (tick ZIA platform). Nothing was read.")
+                        "ZIA platform), the Cloud Firewall, DNS Control and ATP lists (tick ZIA platform), and ZPA application "
+                        "segments (tick ZPA). Nothing was read.")
 
 
 def _fix_scope(req: Any) -> Dict[str, Optional[str]]:
@@ -12650,6 +12652,7 @@ def _fix_scope(req: Any) -> Dict[str, Optional[str]]:
     read, why = ops_list_fix.areas_in_scope(scope)
     out: Dict[str, Optional[str]] = {"url": None if scope["url_categories"] else scope["not_in_scope"]["url_categories"]}
     out.update({a: (None if a in read else why[a]) for a in ops_list_fix.AREA_ORDER})
+    out["zpa"] = None if scope["zpa"] else scope["not_in_scope"]["zpa_segments"]
     if all(out.values()):
         raise HTTPException(status_code=400, detail=FIX_NOTHING_IN_SCOPE)
     return out
@@ -12660,7 +12663,8 @@ async def bulk_test_fix(job_id: str, req: BulkFixRequest):
     """Fix selected: the chosen rows as Bulk changes operations to preview
     (it opens with /report/operations?fix=<id>): the URL filtering and Cloud
     App Control rows as a URL category change, the Cloud Firewall, DNS
-    Control and ATP rows as "Fix rows from Test a list". Each row is fixed
+    Control, ATP and URL filtering rows as "Fix rows from Test a list", the
+    rows ZPA carries as a ZPA segment domains change. Each row is fixed
     for what it was expected to do. Refused (400) when nothing it changes is
     in scope; a part out of scope is left out with the reason. Writes
     nothing: Bulk changes applies only in write mode, for a writer, with the
@@ -12677,6 +12681,8 @@ async def bulk_test_fix(job_id: str, req: BulkFixRequest):
             "open": f"/report/operations?fix={rec['id']}", "note": rec["note"],
             "fixes": [{"area": f["area"], "area_label": f["area_label"], "purpose": f["purpose"], "destinations": len(f["destinations"]),
                        "rows": len(f["rows"])} for f in rec["fixes"]],
+            "zpa": [{"segment": z["segment"], "purpose": z["purpose"], "destinations": len(z["domains"]), "rows": len(z["rows"])}
+                    for z in rec.get("zpa") or []],
             "rows": len(rec["retest_rows"])}
 
 
@@ -12690,6 +12696,7 @@ async def bulk_test_fix_get(fix_id: str):
     if rec is None:
         raise HTTPException(status_code=404, detail="That hand-off is no longer kept (an hour). Pick the rows again on the Path analyzer's Test a list view.")
     out = {k: rec[k] for k in ("urls", "excluded", "over_limit", "purpose", "note", "fixes")}
+    out["zpa"] = rec.get("zpa") or []
     out["rows"] = [dict(rec["rows_before"].get(str(n)) or {}, row=n) for n in rec["retest_rows"][:bulk_test.MAX_FIX_ROWS]]
     return out
 
@@ -13279,6 +13286,89 @@ async def m365_endpoints_remove(request: Request):
     return out
 
 
+# ── Other UCaaS providers' endpoint lists (vendor_endpoints) ──────────
+# Zoom, Webex, RingCentral, GoTo and Talkdesk app service groups. Import
+# by hand for every provider; fetching only for Zoom (the one that
+# publishes a file), off by default and only on Fetch now. Server-wide
+# settings: under SSO only a listed writer may change them.
+class VendorSettings(BaseModel):
+    """Fetch one provider's published list (off by default; only providers that publish a file)."""
+    provider: str = Field("", max_length=20)
+    enabled: bool = False
+
+
+class VendorImport(BaseModel):
+    """One provider's list as text (one address range or host name per line), saved by hand."""
+    provider: str = Field("", max_length=20)
+    content: str = Field("", max_length=1024 * 1024 + 1024)
+
+
+class VendorFetch(BaseModel):
+    provider: str = Field("", max_length=20)
+
+
+@app.get("/api/vendor-endpoints")
+async def vendor_endpoints_status():
+    """Every provider: fetchable or import-only, the setting, the list kept (when, stale or not, counts). Reads nothing remote."""
+    import vendor_endpoints
+    return await asyncio.to_thread(vendor_endpoints.status)
+
+
+@app.put("/api/vendor-endpoints/settings")
+async def vendor_endpoints_settings(req: VendorSettings, request: Request):
+    """Turn fetching one provider's list on or off (fetches nothing by itself). 400 for a provider that publishes no file."""
+    import vendor_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(vendor_endpoints.set_enabled, req.provider, req.enabled)
+    except (vendor_endpoints.ListError, vendor_endpoints.FetchDisabled) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("vendor_endpoints_settings", actor=_actor(request) or _security.current_actor(), provider=req.provider, enabled=bool(req.enabled))
+    return out
+
+
+@app.post("/api/vendor-endpoints/refresh")
+async def vendor_endpoints_refresh(req: VendorFetch, request: Request):
+    """Fetch one provider's list now (only when it publishes one and fetching is on). 409 when off, 502 when refused."""
+    import vendor_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(vendor_endpoints.fetch, req.provider)
+    except vendor_endpoints.FetchDisabled as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except vendor_endpoints.ListError as e:
+        _audit.record("vendor_endpoints_fetch", actor=_actor(request) or _security.current_actor(), provider=req.provider[:20], ok=False, error=str(e)[:200])
+        raise HTTPException(status_code=502, detail=f"The list was not updated: {e} The list kept before is still used.")
+    _audit.record("vendor_endpoints_fetch", actor=_actor(request) or _security.current_actor(), provider=req.provider, ok=True)
+    return out
+
+
+@app.post("/api/vendor-endpoints/import")
+async def vendor_endpoints_import(req: VendorImport, request: Request):
+    """Keep one provider's list saved by hand. Checked as untrusted: refused whole (400), naming the line."""
+    import vendor_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(vendor_endpoints.import_file, req.provider, req.content)
+    except vendor_endpoints.ListError as e:
+        raise HTTPException(status_code=400, detail=f"The list was not imported: {e}")
+    _audit.record("vendor_endpoints_import", actor=_actor(request) or _security.current_actor(), provider=req.provider)
+    return out
+
+
+@app.delete("/api/vendor-endpoints/{provider}")
+async def vendor_endpoints_remove(provider: str, request: Request):
+    """Forget one provider's kept list: its app service groups are unknown again."""
+    import vendor_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(vendor_endpoints.remove, provider[:20])
+    except vendor_endpoints.ListError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("vendor_endpoints_remove", actor=_actor(request) or _security.current_actor(), provider=provider[:20])
+    return out
+
+
 @app.get("/api/self-heal")
 async def self_heal_status():
     """The last self-healing run (each check: ok / healed / needs you, what
@@ -13594,6 +13684,9 @@ class PathAnalyzerRequest(MigrateRequest):
     workload: Dict[str, Any] = {}  # ip, tags, workload_group, connector_group (workload_path.workload_input)
     zpa_report_id: str = ""        # the ZPA read to reuse
     ztw_report_id: str = ""        # the Cloud & Branch Connector read to reuse
+    # What-if inputs (path_manual.parse, checked before sign-in): pasted PAC
+    # text and manual VPN gateways and Z-Tunnel 2.0 lists, evaluated, never run.
+    whatif_bypass: Dict[str, Any] = {}
 
     @field_validator("protocol", mode="before")
     @classmethod
@@ -13825,7 +13918,8 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
         _log(f"In scope, from {scope['source']}: {scope['summary']}")
     try:
         out = path_analyzer.analyze(client, req.destination, req.network, req.platform, scope=scope, snapshot=snapshot, log=_log, cancel=cancel,
-                                    protocol=req.protocol or None, port=req.port, identity=req.identity, device=device)
+                                    protocol=req.protocol or None, port=req.port, identity=req.identity, device=device,
+                                    manual=_path_manual(getattr(req, "whatif_bypass", None), scope))
     except path_analyzer.Stopped as e:
         return {"stopped": str(e), "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
     if cancel is not None and cancel.is_set():
@@ -13850,6 +13944,24 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
     out["tenant_label"] = label
     out["logs"] = logs
     return out
+
+
+PATH_MANUAL_MERGE_NOT_IN_SCOPE = ("Adding your manual inputs to the tenant's app profiles needs Client Connector in scope: on the Scope page "
+                                  "tick ZCC, or evaluate the inputs on their own. Nothing was read.")
+
+
+def _path_manual(raw: Any, scope: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """The Path analyzer's manual what-if inputs (path_manual.parse), checked
+    before sign-in: 400 in words for a bad one, and for "merge" while
+    Client Connector is not in scope."""
+    import path_manual
+    try:
+        m = path_manual.parse(raw)
+    except path_manual.ManualError as e:
+        raise HTTPException(status_code=400, detail=f"{e} Nothing was read.")
+    if m and m["mode"] == "merge" and scope is not None and "zcc" not in (scope.get("read") or []):
+        raise HTTPException(status_code=400, detail=PATH_MANUAL_MERGE_NOT_IN_SCOPE)
+    return m
 
 
 def _kept_path_read(report_id: str, scope: Dict[str, Any], creds: Dict[str, str], platform: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -14544,6 +14656,9 @@ def _path_inputs(req: PathAnalyzerRequest) -> Dict[str, Any]:
     if source == "device" and not scope["read"] and not zpa_on:
         raise HTTPException(status_code=400, detail=PATH_NOTHING)
     zid = _path_zpa_identity(req.identity, zpa_on)
+    manual = _path_manual(req.whatif_bypass, scope)
+    if manual and source != "device":
+        raise HTTPException(status_code=400, detail="Manual Client Connector and PAC inputs apply to traffic from a user device, not from a workload. Nothing was read.")
     if req.device and source != "device":
         raise HTTPException(status_code=400, detail="A picked device applies to traffic from a user device, not from a workload. Nothing was read.")
     if req.device and "zcc" not in sc:
@@ -14566,7 +14681,7 @@ def _path_inputs(req: PathAnalyzerRequest) -> Dict[str, Any]:
     zid_lookup = source == "device" and zpa_on and not zpa_problem and zpa_identity.needs_lookup(zid)
     return {"source": source, "pdest": pdest, "d": d, "w": w, "scope": scope, "zpa_on": zpa_on, "zpa_problem": zpa_problem, "device": device,
             "creds": creds, "label": tenant_auth.record_label(creds), "zia_kept": _kept_path_read(req.report_id, scope, creds) if scope["read"] else None,
-            "zpa_kept": zpa_kept, "ztw_kept": ztw_kept, "zid": zid, "zid_lookup": zid_lookup,
+            "zpa_kept": zpa_kept, "ztw_kept": ztw_kept, "zid": zid, "zid_lookup": zid_lookup, "manual": manual,
             "need_sdk": (zpa_on and not zpa_problem and (zpa_kept is None or zid_lookup)) or (source == "workload" and ztw_kept is None)}
 
 
@@ -14703,6 +14818,14 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
         if inp.get("device") and not res.get("device"):
             import path_device   # ZIA was not traced (ZPA carries it): the device's facts, no profile applied
             res["device"] = path_device.describe(inp["device"], None, None, req.network)
+        if inp.get("manual") and not res.get("manual_inputs"):
+            import path_analyzer   # ZIA was not traced (ZPA carries it, or no ZIA part is in scope): the inputs on their own
+            import path_manual
+            import zia_path_modules
+            traffic = zia_path_modules.traffic_context(pd, req.protocol, req.port)
+            res["manual_inputs"] = path_manual.evaluate(inp["manual"], pd, traffic, path_analyzer.pac_url(pd, traffic))
+            if inp["manual"]["mode"] == "merge":
+                res["manual_inputs"]["merged_note"] = "ZIA was not traced on this path, so the inputs are shown on their own."
         v = res.get("verdict") or {}
         v["not_in_scope"] = list(v.get("not_in_scope") or []) + zpa_not_in_scope
         _log(f"Verdict: {v.get('headline', '')}")

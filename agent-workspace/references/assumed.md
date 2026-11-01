@@ -3,16 +3,16 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-503 markers.
+519 markers.
 
 | File:line | Note |
 |---|---|
-| `admin_ops.py:90` | URL_MAX_LEN = 1024         # assumed ZIA limit for one custom URL |
-| `admin_ops.py:715` | API stores it (assumed for ZIA and ZPA: the SDK passes names through), |
-| `admin_ops.py:1048` | warning, assumed}}): the ranks an Undo puts back, or, with Admin Ranking |
-| `admin_ops.py:1058` | out[rid] = {"rank": rk, "before": cur, "change": rk != cur, "assumed": False, "warning": "", |
-| `admin_ops.py:1192` | asked_order=slots[desired.index(rid)], why=rk["why"], warning=rk.get("warning") or "", assumed=rk.get("assumed")) |
-| `admin_ops.py:1562` | Overlap: a domain may sit in two segments only on ports that do not overlap (assumed ZPA rule; ZPA refuses the save otherwise). |
+| `admin_ops.py:91` | URL_MAX_LEN = 1024         # assumed ZIA limit for one custom URL |
+| `admin_ops.py:716` | API stores it (assumed for ZIA and ZPA: the SDK passes names through), |
+| `admin_ops.py:1049` | warning, assumed}}): the ranks an Undo puts back, or, with Admin Ranking |
+| `admin_ops.py:1059` | out[rid] = {"rank": rk, "before": cur, "change": rk != cur, "assumed": False, "warning": "", |
+| `admin_ops.py:1193` | asked_order=slots[desired.index(rid)], why=rk["why"], warning=rk.get("warning") or "", assumed=rk.get("assumed")) |
+| `admin_ops.py:1578` | Overlap: a domain may sit in two segments only on ports that do not overlap (assumed ZPA rule; ZPA refuses the save otherwise). |
 | `admin_rank.py:10` | Sources (what is relied on, and what is assumed): |
 | `admin_rank.py:28` | Assumed (not confirmed in a source, said where it matters): |
 | `admin_rank.py:56` | DEFAULT_RANK = LOWEST   # assumed: a rule without a rank is at the lowest rank |
@@ -27,14 +27,16 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ai_guard.py:584` | create/update times are assumed from the other AI Guard models; the |
 | `ai_guard.py:668` | "errors": {}, "verified": list(VERIFIED) + list(DEPTH_VERIFIED), "assumed": list(ASSUMED) + list(DEPTH_ASSUMED)} |
 | `ai_guard.py:768` | "policy_id": pid, "verified": list(DEPTH_VERIFIED), "assumed": list(DEPTH_ASSUMED)} |
-| `app_services.py:23` | assumed, as Zscaler does not publish them through the API). Zscaler |
-| `app_services.py:24` | builds those groups from that list (assumed from its One Click |
-| `app_services.py:29` | alternatives (any one is enough, assumed: they are one field in the |
-| `app_services.py:55` | service areas they hold. Assumed: Zscaler's app service names are not in |
+| `app_services.py:23` | names are assumed, as Zscaler does not publish them through the API), and |
+| `app_services.py:25` | LOGMEIN, TALKDESK: vendor_endpoints, names assumed) the provider's list, |
+| `app_services.py:27` | those lists (assumed from its One Click documentation). Every other app |
+| `app_services.py:31` | so its group is taken to hold its endpoints on any port (assumed). |
+| `app_services.py:34` | alternatives (any one is enough, assumed: they are one field in the |
+| `app_services.py:60` | service areas they hold. Assumed: Zscaler's app service names are not in |
 | `app_update.py:196` | fork or a mirror is never assumed to be the upstream repository.""" |
 | `audit_timeline.py:167` | CORRELATE_SECONDS match with Zscaler Made Easy's own writes. Assumed: CST |
-| `bulk_test.py:121` | SUSPICIOUS_DESTINATION; the others are assumed from ZIA's category list. |
-| `bulk_test.py:125` | category costs little. Names this app already uses (ssl_flow) or assumed. |
+| `bulk_test.py:124` | SUSPICIOUS_DESTINATION; the others are assumed from ZIA's category list. |
+| `bulk_test.py:128` | category costs little. Names this app already uses (ssl_flow) or assumed. |
 | `compliance_pack.py:7` | the control catalogue with sources and the assumed flag |
 | `compliance_pack.py:148` | return "; ".join(f"{c['id']}{' (assumed)' if c.get('assumed') else ''}" for c in m.get("controls") or []) |
 | `compliance_pack.py:198` | MAP_COLUMNS = ["Source", "Area", "Rule", "Rule key", "Created", "Action", "Objective", "Controls", "Assumed", "Reason code", "Reason", |
@@ -92,7 +94,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `data_flow.py:964` | "it is not resolved and is assumed to resolve outside them") |
 | `data_flow.py:1021` | nis["zcc"] + " How the device forwards this traffic is not assessed; a tunnel to ZIA is assumed.", None, why="not in scope")) |
 | `data_flow.py:1027` | + (f" (the tenant has {fps_n} forwarding profiles, so none can be assumed)" if fps_n > 1 else (" and the forwarding profile list could no… |
-| `data_flow.py:1322` | f"SSL rule '{decided['name']}' has unrecognized action '{decided['action']}'. Its decryption or blocking behavior is unknown; it is not a… |
+| `data_flow.py:1329` | f"SSL rule '{decided['name']}' has unrecognized action '{decided['action']}'. Its decryption or blocking behavior is unknown; it is not a… |
 | `detection_health.py:1017` | assumed from one: |
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
@@ -126,16 +128,18 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_ip_groups.py:93` | "(assumed).") |
 | `ops_ip_groups.py:605` | f"default organisation limit is {lf.ORG_IP_ENTRIES:,} (assumed): writes past it are refused.") |
 | `ops_list_fix.py:18` | assumed to take a host name too). Each is an existing |
-| `ops_list_fix.py:72` | Assumed (marked where used): the per-group, organisation and list limits |
-| `ops_list_fix.py:106` | Limits. Assumed: Zscaler's ZIA "Ranges & Limitations" help page |
-| `ops_list_fix.py:115` | Assumed: no published size for the security policy lists was found; the |
-| `ops_list_fix.py:123` | GROUP_NAME_MAX = 128        # assumed: ZIA's own form caps names; refused by the tenant past its limit |
-| `ops_list_fix.py:125` | NEW_RULE_RANK = 7           # assumed, as ops_zia_baseline |
-| `ops_list_fix.py:707` | f"{ORG_IP_ENTRIES:,} per organisation across source and destination groups (assumed; Support can raise it). " |
-| `ops_list_fix.py:758` | P.warnings.append(f"{len(entries):,} entries are more than one IP destination group holds ({MAX_GROUP_ADDRESSES:,}, assumed): " |
-| `ops_list_fix.py:822` | reason=f"not changed: '{gname}' would hold more than {MAX_GROUP_ADDRESSES:,} entries (ZIA's per-group limit, assumed). " |
-| `ops_list_fix.py:972` | reason=f"not changed: the list would hold more than {ATP_LIST_MAX:,} entries (assumed limit)") |
-| `ops_list_fix.py:1145` | "(assumed); nothing was sent") |
+| `ops_list_fix.py:92` | Assumed (marked where used): the per-group, organisation and list limits |
+| `ops_list_fix.py:122` | CAT_NAME_MAX = 255          # assumed, as admin_ops._object_name |
+| `ops_list_fix.py:128` | Limits. Assumed: Zscaler's ZIA "Ranges & Limitations" help page |
+| `ops_list_fix.py:137` | Assumed: no published size for the security policy lists was found; the |
+| `ops_list_fix.py:145` | GROUP_NAME_MAX = 128        # assumed: ZIA's own form caps names; refused by the tenant past its limit |
+| `ops_list_fix.py:147` | NEW_RULE_RANK = 7           # assumed, as ops_zia_baseline |
+| `ops_list_fix.py:795` | f"{ORG_IP_ENTRIES:,} per organisation across source and destination groups (assumed; Support can raise it). " |
+| `ops_list_fix.py:846` | P.warnings.append(f"{len(entries):,} entries are more than one IP destination group holds ({MAX_GROUP_ADDRESSES:,}, assumed): " |
+| `ops_list_fix.py:910` | reason=f"not changed: '{gname}' would hold more than {MAX_GROUP_ADDRESSES:,} entries (ZIA's per-group limit, assumed). " |
+| `ops_list_fix.py:1002` | assumed: how ZIA returns such a rule when it is read back. The sample tenant gives request_methods |
+| `ops_list_fix.py:1165` | reason=f"not changed: the list would hold more than {ATP_LIST_MAX:,} entries (assumed limit)") |
+| `ops_list_fix.py:1372` | "(assumed); nothing was sent") |
 | `ops_rule_csv.py:105` | ZIA_PAGE = 500     # page_size for the paged ZIA lists (the SDK documents page / page_size; the maximum is assumed) |
 | `ops_rule_csv.py:876` | is added after the last rule that is not the Default rule (assumed: ZIA |
 | `ops_rule_csv.py:930` | slots = list(range(1, len(sim) + 1))    # assumed: after an add or a delete ZIA numbers its rules 1..n again, top first |
@@ -211,7 +215,11 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_zid_user.py:436` | """SkipMfaDto {timestamp} (ASSUMED: now, epoch seconds); no body for a reset.""" |
 | `ops_zpa.py:58` | other. Assumed, not verifiable without a |
 | `ops_zpa.py:166` | Host names and ports are templates to review with the agency (assumed: agencies name and port these systems their own way). |
-| `ops_zpa.py:1207` | plan.warnings.append("New rules are added at the end of each policy (assumed ZPA behaviour); a rule above them still decides first.") |
+| `ops_zpa.py:1191` | assumed: the SDK's add_access_rule (zscaler-sdk-python 1.11.3, zpa/policies.py) sends no "disabled" field, so the rule |
+| `ops_zpa.py:1245` | plan.warnings.append("New rules are added at the end of each policy (assumed ZPA behaviour); a rule above them still decides first." |
+| `ops_zpa.py:1253` | ACCESS_NAME_MAX = 64    # assumed: a name this short is accepted by ZPA (the builder's own names are of this size) |
+| `ops_zpa.py:1294` | (it is always last and is not part of a reorder; assumed, as |
+| `ops_zpa.py:1699` | One write for the whole order (assumed, as ops_rule_csv: the list names every rule but the Default rule, top first). |
 | `ops_zpa_admin.py:87` | ASSUMED (not verifiable without a tenant; see ASSUMED below and every plan's |
 | `ops_zpa_admin.py:138` | ASSUMED = [ |
 | `ops_zpa_admin.py:139` | "Moving an App Connector sends PUT /connector/{id} with the target group's id (appConnectorGroupId); assumed, not in the SDK's docstring.… |
@@ -286,11 +294,15 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `panos_migrate.py:89` | Assumed enum names (Zscaler's published network application list; the |
 | `panos_migrate.py:106` | segment of a rule whose service is application-default (assumed: the |
 | `path_analyzer.py:127` | assumed for traffic that is not web). A default port is left out.""" |
-| `path_analyzer.py:379` | _IMPACT = ("bypass", "blocked", "blind", "warn", "assumed", "unknown") |
-| `path_analyzer.py:437` | order = {"bypass": 0, "blocked": 1, "blind": 2, "warn": 3, "assumed": 4, "unknown": 5} |
+| `path_analyzer.py:383` | assumptions += path_manual.ASSUMED |
+| `path_analyzer.py:401` | _IMPACT = ("bypass", "blocked", "blind", "warn", "assumed", "unknown") |
+| `path_analyzer.py:459` | order = {"bypass": 0, "blocked": 1, "blind": 2, "warn": 3, "assumed": 4, "unknown": 5} |
 | `path_device.py:24` | health values is assumed from their names (the SDK documents the fields, |
 | `path_device.py:97` | number or text (assumed: 1/true/enabled is on).""" |
 | `path_device.py:330` | f"the network it is on is not reported, so {net_label} (your choice) is assumed.") |
+| `path_manual.py:37` | (zcc_bypass.ASSUMED). |
+| `path_manual.py:73` | ASSUMED = [ |
+| `path_manual.py:248` | "assumptions": list(ASSUMED), "given": counts(m), |
 | `path_probe.py:226` | (...)" under organisation "Zscaler Inc." (assumed from Zscaler's help on |
 | `permissions.py:52` | Governance and audit reads; the permission names are assumed (the SDK |
 | `rank_inherit.py:31` | The API client's own admin rank (assumed: inferred, never read) |
@@ -365,14 +377,14 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/flow_anim.js:41` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
 | `static/flow_anim.js:49` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
 | `static/flow_anim.js:200` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:4680` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:4750` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4710` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4790` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |
 | `static/ops_aiguard.js:55` | const st = F.aiguard_routing, cat = res.catalog \|\| { apps: [], assumed: [] }, rd = res.readiness \|\| {}; |
 | `static/ops_aiguard.js:116` | const st = F.aiguard_detection_policy, cat = res.catalog \|\| { apps: [], profiles: [], assumed: [] }, rd = res.readiness \|\| {}; |
-| `static/ops_list_fix.js:233` | <p>Add or remove entries on one IP destination group, or make a new one. A group holds IPv4 addresses, CIDR blocks and ranges (type IP) o… |
+| `static/ops_list_fix.js:263` | <p>Add or remove entries on one IP destination group, or make a new one. A group holds IPv4 addresses, CIDR blocks and ranges (type IP) o… |
 | `static/ops_zdx.js:44` | const note = (H, res) => `<div class="df-hint">${H.E(data(res).assumed \|\| '')}</div>`; |
 | `static/ops_zia_baseline.js:171` | <div class="df-hint">${E(cps.reuses)}${cps.assumed_profile ? ` Assumed: ${E(cps.assumed_profile)}` : ''}</div> |
 | `static/ops_zia_baseline.js:173` | ${(cps.assumed_controls \|\| []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(cps.assumed_… |
@@ -404,6 +416,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `url_tools.py:37` | 200 requests, under the assumed 400 an hour) with a visible note. |
 | `url_tools.py:82` | HOURLY_REQUESTS = 400       # assumed: ZIA's documented POST limit (1/s, 400/h; zia_rate) applies to /urlLookup |
 | `url_tools.py:546` | xn--bcher-kva.de (how the lookup spells it is assumed, not documented).""" |
+| `vendor_endpoints.py:13` | The providers (PROVIDERS; the group names are ASSUMED: they are the names |
+| `vendor_endpoints.py:17` | per line. Fetchable (FETCH_URL, ASSUMED: the address named in |
+| `vendor_endpoints.py:23` | as a machine-readable file (ASSUMED from the article as last |
+| `vendor_endpoints.py:26` | goto         machine-readable list known, ASSUMED), GoTo's (a support web |
 | `workload_path.py:29` | Assumed, not documented in the SDK (said on the page): |
 | `workload_path.py:89` | know (INVALID, or a newer value) is "unknown", never assumed to be ZIA.""" |
 | `workload_path.py:434` | groups (assumed from the field's name; the SDK documents no more). |
@@ -439,8 +455,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `zia_path_modules.py:634` | which of them ZIA records for HTTPS it does not decrypt is assumed).""" |
 | `zia_path_modules.py:1063` | acts on is this tool's mapping (assumed, see the report). |
 | `zia_path_modules.py:1157` | Allow lists first, then deny lists and toggles (assumed precedence). |
-| `zia_path_modules.py:1248` | out.append(_crit("DNS protocol", "match", "A lookup over UDP is assumed (the standard resolver path).") if {"UDP", "UDP_RULE"} & set(p) e… |
-| `zia_path_modules.py:1253` | f"An address lookup (A or AAAA) is assumed; the rule applies to {_short(types, 5)}.")) |
+| `zia_path_modules.py:1257` | out.append(_crit("DNS protocol", "match", "A lookup over UDP is assumed (the standard resolver path).") if {"UDP", "UDP_RULE"} & set(p) e… |
+| `zia_path_modules.py:1262` | f"An address lookup (A or AAAA) is assumed; the rule applies to {_short(types, 5)}.")) |
 | `zpa_analysis.py:16` | ZPA semantics assumed (stated here and in every diagnosis): |
 | `zpa_analysis.py:1030` | or a domain says what it holds (assumed vocabulary, English names). |
 | `zpa_analysis.py:1456` | "An inspection profile whose every control action is PASS only monitors (it logs and lets the request through); global actions are read a… |

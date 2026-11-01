@@ -101,6 +101,7 @@ Find the files a change touches here, then read only those.
 | `path_analyzer.py` | Path Analyzer: the path a user's traffic takes through the tenant to one |
 | `path_compare.py` | Path analyzer: the same destination for two identities, side by side. |
 | `path_device.py` | Path analyzer: trace for one user's enrolled device. |
+| `path_manual.py` | Manual bypass and PAC what-if for the Path analyzer. |
 | `path_probe.py` | Path analyzer: "Test from here", an opt-in observation from the computer |
 | `path_whatif.py` | What-if for the Path analyzer: the same destination for one user, |
 | `pdf_writer.py` | A small PDF 1.4 writer for the app's printable exports (a deployment |
@@ -161,6 +162,7 @@ Find the files a change touches here, then read only those.
 | `update_notify.py` | Update notifications: when the app's update check (app_update.status, |
 | `upstream_check.py` | Upstream contract check: is what this app sends still what the Zscaler |
 | `url_tools.py` | URL tools: the URLs export and the custom URL category analyzer. |
+| `vendor_endpoints.py` | Published endpoint lists of other UCaaS providers, for ZIA app service |
 | `vendor_migrate.py` | Migrate from another DLP: a fail-closed converter from a vendor's policy |
 | `vertical.py` | The vertical a tenant profile belongs to decides what the app suggests. |
 | `workload_path.py` | Workload traffic through a Cloud or Branch Connector, for the Path |

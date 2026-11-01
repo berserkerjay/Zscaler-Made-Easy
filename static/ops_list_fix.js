@@ -4,7 +4,10 @@
    Fix selected (?fix=<id>), one section per area and purpose: the IP
    destination group(s) to put them in (or take them out of), then the Cloud
    Firewall or DNS Control rule to add the group to, or a new rule (created
-   disabled unless you tick it on), or the ATP allow or deny list. Without a
+   disabled unless you tick it on), or the ATP allow or deny list; URL
+   filtering rows go into a custom URL category with the URL filtering rule
+   that uses it (an existing Block or Allow rule, or a new disabled rule
+   above the rule that decided them). Without a
    hand-off, one section takes a pasted list. The page does the rest: Read
    from the tenant, Preview (each change in plain words, linked to the rows
    it fixes), the four gates, Apply, Undo. After an apply, Prove it tests
@@ -13,7 +16,7 @@
 (function () {
   'use strict';
   if (!window.OPS_PLUGINS) return;
-  const AREA = { firewall: 'Cloud Firewall', dns: 'DNS Control', atp: 'Advanced Threat Protection lists' };
+  const AREA = { firewall: 'Cloud Firewall', dns: 'DNS Control', atp: 'Advanced Threat Protection lists', url: 'URL filtering' };
   const RES = { blocked: 'Blocked', allowed: 'Allowed', bypassed: 'Bypassed', isolated: 'Isolated', caution: 'Caution', unverified: 'Unverified', 'not tested': 'Not tested' };
   const isIp = v => /^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$|^\d{1,3}(\.\d{1,3}){3}-\d{1,3}(\.\d{1,3}){3}$/.test(v);
   const isV6 = v => v.includes(':') && /^[0-9a-f:.\/]+$/i.test(v);
@@ -28,7 +31,7 @@
     const name = `${f.purpose === 'allow' ? 'Allow' : 'Block'} ${today()}`;
     return { area: f.area || 'firewall', purpose: f.purpose === 'allow' ? 'allow' : 'block', include: true, mode: 'add', dests,
       rows: f.rows || [], decided: f.decided_by || [], rec: f.recommendation || '',
-      ip: 'new', ipName: `Fix ${name} IPs`, host: 'new', hostName: `Fix ${name} hosts`,
+      ip: 'new', ipName: `Fix ${name} IPs`, host: 'new', hostName: `Fix ${name} hosts`, cat: 'new', catName: `Fix ${name} URLs`,
       rule: 'new', ruleId: '', ruleName: `Fix ${name}`.slice(0, 31), above: '', enabled: false, services: [] };
   }
   function st(S) {
@@ -55,17 +58,18 @@
   }
   function ruleBlock(H, res, i, sec) {
     const E = H.E, rules = (res[`${sec.area}_rules`] || []);
+    const word = sec.area === 'url' ? 'category' : 'group(s)';
     const fit = rules.filter(r => !r.locked && r.kind === sec.purpose);
     const svc = sec.area === 'firewall' ? `<label class="df-ctl"><span class="lbl">Network services (optional)</span><select id="lfSvc${i}" multiple size="3" aria-label="Network services to add to the rule">
         ${(res.services || []).map(s => `<option value="${E(s.id)}"${sec.services.includes(String(s.id)) ? ' selected' : ''}>${E(s.name)}</option>`).join('')}</select></label>` : '';
     const placeable = rules.filter(r => !r.locked);
     const decided = rules.find(r => sec.decided.includes(r.name) && !r.locked);
     if (sec.rule === 'new' && !sec.above && decided) sec.above = String(decided.id);
-    return `<div class="op-row"><label class="df-ctl"><span class="lbl">Then</span><select id="lfRule${i}" aria-label="Which rule uses the group">
-        <option value="none"${sec.rule === 'none' ? ' selected' : ''}>Only change the group(s)</option>
+    return `<div class="op-row"><label class="df-ctl"><span class="lbl">Then</span><select id="lfRule${i}" aria-label="Which rule uses the ${word}">
+        <option value="none"${sec.rule === 'none' ? ' selected' : ''}>Only change the ${word}${sec.area === 'url' ? ' (alone it may change nothing: the preview says)' : ''}</option>
         <option value="new"${sec.rule === 'new' ? ' selected' : ''}>Create a new ${E(AREA[sec.area])} rule</option>
-        <option value="existing"${sec.rule === 'existing' ? ' selected' : ''}>Add the group(s) to an existing rule</option></select></label>
-      ${sec.rule === 'existing' ? `<label class="df-ctl"><span class="lbl">Rule (${sec.purpose === 'block' ? 'Block' : 'Allow'} rules only)</span><select id="lfRuleId${i}" aria-label="Existing rule to add the group to">
+        <option value="existing"${sec.rule === 'existing' ? ' selected' : ''}>Add the ${word} to an existing rule</option></select></label>
+      ${sec.rule === 'existing' ? `<label class="df-ctl"><span class="lbl">Rule (${sec.purpose === 'block' ? 'Block' : 'Allow'} rules only)</span><select id="lfRuleId${i}" aria-label="Existing rule to add the ${word} to">
           <option value="">Pick one…</option>${fit.map(r => `<option value="${E(r.id)}"${String(sec.ruleId) === String(r.id) ? ' selected' : ''}>${E(r.order)}. ${E(r.name)} (${E(String(r.state || '').toLowerCase())})</option>`).join('')}</select></label>` : ''}
       ${sec.rule === 'new' ? `<label class="df-ctl"><span class="lbl">New rule name (at most 31 characters)</span><input id="lfRuleName${i}" value="${E(sec.ruleName)}" maxlength="31" aria-label="Name of the new rule"></label>
         <label class="df-ctl"><span class="lbl">Place it above</span><select id="lfAbove${i}" aria-label="Rule the new rule goes above">
@@ -81,6 +85,15 @@
     const inc = `<label class="df-ctl"><input type="checkbox" id="lfInc${i}"${sec.include ? ' checked' : ''}><span>Include this fix</span></label>`;
     const rec = sec.rec ? `<div class="df-hint">${E(sec.rec)}</div>` : '';
     const list = `<details class="pa-details"><summary>The destinations (${sec.dests.length})</summary><ul class="op-checks">${sec.dests.slice(0, 500).map(d => `<li>${E(d.value)}${d.rows.length ? ` <span class="df-by">row ${rowLinks(H, d.rows)}</span>` : ''}</li>`).join('')}</ul></details>`;
+    if (sec.area === 'url') {
+      const cats = res.url_categories || [];
+      return `${head}${rec}<div class="op-row">${inc}<label class="df-ctl"><span class="lbl">Put the URLs in</span><select id="lfCat${i}" aria-label="Custom URL category for the URLs">
+          <option value="new"${sec.cat === 'new' ? ' selected' : ''}>A new custom URL category…</option>
+          ${cats.map(c => `<option value="${E(c.id)}"${String(sec.cat) === String(c.id) ? ' selected' : ''}>${E(c.name)} (${E(c.count)} URLs)</option>`).join('')}</select></label>
+        ${sec.cat === 'new' ? `<label class="df-ctl"><span class="lbl">New category name</span><input id="lfCatName${i}" value="${E(sec.catName)}" maxlength="255" aria-label="Name of the new custom URL category"></label>` : ''}</div>
+        <div class="df-hint">A category changes the answer only when a URL filtering rule with the right action names it, above the rule that decided the rows: pick one under Then, or create one (it arrives disabled).</div>
+        ${ruleBlock(H, res, i, sec)}${list}`;
+    }
     if (sec.area === 'atp') {
       const lists = res.atp_lists || {};
       const addTo = sec.purpose === 'block' ? 'denylist' : 'allowlist', other = sec.purpose === 'block' ? 'allowlist' : 'denylist';
@@ -142,6 +155,8 @@
       on(`lfHost${i}`, 'change', e => { sec.host = e.target.value; again(`lfHost${i}`); });
       on(`lfIpName${i}`, 'input', e => { sec.ipName = e.target.value; });
       on(`lfHostName${i}`, 'input', e => { sec.hostName = e.target.value; });
+      on(`lfCat${i}`, 'change', e => { sec.cat = e.target.value; again(`lfCat${i}`); });
+      on(`lfCatName${i}`, 'input', e => { sec.catName = e.target.value; });
       on(`lfRule${i}`, 'change', e => { sec.rule = e.target.value; again(`lfRule${i}`); });
       on(`lfRuleId${i}`, 'change', e => { sec.ruleId = e.target.value; });
       on(`lfRuleName${i}`, 'input', e => { sec.ruleName = e.target.value; });
@@ -160,6 +175,21 @@
       const f = { area: sec.area, purpose: sec.purpose, action: sec.mode, destinations: sec.dests, decided_by: sec.decided.slice(0, 5) };
       if (sec.area === 'atp') { f.list = sec.mode === 'add' ? (sec.purpose === 'block' ? 'denylist' : 'allowlist') : (sec.purpose === 'block' ? 'allowlist' : 'denylist'); fixes.push(f); return; }
       const ref = (v, name) => v === 'new' ? { new: String(name || '').trim() } : v ? { id: v } : null;
+      const pickRule = () => {
+        if (sec.rule === 'existing') {
+          if (!sec.ruleId) throw new Error(`${AREA[sec.area]}: pick the rule to add the ${sec.area === 'url' ? 'category' : 'group'} to, or another choice under Then.`);
+          return { id: sec.ruleId };
+        }
+        return sec.rule === 'new' ? { new: { name: String(sec.ruleName || '').trim(), above: sec.above || null, enabled: !!sec.enabled } } : null;
+      };
+      if (sec.area === 'url') {
+        f.action = 'add';
+        f.category = sec.cat === 'new' ? { new: String(sec.catName || '').trim() } : { id: sec.cat };
+        if (sec.cat === 'new' && !f.category.new) throw new Error('URL filtering: name the new custom URL category.');
+        f.rule = pickRule();
+        fixes.push(f);
+        return;
+      }
       const hasIp = sec.dests.some(d => isIp(d.value)), hasHost = sec.dests.some(d => !isIp(d.value) && !isV6(d.value));
       f.ip_group = hasIp ? ref(sec.ip, sec.ipName) : null;
       f.fqdn_group = hasHost ? ref(sec.host, sec.hostName) : null;

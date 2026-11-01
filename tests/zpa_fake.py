@@ -294,7 +294,23 @@ class Policies(_Svc):
         kw = dict(kw)
         if "action" in kw:
             kw["action"] = str(kw["action"]).upper()
-        return self._add(kw, kind=f"rule:{t}")
+        rows = [r for r in self.t.rows[f"rule:{t}"].values() if not r.get("defaultRule")]
+        # A new rule goes to the end of its policy (the builder's assumed ZPA behaviour), above the Default rule.
+        return self._add(kw, kind=f"rule:{t}", ruleOrder=str(max([int(r.get("ruleOrder") or 0) for r in rows] or [0]) + 1))
+
+    def bulk_reorder_rules(self, policy_type, rules_orders, **kw):
+        """The whole order in one call (SDK 1.11.3 policies.bulk_reorder_rules): the ids top first, the Default rule left out."""
+        k = f"rule:{policy_type}"
+        ids = [str(x) for x in rules_orders]
+        rows = self.t.rows[k]
+        if any(i not in rows for i in ids) or len(set(ids)) != len(ids):
+            return None, None, "HTTP 400: unknown or repeated rule id"
+        if sorted(ids) != sorted(i for i, r in rows.items() if not r.get("defaultRule")):
+            return None, None, "HTTP 400: the order must name every rule but the Default rule"
+        for n, i in enumerate(ids, 1):
+            rows[i]["ruleOrder"] = str(n)
+        self.t.writes.append(("reorder", k, ",".join(ids)))
+        return None, None, None
 
     def add_access_rule(self, name, action, **kw):
         return self._rule("access", dict(kw, name=name, action=action))

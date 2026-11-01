@@ -1138,8 +1138,15 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                              _weak("high", "PAC sends this destination DIRECT", "Remove the DIRECT clause or narrow it; Zscaler recommends returning the ZIA proxy for everything except RFC1918 and explicit local hosts.")))
         elif pev is None:
             verified = bool(pacs) and all(f.get("has_content") for f in pacs)
+            # A PAC URL that no PAC file ZIA hosts answers to is on another
+            # server: its text is never fetched, so it is not evaluated.
+            outside = (not pacs and bool(pac_url) and (zcc.get("read_status") or {}).get("pac_files") == "read")
             hops.append(_hop("pac", "PAC file", "pass" if verified else "unknown", None,
-                             (f"{len(pacs)} linked PAC file(s) read; no DIRECT pattern found for this destination" + (" (host-level check needs a hostname)." if not host else ".")) if verified else "The referenced PAC URL could not be linked to readable content. PAC routing is unverified.", None))
+                             (f"{len(pacs)} linked PAC file(s) read; no DIRECT pattern found for this destination" + (" (host-level check needs a hostname)." if not host else ".")) if verified else
+                             (f"Not evaluated: the PAC {str(pac_url)[:200]} is hosted outside ZIA (no PAC file ZIA hosts has that address), so its text was not fetched. "
+                              "Paste it under Manual inputs (what-if) to evaluate it. PAC routing is unverified.") if outside else
+                             "The referenced PAC URL could not be linked to readable content. PAC routing is unverified.", None,
+                             **({"why": "PAC hosted outside ZIA"} if outside else {})))
 
     admin_ranking = admin_rank.recorded(zia.get("admin_ranking"))
     if not reaches_zscaler:

@@ -17,6 +17,12 @@
 //   POST /api/path-analyzer/test-from-here, path_probe.py) and compares it
 //   with the prediction. Nothing is kept: not on the server, not in this
 //   browser's storage.
+// * Manual inputs (#paManual): a pasted PAC and typed VPN gateways and
+//   Z-Tunnel 2.0 lists, sent as `whatif_bypass` (path_manual.py checks them
+//   before sign-in). The result's "Manual inputs (what-if)" block says what
+//   they would do, on their own or added to the tenant's app profiles.
+//   PathExtras.manual() is what the page adds to its start request; nothing
+//   typed is kept.
 //
 // Every value is escaped before it is drawn. Nothing here writes to the tenant.
 (function () {
@@ -287,21 +293,65 @@
         <tbody>${rows.map(r => `<tr><th scope="row">${E(r[0])}</th><td>${E(r[1])}</td><td class="df-by">${E(r[2])}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
+  // ── Manual inputs (what-if) ───────────────────────────────────────
+  const MAN_FIELDS = { paManPac: 'pac_text', paManVpn: 'vpn_gateways', paManIpInc: 'ipv4_include', paManIpExc: 'ipv4_exclude',
+    paManDomInc: 'dest_include', paManDomExc: 'dest_exclude' };
+  function manual() {
+    const out = {};
+    let any = false;
+    Object.entries(MAN_FIELDS).forEach(([id, key]) => {
+      const el = document.getElementById(id); const v = el ? String(el.value || '') : '';
+      if (v.trim()) { out[key] = v; any = true; }
+    });
+    if (!any) return null;
+    const merge = document.getElementById('paManMerge');
+    out.mode = merge && merge.checked ? 'merge' : 'alone';
+    return out;
+  }
+  function manualNote() {
+    const el = document.getElementById('paManNote'); if (!el) return;
+    const m = manual();
+    el.textContent = !m ? '' : (m.mode === 'merge' && !zccInScope() ? 'Adding them to the tenant\'s app profiles needs ZCC ticked on the Scope page; on their own they need nothing read.'
+      : 'The next analysis includes these inputs as a what-if.');
+  }
+  function manualSection(mi) {
+    if (!mi) return '';
+    const g = mi.given || {}, by = mi.decided_by;
+    const given = [['PAC', g.pac_chars ? `${g.pac_chars} characters` : ''], ['VPN gateways', g.vpn_gateways], ['IP inclusions', g.ipv4_include], ['IP exclusions', g.ipv4_exclude],
+      ['Domain inclusions', g.dest_include], ['Domain exclusions', g.dest_exclude]].filter(x => x[1]).map(x => `${x[0]}: ${x[1]}`).join(' · ');
+    const pac = mi.pac ? `<p class="df-hop-d"><strong>Pasted PAC:</strong> ${E(word(mi.pac.status))}. ${E(mi.pac.detail)}</p>` : '';
+    const merged = mi.merged ? `<p class="df-hop-d">Added to ${E(mi.merged.profiles)} app profile(s) read; the whole trace above is a what-if.</p>` : (mi.merged_note ? `<p class="df-hop-d">${E(mi.merged_note)}</p>` : '');
+    return `<section class="pa-device-out" id="paManualOut" aria-labelledby="paManOutH">
+      <h2 class="df-h" id="paManOutH">${E(mi.label || 'Manual inputs (what-if)')}: ${E(word(mi.outcome))}</h2>
+      <p class="df-hop-d"><strong>${E(mi.headline)}</strong>${by ? ` Decided by ${E(by.list)}: ${E(by.entry)}.` : ''}</p>
+      ${pac}${merged}
+      ${(mi.notes || []).length ? `<ul class="pa-assume">${mi.notes.map(n => `<li>${E(n)}</li>`).join('')}</ul>` : ''}
+      <p class="df-hint">${E(mi.note)}${given ? ` Given: ${E(given)}.` : ''}</p>
+    </section>`;
+  }
+
   // ── Wiring ─────────────────────────────────────────────────────────
   function init(fns) {
     page = Object.assign(page, fns || {});
     devA.init(); devB.init();
     ['paDevice', 'paCompare'].forEach(id => { const d = document.getElementById(id); if (d) d.addEventListener('toggle', () => { devA.refresh(); devB.refresh(); }); });
     const run = document.getElementById('paCmpRun'); if (run) run.addEventListener('click', compareRun);
+    Object.keys(MAN_FIELDS).concat(['paManAlone', 'paManMerge']).forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener(el.type === 'radio' ? 'change' : 'input', manualNote); });
+    const clr = document.getElementById('paManClear');
+    if (clr) clr.addEventListener('click', () => {
+      Object.keys(MAN_FIELDS).forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      const a = document.getElementById('paManAlone'); if (a) a.checked = true;
+      manualNote(); page.say('Manual inputs cleared.');
+    });
   }
   // After a result is drawn: the device block and Test from here, after the
   // live path (which stays right under the verdict).
   function afterRender(res, body) {
     const anchor = body.querySelector('#paFlowSec') || body.querySelector('.pa-verdict');
-    const html = deviceSection(res.device) + (res.destination ? probeSection(res) : '');
+    const html = manualSection(res.manual_inputs) + deviceSection(res.device) + (res.destination ? probeSection(res) : '');
     if (anchor) anchor.insertAdjacentHTML('afterend', html); else body.insertAdjacentHTML('afterbegin', html);
     const b = document.getElementById('paProbeRun'); if (b) b.addEventListener('click', () => probeRun(res));
   }
 
-  window.PathExtras = { init, afterRender, device: () => devA.value(), _word: word, _probeHtml: probeHtml, _deviceSection: deviceSection };
+  window.PathExtras = { init, afterRender, device: () => devA.value(), manual, _word: word, _probeHtml: probeHtml, _deviceSection: deviceSection, _manualSection: manualSection };
 })();

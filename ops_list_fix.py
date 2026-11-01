@@ -29,6 +29,18 @@ list_fix
     atp              host names, URLs and addresses go onto, or come off,
                      the security policy denylist (block) or allowlist
                      (allow): the lists the Path analyzer's ATP step reads.
+    url              URLs and host names (URL filtering and Cloud App
+                     Control rows) go into a custom URL category: an
+                     existing one (`category: {"id": ...}`) or a new one
+                     (`{"new": name}`). Then, optionally, `rule`: add the
+                     category to an existing URL filtering rule whose
+                     action matches the purpose (Block or Allow), or create
+                     a new URL filtering rule DISABLED (enabled only when
+                     asked, which then needs the typed phrase) placed above
+                     the rule that decided the rows. Without a rule, the
+                     preview warns when no URL filtering rule with that
+                     action names the category: the URLs alone change
+                     nothing.
 
     ip_group_edit (standalone, no Test a list needed)
     `group`: {"id": n} or {"new": name, "group_type": "DSTN_IP" |
@@ -69,6 +81,14 @@ Verified against zscaler-sdk-python 1.11.3:
       call, so the list read right before the write is sent back with the
       change; a change someone makes in between those two calls is lost,
       as with the SDK's own add_urls_to_whitelist).
+  url_categories list_categories / get_category / add_url_category /
+      add_urls_to_category (PUT ?action=ADD_TO_LIST) /
+      delete_urls_from_category (REMOVE_FROM_LIST) / delete_category, as
+      admin_ops' URL category operation uses them (pack_ops kind
+      url_category); url_filtering list_rules / get_rule / add_rule /
+      update_rule / delete_rule (/urlFilteringRules): url_categories (ids),
+      action ALLOW / BLOCK / CAUTION / ISOLATE, state, order, rank,
+      protocols, request_methods.
 Assumed (marked where used): the per-group, organisation and list limits
 below, BLOCK_DROP as the new Cloud Firewall block action (the SDK lists it
 for IPS rules; ops_zia_baseline uses it for filtering rules), BLOCK as the
@@ -96,8 +116,10 @@ AREAS: Dict[str, Dict[str, Any]] = {
     "firewall": {"label": "Cloud Firewall", "channel": "firewall", "rules": "Cloud Firewall rule"},
     "dns": {"label": "DNS Control", "channel": "dns", "rules": "DNS Control rule"},
     "atp": {"label": "Advanced Threat Protection lists", "channel": None, "rules": ""},
+    "url": {"label": "URL filtering", "channel": zb.AREAS["url"]["channel"], "rules": "URL filtering rule"},
 }
-AREA_ORDER = ("firewall", "dns", "atp")
+AREA_ORDER = ("firewall", "dns", "atp", "url")
+CAT_NAME_MAX = 255          # assumed, as admin_ops._object_name
 LISTS: Dict[str, Dict[str, str]] = {
     "denylist": {"label": "security policy denylist", "field": "blacklist_urls", "kind": "security_denylist", "purpose": "block"},
     "allowlist": {"label": "security policy allowlist", "field": "whitelist_urls", "kind": "security_allowlist", "purpose": "allow"},
@@ -125,7 +147,10 @@ DESC_MAX = 255
 NEW_RULE_RANK = 7           # assumed, as ops_zia_baseline
 IP_TYPES = ("DSTN_IP",)
 HOST_TYPES = ("DSTN_FQDN", "DSTN_DOMAIN")
-NEW_ACTION = {("firewall", "block"): "BLOCK_DROP", ("firewall", "allow"): "ALLOW", ("dns", "block"): "BLOCK", ("dns", "allow"): "ALLOW"}
+NEW_ACTION = {("firewall", "block"): "BLOCK_DROP", ("firewall", "allow"): "ALLOW", ("dns", "block"): "BLOCK", ("dns", "allow"): "ALLOW",
+              ("url", "block"): "BLOCK", ("url", "allow"): "ALLOW"}
+# The field of each area's rule that names what the fix puts things in.
+REF_FIELD = {"firewall": "dest_ip_groups", "dns": "dest_ip_groups", "url": "url_categories"}
 ACTION_WORDS = {"BLOCK_DROP": "Block (drop)", "BLOCK_RESET": "Block (reset)", "BLOCK_ICMP": "Block (ICMP unreachable)", "BLOCK": "Block",
                 "ALLOW": "Allow", "BLOCK_WITH_RESPONSE": "Block with a response"}
 IPV6_WHY = ("an IPv6 destination: ZIA's API supports no user-defined IPv6 destination group (zscaler-sdk-python 1.11.3), "
@@ -144,9 +169,12 @@ def areas_in_scope(scope: Dict[str, Any]) -> Tuple[List[str], Dict[str, str]]:
     platform = "zia_extras" in set(scope.get("scopes") or [])
     read, why = [], {}
     for a in AREA_ORDER:
-        ok = ("firewall" in pols) if a == "firewall" else platform
+        ok = ("firewall" in pols) if a == "firewall" else ("url_filtering" in pols) if a == "url" else platform
         if ok:
             read.append(a)
+        elif a == "url":
+            why[a] = ("Not in scope: URL filtering is not in scope on the Scope page (tick DLP or ZIA platform), so custom URL categories "
+                      "and URL filtering rules are not read or changed.")
         else:
             why[a] = (f"Not in scope: ZIA platform is not ticked on the Scope page, so the {AREAS[a]['label']} "
                       f"{'rules and IP destination groups are' if a != 'atp' else 'are'} not read or changed.")
@@ -172,7 +200,7 @@ def _in_scope(scope: Dict[str, Any], spec: Any = None) -> Optional[str]:
     read, _why = areas_in_scope(scope)
     if not read:
         return ("Nothing this fix changes is in scope on the Scope page: tick ZIA platform (Cloud Firewall rules and IP destination "
-                "groups, DNS Control rules, the ATP lists). Nothing was read.")
+                "groups, DNS Control rules, the ATP lists) or DLP (URL filtering and custom URL categories). Nothing was read.")
     if not isinstance(spec, dict):
         return None
     want = _spec_areas(spec)
@@ -323,6 +351,42 @@ def _entries(spec: Dict[str, Any], key: str) -> List[Dict[str, Any]]:
                                                                          if isinstance(spec.get(key), list) else spec.get(key))][:MAX_ENTRIES]
 
 
+def _rule_ref(rule: Any, action: str) -> Optional[Dict[str, Any]]:
+    """The rule sub-spec: None, {"id": n} or {"new": {name, above, enabled}}."""
+    if rule in (None, "", {}):
+        return None
+    if not isinstance(rule, dict):
+        raise ao.OperationError("'rule' must be an object: {\"id\": ...} or {\"new\": {\"name\": ...}}.")
+    if action == "remove":
+        raise ao.OperationError("Removing destinations from a group changes no rule: leave the rule out.")
+    if isinstance(rule.get("new"), dict):
+        nr = rule["new"]
+        above = nr.get("above")
+        return {"new": {"name": _name(nr.get("name"), "new rule", RULE_NAME_MAX),
+                        "above": None if above in (None, "") else _oid(above, "The rule to place it above"),
+                        "enabled": nr.get("enabled") is True}}
+    return {"id": _oid(rule.get("id"), "The rule")}
+
+
+# A custom category id: CUSTOM_nn as ZIA names them (any upper-case id is
+# taken), or a number (the offline sample store numbers what it creates).
+_CAT_ID = re.compile(r"^(?:[A-Z][A-Z0-9_]{1,63}|[0-9]{1,20})$")
+
+
+def _cat_ref(v: Any) -> Optional[Dict[str, Any]]:
+    """A custom URL category: {"id": "CUSTOM_01"} or {"new": name}."""
+    if v in (None, "", {}):
+        return None
+    if not isinstance(v, dict):
+        raise ao.OperationError("'category' must be an object: {\"id\": ...} or {\"new\": \"name\"}.")
+    if v.get("new") not in (None, ""):
+        return {"new": _name(v["new"], "new category", CAT_NAME_MAX)}
+    cid = str(v.get("id") or "").strip()
+    if not _CAT_ID.match(cid):
+        raise ao.OperationError("The category must be the id of a custom URL category (such as CUSTOM_01).")
+    return {"id": cid}
+
+
 def standalone(spec: Dict[str, Any]) -> Dict[str, Any]:
     """An ip_group_edit or atp_list_edit as the list_fix it is planned as."""
     t = str(spec.get("type") or "")
@@ -374,7 +438,7 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
     for f in fixes:
         area = str(f.get("area") or "")
         if area not in AREAS:
-            raise ao.OperationError(f"Unknown area '{area[:20]}': use firewall, dns or atp.")
+            raise ao.OperationError(f"Unknown area '{area[:20]}': use firewall, dns, atp or url.")
         purpose = str(f.get("purpose") or "")
         if purpose not in ("block", "allow"):
             raise ao.OperationError("purpose must be block or allow.")
@@ -390,6 +454,15 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
             raise ao.OperationError(f"The {AREAS[area]['label']} fix lists no destination.")
         n: Dict[str, Any] = {"area": area, "purpose": purpose, "action": action, "destinations": d,
                              "decided_by": [str(x)[:80] for x in (f.get("decided_by") or [])[:5] if isinstance(f.get("decided_by"), list)]}
+        if area == "url":
+            if action == "remove":
+                raise ao.OperationError("A URL fix adds the rows' URLs to a custom URL category; remove URLs with the URL category change.")
+            n["category"] = _cat_ref(f.get("category"))
+            if n["category"] is None:
+                raise ao.OperationError("Pick the custom URL category the URLs go into, or name a new one.")
+            n["rule"] = _rule_ref(f.get("rule"), action)
+            out.append(n)
+            continue
         if area == "atp":
             want = LISTS["denylist" if purpose == "block" else "allowlist"]
             lst = str(f.get("list") or ("denylist" if purpose == "block" else "allowlist"))
@@ -403,21 +476,7 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
             n["fqdn_group"] = _group_ref(f.get("fqdn_group"), "fqdn_group")
             if action == "remove" and any(g and "new" in g for g in (n["ip_group"], n["fqdn_group"])):
                 raise ao.OperationError("Removing destinations works on an existing group only.")
-            rule = f.get("rule")
-            if rule in (None, "", {}):
-                n["rule"] = None
-            elif not isinstance(rule, dict):
-                raise ao.OperationError("'rule' must be an object: {\"id\": ...} or {\"new\": {\"name\": ...}}.")
-            elif action == "remove":
-                raise ao.OperationError("Removing destinations from a group changes no rule: leave the rule out.")
-            elif isinstance(rule.get("new"), dict):
-                nr = rule["new"]
-                above = nr.get("above")
-                n["rule"] = {"new": {"name": _name(nr.get("name"), "new rule", RULE_NAME_MAX),
-                                     "above": None if above in (None, "") else _oid(above, "The rule to place it above"),
-                                     "enabled": nr.get("enabled") is True}}
-            else:
-                n["rule"] = {"id": _oid(rule.get("id"), "The rule")}
+            n["rule"] = _rule_ref(f.get("rule"), action)
             svcs = ao._list_field(f, "services", cap=MAX_SERVICES)
             if svcs and area != "firewall":
                 raise ao.OperationError("Network services go on a Cloud Firewall rule only.")
@@ -439,6 +498,8 @@ def _normalize_revert(spec: Dict[str, Any]) -> Dict[str, Any]:
             raise ao.OperationError("Every Undo step names its area.")
         if op in ("delete_rule", "rule_refs") and area == "atp":
             raise ao.OperationError("An ATP step changes no rule.")
+        if op in ("group", "delete_group") and area in ("atp", "url"):
+            raise ao.OperationError("An IP destination group step is in the firewall or dns area.")
         if op == "delete_rule":
             out.append({"op": op, "area": area, "id": _oid(s.get("id"), "The rule"), "name": str(s.get("name") or "")[:255]})
         elif op == "rule_refs":
@@ -446,6 +507,8 @@ def _normalize_revert(spec: Dict[str, Any]) -> Dict[str, Any]:
             for field in ("dest_ip_groups", "nw_services"):
                 v = s.get(field) if isinstance(s.get(field), dict) else {}
                 refs[field] = {k: sorted({_oid(x, "A reference") for x in (v.get(k) or [])[:500]}) for k in ("add", "remove")}
+            v = s.get("url_categories") if isinstance(s.get("url_categories"), dict) else {}
+            refs["url_categories"] = {k: sorted({(_cat_ref({"id": x}) or {}).get("id") for x in (v.get(k) or [])[:500]}) for k in ("add", "remove")}
             out.append(dict({"op": op, "area": area, "id": _oid(s.get("id"), "The rule"), "name": str(s.get("name") or "")[:255]}, **refs))
         elif op == "atp":
             lst = str(s.get("list") or "")
@@ -460,6 +523,17 @@ def _normalize_revert(spec: Dict[str, Any]) -> Dict[str, Any]:
         elif op == "delete_group":
             out.append({"op": op, "area": area, "id": _oid(s.get("id"), "The group"), "name": str(s.get("name") or "")[:255],
                         "addresses": [str(x)[:300] for x in (s.get("addresses") or [])[:MAX_GROUP_ADDRESSES]]})
+        elif op in ("category", "delete_category"):
+            if area != "url":
+                raise ao.OperationError("A URL category Undo step is in the url area.")
+            cid = _cat_ref({"id": s.get("id")})["id"]
+            if op == "category":
+                out.append({"op": op, "area": area, "id": cid, "name": str(s.get("name") or "")[:255],
+                            "add": [str(x)[:1100] for x in (s.get("add") or [])[:ao.MAX_URLS]],
+                            "remove": [str(x)[:1100] for x in (s.get("remove") or [])[:ao.MAX_URLS]]})
+            else:
+                out.append({"op": op, "area": area, "id": cid, "name": str(s.get("name") or "")[:255],
+                            "urls": [str(x)[:1100] for x in (s.get("urls") or [])[:ao.MAX_URLS]]})
         else:
             raise ao.OperationError(f"Unknown Undo step '{op[:20]}'.")
     return {"type": TYPE, "action": "revert", "steps": out}
@@ -538,6 +612,8 @@ def _gtype(g: Dict[str, Any]) -> str:
 
 def _rule_kind(area: str, action: Any) -> str:
     a = str(action or "").upper()
+    if area == "url":
+        return "block" if a == "BLOCK" else "allow" if a == "ALLOW" else "other"   # Caution and Isolate neither block nor allow
     if a.startswith("BLOCK") or a in ("DROP", "RESET"):
         return "block"
     if a == "ALLOW":
@@ -610,6 +686,9 @@ class _Planner:
     def atp_list(self, lst: str) -> List[str]:
         return self.read(f"list:{lst}", lambda: read_list(self.zia, lst), f"the {LISTS[lst]['label']}")
 
+    def categories(self) -> List[Dict[str, Any]]:
+        return self.read("categories", lambda: ao.read_categories(self.zia), "the custom URL categories")
+
 
 def _rule_obj(area: str, r: Dict[str, Any]) -> Dict[str, Any]:
     return {"type": "rule", "area": area, "policy_label": AREAS[area]["label"], "id": r.get("id"), "name": str(r.get("name") or ""),
@@ -653,6 +732,15 @@ def _plan_fixes(client, n: Dict[str, Any], say, cancel) -> Dict[str, Any]:
         verb = "block" if purpose == "block" else "allow"
         if area == "atp":
             atp_groups += _plan_atp(P, fx)
+            continue
+        if area == "url":
+            made, target = _plan_url_category(P, fx)
+            add_groups += made
+            if target is not None:
+                if fx["rule"] is not None:
+                    rule_groups += _plan_rule(P, fx, [target])
+                else:
+                    _warn_no_rule(P, fx, target)
             continue
         # Split the destinations by what can hold them.
         ips: List[Tuple[str, List[int]]] = []
@@ -854,10 +942,14 @@ def _plan_rule(P: _Planner, fx: Dict[str, Any], targets: List[Tuple[str, List[st
     rows_all = sorted({r for d in fx["destinations"] for r in d["rows"]})
     names = {str(r.get("name") or ""): r for r in rules}
     deciding = [names[x] for x in fx.get("decided_by") or [] if x in names]
+    field = REF_FIELD[area]
+    word = "category" if area == "url" else "group"
     gnames = []
     for ref, _deps in targets:
         if ref.startswith("new:"):
-            gnames.append(next((u["value"] for u in P.items if u["key"] == ref[4:]), "the new group"))
+            gnames.append(next((u["value"] for u in P.items if u["key"] == ref[4:]), f"the new {word}"))
+        elif area == "url":
+            gnames.append(next((ao._cat_ref(c)["name"] for c in P.cache.get("categories") or [] if f"id:{ao._cat_ref(c)['id']}" == ref), ref[3:]))
         else:
             gnames.append(next((str(g.get("name")) for g in P.cache.get("groups") or [] if f"id:{g.get('id')}" == ref), ref[3:]))
     svc_ids = fx.get("services") or []
@@ -896,12 +988,21 @@ def _plan_rule(P: _Planner, fx: Dict[str, Any], targets: List[Tuple[str, List[st
                       depends_on=deps)
         cu["rows"] = rows_all[:MAX_ROWS_PER_ENTRY]
         cu["explain"] = (f"Create the {AREAS[area]['rules']} '{nr['name']}', {state.lower()}, action {ACTION_WORDS.get(act, act)}, "
-                         f"destination {', '.join(repr(x) for x in gnames)}"
+                         f"{'URL category' if area == 'url' else 'destination'} {', '.join(repr(x) for x in gnames)}"
                          + (f", services {', '.join(svc_names.values())}" if svc_names else "") + f", placed {where}. "
                          + ("It fixes the rows once you enable it." if not nr["enabled"] else "It fixes the rows after activation."))
         P.items.append(cu)
-        payload = {"name": nr["name"], "state": state, "action": act, "rank": NEW_RULE_RANK,
-                   "dest_ip_groups": [ref for ref, _ in targets]}
+        payload = {"name": nr["name"], "state": state, "action": act, "rank": NEW_RULE_RANK, field: [ref for ref, _ in targets]}
+        if area == "url":
+            # Every protocol (ANY_RULE, as the ZIA baseline's URL rules). No
+            # request_methods: the SDK documents "if not specified, the rule
+            # will apply to all methods" (url_filtering.add_rule), and the
+            # Path analyzer then reads the rule as unconditional, so the fix
+            # it proposes is the one it evaluates.
+            # assumed: how ZIA returns such a rule when it is read back. The sample tenant gives request_methods
+            # as [] (read as "any"); if a tenant answers with all nine methods instead, the Path analyzer
+            # (zia_path_modules._generic_criteria) shows "Request method: unknown" for this rule after the write.
+            payload.update(protocols=["ANY_RULE"], block_override=False)
         if svc_ids:
             payload["nw_services"] = list(svc_ids)
         return [{"key": rkey, "handler": "lf_rule_create", "target": {"area": area, "name": nr["name"], "payload": payload,
@@ -911,7 +1012,7 @@ def _plan_rule(P: _Planner, fx: Dict[str, Any], targets: List[Tuple[str, List[st
         P.blockers.append(f"The {AREAS[area]['rules']} {rule['id']} is not in the tenant (deleted since it was picked?): read again.")
         return []
     obj = _rule_obj(area, r)
-    lock = ao.lock_reason("firewall", r)
+    lock = ao.lock_reason("url_filtering" if area == "url" else "firewall", r)
     if lock:
         P.blockers.append(f"{AREAS[area]['rules']} '{obj['name']}' is {lock}.")
         return []
@@ -921,19 +1022,19 @@ def _plan_rule(P: _Planner, fx: Dict[str, Any], targets: List[Tuple[str, List[st
                           f"not {purpose} them. Pick a rule whose action is {'Block' if purpose == 'block' else 'Allow'}, or create one.")
         return []
     if obj["state"] != "ENABLED":
-        P.warnings.append(f"{AREAS[area]['rules']} '{obj['name']}' is disabled: adding the group changes nothing until it is enabled.")
+        P.warnings.append(f"{AREAS[area]['rules']} '{obj['name']}' is disabled: adding the {word} changes nothing until it is enabled.")
     for d in deciding:
         if str(d.get("id")) != str(r.get("id")) and not ao._is_default(d) and ao._int(d.get("order"), 0) < ao._int(r.get("order"), 0):
             P.warnings.append(f"'{obj['name']}' (order {r.get('order')}) is below '{d.get('name')}' (order {d.get('order')}), which decided "
                               f"{_rows_text(rows_all)}: those rows stay as they are until '{obj['name']}' is moved above it.")
     rkey = P.key("ru")
-    have_g, have_s = set(_ids(r, "dest_ip_groups")), set(_ids(r, "nw_services"))
+    have_g, have_s = set(_ids(r, field)), set(_ids(r, "nw_services"))
     for (ref, deps), gname in zip(targets, gnames):
         gid = ref[3:] if ref.startswith("id:") else ref
         present = gid in have_g
-        P.unit(rkey, "rule_ref", dict(obj), "dest_ip_groups", present, True, value=gid, depends_on=deps, rows=rows_all,
-               status="noop" if present else "change", reason="the rule already uses this group" if present else "",
-               explain=f"Add the group '{gname}' to {AREAS[area]['rules']} '{obj['name']}' (order {r.get('order')}, "
+        P.unit(rkey, "rule_ref", dict(obj), field, present, True, value=gid, depends_on=deps, rows=rows_all,
+               status="noop" if present else "change", reason=f"the rule already uses this {word}" if present else "",
+               explain=f"Add the {word} '{gname}' to {AREAS[area]['rules']} '{obj['name']}' (order {r.get('order')}, "
                        f"{ACTION_WORDS.get(str(r.get('action')), r.get('action'))}).")
     for s in svc_ids:
         present = str(s) in have_s
@@ -943,6 +1044,98 @@ def _plan_rule(P: _Planner, fx: Dict[str, Any], targets: List[Tuple[str, List[st
     if not any(u["group"] == rkey and u["status"] == "change" for u in P.items):
         return []
     return [{"key": rkey, "handler": "lf_rule", "target": {"area": area, "id": r.get("id"), "name": obj["name"]}}]
+
+
+def _cat_obj(c: Dict[str, Any]) -> Dict[str, Any]:
+    ref = ao._cat_ref(c)
+    return {"type": "url_category", "area": "url", "policy_label": "Custom URL category", "id": ref["id"], "name": ref["name"]}
+
+
+def _plan_url_category(P: _Planner, fx: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Optional[Tuple[str, List[str]]]]:
+    """The URLs into the custom URL category: (the writes, the category's
+    reference for the rule step: ("id:<id>" or "new:<key>", create keys))."""
+    cats = P.categories()
+    urls: List[Tuple[str, List[int]]] = []
+    seen: Dict[str, int] = {}
+    for d in fx["destinations"]:
+        u, why = ao.normalize_url(d["value"])
+        if why:
+            P.unit("refused", "cat_url", {"type": "destination", "name": d["value"][:120], "area": "url"}, "urls", None, None,
+                   value=d["value"][:120], status="excluded", reason=f"not changed: it {why}", rows=d["rows"],
+                   explain=f"{d['value'][:120]} cannot go into a custom URL category.")
+            continue
+        if u.lower() in seen:
+            urls[seen[u.lower()]][1].extend(d["rows"])
+            continue
+        seen[u.lower()] = len(urls)
+        urls.append((u, list(d["rows"])))
+    if len(urls) > ao.MAX_URLS:
+        P.warnings.append(f"{len(urls):,} URLs are more than one operation changes ({ao.MAX_URLS:,}): the first {ao.MAX_URLS:,} are planned; "
+                          "fix the rest in another run.")
+        urls = urls[:ao.MAX_URLS]
+    if not urls:
+        return [], None
+    ref = fx["category"]
+    purpose = fx["purpose"]
+    if "new" in ref:
+        name = ref["new"]
+        if any(ao._cat_ref(c)["name"].strip().lower() == name.lower() for c in cats):
+            P.blockers.append(f"A URL category named '{name}' already exists: pick it as an existing category, or give the new one another name.")
+        gkey = P.key("c")
+        obj = {"type": "url_category", "area": "url", "policy_label": "Custom URL category (new)", "id": None, "name": name}
+        rows = sorted({r for _u, rs in urls for r in rs})
+        cu = ao._unit(gkey, gkey, "create_category", dict(obj), "exists", False, True, value=name)
+        cu["rows"] = rows[:MAX_ROWS_PER_ENTRY]
+        cu["explain"] = f"Create the custom URL category '{name}' with {len(urls):,} URL{'' if len(urls) == 1 else 's'} for the URL filtering rows to {purpose}."
+        P.items.append(cu)
+        for u, rs in urls:
+            P.unit(gkey, "cat_url", dict(obj), "urls", False, True, value=u, depends_on=[gkey], rows=rs, explain=f"Put {u} in the new category '{name}'.")
+        return [{"key": gkey, "handler": "lf_cat_create", "target": {"key": gkey, "name": name, "urls": [u for u, _ in urls]}}], ("new:" + gkey, [gkey])
+    c = next((x for x in cats if str(ao._cat_ref(x)["id"]) == ref["id"]), None)
+    if c is None:
+        P.blockers.append(f"The custom URL category {ref['id']} is not in the tenant (deleted since it was picked?). Read again and pick another.")
+        return [], None
+    obj = _cat_obj(c)
+    have = ao._url_set(c)
+    gkey = P.key("cu")
+    for u, rs in urls:
+        if u.lower() in have:
+            P.unit(gkey, "cat_url", dict(obj), "urls", True, True, value=u, rows=rs, status="noop", reason="already in this category")
+        else:
+            P.unit(gkey, "cat_url", dict(obj), "urls", False, True, value=u, rows=rs, explain=f"Add {u} to the custom URL category '{obj['name']}'.")
+    target = (f"id:{obj['id']}", [])
+    if not any(u["group"] == gkey and u["status"] == "change" for u in P.items):
+        return [], target
+    return [{"key": gkey, "handler": "lf_cat", "target": {"id": obj["id"], "name": obj["name"]}}], target
+
+
+def _warn_no_rule(P: _Planner, fx: Dict[str, Any], target: Tuple[str, List[str]]) -> None:
+    """A category change alone changes nothing unless a URL filtering rule
+    with the purpose's action names the category: said in the preview."""
+    ref = target[0]
+    if ref.startswith("new:"):
+        P.warnings.append("The new URL category is not named by any URL filtering rule: adding the URLs changes nothing until a "
+                          f"{'Block' if fx['purpose'] == 'block' else 'Allow'} rule names it. Pick a rule or create one under Then.")
+        return
+    cid = ref[3:]
+    want = fx["purpose"]
+    users = [r for r in P.rules("url") if cid in set(_ids(r, "url_categories")) and _rule_kind("url", r.get("action")) == want
+             and ao._state(r) == "ENABLED"]
+    if not users:
+        P.warnings.append(f"No enabled URL filtering rule with action {'Block' if want == 'block' else 'Allow'} names the category {cid}: "
+                          "adding the URLs changes nothing for these rows. Pick a rule or create one under Then.")
+        return
+    # Rules are evaluated by order: a rule naming the category below the
+    # rule that decided the rows never sees them.
+    names = {str(r.get("name") or ""): r for r in P.rules("url")}
+    deciding = [names[x] for x in fx.get("decided_by") or [] if x in names and not ao._is_default(names[x])]
+    top = min((ao._int(d.get("order"), 0) for d in deciding), default=None)
+    if top is not None and all(ao._int(r.get("order"), 0) > top for r in users):
+        first = min(deciding, key=lambda d: ao._int(d.get("order"), 0))
+        P.warnings.append(f"Every enabled {'Block' if want == 'block' else 'Allow'} URL filtering rule that names the category {cid} "
+                          f"({', '.join(repr(str(r.get('name'))) for r in users[:3])}) is below '{first.get('name')}' (order {first.get('order')}), "
+                          f"which decided {_rows_text(sorted({r for d in fx['destinations'] for r in d['rows']})) or 'the rows'}: adding the URLs changes "
+                          "nothing for these rows. Create a rule above it under Then, or move that rule up.")
 
 
 def _plan_atp(P: _Planner, fx: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -993,7 +1186,7 @@ def _plan_revert(client, n: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     """The Undo of an applied fix: rules first (a group in use cannot be
     deleted), then the lists and groups, created groups last."""
     P = _Planner(client, say, cancel)
-    order = {"delete_rule": 0, "rule_refs": 1, "atp": 2, "group": 3, "delete_group": 4}
+    order = {"delete_rule": 0, "rule_refs": 1, "atp": 2, "group": 3, "category": 3, "delete_group": 4, "delete_category": 4}
     groups: List[Dict[str, Any]] = []
     for st in sorted(n["steps"], key=lambda s: order[s["op"]]):
         ao._check_stop(cancel)
@@ -1021,14 +1214,16 @@ def _plan_revert(client, n: Dict[str, Any], say, cancel) -> Dict[str, Any]:
                 continue
             obj = _rule_obj(area, r)
             k = P.key("xr")
-            for field in ("dest_ip_groups", "nw_services"):
+            for field in ("dest_ip_groups", "nw_services", "url_categories"):
+                if field not in st:
+                    continue
                 have = set(_ids(r, field))
                 for after, vals in ((True, st[field]["add"]), (False, st[field]["remove"])):
                     for v in vals:
                         now = str(v) in have
                         P.unit(k, "rule_ref", dict(obj), field, now, after, value=str(v), status="noop" if now == after else "change",
                                reason="already as before the fix" if now == after else "",
-                               explain=f"{'Put back' if after else 'Take'} {field.replace('dest_ip_groups', 'group').replace('nw_services', 'service')} "
+                               explain=f"{'Put back' if after else 'Take'} {field.replace('dest_ip_groups', 'group').replace('nw_services', 'service').replace('url_categories', 'category')} "
                                        f"{v} {'on' if after else 'off'} '{obj['name']}'.")
             if any(u["group"] == k and u["status"] == "change" for u in P.items):
                 groups.append({"key": k, "handler": "lf_rule", "target": {"area": area, "id": st["id"], "name": obj["name"]}})
@@ -1061,6 +1256,38 @@ def _plan_revert(client, n: Dict[str, Any], say, cancel) -> Dict[str, Any]:
                            explain=f"{'Put' if after else 'Take'} {v} {'back in' if after else 'out of'} the group '{obj['name']}'.")
             if any(u["group"] == k and u["status"] == "change" for u in P.items):
                 groups.append({"key": k, "handler": "lf_group", "target": {"id": st["id"], "name": obj["name"], "area": area}})
+        elif op == "category":
+            c, err = ao.get_category(P.zia, st["id"])
+            if c is None:
+                P.warnings.append(f"Custom URL category '{st['name']}' could not be read ({err or 'gone'}): it is left as it is.")
+                continue
+            obj = _cat_obj(c)
+            have = ao._url_set(c)
+            k = P.key("xc")
+            for after, vals in ((True, st["add"]), (False, st["remove"])):
+                for v in vals:
+                    now = v.lower() in have
+                    P.unit(k, "cat_url", dict(obj), "urls", now, after, value=v, status="noop" if now == after else "change",
+                           reason="already as before the fix" if now == after else "",
+                           explain=f"{'Put' if after else 'Take'} {v} {'back in' if after else 'out of'} the category '{obj['name']}'.")
+            if any(u["group"] == k and u["status"] == "change" for u in P.items):
+                groups.append({"key": k, "handler": "lf_cat", "target": {"id": st["id"], "name": obj["name"]}})
+        elif op == "delete_category":
+            c, err = ao.get_category(P.zia, st["id"])
+            obj = {"type": "url_category", "area": "url", "policy_label": "Custom URL category", "id": st["id"], "name": st["name"]}
+            k = P.key("xk")
+            if c is None and err and ao._read_halt(err):
+                raise ao.OperationError(f"The category could not be read: {err}. Nothing was written.")
+            if c is None:
+                P.items.append(dict(ao._unit(k, k, "delete_category", obj, "exists", False, False, status="noop", reason="already gone"), rows=[], explain=""))
+                continue
+            if ao._url_set(c) != {u.lower() for u in st["urls"]} or str(ao._cat_ref(c)["name"]) != st["name"]:
+                P.items.append(dict(ao._unit(k, k, "delete_category", obj, "exists", True, True, status="excluded",
+                                             reason="its name or URLs changed since the fix: kept"), rows=[], explain=""))
+                continue
+            P.items.append(dict(ao._unit(k, k, "delete_category", obj, "exists", True, False), rows=[],
+                                explain=f"Delete the custom URL category '{st['name']}' this fix created."))
+            groups.append({"key": k, "handler": "lf_cat_delete", "target": {"id": st["id"], "name": st["name"], "urls": st["urls"]}})
         else:   # delete_group
             g, err = get_group(P.zia, st["id"])
             obj = {"type": "ip_group", "area": area, "policy_label": "IP destination group", "id": st["id"], "name": st["name"]}
@@ -1223,7 +1450,7 @@ def _h_rule(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
     if not ok:
         return
     body = zb._deep_snake(ao._body(fresh))
-    for field in ("dest_ip_groups", "nw_services"):
+    for field in ("dest_ip_groups", "nw_services", "url_categories"):
         mine = [u for u in ok if u["field"] == field]
         if not mine and field not in body:
             continue
@@ -1249,11 +1476,12 @@ def _h_rule_create(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
         run.mark(units, "conflict", "a rule with this name appeared in the tenant since the preview; nothing was created")
         return
     body = dict(t["payload"])
-    groups = [_resolve(run, x) for x in body.get("dest_ip_groups") or []]
+    field = REF_FIELD[area]
+    groups = [_resolve(run, x) for x in body.get(field) or []]
     if any(x is None for x in groups):
-        run.mark(units, "skipped", "not attempted: a new group it names was not created")
+        run.mark(units, "skipped", f"not attempted: a new {'category' if area == 'url' else 'group'} it names was not created")
         return
-    body["dest_ip_groups"] = [_num(x) for x in groups]
+    body[field] = [_num(x) for x in groups]
     if body.get("nw_services"):
         body["nw_services"] = [_num(x) for x in body["nw_services"]]
     above = next((r for r in rows if t["above"] is not None and str(r.get("id")) == str(t["above"])), None)
@@ -1287,6 +1515,65 @@ def _h_rule_delete(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
         run.log(f"[{AREAS[area]['label']}] {t['name']}: deleted")
 
 
+def _h_cat_create(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
+    t = g["target"]
+    cats, err = ao.read_categories(run.zia)
+    if err:
+        zb._halt_or_fail(run, units, err, "the custom URL categories")
+        return
+    if any(ao._cat_ref(c)["name"].strip().lower() == t["name"].lower() for c in cats):
+        run.mark(units, "conflict", f"a category named '{t['name']}' now exists (made since the preview); nothing was created")
+        return
+    payload = {"super_category": "USER_DEFINED", "configured_name": t["name"], "urls": list(t["urls"]), "custom_category": True,
+               "description": zb._fit_bytes(f"Created by {run.assessor or 'the assessor'} with Bulk changes (Fix selected, Test a list)", DESC_MAX)}
+    out = ops.create(run.zia, "url_category", payload, name=t["name"], log=run.log)
+    if run.outcome(units, out, "create"):
+        run.wrote_zia = True
+        for u in units:
+            u["object"] = dict(u["object"], id=out.id)
+        run.created.append({"type": "url_category", "area": "url", "id": out.id, "name": t["name"], "urls": list(t["urls"])})
+        run.log(f"[URL category] {t['name']}: created with {len(t['urls'])} URL(s)")
+
+
+def _h_cat(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
+    t = g["target"]
+    fresh, err = ao.get_category(run.zia, t["id"])
+    if fresh is None:
+        zb._halt_or_fail(run, units, err or "not found", "the custom URL category")
+        return
+    have = ao._url_set(fresh)
+    ok = _conflicts(run, units, lambda u: u["value"].lower() in have, "in this category")
+    if not ok:
+        return
+    name = str(ao._cat_ref(fresh)["name"])
+    for part, action in (([u for u in ok if u["after"]], "ADD_TO_LIST"), ([u for u in ok if not u["after"]], "REMOVE_FROM_LIST")):
+        if not part or run.halt:
+            continue
+        out = ops.update(run.zia, "url_category", t["id"], {"configured_name": name, "urls": [u["value"] for u in part]}, action=action,
+                         name=name, log=run.log)
+        if run.outcome(part, out, "update"):
+            run.wrote_zia = True
+    run.log(f"[URL category] {name}: {sum(1 for u in ok if u['after'])} added, {sum(1 for u in ok if not u['after'])} removed")
+
+
+def _h_cat_delete(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
+    t = g["target"]
+    fresh, err = ao.get_category(run.zia, t["id"])
+    if fresh is None:
+        if err and ao._read_halt(err):
+            zb._halt_or_fail(run, units, err, "the custom URL category")
+        else:
+            run.mark(units, "noop", "already gone")
+        return
+    if ao._url_set(fresh) != {u.lower() for u in t["urls"]} or str(ao._cat_ref(fresh)["name"]) != t["name"]:
+        run.mark(units, "conflict", "its name or URLs changed since the preview, so it is kept")
+        return
+    out = ops.delete(run.zia, {"kind": "url_category", "id": t["id"], "name": t["name"]}, log=run.log)
+    if run.outcome(units, out, "delete"):
+        run.wrote_zia = True
+        run.log(f"[URL category] {t['name']}: deleted")
+
+
 # ---------------------------------------------------------------------------
 # Read-back and Undo
 # ---------------------------------------------------------------------------
@@ -1304,6 +1591,13 @@ def _verify(run) -> Dict[str, Any]:
             row, err = cache[k]
             ok = (row is None) if kind == "delete_group" else (row is not None) if kind == "create_group" else \
                 row is not None and ((u["value"].lower() in {h.lower() for h in _addresses(row)}) == u["after"])
+        elif kind in ("cat_url", "create_category", "delete_category"):
+            k = f"c:{o.get('id')}"
+            if k not in cache:
+                cache[k] = ao.get_category(run.zia, o.get("id")) if o.get("id") is not None else (None, "no id")
+            row, err = cache[k]
+            ok = (row is None) if kind == "delete_category" else (row is not None) if kind == "create_category" else \
+                row is not None and ((u["value"].lower() in ao._url_set(row)) == u["after"])
         elif kind == "list_entry":
             k = f"l:{o.get('id')}"
             if k not in cache:
@@ -1319,7 +1613,7 @@ def _verify(run) -> Dict[str, Any]:
                 row is not None and ((str(u.get("resolved") or u["value"]) in set(_ids(row, u["field"]))) == u["after"])
         else:
             continue
-        if not ok and err and kind not in ("delete_group", "delete_rule"):
+        if not ok and err and kind not in ("delete_group", "delete_rule", "delete_category"):
             out["unread"].append(f"{o.get('name')}: {err}")
             u["verified"] = None
             continue
@@ -1338,6 +1632,8 @@ def _inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     created = result.get("created") or []
     new_rules = {(c["area"], str(c["id"])) for c in created if c.get("type") == "rule"}
     new_groups = {str(c["id"]) for c in created if c.get("type") == "ip_group"}
+    new_cats = {str(c["id"]) for c in created if c.get("type") == "url_category"}
+    cats: Dict[str, Dict[str, Any]] = {}
     steps: List[Dict[str, Any]] = []
     for c in created:
         if c.get("type") == "rule":
@@ -1349,8 +1645,12 @@ def _inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         o = u["object"]
         if u["kind"] == "rule_ref" and (o.get("area"), str(o.get("id"))) not in new_rules:
             s = refs.setdefault((o["area"], str(o["id"])), {"op": "rule_refs", "area": o["area"], "id": o["id"], "name": o.get("name"),
-                                                            "dest_ip_groups": {"add": [], "remove": []}, "nw_services": {"add": [], "remove": []}})
+                                                            "dest_ip_groups": {"add": [], "remove": []}, "nw_services": {"add": [], "remove": []},
+                                                            "url_categories": {"add": [], "remove": []}})
             s[u["field"]]["remove" if u["after"] else "add"].append(_num(u.get("resolved") or u["value"]))
+        elif u["kind"] == "cat_url" and str(o.get("id")) not in new_cats:
+            d = cats.setdefault(str(o["id"]), {"op": "category", "area": "url", "id": o["id"], "name": o.get("name"), "add": [], "remove": []})
+            d["remove" if u["after"] else "add"].append(u["value"])
         elif u["kind"] == "list_entry":
             d = lists.setdefault(str(o["id"]), {"add": [], "remove": []})
             d["remove" if u["after"] else "add"].append(u["value"])
@@ -1361,9 +1661,12 @@ def _inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     steps += list(refs.values())
     steps += [{"op": "atp", "area": "atp", "list": k, "add": v["add"], "remove": v["remove"]} for k, v in sorted(lists.items())]
     steps += list(grp.values())
+    steps += list(cats.values())
     for c in created:
         if c.get("type") == "ip_group":
             steps.append({"op": "delete_group", "area": c.get("area") or "firewall", "id": c["id"], "name": c["name"], "addresses": c["addresses"]})
+        elif c.get("type") == "url_category":
+            steps.append({"op": "delete_category", "area": "url", "id": c["id"], "name": c["name"], "urls": c["urls"]})
     return {"type": TYPE, "action": "revert", "steps": steps} if steps else None
 
 
@@ -1373,8 +1676,9 @@ def _inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def _read_targets(client, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     """What a fix can pick, read-only and only what is in scope: the IP
-    destination groups, the Cloud Firewall and DNS Control rules, the
-    network services and the size of the ATP lists."""
+    destination groups, the Cloud Firewall, DNS Control and URL filtering
+    rules, the custom URL categories, the network services and the size of
+    the ATP lists."""
     zia = client.zia
     read, why = areas_in_scope(scope)
     out: Dict[str, Any] = {"areas": read, "not_in_scope_areas": why, "errors": {},
@@ -1388,7 +1692,7 @@ def _read_targets(client, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             out["errors"]["ip_groups"] = err
         out["ip_groups"] = sorted([{"id": g.get("id"), "name": str(g.get("name") or ""), "type": _gtype(g), "count": len(_addresses(g)),
                                     "editable": not ao._truthy(g.get("is_non_editable"))} for g in rows], key=lambda g: g["name"].lower())
-    for a in ("firewall", "dns"):
+    for a in ("firewall", "dns", "url"):
         if a not in read:
             continue
         ao._check_stop(cancel)
@@ -1398,8 +1702,16 @@ def _read_targets(client, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             out["errors"][f"{a}_rules"] = err
         out[f"{a}_rules"] = [{"id": r.get("id"), "name": str(r.get("name") or ""), "order": r.get("order"), "action": r.get("action"),
                               "state": ao._state(r), "kind": _rule_kind(a, r.get("action")),
-                              "locked": ao.lock_reason("firewall", r)}
+                              "locked": ao.lock_reason("url_filtering" if a == "url" else "firewall", r)}
                              for r in sorted(rows, key=ao._sort_key)]
+    if "url" in read:
+        ao._check_stop(cancel)
+        say("Reading the custom URL categories…")
+        rows, err = ao.read_categories(zia)
+        if err:
+            out["errors"]["url_categories"] = err
+        out["url_categories"] = sorted([{"id": ao._cat_ref(c)["id"], "name": ao._cat_ref(c)["name"], "count": len(ao._urls_of(c))} for c in rows],
+                                       key=lambda c: str(c["name"]).lower())
     if "firewall" in read:
         ao._check_stop(cancel)
         say("Reading the network services…")
@@ -1420,10 +1732,12 @@ def _read_targets(client, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
 
 
 HANDLERS = {"lf_group_create": _h_group_create, "lf_group": _h_group, "lf_group_delete": _h_group_delete, "lf_atp": _h_atp,
-            "lf_rule": _h_rule, "lf_rule_create": _h_rule_create, "lf_rule_delete": _h_rule_delete}
+            "lf_rule": _h_rule, "lf_rule_create": _h_rule_create, "lf_rule_delete": _h_rule_delete,
+            "lf_cat_create": _h_cat_create, "lf_cat": _h_cat, "lf_cat_delete": _h_cat_delete}
 ao.register(TYPE, family=FAMILY, product="zia", label="Fix rows from Test a list",
             hint="Turn rows of the Path analyzer's Test a list that missed what you expected into changes: IP destination groups, "
-                 "Cloud Firewall and DNS Control rules (new rules arrive disabled) and the ATP allow and deny lists.",
+                 "Cloud Firewall and DNS Control rules, custom URL categories and URL filtering rules (new rules arrive disabled) "
+                 "and the ATP allow and deny lists.",
             in_scope=_in_scope, plan=_plan, read_objects=_read_targets, handlers=HANDLERS,
             verify=_verify, inverse=_inverse, group="Change", script="ops_list_fix.js")
 ao.register(GROUP_TYPE, family=FAMILY, product="zia", label="IP destination group change",

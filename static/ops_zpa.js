@@ -4,7 +4,10 @@
 // provisioning key is fetched once, right after the apply, and never stored.
 // The access rule can be limited to SCIM groups and SAML attribute values
 // picked from what the tenant has (the form's read-only lists: IdPs, SAML
-// attributes, the first SCIM groups of each SCIM-enabled IdP).
+// attributes, the first SCIM groups of each SCIM-enabled IdP). It can
+// instead cover one existing segment: Fix selected opens it that way for a
+// Test a list row ZPA denies, with the segment that holds the row and the
+// rule that denied it picked.
 (function () {
   'use strict';
   if (!window.OPS_PLUGINS || window.__opsZpaLoaded) return;   // the page loads the script once per type
@@ -12,7 +15,7 @@
   const F = { prefix: '', mode: 'create', cg: '', location: 'san_jose', max: '5', wDomain: '', wTcp: '1-65535', wUdp: '', vertical: '', pDomain: '',
     csv: '', csvName: '', enable: false, baDomain: '', baPort: '443', baCert: '', rdp: '', ssh: '', portal: '', segCg: '',
     access: true, timeout: true, inspection: false, iso: '', rt: '28800', it: '3600', everything: false, pick: new Set(),
-    who: 'everyone', scim: new Set(), saml: [], scimFind: '', samlAttr: '', samlVal: '' };
+    who: 'everyone', scim: new Set(), saml: [], scimFind: '', samlAttr: '', samlVal: '', above: '', apps: 'prefix', seg: '', handoffKey: '' };
   const MAX_WHO = 20;
   const PREFIX = /^[A-Za-z0-9_-]{1,20}$/;
   let E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -126,19 +129,49 @@
   }
 
   // ── Policy rules ──
+  // A row from Test a list that ZPA denies (Fix selected, to allow): the
+  // access rule for the segment that already holds it, above the rule that
+  // denied it. Filled once per hand-off section; every field stays editable.
+  function fromHandoff(res, H) {
+    const z = H && H.zpaSec ? H.zpaSec() : null;
+    if (!z || z.purpose !== 'allow') return null;
+    const key = `${(H.S && H.S.zpaIdx) || 0}|${z.segment}`;
+    if (F.handoffKey === key) return z;
+    const seg = (res.inventory || []).find(x => x.kind === 'segment' && x.name === z.segment);
+    const deny = (res.access_rules || []).find(r => (z.decided_by || []).includes(r.name));
+    Object.assign(F, { handoffKey: key, apps: 'existing', seg: seg ? seg.id : '', access: true, timeout: false, inspection: false, iso: '',
+      above: deny ? deny.id : '', prefix: F.prefix || 'fix' });
+    return z;
+  }
+  function segmentsBlock(res, z) {
+    const segs = (res.inventory || []).filter(x => x.kind === 'segment').map(x => ({ id: x.id, label: x.name }));
+    const found = !z || segs.some(x => String(x.id) === String(F.seg));
+    return `<fieldset class="op-inline" id="zbApps"><legend>Which segments the access rule covers</legend>
+        <label class="df-ctl"><input type="radio" name="zbApps" data-f="apps" data-rerender="1" id="zbAppsPrefix" value="prefix"${F.apps === 'existing' ? '' : ' checked'}><span>Every segment named with the prefix</span></label>
+        <label class="df-ctl"><input type="radio" name="zbApps" data-f="apps" data-rerender="1" id="zbAppsExisting" value="existing"${F.apps === 'existing' ? ' checked' : ''}><span>An existing segment</span></label></fieldset>
+      ${F.apps === 'existing' ? `<div class="op-row"><label class="df-ctl"><span class="lbl">Existing segment</span><select id="zbSeg" data-f="seg" aria-describedby="zbSegHint">${opt(segs, F.seg, '<option value="">Pick a segment…</option>')}</select></label></div>
+      <div class="df-hint" id="zbSegHint">The rule only names the segment; the segment is not changed. ZPA rules cannot be created disabled from here, so the rule allows access as soon as it is applied: the preview asks you to type ALLOW ACCESS NOW, and Undo deletes the rule.${z ? ` From Test a list: rows ${E((z.rows || []).slice(0, 12).join(', '))} (${E((z.domains || []).slice(0, 5).join(', '))}) should be reachable, and segment ${E(z.segment)} already holds them${found ? '' : ' (not found when read: pick the segment)'}.` : ''}</div>` : ''}`;
+  }
   function renderPolicies(res, where, H) {
-    where.innerHTML = `${errs(res)}${prefixRow()}
-      <div class="df-hint">The rules cover every application segment named with the prefix.</div>
-      <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbAccess" data-f="access"${F.access ? ' checked' : ''}><span>Access: allow the applications</span></label></div>
-      <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbTimeout" data-f="timeout"${F.timeout ? ' checked' : ''}><span>Timeout: re-authenticate every</span></label>
+    const z = fromHandoff(res, H);
+    const own = F.apps !== 'existing';
+    where.innerHTML = `${errs(res)}${H && H.zpaPicker ? H.zpaPicker() : ''}${prefixRow()}
+      ${segmentsBlock(res, z)}
+      ${own ? '<div class="df-hint">The rules cover every application segment named with the prefix.</div>' : ''}
+      <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbAccess" data-f="access" data-rerender="1"${F.access ? ' checked' : ''}><span>Access: allow the applications</span></label>
+        <label class="df-ctl"><span class="lbl">Place it above</span><select id="zbAbove" data-f="above" aria-describedby="zbAboveHint"${F.access ? '' : ' disabled'}>
+          <option value="">Last (the end of the access policy)</option>${(res.access_rules || []).map(r => `<option value="${E(r.id)}"${String(F.above) === String(r.id) ? ' selected' : ''}>${E(r.order)}. ${E(r.name)}${r.action ? ` (${E(r.action.toLowerCase())})` : ''}</option>`).join('')}</select></label></div>
+      <div class="df-hint" id="zbAboveHint">ZPA evaluates access rules top down and the first match decides: put the rule above a rule that would otherwise block these users. The preview shows the move; Undo puts it back.</div>
+      ${own ? `<div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbTimeout" data-f="timeout"${F.timeout ? ' checked' : ''}><span>Timeout: re-authenticate every</span></label>
         <label class="df-ctl"><span class="sr-only">Re-authentication timeout</span><select id="zbRt" data-f="rt" aria-label="Re-authentication timeout">${opt(res.timeouts, F.rt)}</select></label>
         <label class="df-ctl"><span class="lbl">or after idle</span><select id="zbIt" data-f="it">${opt(res.idle_timeouts, F.it)}</select></label></div>
       <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbInsp" data-f="inspection"${F.inspection ? ' checked' : ''}><span>Inspection: an inspection profile of Zscaler's predefined OWASP controls (needs AppProtection)</span></label></div>
       <div class="op-row"><label class="df-ctl"><span class="lbl">Isolation profile</span><select id="zbIso" data-f="iso">${opt(res.isolation_profiles, F.iso, '<option value="">No isolation rule</option>')}</select></label>
-        ${(res.isolation_profiles || []).length ? '' : '<span class="df-hint">No isolation profile was read: this tenant may not have Cloud Browser Isolation for ZPA.</span>'}</div>
+        ${(res.isolation_profiles || []).length ? '' : '<span class="df-hint">No isolation profile was read: this tenant may not have Cloud Browser Isolation for ZPA.</span>'}</div>` : ''}
       ${whoBlock(res)}`;
     bind(where, id => { renderPolicies(res, where, H); const el = id && document.getElementById(id); if (el) el.focus(); });
     wireWho(res, where, H);
+    if (H && H.wireZpaPicker) H.wireZpaPicker();
   }
   // Who the access rule allows: every user, or SCIM groups and SAML values picked from the tenant.
   function whoBlock(res) {
@@ -187,6 +220,12 @@
   function specPolicies() {
     const spec = { type: 'zpa_policies', prefix: needPrefix(), access: !!F.access, timeout: !!F.timeout, inspection: !!F.inspection,
       isolation_profile_id: F.iso, reauth_timeout: F.rt, reauth_idle_timeout: F.it };
+    if (F.apps === 'existing') {
+      if (!F.access) throw new Error('Tick Access: an existing segment takes an access rule.');
+      if (!F.seg) throw new Error('Pick the existing segment the access rule covers.');
+      Object.assign(spec, { timeout: false, inspection: false, isolation_profile_id: '', access_segments: [String(F.seg)] });
+    }
+    if (F.access && F.above) spec.access_above = String(F.above);
     if (!spec.access && !spec.timeout && !spec.inspection && !spec.isolation_profile_id) throw new Error('Pick at least one policy.');
     if (F.who === 'some') {
       if (!spec.access) throw new Error('Tick Access to limit the access rule to SCIM groups or SAML values.');

@@ -140,9 +140,11 @@ def test_the_match_reads_as_one_plain_sentence():
     ({"appServices": [{"id": 1, "name": "EXCHANGEONLINE"}]}, "40.97.1.2", "match", "which EXCHANGEONLINE holds"),
     ({"appServices": [{"id": 2, "name": "FILE_SHAREPT_ONEDRIVE"}]}, "contoso.sharepoint.com", "match", "SharePoint"),
     ({"app_service_groups": [{"id": 3, "name": "OFFICE365"}]}, "40.97.1.2", "match", "OFFICE365"),       # SDK snake_case
-    ({"appServiceGroups": [{"id": 4, "name": "ZOOM"}]}, "40.97.1.2", "unknown", "no published list is used"),
-    ({"appServiceGroups": [{"id": 4, "name": "WEBEX_TEAMS"}]}, "40.97.1.2", "unknown", "no published list is used"),
-    ({"appServiceGroups": [{"id": 3, "name": "OFFICE365"}, {"id": 4, "name": "ZOOM"}]}, "203.0.113.9", "unknown", "members of ZOOM are not known"),
+    # Another provider's group: unknown until that provider's list is kept (vendor_endpoints, tests/test_vendor_app_services.py).
+    ({"appServiceGroups": [{"id": 4, "name": "ZOOM"}]}, "40.97.1.2", "unknown", "no Zoom list is kept"),
+    ({"appServiceGroups": [{"id": 4, "name": "WEBEX_TEAMS"}]}, "40.97.1.2", "unknown", "no Webex list is kept"),
+    ({"appServiceGroups": [{"id": 4, "name": "ZSCALER_SERVICES"}]}, "40.97.1.2", "unknown", "no published list is used"),
+    ({"appServiceGroups": [{"id": 3, "name": "OFFICE365"}, {"id": 4, "name": "ZOOM"}]}, "203.0.113.9", "unknown", "no Zoom list is kept"),
     ({"appServiceGroups": [{"id": 3, "name": "OFFICE365"}, {"id": 4, "name": "ZOOM"}]}, "40.97.1.2", "match", "OFFICE365"),
     ({"appServiceGroups": ["ANY"]}, "40.97.1.2", None, None),
 ])

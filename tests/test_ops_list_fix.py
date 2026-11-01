@@ -158,6 +158,62 @@ GROUPS = [{"id": 501, "name": "Bad IPs", "type": "DSTN_IP", "addresses": ["198.5
           {"id": 503, "name": "Countries", "type": "DSTN_OTHER", "countries": ["COUNTRY_KP"]},
           {"id": 504, "name": "Zscaler managed", "type": "DSTN_IP", "addresses": [], "is_non_editable": True}]
 SERVICES = [{"id": 41, "name": "QUIC"}, {"id": 42, "name": "SSH"}]
+# URL filtering, top down: an Allow rule for partners above the rule that blocks social networking.
+URL_RULES = [{"id": 81, "name": "Allow partners", "order": 1, "rank": 7, "state": "ENABLED", "action": "ALLOW", "url_categories": ["CUSTOM_02"]},
+             {"id": 82, "name": "Block social", "order": 2, "rank": 7, "state": "ENABLED", "action": "BLOCK", "url_categories": ["SOCIAL_NETWORKING"]},
+             {"id": 83, "name": "Caution streaming", "order": 3, "rank": 7, "state": "ENABLED", "action": "CAUTION", "url_categories": ["STREAMING"]},
+             {"id": 84, "name": "Allow vendors", "order": 4, "rank": 7, "state": "ENABLED", "action": "ALLOW", "url_categories": ["CUSTOM_03"]},
+             {"id": 89, "name": "Default URL Filtering Rule", "order": 127, "default_rule": True, "action": "ALLOW"}]
+CATEGORIES = [{"id": "CUSTOM_01", "configured_name": "Fix allow", "super_category": "USER_DEFINED", "custom_category": True, "urls": ["kept.example"]},
+              {"id": "CUSTOM_02", "configured_name": "Partners", "super_category": "USER_DEFINED", "custom_category": True, "urls": ["partner.example"]},
+              {"id": "CUSTOM_03", "configured_name": "Vendors", "super_category": "USER_DEFINED", "custom_category": True, "urls": ["vendor.example"]}]
+
+
+class Categories:
+    """url_categories (SDK 1.11.3): list_categories, get_category, add_url_category, update_url_category (?action=), delete_category."""
+
+    def __init__(self, t, rows):
+        self.t, self.rows, self.next_id = t, [copy.deepcopy(c) for c in rows], 10
+
+    def _find(self, cid):
+        return next((c for c in self.rows if str(c["id"]) == str(cid)), None)
+
+    def list_categories(self, query_params=None):
+        self.t.reads.append("url_categories.list_categories")
+        return copy.deepcopy(self.rows), None, None
+
+    def get_category(self, category_id):
+        self.t.reads.append("url_categories.get_category")
+        if self.t.before_get:
+            self.t.before_get("category", category_id)
+        c = self._find(category_id)
+        return (copy.deepcopy(c), None, None) if c else (None, None, {"message": "not found", "status": 404})
+
+    def add_url_category(self, super_category, urls=None, configured_name=None, **kw):
+        self.t.writes.append(("url_categories", "add_url_category", dict(copy.deepcopy(kw), super_category=super_category, urls=list(urls or []),
+                                                                         configured_name=configured_name)))
+        self.next_id += 1
+        row = {"id": f"CUSTOM_{self.next_id:02d}", "configured_name": configured_name, "super_category": super_category, "urls": list(urls or []),
+               "custom_category": True, "description": kw.get("description")}
+        self.rows.append(row)
+        return copy.deepcopy(row), None, None
+
+    def update_url_category(self, category_id, action=None, **kw):
+        self.t.writes.append(("url_categories", "update_url_category", category_id, action, copy.deepcopy(kw)))
+        c = self._find(category_id)
+        assert kw.get("configured_name") == c["configured_name"], "the name travels with an incremental update"
+        if action == "ADD_TO_LIST":
+            c["urls"] = c["urls"] + [u for u in kw["urls"] if u not in c["urls"]]
+        elif action == "REMOVE_FROM_LIST":
+            c["urls"] = [u for u in c["urls"] if u not in kw["urls"]]
+        else:
+            c["urls"] = list(kw.get("urls") or [])
+        return copy.deepcopy(c), None, None
+
+    def delete_category(self, category_id):
+        self.t.writes.append(("url_categories", "delete_category", category_id))
+        self.rows = [c for c in self.rows if str(c["id"]) != str(category_id)]
+        return None, None, None
 
 
 class Tenant:
@@ -170,16 +226,20 @@ class Tenant:
         z.cloud_firewall_dns = Rules(self, "cloud_firewall_dns", DNS_RULES)
         z.cloud_firewall = Firewall(self, groups, SERVICES)
         z.security_policy_settings = Security(self, allow, deny)
+        z.url_filtering = Rules(self, "url_filtering", URL_RULES)
+        z.url_categories = Categories(self, CATEGORIES)
         self.zia, self.zpa = z, None
 
     def state(self):
         z = self.zia
         return copy.deepcopy({"fw": z.cloud_firewall_rules.rows, "dns": z.cloud_firewall_dns.rows, "groups": z.cloud_firewall.groups,
-                              "allow": z.security_policy_settings.allow, "deny": z.security_policy_settings.deny})
+                              "allow": z.security_policy_settings.allow, "deny": z.security_policy_settings.deny,
+                              "url": z.url_filtering.rows, "cats": z.url_categories.rows})
 
 
 PLATFORM = ao.scope_for(["zia_extras"], {})
 DLP_ONLY = ao.scope_for(["dlp"], {"web_dlp": "zscaler"})
+ZPA_ONLY = ao.scope_for(["zpa"], {})
 
 
 @pytest.fixture(autouse=True)
@@ -458,11 +518,14 @@ def test_a_fix_outside_the_scope_page_is_refused_before_any_read(spec):
 
 
 def test_the_scope_check_names_each_area():
-    """ASVS V4.1.3 · CWE-272: with ZIA platform ticked every area is in scope; without it none is, and the reason says what to tick."""
-    assert lf.areas_in_scope(PLATFORM)[0] == ["firewall", "dns", "atp"]
+    """ASVS V4.1.3 · CWE-272: with ZIA platform ticked every area is in scope; DLP alone puts only URL filtering in scope; with neither nothing is, and the reason says what to tick."""
+    assert lf.areas_in_scope(PLATFORM)[0] == ["firewall", "dns", "atp", "url"]
     read, why = lf.areas_in_scope(DLP_ONLY)
-    assert read == [] and "ZIA platform" in why["atp"]
-    assert lf._in_scope(DLP_ONLY) and lf._in_scope(PLATFORM) is None
+    assert read == ["url"] and "ZIA platform" in why["atp"]
+    read, why = lf.areas_in_scope(ZPA_ONLY)
+    assert read == [] and "URL filtering" in why["url"]
+    assert lf._in_scope(ZPA_ONLY) and lf._in_scope(DLP_ONLY) is None and lf._in_scope(PLATFORM) is None
+    assert lf._in_scope(DLP_ONLY, fw(["203.0.113.9"], ip_group={"id": 501}))
 
 
 # ---------------------------------------------------------------------------
@@ -513,6 +576,165 @@ def test_the_picker_reads_only_what_is_in_scope():
 
 
 # ---------------------------------------------------------------------------
+# URL filtering: the category and the rule that uses it (gap 4)
+# ---------------------------------------------------------------------------
+
+def _path_verdict(t, host, lookup=("SOCIAL_NETWORKING",)):
+    """The Path analyzer's URL filtering answer for `host` over the fake tenant as it stands (data_flow.trace, the same evaluator)."""
+    import data_flow as df
+    import ssl_flow as sf
+    zia = {k: [] for k in ("ssl", "url", "cac", "ftc", "dlp", "endpoint", "saas", "email")}
+    zia["ssl"] = [sf.normalize_ssl_rule({"id": 10, "name": "Decrypt", "action": "DECRYPT"})]
+    zia["url"] = [df._norm_generic(r) for r in t.zia.url_filtering.rows]
+    zia["categories"] = {c["id"]: c for c in t.zia.url_categories.rows}
+    dest = df.resolve_destination(host, zia)
+    dest["categories"] = sorted(set(dest["categories"]) | set(lookup))   # ZIA's own lookup places it in Social Networking
+    zcc = {"app_profiles": [{"id": 1, "name": "App", "platform": "windows", "active": True, "priority": 1, "forwarding_profile": 2,
+                             "bypass": {"domains": [], "apps": [], "ips": []}, "strict_enforcement": True, "ssl_cert": True, "endpoint_dlp": True}],
+           "forwarding_profiles": [{"id": 2, "name": "Fwd", "actions": {"off": {"mode_kind": "tunnel", "mode_label": "Z-Tunnel 2.0"}}}],
+           "pac_files": [], "errors": []}
+    hop = next(h for h in df.trace(dest, "off", "windows", zcc, zia)["hops"] if h["key"] == "url")
+    return hop["status"], (hop.get("decided_by") or {}).get("name")
+
+
+def url_fix(dests, purpose="allow", **kw):
+    f = {"area": "url", "purpose": purpose, "destinations": [{"value": v, "rows": [i + 1]} for i, v in enumerate(dests)], "decided_by": ["Block social"]}
+    f.update(kw)
+    return {"type": "list_fix", "fixes": [f]}
+
+
+def test_a_url_fix_adds_the_category_to_an_allow_rule_above_the_deciding_rule_and_the_path_verdict_changes():
+    """ASVS V1.4.1 · CWE-1059 · CWE-670: a blocked URL that should be allowed goes into a custom category and the category onto an existing Allow rule above the rule that blocked it; the Path analyzer, run again on the tenant as planned, now allows it."""
+    t = Tenant()
+    assert _path_verdict(t, "friends.example")[0] == "blocked"
+    spec = url_fix(["https://Friends.example"], category={"id": "CUSTOM_01"}, rule={"id": 81})
+    p = plan(t, spec)
+    assert not p["blockers"] and not any("changes nothing" in w for w in p["warnings"]), p["warnings"]
+    assert [(u["kind"], u["value"]) for u in p["items"] if u["status"] == "change"] == [("cat_url", "friends.example"), ("rule_ref", "CUSTOM_01")]
+    res = apply(t, spec, prepared=p)
+    assert res["status"] == "applied" and res["verification"]["confirmed"] == res["verification"]["checked"] > 0, res
+    (_s, _m, cid, action, body), = writes(t, "update_url_category")
+    assert (cid, action, body["urls"]) == ("CUSTOM_01", "ADD_TO_LIST", ["friends.example"])
+    (_s, _m, rid, rule), = [w for w in writes(t, "update_rule") if w[0] == "url_filtering"]
+    assert rid == 81 and rule["url_categories"] == ["CUSTOM_02", "CUSTOM_01"] and rule["action"] == "ALLOW"
+    assert _path_verdict(t, "friends.example") == ("pass", "Allow partners")
+
+
+def test_a_url_fix_creates_a_disabled_rule_above_the_deciding_rule_that_changes_the_verdict_once_enabled():
+    """ASVS V11.1.1 · CWE-1188 · CWE-670: with a new category and a new rule, the rule arrives DISABLED with every protocol and method, at the order of the rule that decided the rows; enabled, the Path analyzer's verdict changes."""
+    from zscaler.zia.models.url_filtering_rules import URLFilteringRule
+    t = Tenant()
+    spec = url_fix(["friends.example"], category={"new": "Fix social allow"}, rule={"new": {"name": "Fix: allow friends", "above": 82}})
+    p = plan(t, spec)
+    assert any("disabled" in e["text"] and "Fix: allow friends" in e["text"] for e in p["explanations"])
+    res = apply(t, spec, prepared=p)
+    assert res["status"] == "applied", res
+    (_s, _m, cat), = writes(t, "add_url_category")
+    assert cat["configured_name"] == "Fix social allow" and cat["urls"] == ["friends.example"] and cat["super_category"] == "USER_DEFINED"
+    (_s, _m, rule), = [w for w in writes(t, "add_rule") if w[0] == "url_filtering"]
+    assert rule["state"] == "DISABLED" and rule["action"] == "ALLOW" and rule["url_categories"] == ["CUSTOM_11"] and rule["order"] == 2
+    assert rule["protocols"] == ["ANY_RULE"] and "request_methods" not in rule and rule["block_override"] is False   # no methods: every method (SDK docs)
+    assert set(rule) <= _model_fields(URLFilteringRule)
+    assert _path_verdict(t, "friends.example") == ("blocked", "Block social"), "a disabled rule changes nothing"
+    next(r for r in t.zia.url_filtering.rows if r["name"] == "Fix: allow friends")["state"] = "ENABLED"   # the admin turns it on after review
+    assert _path_verdict(t, "friends.example") == ("pass", "Fix: allow friends")
+
+
+def test_how_zia_reads_back_a_url_rule_with_no_request_methods_is_marked_assumed():
+    """ASVS V1.14.1 · CWE-1059: the new URL rule names no request method; how ZIA returns such a rule on read is not knowable offline, so the code next to the payload says it is assumed and what the Path analyzer would show otherwise."""
+    import inspect
+    import re
+    src = inspect.getsource(lf)
+    at = src.index('payload.update(protocols=["ANY_RULE"], block_override=False)')
+    block = src[max(0, at - 900):at]
+    note = re.search(r"# assumed: how ZIA returns such a rule when it is read back\.[^\n]*(?:\n\s*#[^\n]*)+", block)
+    assert note, "the request_methods read-back is not marked # assumed: next to the URL rule payload"
+    assert "request_methods" in note.group(0) and "nine methods" in note.group(0) and "unknown" in note.group(0)
+
+
+def test_a_category_change_that_would_not_change_the_verdict_is_warned():
+    """ASVS V1.4.1 · CWE-1059: a category change alone is warned when no enabled rule with the purpose's action names the category, or when every such rule is below the rule that decided the rows."""
+    t = Tenant()
+    p = plan(t, url_fix(["friends.example"], category={"id": "CUSTOM_01"}))
+    assert any("No enabled URL filtering rule with action Allow names the category CUSTOM_01" in w for w in p["warnings"]), p["warnings"]
+    p = plan(t, url_fix(["friends.example"], category={"id": "CUSTOM_03"}))
+    assert any("below 'Block social'" in w and "changes nothing" in w for w in p["warnings"]), p["warnings"]
+    apply(t, url_fix(["friends.example"], category={"id": "CUSTOM_03"}))
+    assert _path_verdict(t, "friends.example")[0] == "blocked", "the warning was right: the verdict did not change"
+    p = plan(t, url_fix(["friends.example"], category={"id": "CUSTOM_02"}))
+    assert not any("changes nothing" in w for w in p["warnings"]), "an Allow rule above the deciding rule names it: no warning"
+    p = plan(t, url_fix(["friends.example"], category={"new": "Fresh"}))
+    assert any("new URL category is not named by any URL filtering rule" in w for w in p["warnings"])
+
+
+def test_a_url_rule_whose_action_is_not_the_purpose_blocks_the_plan():
+    """ASVS V4.1.1 · CWE-841: adding an allow category to a Caution (or Block) rule would not allow the rows, so the plan is blocked with the reason."""
+    t = Tenant()
+    p = plan(t, url_fix(["friends.example"], category={"id": "CUSTOM_01"}, rule={"id": 83}))
+    assert p["blockers"] and not t.writes
+
+
+def test_undo_of_a_url_fix_restores_categories_and_rules_exactly():
+    """ASVS V7.2.1 · CWE-1188 · CWE-459: the Undo takes the URLs out of an existing category, the category off an existing rule, and deletes the rule and category the fix created, leaving the tenant as it was."""
+    t = Tenant()
+    first = t.state()
+    spec = {"type": "list_fix", "fixes": [
+        {"area": "url", "purpose": "allow", "destinations": [{"value": "friends.example", "rows": [1]}], "category": {"id": "CUSTOM_01"}, "rule": {"id": 81},
+         "decided_by": ["Block social"]},
+        {"area": "url", "purpose": "block", "destinations": [{"value": "bad.example", "rows": [2]}], "category": {"new": "Fix block"},
+         "rule": {"new": {"name": "Fix: block bad", "above": 81}}}]}
+    res = apply(t, spec)
+    assert res["status"] == "applied", res
+    assert t.state() != first
+    back = undo(t, res)
+    assert back["status"] == "applied", back
+    after = t.state()
+    assert after["cats"] == first["cats"]
+    # The created rule is gone and the others keep their order and categories (the fake does not renumber after a delete).
+    assert [(r["id"], r.get("url_categories")) for r in sorted(after["url"], key=lambda r: r["order"])] == \
+        [(r["id"], r.get("url_categories")) for r in sorted(first["url"], key=lambda r: r["order"])]
+
+
+def test_url_fix_entries_are_validated_and_capped():
+    """ASVS V5.1.3 · CWE-20 · CWE-770: a URL ZIA cannot list is excluded with the reason; a remove action, a missing category or a malformed category id is a 400 in words."""
+    t = Tenant()
+    p = plan(t, url_fix(["friends.example", "bad url with spaces"], category={"id": "CUSTOM_01"}, rule={"id": 81}))
+    assert [u["status"] for u in p["items"] if u["value"].startswith("bad url")] == ["excluded"]
+    for bad, why in (({"action": "remove", "category": {"id": "CUSTOM_01"}}, "URL category change"), ({}, "Pick the custom URL category"),
+                     ({"category": {"id": "../x"}}, "custom URL category")):
+        spec = url_fix(["friends.example"])
+        spec["fixes"][0].update(bad)
+        with pytest.raises(ao.OperationError, match=why):
+            lf.normalize(spec)
+
+
+def test_a_url_fix_out_of_scope_is_refused_before_any_read():
+    """ASVS V4.1.3 · CWE-272 · CWE-863: with URL filtering not in scope a URL fix is refused before anything is read."""
+    t = Tenant()
+    with pytest.raises(ao.OperationError, match="in scope"):
+        plan(t, url_fix(["friends.example"], category={"id": "CUSTOM_01"}), scope=ZPA_ONLY)
+    assert not t.reads and not t.writes
+
+
+def test_on_the_sample_tenant_a_url_fix_sends_the_wire_fields_and_undo_restores_them():
+    """ASVS V5.1.3 · ASVS V7.2.1 · CWE-20: through the SDK's own services the new category reaches /urlCategories as configuredName and urls, the new rule /urlFilteringRules as urlCategories, DISABLED, right above the rule that blocked the rows; the Undo deletes both."""
+    st, client = _sample()
+    before = {p: _body(st, p) for p in ("/urlCategories", "/urlFilteringRules")}
+    spec = url_fix(["casino-partner.example"], category={"new": "Fix gambling partners"},
+                   rule={"new": {"name": "Fix allow gambling partner", "above": 601}}, decided_by=["Block gambling"])
+    res = apply(client, spec)
+    assert res["status"] == "applied" and res["verification"]["mismatched"] == [], res
+    cat = next(c for c in _body(st, "/urlCategories") if c.get("configuredName") == "Fix gambling partners")
+    assert cat["urls"] == ["casino-partner.example"] and cat["superCategory"] == "USER_DEFINED"
+    rule = next(r for r in _body(st, "/urlFilteringRules") if r["name"] == "Fix allow gambling partner")
+    assert rule["state"] == "DISABLED" and rule["action"] == "ALLOW" and rule["urlCategories"] == [cat["id"]] and rule["order"] == 1
+    back = undo(client, res)
+    assert back["status"] == "applied", back
+    assert [c["id"] for c in _body(st, "/urlCategories")] == [c["id"] for c in before["/urlCategories"]]
+    assert [r["id"] for r in _body(st, "/urlFilteringRules")] == [r["id"] for r in before["/urlFilteringRules"]]
+
+
+# ---------------------------------------------------------------------------
 # The hand-off from Test a list, mixed rows, and Prove it
 # ---------------------------------------------------------------------------
 
@@ -528,23 +750,25 @@ def _row(**kw):
 
 
 def test_a_hand_off_sorts_mixed_rows_into_the_operations_that_fix_them(monkeypatch):
-    """ASVS V4.1.1 · CWE-841 · A01:2021: rows needing URL, Cloud Firewall, DNS, ATP and ZPA fixes go to the URL change, the list fix per area and purpose, or are excluded with the reason; nothing is sent."""
+    """ASVS V4.1.1 · CWE-841 · A01:2021: rows needing URL, Cloud Firewall, DNS, ATP and ZPA fixes go to the URL change, the list fix per area and purpose (URL filtering too, with the rule that decided it), the ZPA segment change, or are excluded with the reason; nothing is sent."""
     rn = bt.Run(bt.parse("destination,expected\na.example,block\n203.0.113.9,block\nt.example,block\nphish.example,allow\nseg.corp,block\nok.example,block\n"))
-    rows = {1: _row(row=1, target="a.example", recommended_area="URL"),
+    rows = {1: _row(row=1, target="a.example", recommended_area="URL", rule="Allow news", area="URL"),
             2: _row(row=2, target="203.0.113.9", is_ip=True, recommended_area="Firewall", rule="Allow all outbound", area="Firewall"),
             3: _row(row=3, target="t.example", recommended_area="DNS"),
             4: _row(row=4, target="phish.example", expected="ALLOW", result="blocked", recommended_area="ATP"),
-            5: _row(row=5, target="seg.corp", recommended_area="ZPA"),
+            5: _row(row=5, target="seg.corp", recommended_area="ZPA", area="ZPA", segment="Intranet", rule="Allow staff"),
             6: _row(row=6, target="ok.example", result="blocked", meets="yes", recommended_area="")}
     monkeypatch.setattr(bt.Run, "row", lambda self, i: dict(rows[i + 1]))
     rec = bt.fix_handoff(rn, rows=[1, 2, 3, 4, 5, 6], purpose="block")
     assert rec["urls"] == ["a.example"]
     assert [(f["area"], f["purpose"], [d["value"] for d in f["destinations"]]) for f in rec["fixes"]] == [
-        ("firewall", "block", ["203.0.113.9"]), ("dns", "block", ["t.example"]), ("atp", "allow", ["phish.example"])]
+        ("firewall", "block", ["203.0.113.9"]), ("dns", "block", ["t.example"]), ("atp", "allow", ["phish.example"]), ("url", "block", ["a.example"])]
     assert rec["fixes"][0]["decided_by"] == ["Allow all outbound"] and rec["fixes"][0]["destinations"][0]["rows"] == [2]
+    assert rec["fixes"][3]["decided_by"] == ["Allow news"] and rec["fixes"][3]["destinations"][0]["rows"] == [1]
+    assert [(z["segment"], z["purpose"], z["domains"], z["rows"], z["decided_by"]) for z in rec["zpa"]] == [("Intranet", "block", ["seg.corp"], [5], ["Allow staff"])]
     why = {e["row"]: e["why"] for e in rec["excluded"]}
-    assert "ZPA" in why[5] and "as expected" in why[6]
-    assert rec["retest_rows"] == [1, 2, 3, 4] and rec["retest_text"].splitlines()[0].startswith("destination,port")
+    assert 5 not in why and "as expected" in why[6]
+    assert rec["retest_rows"] == [1, 2, 3, 4, 5] and rec["retest_text"].splitlines()[0].startswith("destination,port")
 
 
 def test_a_hand_off_leaves_out_what_is_not_in_scope(monkeypatch):
@@ -697,7 +921,7 @@ def test_the_route_hands_off_mixed_rows_and_prove_it_tests_them_again(monkeypatc
     fix = t.post(f"/api/bulk-test/{rid}/fix", json=dict(CREDS, rows=[1, 2], purpose="block"))
     assert fix.status_code == 200, fix.text
     d = fix.json()
-    assert d["urls"] == 1 and [(f["area"], f["destinations"]) for f in d["fixes"]] == [("firewall", 1)] and d["rows"] == 2
+    assert d["urls"] == 1 and [(f["area"], f["destinations"]) for f in d["fixes"]] == [("firewall", 1), ("url", 1)] and d["rows"] == 2 and d["zpa"] == []
     got = t.get(f"/api/bulk-test/fix/{d['fix_id']}").json()
     assert [r["row"] for r in got["rows"]] == [1, 2] and got["fixes"][0]["destinations"][0]["value"] == "203.0.113.9"
     assert "retest_text" not in got
@@ -708,13 +932,15 @@ def test_the_route_hands_off_mixed_rows_and_prove_it_tests_them_again(monkeypatc
 
 
 def test_the_route_refuses_a_hand_off_when_nothing_it_changes_is_in_scope():
-    """ASVS V4.1.3 · CWE-272: Fix selected is a 400 before anything else when neither URL categories nor ZIA platform is in scope."""
+    """ASVS V4.1.3 · CWE-272: Fix selected is a 400 before anything else when none of URL categories, ZIA platform and ZPA is in scope; with ZPA alone it goes on (ZPA rows are fixed there)."""
     import dlp_api_server as srv
     from fastapi.testclient import TestClient
     from test_bulk_test import CREDS
     base = {k: v for k, v in CREDS.items() if k not in ("scopes", "channels")}
+    r = TestClient(srv.app).post("/api/bulk-test/anything/fix", json=dict(base, scopes=["zcc"], channels={}, from_page=True, rows=[1]))
+    assert r.status_code == 400 and "ZIA platform" in r.json()["detail"] and "URL" in r.json()["detail"] and "ZPA" in r.json()["detail"]
     r = TestClient(srv.app).post("/api/bulk-test/anything/fix", json=dict(base, scopes=["zpa"], channels={}, from_page=True, rows=[1]))
-    assert r.status_code == 400 and "ZIA platform" in r.json()["detail"] and "URL" in r.json()["detail"]
+    assert r.status_code == 404, "in scope: the unknown run is what refuses it"
 
 
 def test_prove_it_needs_a_kept_hand_off():
