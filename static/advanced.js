@@ -373,6 +373,84 @@
   });
   loadM365();
 
+  // ---- Other providers' endpoint lists (vendor_endpoints.py) ----------------
+  // Zoom, Webex, RingCentral, GoTo and Talkdesk app service groups. Fetching
+  // is for Zoom only, off by default, and only on Fetch now; every provider
+  // can be imported from a text file. Built with textContent only.
+  let vend = null;
+  const MAX_VEND_KB = 1024;
+  function vendLine(box, text, cls) {
+    const d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = text;
+    box.appendChild(d);
+    return d;
+  }
+  function renderVend(st, said) {
+    vend = st;
+    const box = $('advVendBox');
+    box.textContent = '';
+    (st.providers || []).forEach(p => {
+      const row = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = `${p.label}: `;
+      row.appendChild(name);
+      const c = p.counts || {};
+      let text;
+      if (!p.present) text = `no list kept, so its app service group (${(p.names || []).join(', ')}) shows as unknown.`;
+      else text = `${p.describe || 'a list is kept'}: ${c.ipv4 || 0} IPv4 and ${c.ipv6 || 0} IPv6 ranges, ${c.hosts || 0} host names. `
+        + (p.stale ? `Stale: last confirmed ${p.age_days} days ago, more than ${st.max_age_days}; it settles nothing until it is fetched or imported again.` : 'In use.');
+      row.appendChild(document.createTextNode(text));
+      if (p.fetchable) row.appendChild(document.createTextNode(` Fetching from ${p.host}: ${p.enabled ? 'on' : 'off'}.`));
+      else row.appendChild(document.createTextNode(' Import only.'));
+      if (p.last_error) { const w = document.createElement('span'); w.className = 'warn'; w.textContent = ` Last try failed: ${p.last_error}`; row.appendChild(w); }
+      box.appendChild(row);
+    });
+    if (said) vendLine(box, said);
+    const zoom = (st.providers || []).find(p => p.id === 'zoom') || {};
+    $('advVendZoomOn').checked = !!zoom.enabled;
+    $('advVendFetch').disabled = !zoom.enabled;
+    const pick = (st.providers || []).find(p => p.id === $('advVendProv').value) || {};
+    $('advVendRemove').disabled = !pick.present;
+  }
+  async function loadVend(said) {
+    try { renderVend(await m365('GET', '/api/vendor-endpoints'), said); }
+    catch (e) { const box = $('advVendBox'); box.textContent = ''; vendLine(box, `Could not read the setting: ${e.message}`, 'warn'); }
+  }
+  $('advVendZoomOn').addEventListener('change', async e => {
+    try { renderVend(await m365('PUT', '/api/vendor-endpoints/settings', { provider: 'zoom', enabled: e.target.checked }),
+                     e.target.checked ? 'Fetching Zoom\'s list is on. Nothing is fetched until you click Fetch Zoom\'s list now.' : 'Fetching Zoom\'s list is off. A list already kept is still used.'); }
+    catch (err) { e.target.checked = !e.target.checked; loadVend(`Not changed: ${err.message}`); }
+  });
+  $('advVendFetch').addEventListener('click', async () => {
+    $('advVendFetch').disabled = true;
+    vendLine($('advVendBox'), 'Fetching from assets.zoom.us…', 'dim');
+    try { renderVend(await m365('POST', '/api/vendor-endpoints/refresh', { provider: 'zoom' }), 'Fetched: Zoom\'s list is current.'); }
+    catch (e) { loadVend(e.message); }
+  });
+  $('advVendProv').addEventListener('change', () => { if (vend) renderVend(vend); });
+  $('advVendImport').addEventListener('click', () => {
+    const f = ($('advVendFile').files || [])[0], prov = $('advVendProv').value;
+    if (!f) { loadVend('Choose the text file first: one address range or host name per line.'); $('advVendFile').focus(); return; }
+    if (f.size > MAX_VEND_KB * 1024) { loadVend(`That file is larger than ${MAX_VEND_KB} KB, so it is not a provider's list (a few KB).`); return; }
+    const r = new FileReader();
+    r.onload = async () => {
+      try { renderVend(await m365('POST', '/api/vendor-endpoints/import', { provider: prov, content: String(r.result || '') }), 'Imported.'); }
+      catch (e) { loadVend(e.message); }
+    };
+    r.onerror = () => loadVend('The file could not be read.');
+    r.readAsText(f);
+  });
+  $('advVendRemove').addEventListener('click', async () => {
+    const sel = $('advVendProv'), label = sel.options[sel.selectedIndex].textContent;
+    const ok = window.dlpDialog ? await window.dlpDialog.ask({ title: `Remove ${label}'s list?`, body: `Rules on ${label}'s app service group will show as unknown again until you import or fetch the list.`, okLabel: 'Remove', tone: 'bad' })
+                                : window.confirm(`Remove ${label}'s list?`);
+    if (!ok) return;
+    try { renderVend(await m365('DELETE', `/api/vendor-endpoints/${encodeURIComponent(sel.value)}`), 'Removed.'); }
+    catch (e) { loadVend(e.message); }
+  });
+  loadVend();
+
   // ---- wiring ---------------------------------------------------------------
   $('advUpdCheck').addEventListener('click', checkUpdate);
   $('advUpdBtn').addEventListener('click', runUpdate);

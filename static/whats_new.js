@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-01": "Fix selected changes the answer: URL filtering rules and ZPA",
+    "2026-11-01": "Fix selected changes the answer (URL filtering rules and ZPA), manual what-if inputs and other providers' endpoint lists",
     "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
@@ -50,6 +50,35 @@ window.WHATS_NEW = {
       "what": "The ZPA builder places its access rule just above a rule you pick in the access policy, and Undo puts the order back.",
       "changelog": ["Place it above"],
       "marks": [{ "page": "/report/operations", "at": "#zbAbove", "shown": "after Read from the tenant" }]
+    },
+    {
+      "id": "zpa-allow-existing", "release": "2026-11-01", "label": "An access rule for an existing segment",
+      "what": "ZPA policy rules builds an access rule for a segment already in ZPA, and Fix selected opens it for a Test a list row ZPA denies, with that segment and the rule that denied it picked.",
+      "changelog": ["An access rule for an existing segment", "ZPA policy rules"],
+      "marks": [{ "page": "/report/operations", "at": "#zbSeg", "shown": "after Read from the tenant in ZPA policy rules, with An existing segment picked" }]
+    },
+    {
+      "id": "zpa-handoff-segments", "release": "2026-11-01", "label": "Segment from Test a list",
+      "what": "When rows from Test a list sit in more than one ZPA segment, a picker offers every segment: fix one, then pick the next.",
+      "changelog": ["Segment from Test a list"],
+      "marks": [{ "page": "/report/operations", "at": "#opZHand", "shown": "after Fix selected with rows in two or more ZPA segments" }]
+    },
+    {
+      "id": "path-manual-inputs", "release": "2026-11-01", "label": "Manual inputs (what-if)",
+      "what": "The Path analyzer evaluates a pasted PAC file and typed VPN gateways and Z-Tunnel 2.0 lists, on their own or added to the tenant's app profiles. Nothing is kept or written.",
+      "changelog": ["Manual inputs (what-if)"],
+      "marks": [{ "page": "/report/path", "at": "#paManual > summary" }]
+    },
+    {
+      "id": "vendor-endpoint-lists", "release": "2026-11-01", "label": "Other providers' endpoint lists",
+      "what": "Zoom, Webex, RingCentral, GoTo and Talkdesk lists in Advanced settings, imported from a file or, for Zoom, fetched when you turn it on and click Fetch now, so their app service groups are matched instead of unknown.",
+      "changelog": ["Other providers' endpoint lists", "Fetch Zoom's list"],
+      "marks": [
+        { "page": "/report/advanced", "at": "a.rp-btn[href=\"#vendors\"]" },
+        { "page": "/report/advanced", "at": "#advVendH" },
+        { "page": "/report/advanced", "at": "#advVendZoomOn" },
+        { "page": "/report/advanced", "at": "#advVendFile" }
+      ]
     },
     {
       "id": "category-lookup", "release": "2026-10-31", "label": "Category lookup",

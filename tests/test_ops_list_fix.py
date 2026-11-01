@@ -647,7 +647,7 @@ def test_how_zia_reads_back_a_url_rule_with_no_request_methods_is_marked_assumed
     src = inspect.getsource(lf)
     at = src.index('payload.update(protocols=["ANY_RULE"], block_override=False)')
     block = src[max(0, at - 900):at]
-    note = re.search(r"# assumed: how ZIA returns such a rule when it is read back\.(?:\n\s*#[^\n]*)+", block)
+    note = re.search(r"# assumed: how ZIA returns such a rule when it is read back\.[^\n]*(?:\n\s*#[^\n]*)+", block)
     assert note, "the request_methods read-back is not marked # assumed: next to the URL rule payload"
     assert "request_methods" in note.group(0) and "nine methods" in note.group(0) and "unknown" in note.group(0)
 

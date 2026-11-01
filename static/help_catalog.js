@@ -2513,6 +2513,36 @@ window.HELP_CATALOG = {
     "input": "Choose the file first. The version is optional. Nothing touches the tenant.",
     "effect": "local"
    },
+   "#advVendZoomOn": {
+    "what": "Lets this app fetch Zoom's published IP ranges from assets.zoom.us, for the ZOOM app service group. It sends nothing about your tenant.",
+    "input": "Tick it or clear it. Off by default. On, nothing is fetched until you click Fetch Zoom's list now.",
+    "effect": "local"
+   },
+   "#advVendFetch": {
+    "what": "Fetches Zoom's IP ranges now. The Path analyzer and Test a list then match the ZOOM app service group with them.",
+    "input": "Nothing to type. Turn on fetching first. A list that fails the checks is refused and the old one stays.",
+    "effect": "local"
+   },
+   "#advVendProv": {
+    "what": "Picks the provider whose list you import or remove: Zoom, Webex, RingCentral, GoTo or Talkdesk.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#advVendFile": {
+    "what": "Picks a text file with the provider's address ranges and host names, copied from its network requirements page.",
+    "input": "Required to import. Plain text, one entry per line, like 203.0.113.0/24 or *.webex.com, up to 1 MB. A # starts a comment.",
+    "effect": "local"
+   },
+   "#advVendImport": {
+    "what": "Checks the chosen file and keeps it as the picked provider's list. A file with a line that is not a public range or a host name is refused whole.",
+    "input": "Pick the provider and choose the file first. Nothing touches the tenant.",
+    "effect": "local"
+   },
+   "#advVendRemove": {
+    "what": "Forgets the picked provider's list. Rules on its app service group show as unknown again.",
+    "input": "Nothing to type. Pick the provider, click it, then confirm.",
+    "effect": "local"
+   },
    "#advAssessor": {
     "what": "Names the assessor in every Terraform download. Each object's description is tagged with this name, never Zscaler Made Easy.",
     "input": "Required for Terraform downloads. A person's name, up to 40 letters, like Alex Morgan. Not the tool's name.",
@@ -5135,6 +5165,11 @@ window.HELP_CATALOG = {
     "input": "Required for Add. One host name or wildcard domain per line, at most 500. Example: app.corp.example or *.corp.example",
     "effect": "local"
    },
+   "#opZHand": {
+    "what": "Picks which segment from Test a list to fix now. A row to block opens ZPA segment domains; a row to allow opens ZPA policy rules.",
+    "input": "Pick one. Fix one segment, then pick the next here.",
+    "effect": "local"
+   },
    "input[data-aig-app]": {
     "what": "Picks this GenAI app for the AI Guard builder.",
     "input": "Tick it to include the app. Pick at least one.",
@@ -5808,6 +5843,16 @@ window.HELP_CATALOG = {
    "#zbAbove": {
     "what": "Puts the access rule just above this rule of the access policy. ZPA uses the first rule that matches, top down, so a rule above it that denies these users would win otherwise.",
     "input": "Optional. Leave it to keep the rule at the end. The preview shows the move; Undo puts the order back.",
+    "effect": "local"
+   },
+   "input[name=\"zbApps\"]": {
+    "what": "Says which segments the access rule covers: every segment named with the prefix, or one segment that is already in ZPA.",
+    "input": "Pick one. Fix selected picks An existing segment for a Test a list row ZPA denies.",
+    "effect": "local"
+   },
+   "#zbSeg": {
+    "what": "The existing application segment the access rule allows. The rule only names it; the segment is not changed. The rule allows access as soon as it is applied, and Undo deletes it.",
+    "input": "Required for An existing segment. Pick it from the list read from ZPA. Fix selected picks the segment that already holds the row.",
     "effect": "local"
    },
    "#zbTimeout": {
@@ -6935,6 +6980,46 @@ window.HELP_CATALOG = {
    "#paDevQ": {
     "what": "Sets the user whose enrolled devices to look up in the Client Connector Portal.",
     "input": "Optional. The user's sign-in name or part of it, like jane@acme.com or jane. 2 to 128 characters. Press Enter to find devices.",
+    "effect": "local"
+   },
+   "input[name=\"paManMode\"]": {
+    "what": "Says how to use the manual inputs: on their own, next to the tenant's answer, or added to every app profile read so the whole trace is a what-if.",
+    "input": "Pick one. Added to the profiles needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#paManPac": {
+    "what": "A PAC file to evaluate for this destination, such as one ZIA does not host. It is read, never run, and not kept.",
+    "input": "Optional. Paste the whole file; it must have FindProxyForURL. At most 256 KB.",
+    "effect": "local"
+   },
+   "#paManVpn": {
+    "what": "VPN gateways a Client Connector app profile would bypass, as a what-if.",
+    "input": "Optional. One host name or address per line, a port after a colon is allowed, like vpn.acme.com or 203.0.113.10:443. At most 500.",
+    "effect": "local"
+   },
+   "#paManIpInc": {
+    "what": "Addresses Z-Tunnel 2.0 would send to Zscaler, as a what-if.",
+    "input": "Optional. One address, CIDR block or range per line, like 10.0.0.0/8. At most 500.",
+    "effect": "local"
+   },
+   "#paManIpExc": {
+    "what": "Addresses Z-Tunnel 2.0 would send direct, never to Zscaler, as a what-if.",
+    "input": "Optional. One address, CIDR block or range per line, like 192.0.2.0/24. At most 500.",
+    "effect": "local"
+   },
+   "#paManDomInc": {
+    "what": "Domains whose DNS lookups Z-Tunnel 2.0 would send through the tunnel, as a what-if.",
+    "input": "Optional. One host name or domain per line, like .corp.example or *.corp.example. At most 500.",
+    "effect": "local"
+   },
+   "#paManDomExc": {
+    "what": "Domains whose DNS lookups Z-Tunnel 2.0 would resolve locally, as a what-if.",
+    "input": "Optional. One host name or domain per line, like .example.net or *.example.net. At most 500.",
+    "effect": "local"
+   },
+   "#paManClear": {
+    "what": "Empties every manual input, so the next analysis uses only the tenant.",
+    "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
    "#paDevFind": {

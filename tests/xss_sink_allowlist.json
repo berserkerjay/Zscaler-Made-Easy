@@ -398,7 +398,7 @@
  "static/report_operations.html": {
   "c.url_count": [1, "number the server computes (count, percentage, score, stage, position)"],
   "['add', 'Add URLs']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
-  "['move', 'Move domains']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
+  "['add', 'Add typed domains to a segment']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
   "c": [1, "CSS class or icon from the page's own status table"],
   "head[1]": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"]
  },
@@ -499,6 +499,9 @@
  "static/net_ranges.js": {
   "box.querySelector('legend').outerHTML": [1, "the fieldset's own static legend (DOM from the page's HTML), put back before the escaped options"],
   "f.querySelector('legend').outerHTML": [1, "the fieldset's own static legend (DOM from the page's HTML), put back before the escaped options"]
+ },
+ "static/ops_zpa.js": {
+  "H.zpaPicker()": [1, "HTML the page or server builds with every value escaped (reviewed at its source): report_operations.html zpaPickerHtml(), each segment name through E()"]
  },
  "static/ops_admin.js": {
   "H.errorsHtml(res || {})": [1, "the Bulk changes page's own errorsHtml(), which escapes every value with E() (static/report_operations.html, scanned on its own)"],
