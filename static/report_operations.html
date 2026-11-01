@@ -314,7 +314,8 @@
       // A ?fix= hand-off picks its own operation, so it wins.
       const q = new URLSearchParams(location.search), want = q.get('build') || '';
       const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && document.querySelector(`input[name="opKind"][value="${want}"]`);
-      if (pick && !pick.checked) { pick.checked = true; onKind(pick); }
+      // The browser may restore a radio's tick on its own (form state): the operation follows S.kind, not the tick.
+      if (pick && (!pick.checked || S.kind !== want)) { pick.checked = true; onKind(pick); }
     })();
 
     // ── Step 2: read and pick ──
@@ -707,7 +708,7 @@
       if (!h) return;
       const want = (h.fixes || []).length ? 'list_fix' : (h.urls || []).length ? 'url_categories' : (h.zpa || []).length ? zpaKindFor(zpaSec()) : 'list_fix';
       const radio = document.querySelector(`input[name="opKind"][value="${want}"]`);
-      if (radio && !radio.checked) { radio.checked = true; onKind(radio); }
+      if (radio && (!radio.checked || S.kind !== want)) { radio.checked = true; onKind(radio); }
     }
     async function takeHandoff() {
       const id = new URLSearchParams(location.search).get('fix') || '';

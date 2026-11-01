@@ -98,7 +98,10 @@ await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/bulk-test/fix/*' },
 await send('Runtime.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 const out = {};
-const picked = `(document.querySelector('input[name="opKind"]:checked') || {}).value || ''`;
+// The operation the page acts on (its state, which a browser-restored radio tick alone does not change), when its radio is ticked too.
+const picked = `(((window.OPS_PLUGINS || {}).state || {}).kind === ((document.querySelector('input[name="opKind"]:checked') || {}).value) ? window.OPS_PLUGINS.state.kind : '')`;
+// Page.navigate returns before the old page is gone: every wait names the new address too, so it never reads the page before.
+const at = q => `location.href.includes(${JSON.stringify(q)}) && document.readyState === 'complete'`;
 const named = ids => ev(`${JSON.stringify(ids)}.map(id => { const e = document.getElementById(id); if (!e) return { id, missing: true }; e.focus();
   return { id, focused: document.activeElement === e, name: ((e.labels && e.labels.length ? e.labels[0].textContent : '') || e.getAttribute('aria-label') || '').trim() }; })`);
 async function preview(n) {
@@ -109,7 +112,7 @@ async function preview(n) {
 
 // 1. Rows ZPA carries, nothing else: the ZPA segment change, never a ZIA one.
 await send('Page.navigate', { url: base + '/report/operations?fix=' + Object.keys(F.fixes)[0] });
-await until(() => ev(`document.readyState === 'complete' && ${picked} === 'zpa_domains'`), 'the ZPA operation picked');
+await until(() => ev(`${at('fix=' + Object.keys(F.fixes)[0])} && ${picked} === 'zpa_domains'`), 'the ZPA operation picked', 60000);
 out.zpaKind = await ev(picked);
 await ev(`(document.getElementById('opRead').click(), 1)`);
 await until(() => ev(`!!document.getElementById('opZAct')`), 'the ZPA form', 60000);
@@ -124,7 +127,7 @@ out.zpaNames = await named(['opZAct', 'opZTgt', 'opZAdd']);
 
 // 2. URL filtering rows: Fix rows from Test a list, with the category and a rule above the deciding rule.
 await send('Page.navigate', { url: base + '/report/operations?fix=' + Object.keys(F.fixes)[1] });
-await until(() => ev(`document.readyState === 'complete' && ${picked} === 'list_fix'`), 'the list fix picked');
+await until(() => ev(`${at('fix=' + Object.keys(F.fixes)[1])} && ${picked} === 'list_fix'`), 'the list fix picked', 60000);
 out.urlKind = await ev(picked);
 await ev(`(document.getElementById('opRead').click(), 1)`);
 await until(() => ev(`!!document.getElementById('lfCat0')`), 'the URL section', 60000);
@@ -139,7 +142,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, dev
 
 // 3. The ZPA builder: Place it above.
 await send('Page.navigate', { url: base + '/report/operations?build=zpa_policies' });
-await until(() => ev(`document.readyState === 'complete' && ${picked} === 'zpa_policies'`), 'the builder');
+await until(() => ev(`${at('build=zpa_policies')} && ${picked} === 'zpa_policies'`), 'the builder', 60000);
 await ev(`(document.getElementById('opRead').click(), 1)`);
 await until(() => ev(`!!document.getElementById('zbAbove')`), 'the policy form', 60000);
 out.aboveOptions = await ev(`[...document.getElementById('zbAbove').options].map(o => o.textContent.trim())`);
@@ -154,7 +157,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, dev
 
 // 4. Two ZPA segments: a row to allow (an access rule for the segment that holds it), then the other segment, a row to block.
 await send('Page.navigate', { url: base + '/report/operations?fix=' + Object.keys(F.fixes)[2] });
-await until(() => ev(`document.readyState === 'complete' && ${picked} === 'zpa_policies'`), 'ZPA policy rules picked for a row to allow');
+await until(() => ev(`${at('fix=' + Object.keys(F.fixes)[2])} && ${picked} === 'zpa_policies'`), 'ZPA policy rules picked for a row to allow', 60000);
 out.multiKind = await ev(picked);
 await ev(`(document.getElementById('opRead').click(), 1)`);
 await until(() => ev(`!!document.getElementById('zbSeg')`), 'the existing segment', 60000);
