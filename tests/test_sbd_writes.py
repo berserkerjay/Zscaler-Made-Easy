@@ -736,7 +736,9 @@ class Tripwire:
     """A tenant client that fails the test on any use: nothing may be read."""
 
     def __getattr__(self, name):
-        if name.startswith("__") or name.startswith("_zia_rate"):   # the app's own stamps (tenant key, label), not a read
+        # The app's own stamps, not a read: the tenant key and label, and the
+        # simulation flag pack_ops.audited_run checks (offline_tenant's in-memory copy).
+        if name.startswith("__") or name.startswith("_zia_rate") or name == "simulation":
             raise AttributeError(name)
         pytest.fail(f"the tenant was read before the scope check ({name})")
 
