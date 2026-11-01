@@ -1,11 +1,11 @@
 {
-  "passed": 30058,
+  "passed": 30061,
   "failed": 0,
   "skipped": 17,
   "errors": 0,
-  "duration_s": 3114.6,
-  "commit": "ce89374",
-  "date": "2026-11-01T07:45:14",
+  "duration_s": 3134.6,
+  "commit": "3f4bcc6",
+  "date": "2026-11-01T09:08:26",
   "files": {
     "tests/test_accessibility.py": {
       "passed": 794,
@@ -563,7 +563,7 @@
       "skipped": 0
     },
     "tests/test_hardening.py": {
-      "passed": 6,
+      "passed": 8,
       "failed": 0,
       "skipped": 0
     },
@@ -783,7 +783,7 @@
       "skipped": 0
     },
     "tests/test_outbound_ssrf.py": {
-      "passed": 435,
+      "passed": 436,
       "failed": 0,
       "skipped": 0
     },
