@@ -6440,6 +6440,226 @@ window.HELP_CATALOG = {
     "input": "Tick it, then click Read from the tenant to list them. Needs ZIdentity ticked on the Scope page.",
     "effect": "local"
    },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zia_activation\"]": {
+    "what": "Picks \"Activate pending ZIA changes\". ZIA keeps a saved change waiting until it is activated. This makes what waits live.",
+    "input": "Tick it, then click Read from the tenant to see the status. Preview, then type ACTIVATE. It cannot be undone. Needs DLP or ZIA platform ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zid_user_edit\"]": {
+    "what": "Picks \"Edit a ZIdentity user\". It changes one user's names, email, department and groups. Undo puts them back.",
+    "input": "Tick it, then click Read from the tenant to list the users. Needs ZIdentity ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zid_user_reset\"]": {
+    "what": "Picks \"Reset a ZIdentity user's password or MFA\". It is a raw call to ZIdentity's public API, as the SDK has none. It cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. You type RESET and the login. Needs ZIdentity ticked on the Scope page.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"url_category_manage\"]": {
+    "what": "Picks \"Rename or delete a URL category\". It renames one custom URL category, or deletes one no rule uses.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"ip_group_admin\"]": {
+    "what": "Picks \"IP source and destination groups\". It edits an IP source group, deletes a group no rule uses, or imports and exports groups as CSV.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"dlp_object_edit\"]": {
+    "what": "Picks \"DLP dictionaries and engines\". It creates, edits or deletes one custom dictionary or engine, and says what an engine finds in plain words.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "#zaStatus": {
+    "what": "Shows if ZIA has changes that wait to be activated. Pending means you can activate them.",
+    "input": "Nothing to type. Click Read from the tenant to read it again.",
+    "effect": "local"
+   },
+   "input[name=\"ucAct\"]": {
+    "what": "Picks what to do with the URL category: rename it or delete it.",
+    "input": "Tick one. A category a rule uses cannot be deleted.",
+    "effect": "local"
+   },
+   "input[name=\"ucPick\"]": {
+    "what": "Picks the custom URL category to change. The row shows the rules that use it.",
+    "input": "Tick one row.",
+    "effect": "local"
+   },
+   "#ucName": {
+    "what": "The new name for the URL category. Rules keep using it, as they name it by its id.",
+    "input": "Up to 255 characters, like Partner sites.",
+    "effect": "local"
+   },
+   "input[name=\"ipgAct\"]": {
+    "what": "Picks what to do: edit an IP source group, delete a group, or import or export CSV.",
+    "input": "Tick one. The form below changes to match.",
+    "effect": "local"
+   },
+   "input[name=\"ipgPick\"]": {
+    "what": "Picks the IP source group to edit, or a new group.",
+    "input": "Tick one row. Predefined groups cannot be picked.",
+    "effect": "local"
+   },
+   "input[name=\"ipgDel\"]": {
+    "what": "Picks the group to delete. A group a rule uses cannot be deleted.",
+    "input": "Tick one row. You type DELETE and its name to confirm.",
+    "effect": "local"
+   },
+   "input[name=\"ipgMode\"]": {
+    "what": "Says what an import does to a group that exists: add what is missing, or make its list just like the CSV.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#ipgAdd": {
+    "what": "The addresses to add to the group.",
+    "input": "IPv4 addresses, blocks like 10.1.0.0/16 or ranges like 10.1.1.1-10.1.1.9, one per line.",
+    "effect": "local"
+   },
+   "#ipgRemove": {
+    "what": "The addresses to take out of the group.",
+    "input": "Addresses as the group lists them, one per line.",
+    "effect": "local"
+   },
+   "#ipgNewName": {
+    "what": "The name of the new IP source group.",
+    "input": "Up to 128 characters, like Branch offices.",
+    "effect": "local"
+   },
+   "#ipgNewDesc": {
+    "what": "A note on what the new group is for.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#ipgCsv": {
+    "what": "The CSV of groups to import. Each row is checked before anything is sent.",
+    "input": "Paste the CSV, or open a file. Up to 1 MB.",
+    "effect": "local"
+   },
+   "#ipgFile": {
+    "what": "Opens a CSV file of groups from this computer. It is only read here.",
+    "input": "Pick a .csv file of up to 1 MB.",
+    "effect": "local"
+   },
+   "#ipgExport": {
+    "what": "Saves every IP group as a CSV file. Cells are made safe for spreadsheets.",
+    "input": "Nothing to type. Click it to save the file.",
+    "effect": "download"
+   },
+   "input[name=\"dloObj\"]": {
+    "what": "Picks what to change: a DLP engine or a dictionary.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"dloAct\"]": {
+    "what": "Picks what to do: edit, create or delete.",
+    "input": "Tick one. A delete is refused while something uses it.",
+    "effect": "local"
+   },
+   "input[name=\"dloPick\"]": {
+    "what": "Picks the dictionary or engine. Predefined ones cannot be picked, but a dictionary's confidence can be changed.",
+    "input": "Tick one row.",
+    "effect": "local"
+   },
+   "#dloName": {
+    "what": "The name of the dictionary or engine.",
+    "input": "Up to 255 characters, like Project names.",
+    "effect": "local"
+   },
+   "#dloDesc": {
+    "what": "A note on what it is for.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#dloExpr": {
+    "what": "The engine's rule for what it finds. The preview says it in plain words.",
+    "input": "Like (D:Project names > 2) AND (D:Credit cards > 0).",
+    "effect": "local"
+   },
+   "#dloMatch": {
+    "what": "How the dictionary's phrases and patterns must match.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#dloPhrases": {
+    "what": "The words the dictionary looks for.",
+    "input": "One per line. Start a line with all: or unique: to say how hits are counted.",
+    "effect": "local"
+   },
+   "#dloPatterns": {
+    "what": "The patterns the dictionary looks for. Each is checked so it cannot run for too long.",
+    "input": "One regular expression per line. Start a line with all: or unique: if you like.",
+    "effect": "local"
+   },
+   "#dloProx": {
+    "what": "How close, in bytes, the hits must be to each other.",
+    "input": "A number from 0 to 10000. 0 means no limit.",
+    "effect": "local"
+   },
+   "#dloConf": {
+    "what": "How sure ZIA must be before this dictionary counts a hit.",
+    "input": "Pick low, medium or high.",
+    "effect": "local"
+   },
+   "#zuuSearch": {
+    "what": "Finds ZIdentity users whose login name has what you type.",
+    "input": "Optional. Up to 100 characters, like sam. Then click Search.",
+    "effect": "local"
+   },
+   "#zuuSearchGo": {
+    "what": "Reads the users that match the search from the tenant. It only reads.",
+    "input": "Nothing to type here. Type in the box first.",
+    "effect": "read"
+   },
+   "input[name=\"zuuPick\"]": {
+    "what": "Picks the user to edit. Admins and users from SCIM cannot be picked.",
+    "input": "Tick one row.",
+    "effect": "local"
+   },
+   "#zuuDisplay": {
+    "what": "The user's display name.",
+    "input": "Up to 255 characters. It cannot be empty.",
+    "effect": "local"
+   },
+   "#zuuFirst": {
+    "what": "The user's first name.",
+    "input": "Up to 255 characters.",
+    "effect": "local"
+   },
+   "#zuuLast": {
+    "what": "The user's last name.",
+    "input": "Up to 255 characters.",
+    "effect": "local"
+   },
+   "#zuuEmail": {
+    "what": "The user's email.",
+    "input": "One address, like sam@example.com.",
+    "effect": "local"
+   },
+   "#zuuDept": {
+    "what": "The user's department, from the ones users already have.",
+    "input": "Pick one, or none to clear it.",
+    "effect": "local"
+   },
+   "input[data-zuu-add]": {
+    "what": "Adds the user to this group. That gives the user what the group may use.",
+    "input": "Tick it. You type EDIT and the login to confirm.",
+    "effect": "local"
+   },
+   "input[data-zuu-rem]": {
+    "what": "Takes the user out of this group.",
+    "input": "Tick it. You type EDIT and the login to confirm.",
+    "effect": "local"
+   },
+   "input[name=\"zurPick\"]": {
+    "what": "Picks the user whose password or MFA you reset.",
+    "input": "Tick one row.",
+    "effect": "local"
+   },
+   "input[name=\"zurAct\"]": {
+    "what": "Picks what to do: reset the password, or let the user skip MFA once. Both are a raw call to ZIdentity's public API.",
+    "input": "Tick one. It cannot be undone.",
+    "effect": "local"
+   },
    "input[name=\"zdMode\"]": {
     "what": "Picks what to do: change or delete users, add a user, or change groups and departments.",
     "input": "Tick one. The form below changes to match.",

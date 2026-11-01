@@ -365,6 +365,10 @@ WRITE_CASES: List[WriteCase] = [
     ("bulk-apply-aiguard", "POST", "/api/operations/apply",
      lambda w: ("/api/operations/apply", dict(_b(**dict(SCOPE, scopes=SCOPE["scopes"] + ["aiguard"])),
                                               operation={"type": "aiguard_detection_policy", "profile": "HIPAA"}, plan_hash=HASH, confirm=True)), BOOL),
+    # ZIA activation (ops_zia_activation): its own ACTIVATE phrase is checked by the engine; the route holds the four gates.
+    ("bulk-apply-zia-activation", "POST", "/api/operations/apply",
+     lambda w: ("/api/operations/apply", dict(_b(**SCOPE), operation={"type": "zia_activation"}, plan_hash=HASH, confirm=True,
+                                              confirm_text="ACTIVATE")), BOOL),
     ("pov-build-apply", "POST", "/api/pov/build/apply/start",
      lambda w: ("/api/pov/build/apply/start", _pov_build_body(w)), BOOL),
     ("pov-build-undo", "POST", "/api/pov/build/undo/apply/start",

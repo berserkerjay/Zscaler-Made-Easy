@@ -3,7 +3,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-440 markers.
+455 markers.
 
 | File:line | Note |
 |---|---|
@@ -96,7 +96,12 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `offline_tenant.py:1293` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
 | `ops_aiguard.py:33` | readiness check; what is verified against the SDK and what is assumed is |
 | `ops_aiguard.py:622` | _SSL_STOPPERS = {"DO_NOT_DECRYPT", "BLOCK"}   # SSL inspection action types (BLOCK: assumed, not enumerated in the SDK model) |
+| `ops_dlp_objects.py:57` | ASSUMED: that ZIA itself refuses deleting an object something outside the |
+| `ops_dlp_objects.py:82` | NOT_CHECKED = "Anything outside the DLP rules and engines read here that uses it makes ZIA refuse the delete (assumed)." |
 | `ops_fw_import.py:31` | firewall channel). Assumed: that the API accepts an IPv4 range a-b in an IP |
+| `ops_ip_groups.py:59` | ASSUMED: the limits below (ops_list_fix's, from ZIA's Ranges & Limitations |
+| `ops_ip_groups.py:93` | "(assumed).") |
+| `ops_ip_groups.py:605` | f"default organisation limit is {lf.ORG_IP_ENTRIES:,} (assumed): writes past it are refused.") |
 | `ops_list_fix.py:18` | assumed to take a host name too). Each is an existing |
 | `ops_list_fix.py:72` | Assumed (marked where used): the per-group, organisation and list limits |
 | `ops_list_fix.py:106` | Limits. Assumed: Zscaler's ZIA "Ranges & Limitations" help page |
@@ -116,6 +121,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_sanction.py:39` | ASSUMED (not stated by the SDK, not checked against a live tenant): |
 | `ops_sanction.py:69` | _RAW_STATE_KEYS = ("sanctionedState", "sanctioned_state", "sanctionState")   # ASSUMED field names on the list's raw rows |
 | `ops_sanction.py:105` | carries one (ASSUMED field names), else None.""" |
+| `ops_url_category_admin.py:38` | ASSUMED (not checkable without a tenant): that a full update sent as read |
+| `ops_url_category_admin.py:63` | "delete if one of them still uses the category (assumed).") |
 | `ops_zcc.py:47` | payload through unchanged (a test checks it). Assumed, not verifiable without |
 | `ops_zcc.py:48` | a tenant (see ASSUMED): that POST /webForwardingProfile/edit with id "-1" |
 | `ops_zcc.py:103` | ASSUMED = [ |
@@ -159,14 +166,22 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_zdx_trace.py:282` | continue   # the filter is assumed; anything else the API answers is not shown |
 | `ops_zdx_trace.py:388` | "assumed": list(ASSUMED), "errors": {"ZDX application scores": err} if err else {}} |
 | `ops_zdx_trace.py:504` | undo="Undo: stops the trace (ZDX deletes what it collected), previewed first.", notes=list(ASSUMED)) |
+| `ops_zia_activation.py:30` | ASSUMED (the SDK has no enumeration and this was not checked against a live |
+| `ops_zia_activation.py:49` | assumed: ZIA's activation status values (the SDK's Activation model has no enumeration). |
+| `ops_zia_activation.py:59` | "tool or this app): check with the other admins first (assumed: the SDK does not say whose changes it activates).") |
 | `ops_zia_baseline.py:65` | read them; the others are assumed and the tenant refuses what it lacks. |
 | `ops_zia_directory.py:42` | delete_department. ASSUMED (not checkable without a tenant): that ZIA |
 | `ops_zia_objects.py:53` | NAME_MAX = 255           # assumed for these objects (the API refuses longer) |
 | `ops_zia_pac.py:40` | pacFiles/{id}/version/{v}/action/DEPLOY), delete_pac_file. ASSUMED: that |
 | `ops_zia_sandbox.py:21` | Assumed (not modelled by the SDK): the fileHashCount fields |
-| `ops_zid.py:53` | [{service, scopes [{id, name}]}]). ASSUMED (not checkable without a tenant): |
+| `ops_zid.py:54` | [{service, scopes [{id, name}]}]). ASSUMED (not checkable without a tenant): |
 | `ops_zid_groups.py:33` | Assumed (ASSUMED): the member list pages with offset / limit as the user |
 | `ops_zid_groups.py:54` | ASSUMED = [ |
+| `ops_zid_user.py:60` | from this build machine, so ASSUMED (not verified against a live tenant): |
+| `ops_zid_user.py:105` | "ZIdentity API reference (Users → {what}); not verified against a live tenant from this build (assumed).") |
+| `ops_zid_user.py:422` | assumed: POST /ziam/admin/api/v1/users/{id}:resetpassword (no body) and |
+| `ops_zid_user.py:423` | assumed: POST /ziam/admin/api/v1/users/{id}:setskipmfa ({"timestamp": epoch seconds}), |
+| `ops_zid_user.py:436` | """SkipMfaDto {timestamp} (ASSUMED: now, epoch seconds); no body for a reset.""" |
 | `ops_zpa.py:58` | other. Assumed, not verifiable without a |
 | `ops_zpa.py:1200` | plan.warnings.append("New rules are added at the end of each policy (assumed ZPA behaviour); a rule above them still decides first.") |
 | `ops_zpa_admin.py:87` | ASSUMED (not verifiable without a tenant; see ASSUMED below and every plan's |

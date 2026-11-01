@@ -347,7 +347,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 102,
+            "fixed": 105,
             "accepted": 12,
             "records": [
               "c6-zcc-zdx",
@@ -369,7 +369,8 @@
               "w8-shadow-it",
               "w8-zdx-zid-zcc",
               "w8-zia-threat-saas",
-              "w8-zwa-aiguard"
+              "w8-zwa-aiguard",
+              "w9-admin-editors"
             ]
           },
           "coverage": {
@@ -483,7 +484,7 @@
     }
   ],
   "counts": {
-    "findings": 731,
+    "findings": 734,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -497,12 +498,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 186,
+        "fixed": 187,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 401,
+        "fixed": 403,
         "accepted": 3
       },
       "info": {
@@ -512,12 +513,12 @@
       }
     },
     "checks": {
-      "pass": 661,
+      "pass": 668,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11404
+    "tests_added": 11484
   },
   "findings": [
     {
@@ -4535,6 +4536,22 @@
       "slug": "w8-cloud-connector",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-ADME-02",
+      "title": "During development: a DLP dictionary or engine edit that changes what an enabled rule detects did not ask the typed phrase",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-841",
+      "asvs": "V11.1.1",
+      "wcag": "",
+      "fix": "ops_dlp_objects.live_users finds the enabled rules (through engines for a dictionary); unknown counts as used; APPLY <n> CHANGES is asked",
+      "test": "tests/test_w9_dlp_objects.py::test_a_dictionary_an_enabled_rule_uses_through_an_engine_needs_the_typed_phrase",
+      "commit": "",
+      "reason": "",
+      "slug": "w9-admin-editors",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "W9-SG-03",
@@ -10953,6 +10970,38 @@
       "sub_area": "builders"
     },
     {
+      "id": "W9-ADME-01",
+      "title": "During development: the five admin types added first were not in the secure-defaults table, so test_sbd_writes failed for each",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1188",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "each type listed in DEFAULT_OFF with its reason",
+      "test": "tests/test_sbd_writes.py::test_every_operation_type_creates_nothing_enforcing_unless_asked",
+      "commit": "",
+      "reason": "",
+      "slug": "w9-admin-editors",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W9-ADME-03",
+      "title": "During development: the ZIdentity user edit could not change the email the spec names",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "primary_email (the SDK model's field) is checked, sent back with the user as read, read back and undone",
+      "test": "tests/test_w9_zid_user.py::test_the_email_is_edited_as_primary_email_and_undo_puts_it_back",
+      "commit": "",
+      "reason": "",
+      "slug": "w9-admin-editors",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "W9-SG-06",
       "title": "An ACME certificate was renewed only at start-up, so a server running past expiry served an expired certificate",
       "severity": "low",
@@ -14207,6 +14256,40 @@
       "tests_added": 46
     },
     {
+      "slug": "w9-admin-editors",
+      "area": "Builders: the remaining day-to-day edits on Bulk changes (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users, one Private Service Edge)",
+      "title": "Admin editors on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo or a stated no-Undo, audit with actor, a temporary password shown once",
+      "standards": [
+        "ASVS V2.5.2",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V7.1.3",
+        "ASVS V7.4.1",
+        "ASVS V11.1.1",
+        "ASVS V11.1.6",
+        "OWASP Top 10 2021 A01",
+        "OWASP Top 10 2021 A04",
+        "OWASP Top 10 2021 A09",
+        "WSTG-ATHZ-02",
+        "WSTG-BUSL-01",
+        "WSTG-INPV-01",
+        "CWE-20",
+        "CWE-312",
+        "CWE-367",
+        "CWE-532",
+        "CWE-697",
+        "CWE-754",
+        "CWE-778",
+        "CWE-841",
+        "CWE-862",
+        "CWE-863",
+        "CWE-1188"
+      ],
+      "checks": 7,
+      "findings": 3,
+      "tests_added": 80
+    },
+    {
       "slug": "w9-security-gates",
       "area": "Security gates: team-mode isolation of kept records, the four gates on the older writes and deletes, Client Connector OTP behind write mode, forced password change, ACME renewal while running, store encryption coverage",
       "title": "Wave 9: every write or delete route, old ones and the OTP reveal included, behind the write engine's gates; team mode keeps each tenant's records apart",
@@ -14267,7 +14350,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 134,
+    "asvs_requirements": 136,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",

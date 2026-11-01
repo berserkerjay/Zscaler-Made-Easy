@@ -13,6 +13,7 @@ from zscaler.helpers import convert_keys_to_camel_case
 from zscaler.zia.models.pac_files import PacFiles, PacFileValidationResponse
 from zscaler.zia.models.user_management import Department, Groups, UserManagement
 from zscaler.zid.models.api_client import APIClientRecords, APIClients, APIClientSecrets
+from zscaler.zid.models.groups import GroupRecord, Groups as ZidGroups
 from zscaler.zid.models.resource_servers import ResourceServers
 from zscaler.zid.models.users import UserRecord, Users
 
@@ -227,13 +228,63 @@ class ZidUsersAPI(_Base):
     def update_user(self, user_id, **kwargs):
         body = wire(kwargs)
         self.t.sent.append(("PUT", f"zid/users/{user_id}", body))
-        row = dict(self.t.zid_users[str(user_id)], **body)
+        # A PUT replaces the editable fields (a field left out is cleared); id, source and entitlements stay.
+        editable = ("loginName", "displayName", "firstName", "lastName", "primaryEmail", "secondaryEmail", "status", "department", "idp",
+                    "customAttrsInfo")
+        row = dict({k: v for k, v in self.t.zid_users[str(user_id)].items() if k not in editable}, **body)
         self.t.zid_users[str(user_id)] = row
         return UserRecord(copy.deepcopy(row)), Resp(row), None
 
     def delete_user(self, user_id):
         self.t.sent.append(("DELETE", "zid/users", str(user_id)))
         return (None, Resp(None), None) if self.t.zid_users.pop(str(user_id), None) else (None, Resp(None), NOT_FOUND)
+
+    def list_user_group_details(self, user_id, query_params=None):
+        self.t.reads.append(("GET", f"zid/users/{user_id}/groups", dict(query_params or {})))
+        rows = [copy.deepcopy(self.t.zid_groups[g]) for g, members in self.t.zid_members.items() if str(user_id) in members]
+        body = {"records": rows, "results_total": len(rows)}
+        return ZidGroups(copy.deepcopy(body)), Resp(body), None
+
+
+class Executor:
+    """The SDK's request executor for the ZIdentity raw calls: records each
+    request (method, path, body) and answers like ZIdentity (assumed shapes)."""
+
+    def __init__(self, t: "Tenant"):
+        self.t = t
+
+    def create_request(self, method, endpoint, body=None, headers=None, params=None, use_raw_data_for_body=False):
+        return {"method": method, "endpoint": endpoint, "body": copy.deepcopy(body)}, None
+
+    def execute(self, req, model=None):
+        self.t.sent.append((req["method"], req["endpoint"], req["body"]))
+        if self.t.refuse.get(("raw", req["endpoint"].rsplit(":", 1)[-1])):
+            return None, self.t.refuse[("raw", req["endpoint"].rsplit(":", 1)[-1])]
+        if req["endpoint"].endswith(":resetpassword"):
+            return Resp(self.t.reset_answer), None
+        return Resp("OK"), None
+
+
+class ZidGroupsAPI(_Base):
+    def list_groups(self, query_params=None):
+        self.t.reads.append(("GET", "zid/groups", dict(query_params or {})))
+        body = {"records": list(self.t.zid_groups.values()), "results_total": len(self.t.zid_groups)}
+        return ZidGroups(copy.deepcopy(body)), Resp(body), None
+
+    def get_group(self, group_id):
+        self.t.reads.append(("GET", "zid/group", str(group_id)))
+        row = self.t.zid_groups.get(str(group_id))
+        return (GroupRecord(copy.deepcopy(row)), Resp(row), None) if row else (None, Resp(None), NOT_FOUND)
+
+    def add_user_to_group(self, group_id, user_id, **kwargs):
+        self.t.sent.append(("POST", f"zid/groups/{group_id}/users/{user_id}", wire(kwargs)))
+        self.t.zid_members.setdefault(str(group_id), set()).add(str(user_id))
+        return None, Resp(None), None
+
+    def remove_user_from_group(self, group_id, user_id):
+        self.t.sent.append(("DELETE", f"zid/groups/{group_id}/users/{user_id}", {}))
+        self.t.zid_members.setdefault(str(group_id), set()).discard(str(user_id))
+        return None, Resp(None), None
 
 
 class ApiClientAPI(_Base):
@@ -299,6 +350,8 @@ class ResourceServersAPI(_Base):
 class Zid:
     def __init__(self, t: "Tenant"):
         self.users = ZidUsersAPI(t)
+        self.users._request_executor = Executor(t)
+        self.groups = ZidGroupsAPI(t)
         self.api_client = ApiClientAPI(t)
         self.resource_servers = ResourceServersAPI(t)
 
@@ -335,6 +388,10 @@ class Tenant:
                           "u-2": {"id": "u-2", "loginName": "rowan@acme.example", "displayName": "Rowan Ellis", "status": True, "source": "UI"},
                           "u-3": {"id": "u-3", "loginName": "boss@acme.example", "displayName": "Boss", "status": True, "adminEntitlementEnabled": True},
                           "u-4": {"id": "u-4", "loginName": "sync@acme.example", "displayName": "Synced", "status": True, "source": "SCIM"}}
+        self.zid_groups = {"g-1": {"id": "g-1", "name": "Finance", "source": "UI"}, "g-2": {"id": "g-2", "name": "Engineering", "source": "UI"},
+                           "g-dyn": {"id": "g-dyn", "name": "Everyone (dynamic)", "isDynamicGroup": True}}
+        self.zid_members: Dict[str, set] = {"g-1": {"u-1"}, "g-2": set(), "g-dyn": {"u-1", "u-2"}}
+        self.reset_answer: Any = "OK"
         self.servers = [{"id": "rs-1", "name": "Zscaler APIs", "defaultApi": True, "serviceScopes": [
             {"service": {"id": "s-zia", "name": "ZIA", "displayName": "ZIA"},
              "scopes": [{"id": "sc-ro", "name": "zs:config:zia:acme:Read Only"}, {"id": "sc-sa", "name": "zs:config:zia:acme:Super Admin"}]}]}]

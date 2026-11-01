@@ -59,16 +59,20 @@ Find the files a change touches here, then read only those.
 | `offline_tenant.py` | Offline tenants: the sample tenant and saved snapshots, served to every |
 | `ops_aiguard.py` | AI Guard builders on the Bulk changes engine (admin_ops.register). |
 | `ops_config_restore.py` | Restore, clone and template apply: operation types on the Bulk changes |
+| `ops_dlp_objects.py` | DLP dictionaries and engines, ad hoc: create, edit or delete one custom |
 | `ops_fw_import.py` | Firewall import: one operation type on the Bulk changes engine |
+| `ops_ip_groups.py` | IP source and destination groups: an IP source group editor, deleting |
 | `ops_list_fix.py` | Fix selected, wider: the Path analyzer's Test a list rows that missed |
 | `ops_rule_csv.py` | Rules from a spreadsheet: CSV import as operation types on the Bulk |
 | `ops_rule_editor.py` | Rule editor: create, edit, duplicate and delete one ZIA rule, on the Bulk |
 | `ops_sanction.py` | Cloud application sanction: mark cloud applications Sanctioned or |
+| `ops_url_category_admin.py` | Rename or delete one custom URL category, on the Bulk changes engine |
 | `ops_zcc.py` | Client Connector profiles on the Bulk changes engine (admin_ops plugins). |
 | `ops_zcc_admin.py` | Client Connector day-to-day administration on the Bulk changes engine |
 | `ops_zcc_live.py` | Client Connector live changes on the Bulk changes engine (admin_ops plugins). |
 | `ops_zdx.py` | ZDX probe setup: Zscaler Digital Experience applications and probes as |
 | `ops_zdx_trace.py` | ZDX deep trace on the Bulk changes engine (admin_ops.register). |
+| `ops_zia_activation.py` | Activate pending ZIA changes, on the Bulk changes engine (admin_ops plugin). |
 | `ops_zia_baseline.py` | ZIA security baseline builder and SSL certificate manager: two operation |
 | `ops_zia_directory.py` | ZIA users, groups and departments: day-to-day admin on the Bulk changes engine. |
 | `ops_zia_objects.py` | The objects around the rule editor, on the Bulk changes engine |
@@ -76,6 +80,7 @@ Find the files a change touches here, then read only those.
 | `ops_zia_sandbox.py` | Bulk changes plugin: block known-bad files by their MD5 hash in Cloud Sandbox. |
 | `ops_zid.py` | ZIdentity users and API clients on the Bulk changes engine. |
 | `ops_zid_groups.py` | ZIdentity group membership on the Bulk changes engine (admin_ops plugin). |
+| `ops_zid_user.py` | One ZIdentity user: edit its attributes and groups, reset its password or |
 | `ops_zpa.py` | ZPA builder: operation types on the Bulk changes engine (admin_ops.register). |
 | `ops_zpa_admin.py` | ZPA day-to-day administration on the Bulk changes engine (admin_ops.register). |
 | `ops_zpa_fields.py` | ZPA segment settings in bulk: one operation type on the Bulk changes engine. |
@@ -224,11 +229,14 @@ Find the files a change touches here, then read only those.
 | `static/ops_admin.js` | Day-to-day admin on Bulk changes (/report/operations): the forms of the |
 | `static/ops_aiguard.js` | AI Guard builders for Bulk changes (/report/operations, "Build new") |
 | `static/ops_config_restore.js` | Backups, restore and clone on Bulk changes (/report/operations, "Backups"). |
+| `static/ops_dlp_objects.js` | DLP dictionaries and engines on Bulk changes (/report/operations, "Change"), |
 | `static/ops_fw_import.js` | Firewall import from Palo Alto Networks on Bulk changes (/report/operations, |
+| `static/ops_ip_groups.js` | IP source and destination groups on Bulk changes (/report/operations, |
 | `static/ops_list_fix.js` | Fix rows from Test a list, on Bulk changes (/report/operations). |
 | `static/ops_rule_csv.js` | Rules from a spreadsheet on Bulk changes (/report/operations): export ZIA |
 | `static/ops_rule_editor.js` | The rule editor on Bulk changes (/report/operations, "Build new"), four |
 | `static/ops_sanction.js` | Cloud application sanction on Bulk changes (/report/operations). |
+| `static/ops_url_category_admin.js` | Rename or delete one custom URL category on Bulk changes (/report/operations, |
 | `static/ops_zcc.js` | Client Connector profiles on Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zcc_live.js` | Client Connector live changes on Bulk changes (/report/operations, ops_zcc_live.py). |
 | `static/ops_zdx.js` | ZDX probe setup: the forms of the three ZDX operation types (ops_zdx.py) |
@@ -237,6 +245,7 @@ Find the files a change touches here, then read only those.
 | `static/ops_zia_sandbox.js` | Cloud Sandbox file hashes on Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zid.js` | ZIdentity users and API clients on Bulk changes (/report/operations, |
 | `static/ops_zid_groups.js` | ZIdentity group members on Bulk changes (/report/operations, ops_zid_groups.py). |
+| `static/ops_zid_user.js` | One ZIdentity user on Bulk changes (/report/operations, "Day-to-day admin"), |
 | `static/ops_zpa.js` | ZPA builder forms for Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zpa_fields.js` | ZPA segment settings in bulk on Bulk changes (/report/operations, "Change existing"). |
 | `static/ops_zwa.js` | Close DLP incidents as false positives: the form of ops_zwa.py on the Bulk |

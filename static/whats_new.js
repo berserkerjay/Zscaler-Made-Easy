@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, and more of the platform read and checked",
+    "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users), and more of the platform read and checked",
     "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
@@ -60,6 +60,55 @@ window.WHATS_NEW = {
       "what": "An account whose password an administrator set chooses its own at the next sign-in, on the Sign in page, before anything else opens.",
       "changelog": ["Choose your own password"],
       "marks": [{ "page": "/login", "at": "#lgChangeTitle", "shown": "at the first sign-in after an administrator set the password" }]
+    },
+    {
+      "id": "zia-activation", "release": "2026-11-01", "label": "Activate pending ZIA changes",
+      "what": "Activate pending ZIA changes: reads ZIA's activation status, activates what is pending with ACTIVATE typed, refuses when nothing is pending. No Undo.",
+      "changelog": ["Activate pending ZIA changes"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zia_activation\"]", "shown": "once the page lists the operation types" },
+        { "page": "/report/operations", "at": "#opAdminNew" }
+      ]
+    },
+    {
+      "id": "url-category-manage", "release": "2026-11-01", "label": "Rename or delete a URL category",
+      "what": "Rename one custom URL category, or delete one no rule uses (DELETE and its name typed), with Undo.",
+      "changelog": ["Rename or delete a URL category"],
+      "marks": [
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"url_category_manage\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "ip-group-admin", "release": "2026-11-01", "label": "IP source and destination groups",
+      "what": "IP groups: edit an IP source group, delete a group no rule uses, and import or export groups as CSV, with Undo.",
+      "changelog": ["IP source and destination groups"],
+      "marks": [
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"ip_group_admin\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "dlp-object-edit", "release": "2026-11-01", "label": "DLP dictionaries and engines",
+      "what": "Create, edit or delete one custom DLP dictionary or engine, its expression explained in plain words, with Undo.",
+      "changelog": ["DLP dictionaries and engines"],
+      "marks": [
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"dlp_object_edit\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "zid-user-edit", "release": "2026-11-01", "label": "Edit a ZIdentity user",
+      "what": "Edit one ZIdentity user's names, email, department and groups, with Undo.",
+      "changelog": ["Edit a ZIdentity user"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zid_user_edit\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "zid-user-reset", "release": "2026-11-01", "label": "Reset a ZIdentity user's password or MFA",
+      "what": "Reset one ZIdentity user's password or let the user skip MFA once (a raw call to ZIdentity's public API). A temporary password is shown once. No Undo.",
+      "changelog": ["Reset a ZIdentity user's password or MFA"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zid_user_reset\"]", "shown": "once the page lists the operation types" }
+      ]
     },
     {
       "id": "category-lookup", "release": "2026-10-31", "label": "Category lookup",

@@ -936,6 +936,12 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zid_group_members": "adds or removes the people the operator typed in one group; creates no group, role or rule",
     "zcc_app_profile_state": "the operator picks on or off explicitly, per profile, and types the profile's name",
     "zcc_app_profile_settings": "changes only the allowlisted settings the operator set, each shown before and after; creates nothing",
+    "zia_activation": "activates changes already saved and pending; creates, enables or changes no object; refused when nothing is pending; ACTIVATE typed every time",
+    "url_category_manage": "renames or deletes one existing custom URL category; creates no rule (an Undo re-creates only the deleted category)",
+    "ip_group_admin": "group content only (edit, delete while unused, CSV import of groups); no rule is created or enabled",
+    "dlp_object_edit": "a new dictionary or engine matches nothing until a rule uses it; creates no rule; a change to what an enabled rule detects asks the typed phrase",
+    "zid_user_edit": "changes the fields and groups the operator set on one existing user; creates no user, group or rule",
+    "zid_user_reset": "resets one user's password or sets skip MFA once, as the operator picked; creates nothing; RESET <login> typed every time",
 }
 
 
