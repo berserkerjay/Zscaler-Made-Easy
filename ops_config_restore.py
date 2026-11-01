@@ -74,6 +74,9 @@ CONFLICT_STOP = ("someone changed it in the tenant since the preview, so it was 
                  "Preview again")
 NOT_IN_SCOPE = "Not in scope: tick on the Scope page what this restore reads (ZIA platform or DLP for ZIA, ZPA, or Client Connector)."
 SECRET_TTL = 900.0
+# verified: zscaler/zpa/policies.py add_*_rule and add_*_rule_v2 build a fixed payload with no "disabled"
+# field (the word is not in that file), so a rule cannot be created disabled through the SDK.
+# assumed: a rule created without it is active at once (the API's default).
 ZPA_NEW_NEEDS_TICK = ("not created: a ZPA policy rule cannot be created disabled (the SDK's add calls have no such field), so it is "
                       "created only when you tick 'keep each rule's state from the source' (it is then active at once)")
 TENANT_BOUND_WORDS = ("Tenant-bound objects (static IP addresses, GRE tunnels, locations) are created only because you included "
@@ -323,6 +326,8 @@ class LiveReader:
         """Ask the tenant whether a new object may be added (static IPs:
         traffic_static_ip.check_static_ip, POST /staticIP/validate, read-only).
         (True, "") may be added; (False, why) may not; (None, why) unknown."""
+        # assumed: POST /staticIP/validate only checks the address and never changes the tenant, so the
+        # plan (which must not write) may call it. The SDK names it a check; no public doc confirms it.
         ao._check_stop(self.cancel)
         svc = getattr(getattr(self.client, t["product"], None), t["svc"], None)
         fn = getattr(svc, t["check"] or "", None) if svc is not None else None
@@ -334,6 +339,8 @@ class LiveReader:
             return None, f"{type(e).__name__}"
         if err:
             text = str(err)[:200]
+            # assumed: a 409, or an answer saying the address exists, is a duplicate or is already used, means
+            # another organisation owns the address (the target cannot add it); any other error is "unknown".
             if re.search(r"409|exist|duplicate|already", text, re.I):
                 return False, "the address is already in use by an organisation (the target cannot add it: it must own it)"
             return None, text
@@ -1226,6 +1233,8 @@ def inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         units = [u for u in result.get("items") or [] if u.get("group") == g["key"]]
         if units and all(u.get("status") == "applied" for u in units) and g["handler"] in ("cfg_create", "cfg_update", "cfg_delete"):
             applied_groups.append(g)
+    # assumed: deleting in the reverse of the create order (a location, then its GRE tunnel, then its static
+    # IP address) satisfies ZIA's dependency checks; only the fake tenant proves this order.
     for g in reversed(applied_groups):
         t = g["target"]
         if g["handler"] == "cfg_create" and t.get("new_id"):

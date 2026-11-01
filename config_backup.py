@@ -442,6 +442,7 @@ TYPES: List[Dict[str, Any]] = [
     _t("zia.gre_tunnels", "GRE tunnels", "gre_tunnel", "list_gre_tunnels", "get_gre_tunnel", "add_gre_tunnel", None, "delete_gre_tunnel",
        scopes=_Z,
        name="source_ip", tenant_bound=True, after=("zia.static_ips",), uses=(),
+       # assumed: ZIA picks the target's own primary and secondary VIPs and an internal IP range when a create leaves them out.
        strip=("primary_dest_vip", "secondary_dest_vip", "internal_ip_range", "virtual_ip", "datacenter", "sub_cloud",
               "private_service_edge", "managed_by", "last_modification_time"),
        why=_TENANT_BOUND_OPT, clone_why="a GRE tunnel is bound to the tenant's static IP address",
@@ -595,6 +596,7 @@ TYPES: List[Dict[str, Any]] = [
        level="update", scopes=("zcc",), raw_zcc="/updateZdxGroupEntitlement",
        why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)",
        clone_why="entitlements name the tenant's own user and device groups"),
+    # assumed: GET /application-profiles answers {"policies": [...]}, the shape the SDK reads (zscaler/zcc/application_profiles.py).
     _t("zcc.application_profiles", "Application profiles (newer API)", "application_profiles", "get_application_profiles", level="read",
        scopes=("zcc",), q={"page_size": "1000"},
        why="the same app profiles through the newer API, compared only; restored as App profiles"),

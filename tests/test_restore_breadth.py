@@ -524,6 +524,8 @@ def test_included_tenant_bound_objects_are_validated_ordered_and_need_their_own_
     assert sorted(order) == sorted(["zia.static_ips", "zia.vpn_credentials", "zia.gre_tunnels", "zia.locations", "zia.locations"])
     assert order.index("zia.static_ips") < order.index("zia.gre_tunnels") < order.index("zia.locations")
     assert order.index("zia.vpn_credentials") < order.index("zia.locations")
+    made = [u for u in r["items"] if u["status"] == "applied" and u["object"].get("type") in BOUND[:3]]
+    assert len(made) == 4 and all(u.get("verified") is True for u in made), [(u["object"]["name"], u.get("verified")) for u in made]
     gre = tgt.tenant.rows("zia.gre_tunnels")[0]
     assert "primary_dest_vip" not in gre and "internal_ip_range" not in gre   # ZIA picks the target's own VIPs
     hq = tgt.tenant.by_name("zia.locations", "HQ")
@@ -533,6 +535,36 @@ def test_included_tenant_bound_objects_are_validated_ordered_and_need_their_own_
     pu, ru = undo(tgt, r)
     assert ru["status"] == "applied" and tgt.tenant.rows("zia.locations") == [] and tgt.tenant.rows("zia.static_ips") == []
     assert tgt.tenant.rows("zia.gre_tunnels") == [] and "never deleted" in item(pu, "zia.vpn_credentials", "branch@corp.example")["reason"]
+
+
+@pytest.mark.parametrize("key,name,row", [
+    ("zia.static_ips", "198.51.100.10", {"id": 501, "ip_address": "198.51.100.10", "comment": "added meanwhile"}),
+    ("zia.locations", "HQ", {"id": 502, "name": "HQ", "ip_addresses": [], "comment": "added meanwhile"}),
+], ids=["static_ip", "location"])
+def test_a_tenant_bound_object_made_in_the_target_since_the_preview_stops_the_create(monkeypatch, key, name, row):
+    """ASVS V11.1.3 · CWE-367 · WSTG-BUSL-04: a static IP or location that appears in the target between the apply's re-plan and its create is a conflict: it is not created again and nothing more is written."""
+    bid = backup_of(bound_source(), ["zia"])
+    tgt = Client(bound_target())
+    sp = spec("zia", bid, types=BOUND, include_tenant_bound=True, psk=["branch@corp.example"])
+    p = ao.plan(tgt, sp, scope=SCOPE, tenant_label="target")
+    real = ocr._rows_named
+    at = []
+
+    def colleague_adds_it_first(run, t, nm):
+        if t["key"] == key and nm == name and tgt.tenant.by_name(key, name) is None:
+            tgt.tenant.rows(key).append(dict(row))
+            at.append(len(tgt.tenant.writes))
+        return real(run, t, nm)
+
+    monkeypatch.setattr(ocr, "_rows_named", colleague_adds_it_first)
+    ocr.provide(p["plan_hash"], secrets={"branch@corp.example": "a-typed-psk"})
+    r = ao.execute(tgt, sp, plan_hash=p["plan_hash"], scope=SCOPE, writes_enabled=True, assessor=ASSESSOR, tenant_label="target",
+                   confirm_text=p["confirm_phrase"])
+    assert r["status"] != "applied"
+    assert next(u for u in r["items"] if u["object"].get("type") == key and u["object"].get("name") == name)["status"] == "conflict"
+    assert ("create", key, name) not in tgt.tenant.writes
+    assert [x for x in tgt.tenant.rows(key) if cb.name_of(cb.BY_KEY[key], x) == name] == [row]
+    assert at and len(tgt.tenant.writes) == at[0]   # nothing written after the conflict
 
 
 def test_full_mode_never_deletes_the_targets_own_tenant_bound_objects_and_a_rehearsal_cannot_validate():

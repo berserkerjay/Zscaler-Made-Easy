@@ -341,7 +341,7 @@ def test_the_sample_tenant_reads_into_a_backup_offline(monkeypatch):
 
 NEW_READ_TYPES = ("zia.nat_control_rules", "zia.traffic_capture_rules", "zia.workload_groups", "zpa.user_portals", "zpa.pra_credentials",
                   "zpa.scim_attributes", "zpa.scim_groups", "zpa.service_edges", "zpa.enrollment_certificates", "zcc.admin_users",
-                  "zcc.predefined_ip_apps", "zcc.custom_ip_apps", "zcc.process_apps")
+                  "zcc.predefined_ip_apps", "zcc.custom_ip_apps", "zcc.process_apps", "zcc.application_profiles")
 
 
 def test_every_new_type_is_in_a_backup_of_the_sample_tenant_without_secrets_or_people():
@@ -359,6 +359,25 @@ def test_every_new_type_is_in_a_backup_of_the_sample_tenant_without_secrets_or_p
                           "user_name"} and r.get("password") in (None, "(set)") for r in doc["types"]["zpa.pra_credentials"])
     groups = doc["types"]["zpa.scim_groups"]
     assert groups and all(str(g.get("idp_id")) for g in groups)
+
+
+def test_a_sample_backup_reads_the_newer_application_profiles_api():
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: the sample answers /application-profiles in the SDK's {"policies": [...]} shape, so a backup reads every app profile instead of marking the type unread."""
+    import offline_tenant as ot
+    import sample_tenant
+    doc = cb.from_offline(ot.sample_store())
+    assert "zcc.application_profiles" not in doc["meta"]["unread"], doc["meta"]["unread"].get("zcc.application_profiles")
+    rows = doc["types"]["zcc.application_profiles"]
+    assert sorted(int(r["id"]) for r in rows) == sorted(p["id"] for p in sample_tenant.APP_PROFILES)
+
+
+def test_a_sample_backup_reads_the_gre_tunnels():
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: the sample's GRE tunnels carry lastModifiedBy, which the SDK model (zscaler/zia/models/gre_tunnels.py) needs to read a row, so a backup holds them instead of marking the type unread."""
+    import offline_tenant as ot
+    import sample_tenant
+    doc = cb.from_offline(ot.sample_store())
+    assert "zia.gre_tunnels" not in doc["meta"]["unread"], doc["meta"]["unread"].get("zia.gre_tunnels")
+    assert sorted(r["source_ip"] for r in doc["types"]["zia.gre_tunnels"]) == sorted(g["sourceIp"] for g in sample_tenant.GRE_TUNNELS)
 
 
 def test_client_connector_admin_users_are_counted_not_named():

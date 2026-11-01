@@ -323,8 +323,14 @@ class OfflineStore:
                 items = _items(body)
                 # The platform is device_type on an app profile (zscaler/zcc/models/webpolicy.py), deviceType on older answers.
                 field = next((f for f in ("device_type", "deviceType") if items and all(isinstance(x, dict) and f in x for x in items)), None)
-                if dt not in (None, "") and isinstance(body, list) and field:
-                    body = [x for x in items if str(x.get(field)) == str(dt)]
+                if dt not in (None, "") and items is not None and field:
+                    kept = [x for x in items if str(x.get(field)) == str(dt)]
+                    if isinstance(body, list):
+                        body = kept
+                    else:   # an envelope ({"policies": [...]}) keeps its shape around the platform's rows
+                        items[:] = kept
+                        if "totalCount" in body:
+                            body["totalCount"] = len(kept)
                 return status, body
             item, _, _ = self._item(path)
             if item is not None:

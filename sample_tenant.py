@@ -352,13 +352,17 @@ DC_EXCLUSIONS = [{"dcid": 1643, "dcName": {"id": 1643, "name": "LAX1"}, "descrip
                   "startTime": 1774000000, "endTime": 1774600000},
                  {"dcid": 1642, "dcName": {"id": 1642, "name": "SJC4"}, "description": "Latency complaints", "expired": False,
                   "startTime": 1790000000}]
+# assumed: the API sends lastModifiedBy on every tunnel. The SDK model (zscaler/zia/models/gre_tunnels.py)
+# only sets last_modified_by when the answer has it, so a row without it cannot be read through the SDK.
 GRE_TUNNELS = [
     {"id": 1651, "sourceIp": "198.51.100.10", "comment": "Portland HQ", "withinCountry": True,
      "primaryDestVip": {"id": 1661, "virtualIp": "203.0.113.101", "datacenter": "SEA1"},
-     "secondaryDestVip": {"id": 1662, "virtualIp": "203.0.113.111", "datacenter": "SJC4"}},
+     "secondaryDestVip": {"id": 1662, "virtualIp": "203.0.113.111", "datacenter": "SJC4"},
+     "lastModificationTime": 1761400000, "lastModifiedBy": {"id": 4911, "name": "IT Admin"}},
     {"id": 1652, "sourceIp": "203.0.113.20", "comment": "Reno depot", "withinCountry": True,
      "primaryDestVip": {"id": 1663, "virtualIp": "203.0.113.112"},
-     "secondaryDestVip": {"id": 1664, "virtualIp": "203.0.113.113"}},
+     "secondaryDestVip": {"id": 1664, "virtualIp": "203.0.113.113"},
+     "lastModificationTime": 1761400000, "lastModifiedBy": {"id": 4911, "name": "IT Admin"}},
 ]
 VIPS = [{"cloudName": "zscaler.example", "region": "North America", "country": "United States", "city": "Seattle", "dataCenter": "SEA1",
          "greIps": ["203.0.113.101", "203.0.113.102"]},
@@ -1271,7 +1275,9 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/casbTenant/scanInfo": SAAS_SCAN_INFO,
         f"{ZIA}/cloudToCloudIR/lite": C2C_RECEIVERS,
         # Client Connector (first candidate of each short endpoint, see dlp_assessment_full_auto._ZCC_MAP)
-        f"{ZCC}/application-profiles": APP_PROFILES,
+        # assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape
+        # zscaler/zcc/application_profiles.py get_application_profiles reads (response_body.get("policies")).
+        f"{ZCC}/application-profiles": {"policies": APP_PROFILES, "totalCount": len(APP_PROFILES)},
         f"{ZCC}/web/policy/listByCompany": APP_PROFILES,
         f"{ZCC}/webForwardingProfile/listByCompany": FORWARDING_PROFILES,
         f"{ZCC}/webTrustedNetwork/listByCompany": {"trustedNetworkContracts": TRUSTED_NETWORKS, "totalCount": len(TRUSTED_NETWORKS)},

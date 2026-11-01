@@ -286,6 +286,16 @@ def test_the_platform_filter_reads_the_apis_device_type_field():
     assert [p["id"] for p in windows] == [1]
 
 
+def test_the_platform_filter_keeps_the_policies_envelope_of_the_newer_api():
+    """ASVS V5.1.3 · CWE-1287: the sample answers /application-profiles as {"policies": [...]} (zscaler/zcc/application_profiles.py); a deviceType query keeps that shape with only the platform's profiles."""
+    st = ot.sample_store(reset=True)
+
+    _, windows = st.answer_get(f"{ZCC}/application-profiles", {"deviceType": 3})
+
+    assert sorted(p["id"] for p in windows["policies"]) == sorted(p["id"] for p in sample_tenant.APP_PROFILES if p["device_type"] == 3)
+    assert windows["totalCount"] == len(windows["policies"])
+
+
 def test_the_raw_offline_client_answers_reads_and_refuses_writes_without_a_socket():
     """ASVS V1.14.1 · CWE-653 · CWE-441 · WSTG-INPV-19: OfflineRawClient resolves short endpoints from the table, refuses a snapshot write in words and opens no socket."""
     st = _snapshot_store({"/zia/api/v1/webDlpRules": [{"id": 1}]})
@@ -579,7 +589,7 @@ SAMPLE_MODELS = [
 
 def _rows(body: Any) -> List[Any]:
     if isinstance(body, dict):
-        for k in ("list", "records", "software", "trustedNetworkContracts"):
+        for k in ("list", "records", "software", "trustedNetworkContracts", "policies"):
             if isinstance(body.get(k), list):
                 return body[k]
         return [body]
