@@ -235,7 +235,7 @@ def store_path() -> str:
 
 
 def _empty() -> Dict[str, Any]:
-    return {"version": 1, "users": {}, "groups": {}, "grants": [], "scim": {}}
+    return {"version": 1, "users": {}, "groups": {}, "grants": [], "scim": {}, "sign_in": {}}
 
 
 def _read() -> Dict[str, Any]:
@@ -257,7 +257,7 @@ def _read() -> Dict[str, Any]:
             # A damaged store is no store: nobody signs in (fail closed),
             # and the file is left for the operator to inspect.
             return _empty()
-        for k, empty in (("users", {}), ("groups", {}), ("grants", []), ("scim", {})):
+        for k, empty in (("users", {}), ("groups", {}), ("grants", []), ("scim", {}), ("sign_in", {})):
             if not isinstance(data.get(k), type(empty)):
                 data[k] = empty
         _CACHE.update(key=key, data=data)
@@ -801,6 +801,15 @@ def _ip_allowed(ip: str) -> bool:
         return True
 
 
+def ip_blocked(ip: str) -> bool:
+    """This address has used up its sign-in attempts (checked without
+    counting one: for the SAML assertion consumer service, where only a
+    refused response counts, via _ip_allowed)."""
+    now = _clock()
+    with _LOGIN_LOCK:
+        return len([t for t in _IP_ATTEMPTS.get(ip or "?", []) if now - t < LOGIN_IP_WINDOW]) >= LOGIN_IP_ATTEMPTS
+
+
 class LoginRefused(Exception):
     def __init__(self, message: str, status: int, reason: str):
         super().__init__(message)
@@ -843,31 +852,104 @@ def authenticate(username: Any, password: Any, client_ip: str) -> Dict[str, Any]
     if not ok or not u.get("active"):
         if not u.get("password"):
             _burn_time(pw)
-        with _LOCK:
-            data = _read()
-            rec = data["users"].get(u["id"])
-            if isinstance(rec, dict):
-                rec["failed"] = int(rec.get("failed") or 0) + 1
-                locked = rec["failed"] >= lockout_attempts()
-                if locked:
-                    rec["locked_until"] = now + lockout_seconds()
-                    rec["failed"] = 0
-                _write(data)
-                if locked:
-                    _audit("team_account_locked", actor=u.get("username"), user=u.get("username"), minutes=lockout_seconds() // 60,
-                           client=client_ip)
+        record_failure(u["id"], client_ip)
         why = "account turned off" if not u.get("active") else "wrong password"
         if store_crypto.fips_mode() and str(u.get("password") or "").startswith("scrypt$"):
             why = "password saved before FIPS mode (scrypt): an administrator must set it again"
         raise LoginRefused(GENERIC_FAILURE, 401, why)
-    if int(u.get("failed") or 0) or u.get("locked_until"):
-        with _LOCK:
-            data = _read()
-            rec = data["users"].get(u["id"])
-            if isinstance(rec, dict):
-                rec.update(failed=0, locked_until=0)
-                _write(data)
+    if not second_factor_needed(u):
+        clear_failures(u["id"])     # with a second factor still to come, only the full sign-in resets the count
     return u
+
+
+def second_factor_needed(user: Dict[str, Any]) -> Optional[str]:
+    """After a right password: "passkey" when the account has a passkey (it
+    is asked for next), "enroll" when an administrator requires passkeys and
+    the account has none yet (one is added next), else None (signed in)."""
+    import team_passkeys
+    has = any(isinstance(k, dict) and k.get("id") for k in user.get("passkeys") or [])
+    if has and team_passkeys.configured():
+        return "passkey"
+    if require_passkey():
+        return "enroll"
+    return None
+
+
+def record_failure(uid: str, client_ip: str = "") -> bool:
+    """One failed sign-in for an account (a wrong password, or a passkey that
+    did not verify): after lockout_attempts() in a row the account is locked
+    for lockout_seconds(). Returns True when this failure locked it."""
+    now = _clock()
+    with _LOCK:
+        data = _read()
+        rec = data["users"].get(uid)
+        if not isinstance(rec, dict):
+            return False
+        rec["failed"] = int(rec.get("failed") or 0) + 1
+        locked = rec["failed"] >= lockout_attempts()
+        if locked:
+            rec["locked_until"] = now + lockout_seconds()
+            rec["failed"] = 0
+        _write(data)
+    if locked:
+        _audit("team_account_locked", actor=rec.get("username"), user=rec.get("username"), minutes=lockout_seconds() // 60,
+               client=client_ip)
+    return locked
+
+
+def clear_failures(uid: str) -> None:
+    """A complete sign-in resets the failure count."""
+    with _LOCK:
+        data = _read()
+        rec = data["users"].get(uid)
+        if isinstance(rec, dict) and (int(rec.get("failed") or 0) or rec.get("locked_until")):
+            rec.update(failed=0, locked_until=0)
+            _write(data)
+
+
+def is_locked(user: Optional[Dict[str, Any]]) -> bool:
+    return bool(user) and float(user.get("locked_until") or 0) > _clock()
+
+
+# ── sign-in settings (the Team server page's Sign-in section) ───────────
+def saml_settings() -> Dict[str, Any]:
+    """The SAML settings saved on the Team server page (sso_saml.save_settings
+    validates them first). Public values only: entity IDs, addresses, the
+    identity provider's certificate (PEM) and on/off."""
+    s = (_read().get("sign_in") or {}).get("saml")
+    return dict(s) if isinstance(s, dict) else {}
+
+
+def save_saml_settings(values: Dict[str, Any], *, by: str = "") -> None:
+    with _LOCK:
+        data = _read()
+        before = (data.get("sign_in") or {}).get("saml") or {}
+        data.setdefault("sign_in", {})["saml"] = dict(values, updated=_now_iso(), updated_by=by)
+        _write(data)
+    _audit("team_saml_settings_saved", actor=by or None, enabled=bool(values.get("enabled")),
+           was_enabled=bool(isinstance(before, dict) and before.get("enabled")), idp=str(values.get("idp_entity_id") or "")[:200])
+
+
+def require_passkey() -> bool:
+    """An administrator requires a passkey after the password for every
+    local (password) sign-in."""
+    return (_read().get("sign_in") or {}).get("require_passkey") is True
+
+
+def set_require_passkey(on: Any, *, by: str = "") -> bool:
+    if not isinstance(on, bool):
+        raise TeamError("require_passkey must be true or false.")
+    if on:
+        import team_passkeys
+        if not team_passkeys.enabled():
+            raise TeamError("Passkeys are not set up on this server (ZSCALER_TEAM_PASSKEY_ORIGIN), so they cannot be required: "
+                            "nobody could sign in with a password.", 409)
+    with _LOCK:
+        data = _read()
+        data.setdefault("sign_in", {})["require_passkey"] = on
+        _write(data)
+    _audit("team_require_passkey", actor=by or None, on=on)
+    return on
 
 
 def link_oidc(claims: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1647,14 +1729,30 @@ def bootstrap_needed() -> bool:
 def _cli(argv: Optional[List[str]] = None) -> int:
     """python team_server.py add-admin <user name>   (asks for the password twice)
     python team_server.py reset-password <user name>
-    python team_server.py unlock <user name>"""
+    python team_server.py unlock <user name>
+    python team_server.py remove-passkeys <user name>   (a lost device)
+    python team_server.py require-passkey off"""
     import getpass
     import sys
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 2 or args[0] not in ("add-admin", "reset-password", "unlock"):
+    if len(args) != 2 or args[0] not in ("add-admin", "reset-password", "unlock", "remove-passkeys", "require-passkey") \
+            or (args[0] == "require-passkey" and args[1] != "off"):
         print(_cli.__doc__)
         return 2
     cmd, name = args
+    if cmd == "require-passkey":
+        set_require_passkey(False, by="command line")
+        print("Passkeys are no longer required after the password.")
+        return 0
+    if cmd == "remove-passkeys":
+        u = find_user(name)
+        if not u:
+            print("No such account.")
+            return 1
+        import team_passkeys
+        n = team_passkeys.remove_all(u["id"], by="command line")
+        print(f"{n} passkey(s) of {u['username']} removed.")
+        return 0
     if cmd == "unlock":
         u = find_user(name)
         if not u:

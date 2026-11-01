@@ -42,6 +42,21 @@ async def _body(request: Request) -> Dict[str, Any]:
     return data
 
 
+async def _saml_form(request: Request) -> Optional[Dict[str, list]]:
+    """The SAML assertion consumer service's body: an HTML form post
+    (application/x-www-form-urlencoded, the HTTP-POST binding), not JSON.
+    Size-capped and parsed strictly as ASCII, at most ten fields. None:
+    too large; ValueError: not a URL-encoded form."""
+    from urllib.parse import parse_qs
+    raw = await request.body()
+    if len(raw) > sso_saml.MAX_RESPONSE_B64 + 8192:
+        return None
+    try:
+        return parse_qs(raw.decode("ascii"), keep_blank_values=True, strict_parsing=False, max_num_fields=10)
+    except UnicodeDecodeError:
+        raise ValueError("not ASCII") from None
+
+
 def _fail(e: team.TeamError):
     raise HTTPException(status_code=e.status, detail=str(e))
 
@@ -120,21 +135,62 @@ def register(app: FastAPI) -> None:
                          reason=e.reason, client=client)
             headers = {"Retry-After": "60"} if e.status in (423, 429) else None
             return JSONResponse({"detail": str(e)}, status_code=e.status, headers=headers)
+        step = team.second_factor_needed(u)
+        if step:
+            # The password was right, but no session yet: the account's
+            # passkey answers next (or, when passkeys are required, one is added).
+            try:
+                nxt = team_passkeys.second_factor_options(u) if step == "passkey" else team_passkeys.enrollment_options(u)
+            except team_passkeys.PasskeyError:
+                audit.record("team_login_failed", actor=security.NOT_SIGNED_IN, attempted_user=u.get("username"),
+                             reason="a passkey is required but passkeys are not set up", client=client)
+                return JSONResponse({"detail": "This server asks for a passkey after the password, but passkeys are not set up on it "
+                                               "(ZSCALER_TEAM_PASSKEY_ORIGIN). An administrator can set that again, or run "
+                                               "python team_server.py require-passkey off on the server."}, status_code=503)
+            audit.record("team_login_password_ok", actor=u.get("username"), next=step, client=client)
+            return JSONResponse({"ok": False, "next": "passkey" if step == "passkey" else "enroll_passkey", "user": u.get("username"),
+                                 "ceremony": nxt["ceremony"], "options": nxt["options"]}, headers={"Cache-Control": "no-store"})
         sid = team.start_session(u, via="password", previous_sid=request.cookies.get(security.SSO_SESSION_COOKIE))
         resp = JSONResponse({"ok": True, "user": u.get("username"), "role": u.get("role")})
         security.set_session_cookie(resp, request, sid)
         audit.record("team_login", actor=u.get("username"), via="password", role=u.get("role"), client=client)
         return resp
 
+    @app.post("/api/auth/team/passkey/enroll")
+    async def team_passkey_enroll(request: Request):
+        """Finish a password sign-in on a server that requires passkeys, for
+        an account that has none yet: the enrollment ceremony the password
+        step returned, the browser's new passkey and a name for it. The
+        passkey is verified and stored, then the account gets a fresh session.
+        Rate limited, counted towards the lockout when it fails, audited."""
+        _on()
+        data = await _body(request)
+        client = request.client.host if request.client else "?"
+        try:
+            u = team_passkeys.finish_enrollment(data.get("ceremony"), data.get("credential"), data.get("name"), client)
+        except team_passkeys.PasskeyError as e:
+            _pk_fail(e)
+        except team.LoginRefused as e:
+            audit.record("team_login_failed", actor=security.NOT_SIGNED_IN, via="passkey enrollment", reason=e.reason, client=client)
+            headers = {"Retry-After": "60"} if e.status in (423, 429) else None
+            return JSONResponse({"detail": str(e)}, status_code=e.status, headers=headers)
+        sid = team.start_session(u, via="password+passkey", previous_sid=request.cookies.get(security.SSO_SESSION_COOKIE))
+        resp = JSONResponse({"ok": True, "user": u.get("username"), "role": u.get("role")})
+        security.set_session_cookie(resp, request, sid)
+        audit.record("team_login", actor=u.get("username"), via="password+passkey", enrolled=True, role=u.get("role"), client=client)
+        return resp
+
     # ── SAML 2.0 sign-in (sso_saml.py; team servers only) ───────────────
     def _saml_on() -> None:
         _on()
         if not sso_saml.enabled():
-            raise HTTPException(status_code=404, detail="SAML sign-in is not enabled on this server (ZSCALER_SAML_ENABLED).")
+            raise HTTPException(status_code=404, detail="SAML sign-in is not turned on on this server.")
 
     def _saml_refused(request: Request, reason: str, status: int = 401) -> HTMLResponse:
         import html as _html
         client = request.client.host if request.client else "?"
+        if status in (400, 401, 413):
+            team._ip_allowed(client)   # a refused response counts towards this address's sign-in limit
         audit.record("team_login_failed", actor=security.NOT_SIGNED_IN, via="saml", reason=reason[:300], client=client)
         return HTMLResponse(f"<!doctype html><title>Sign-in refused</title><p>SAML sign-in refused: {_html.escape(reason)}</p>"
                             '<p><a href="/login">Back to the sign-in page</a></p>', status_code=status)
@@ -164,14 +220,14 @@ def register(app: FastAPI) -> None:
         POST comes from the identity provider's page, so it is the one
         change exempt from the Origin check; it signs nobody in by itself."""
         _saml_on()
-        from urllib.parse import parse_qs
-        raw = await request.body()
-        if len(raw) > sso_saml.MAX_RESPONSE_B64 + 8192:
-            return _saml_refused(request, "the SAML response is too large", 413)
+        if team.ip_blocked(request.client.host if request.client else "?"):
+            return _saml_refused(request, "too many refused sign-ins from this address: wait a few minutes and try again", 429)
         try:
-            form = parse_qs(raw.decode("ascii"), keep_blank_values=True, strict_parsing=False, max_num_fields=10)
-        except (UnicodeDecodeError, ValueError):
+            form = await _saml_form(request)
+        except ValueError:
             return _saml_refused(request, "the form is not URL-encoded text", 400)
+        if form is None:
+            return _saml_refused(request, "the SAML response is too large", 413)
         try:
             xml = sso_saml.decode_post((form.get("SAMLResponse") or [""])[0])
             claims = sso_saml.verify_response(xml, relay_state=(form.get("RelayState") or [""])[0])
@@ -201,6 +257,8 @@ def register(app: FastAPI) -> None:
         if member is None:
             return _saml_refused(request, f"{who} has no active account on this team server. Ask an administrator to add you, "
                                           "or to provision you through SCIM.", 403)
+        if team.is_locked(member):
+            return _saml_refused(request, team.LOCKED, 423)
         import time as _t
         until = claims.get("session_not_on_or_after")
         sid = team.start_session(member, via="saml", previous_sid=request.cookies.get(security.SSO_SESSION_COOKIE),
@@ -237,8 +295,11 @@ def register(app: FastAPI) -> None:
     @app.post("/api/auth/team/passkey/login")
     async def team_passkey_login(request: Request):
         """Sign in with a passkey: the challenge's ceremony id and the
-        browser's assertion. Rate limited per address, refused for a locked
-        or turned-off account, a new session id every time. Audited."""
+        browser's assertion. The same call finishes a password sign-in whose
+        account has a passkey (the ceremony is bound to that account). Rate
+        limited per address, refused for a locked or turned-off account, a
+        failed passkey counts towards the lockout, a new session id every
+        time. Audited."""
         _on()
         data = await _body(request)
         client = request.client.host if request.client else "?"
@@ -250,10 +311,11 @@ def register(app: FastAPI) -> None:
             audit.record("team_login_failed", actor=security.NOT_SIGNED_IN, via="passkey", reason=e.reason, client=client)
             headers = {"Retry-After": "60"} if e.status in (423, 429) else None
             return JSONResponse({"detail": str(e)}, status_code=e.status, headers=headers)
-        sid = team.start_session(u, via="passkey", previous_sid=request.cookies.get(security.SSO_SESSION_COOKIE))
+        via = u.pop("_via", "passkey")
+        sid = team.start_session(u, via=via, previous_sid=request.cookies.get(security.SSO_SESSION_COOKIE))
         resp = JSONResponse({"ok": True, "user": u.get("username"), "role": u.get("role")})
         security.set_session_cookie(resp, request, sid)
-        audit.record("team_login", actor=u.get("username"), via="passkey", role=u.get("role"), client=client)
+        audit.record("team_login", actor=u.get("username"), via=via, role=u.get("role"), client=client)
         return resp
 
     @app.post("/api/team/me/passkeys/options")
@@ -355,7 +417,45 @@ def register(app: FastAPI) -> None:
                 "settings": {"idle_minutes": team.idle_seconds() // 60, "session_hours": round(team.session_seconds() / 3600, 2),
                              "lockout_attempts": team.lockout_attempts(), "lockout_minutes": team.lockout_seconds() // 60,
                              "min_password": team.MIN_PASSWORD, "oidc": sso.sso_enabled(), "saml": sso_saml.enabled(),
-                             "passkeys": team_passkeys.status()}}
+                             "passkeys": team_passkeys.status()},
+                "sign_in": _sign_in_view()}
+
+    def _sign_in_view() -> Dict[str, Any]:
+        return {"saml": sso_saml.settings_view(), "require_passkey": team.require_passkey(), "passkeys": team_passkeys.status()}
+
+    @app.post("/api/team/sign-in")
+    async def team_sign_in_settings(request: Request):
+        """Change how people sign in (the Team server page's Sign-in section):
+        {"saml": {metadata | idp_entity_id, idp_sso_url, idp_cert_pem,
+        sp_entity_id, acs_url, email_attribute, groups_attribute,
+        allowed_groups, enabled}} and/or {"require_passkey": true|false}.
+        The metadata is an upload: size-capped, no DTDs or entities. Turning
+        SAML on needs every value; requiring passkeys needs passkeys set up.
+        Local team server settings only, never a tenant. Audited."""
+        _on()
+        data = await _body(request)
+        by = security.current_actor()
+        if "saml" in data:
+            if not isinstance(data["saml"], dict):
+                raise HTTPException(status_code=400, detail="saml must be an object.")
+            try:
+                sso_saml.save_settings(data["saml"], by=by)
+            except sso_saml.SamlError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+        if "require_passkey" in data:
+            try:
+                team.set_require_passkey(data["require_passkey"], by=by)
+            except team.TeamError as e:
+                _fail(e)
+        return _sign_in_view()
+
+    @app.post("/api/team/sign-in/test-saml")
+    async def team_sign_in_test_saml():
+        """Check the SAML settings without signing anybody in and without
+        calling the identity provider: every value present and safe, the
+        certificates readable and in date, and the request this server sends."""
+        _on()
+        return sso_saml.check_settings()
 
     @app.post("/api/team/users")
     async def team_user_create(request: Request):

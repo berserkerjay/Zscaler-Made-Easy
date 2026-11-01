@@ -119,7 +119,7 @@ def test_the_public_list_is_only_sign_in_liveness_and_page_shells():
     assert public_api == ["GET /api/auth/saml/finish", "GET /api/auth/saml/login", "GET /api/auth/saml/metadata",
                           "GET /api/auth/sso/callback", "GET /api/auth/sso/login", "GET /api/auth/status", "GET /api/ping",
                           "POST /api/auth/logout", "POST /api/auth/saml/acs", "POST /api/auth/team/login",
-                          "POST /api/auth/team/passkey/login", "POST /api/auth/team/passkey/options", "POST /api/auth/unlock"]
+                          "POST /api/auth/team/passkey/enroll", "POST /api/auth/team/passkey/login", "POST /api/auth/team/passkey/options", "POST /api/auth/unlock"]
     for k, v in team_routes.ROUTE_RULES.items():
         if v == "public":
             assert k.startswith("GET ") or k.split(" ", 1)[1].startswith("/api/auth/"), k

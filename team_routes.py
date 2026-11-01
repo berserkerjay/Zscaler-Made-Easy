@@ -52,6 +52,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/auth/team/login": PUBLIC,
     "POST /api/auth/team/passkey/options": PUBLIC,
     "POST /api/auth/team/passkey/login": PUBLIC,
+    "POST /api/auth/team/passkey/enroll": PUBLIC,   # needs the one-use ceremony a right password returned
     "GET /api/auth/saml/login": PUBLIC,
     "POST /api/auth/saml/acs": PUBLIC,      # the identity provider's POST; verified in full, signs nobody in by itself
     "GET /api/auth/saml/finish": PUBLIC,    # needs the sign-in's binding cookie
@@ -116,6 +117,8 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/team/users/{user_id}/unlock": ADMIN,
     "DELETE /api/team/users/{user_id}/passkeys": ADMIN,
     "POST /api/team/grants": ADMIN,
+    "POST /api/team/sign-in": ADMIN,
+    "POST /api/team/sign-in/test-saml": ADMIN,
     "POST /api/team/scim-token": ADMIN,
     "POST /api/team/store-key/rotate": ADMIN,
     "POST /api/team/share": SESSION,          # only the owner or an administrator may share (team_server.share)

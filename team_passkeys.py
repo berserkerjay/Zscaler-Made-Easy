@@ -20,6 +20,14 @@ never from the request's Host header. A passkey sign-in is refused for an
 account that is turned off or locked, rate limited per address like a
 password sign-in, and audited.
 
+A passkey is also the second factor after a password: a password sign-in
+of an account with a passkey gets no session until that account's passkey
+answers a challenge bound to it (second_factor_options); and when an
+administrator requires passkeys (team_server.require_passkey), a password
+sign-in of an account without one gets no session until it adds one
+(enrollment_options, finish_enrollment). A passkey that fails to verify
+counts towards the account's lockout like a wrong password.
+
 Each account keeps at most MAX_PASSKEYS passkeys in the team store (the
 credential ID, public key, counter, name and dates: no secret; the private
 key never leaves the authenticator). Registering one needs the account's
@@ -201,6 +209,12 @@ def _user_handle(uid: str) -> bytes:
 
 # ── registration (a signed-in person adds a passkey) ────────────────────
 def registration_options(user: Dict[str, Any], sid: Any) -> Dict[str, Any]:
+    opts, challenge = _registration(user)
+    _remember(_session_key(sid), {"challenge": challenge, "kind": "reg", "uid": user["id"]})
+    return opts
+
+
+def _registration(user: Dict[str, Any]):
     from webauthn import generate_registration_options, options_to_json
     from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, PublicKeyCredentialDescriptor,
                                           ResidentKeyRequirement, UserVerificationRequirement)
@@ -216,20 +230,23 @@ def registration_options(user: Dict[str, Any], sid: Any) -> Dict[str, Any]:
         exclude_credentials=[PublicKeyCredentialDescriptor(id=_unb64u(k["id"])) for k in user.get("passkeys") or []
                              if isinstance(k, dict) and k.get("id")],
         supported_pub_key_algs=_algs())
-    _remember(_session_key(sid), {"challenge": challenge, "kind": "reg", "uid": user["id"]})
-    return json.loads(options_to_json(opts))
+    return json.loads(options_to_json(opts)), challenge
 
 
 def register(user: Dict[str, Any], sid: Any, credential: Any, name: Any = "") -> Dict[str, Any]:
     """Verify a registration response for the ceremony this session started
     and store the passkey. Returns the stored passkey as the page shows it."""
-    from webauthn import verify_registration_response
-    from webauthn.helpers.exceptions import WebAuthnException
     _on()
     cred = _credential(credential)
     pending = _take(_session_key(sid))
     if not pending or pending.get("kind") != "reg" or pending.get("uid") != user.get("id"):
         raise PasskeyError("This passkey registration was not started here, or it expired: start again.")
+    return _store(user, pending, cred, name)
+
+
+def _store(user: Dict[str, Any], pending: Dict[str, Any], cred: Dict[str, Any], name: Any) -> Dict[str, Any]:
+    from webauthn import verify_registration_response
+    from webauthn.helpers.exceptions import WebAuthnException
     try:
         v = verify_registration_response(credential=cred, expected_challenge=pending["challenge"], expected_rp_id=rp_id(),
                                          expected_origin=origin(), require_user_presence=True, require_user_verification=True,
@@ -310,6 +327,57 @@ def authentication_options() -> Dict[str, Any]:
 GENERIC_FAILURE = "That passkey did not sign you in to an account on this server."
 
 
+def second_factor_options(user: Dict[str, Any]) -> Dict[str, Any]:
+    """After a right password: a one-use challenge that only this account's
+    passkeys may answer (authenticate checks the account, too)."""
+    from webauthn import generate_authentication_options, options_to_json
+    from webauthn.helpers.structs import PublicKeyCredentialDescriptor, UserVerificationRequirement
+    _on()
+    challenge = secrets.token_bytes(32)
+    opts = generate_authentication_options(
+        rp_id=rp_id(), challenge=challenge, timeout=TIMEOUT_MS, user_verification=UserVerificationRequirement.REQUIRED,
+        allow_credentials=[PublicKeyCredentialDescriptor(id=_unb64u(k["id"])) for k in user.get("passkeys") or []
+                           if isinstance(k, dict) and k.get("id")])
+    ceremony = secrets.token_urlsafe(24)
+    _remember("auth:" + ceremony, {"challenge": challenge, "kind": "mfa", "uid": user["id"]})
+    return {"ceremony": ceremony, "options": json.loads(options_to_json(opts))}
+
+
+def enrollment_options(user: Dict[str, Any]) -> Dict[str, Any]:
+    """After a right password, when passkeys are required and the account has
+    none: a one-use registration ceremony for this account only, finished by
+    finish_enrollment (which then signs it in)."""
+    opts, challenge = _registration(user)
+    ceremony = secrets.token_urlsafe(24)
+    _remember("enroll:" + ceremony, {"challenge": challenge, "kind": "enroll", "uid": user["id"]})
+    return {"ceremony": ceremony, "options": opts}
+
+
+def finish_enrollment(ceremony: Any, credential: Any, name: Any, client_ip: str) -> Dict[str, Any]:
+    """Store the passkey made for an enrollment ceremony and return the
+    account (the caller starts its session). Raises team.LoginRefused."""
+    _on()
+    if not team._ip_allowed(client_ip or "?"):
+        raise team.LoginRefused("Too many sign-in attempts from this address. Wait a few minutes and try again.", 429, "rate limited")
+    pending = _take("enroll:" + str(ceremony or "")[:100])
+    if not pending or pending.get("kind") != "enroll":
+        raise team.LoginRefused("This sign-in expired or was already used: sign in with your password again.", 401,
+                                "unknown or expired enrollment")
+    user = team.get_user(pending.get("uid"))
+    if not user or not user.get("active"):
+        raise team.LoginRefused(GENERIC_FAILURE, 401, "account turned off or gone")
+    if team.is_locked(user):
+        raise team.LoginRefused(team.LOCKED, 423, "account locked")
+    try:
+        cred = _credential(credential)
+        _store(user, pending, cred, name)
+    except PasskeyError as e:
+        team.record_failure(user["id"], client_ip)
+        raise team.LoginRefused(str(e), 401 if e.status == 400 else e.status, "passkey enrollment refused") from None
+    team.clear_failures(user["id"])
+    return team.get_user(user["id"]) or user
+
+
 def authenticate(ceremony: Any, credential: Any, client_ip: str) -> Dict[str, Any]:
     """Verify a sign-in assertion and return the account. Raises
     team.LoginRefused (401, 423 or 429) with a message that never says
@@ -324,7 +392,7 @@ def authenticate(ceremony: Any, credential: Any, client_ip: str) -> Dict[str, An
     except PasskeyError:
         raise team.LoginRefused(GENERIC_FAILURE, 401, "malformed passkey response") from None
     pending = _take("auth:" + str(ceremony or "")[:100])
-    if not pending or pending.get("kind") != "auth":
+    if not pending or pending.get("kind") not in ("auth", "mfa"):
         raise team.LoginRefused("This passkey sign-in expired or was already used: try again.", 401, "unknown or expired challenge")
     cid = str(cred.get("id") or cred.get("rawId") or "")[:1024]
     owner, key = None, None
@@ -337,6 +405,12 @@ def authenticate(ceremony: Any, credential: Any, client_ip: str) -> Dict[str, An
                 break
         if owner:
             break
+    if pending["kind"] == "mfa":
+        expected = team.get_user(pending.get("uid"))
+        if owner is None or owner.get("id") != pending.get("uid"):
+            if expected:   # the password was right: a wrong passkey counts towards this account's lockout
+                team.record_failure(expected["id"], client_ip)
+            raise team.LoginRefused(GENERIC_FAILURE, 401, "the passkey is not the account's that signed in with its password")
     if owner is None or key is None:
         raise team.LoginRefused(GENERIC_FAILURE, 401, "unknown passkey")
     handle = (cred.get("response") or {}).get("userHandle") if isinstance(cred.get("response"), dict) else None
@@ -351,6 +425,7 @@ def authenticate(ceremony: Any, credential: Any, client_ip: str) -> Dict[str, An
         reason = "signature counter did not increase (possible cloned authenticator)" if "sign count" in str(e) else f"verification failed ({type(e).__name__})"
         if "sign count" in str(e):
             team._audit("team_passkey_counter_alarm", actor=owner.get("username"), user=owner.get("username"), client=client_ip)
+        team.record_failure(owner["id"], client_ip)
         raise team.LoginRefused(GENERIC_FAILURE, 401, reason) from None
     if float(owner.get("locked_until") or 0) > team._clock():
         raise team.LoginRefused(team.LOCKED, 423, "account locked")
@@ -365,8 +440,9 @@ def authenticate(ceremony: Any, credential: Any, client_ip: str) -> Dict[str, An
                     k["sign_count"] = int(v.new_sign_count)
                     k["last_used"] = team._now_iso()
                     k["backed_up"] = bool(v.credential_backed_up)
+            rec.update(failed=0, locked_until=0)
             team._write(data)
-    return team.get_user(owner["id"]) or owner
+    return dict(team.get_user(owner["id"]) or owner, _via="password+passkey" if pending["kind"] == "mfa" else "passkey")
 
 
 def reset() -> None:

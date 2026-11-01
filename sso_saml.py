@@ -1,7 +1,13 @@
 """Team server SAML 2.0 sign-in (SP-initiated Web Browser SSO profile,
 HTTP-Redirect binding out, HTTP-POST binding back). OFF by default and
-for team servers only (team_server.py): unless ZSCALER_SAML_ENABLED is set
-nothing in this module runs.
+for team servers only (team_server.py): unless it is turned on nothing in
+this module runs.
+
+An administrator turns it on and sets it up on the Team server page
+(save_settings: the identity provider's metadata, or its entity ID,
+sign-on URL and signing certificate, kept in the team server's encrypted
+account store), or the server's environment sets it (then the page shows
+it read-only, and nothing is mixed):
 
     ZSCALER_SAML_ENABLED        "1" turns it on (team mode must be on too)
     ZSCALER_SAML_IDP_ENTITY_ID  the identity provider's entity ID (Issuer)
@@ -87,6 +93,18 @@ HANDOFF_TTL_SECONDS = 120
 MAX_PENDING = 1000
 MAX_SEEN_ASSERTIONS = 10000
 MAX_CERT_FILE = 64 * 1024
+MAX_METADATA = 256 * 1024             # an uploaded identity provider metadata file
+# Page-saved settings (team_server.saml_settings) by the variable each one stands for.
+STORE_KEYS = {"ZSCALER_SAML_IDP_ENTITY_ID": "idp_entity_id", "ZSCALER_SAML_IDP_SSO_URL": "idp_sso_url",
+              "ZSCALER_SAML_SP_ENTITY_ID": "sp_entity_id", "ZSCALER_SAML_ACS_URL": "acs_url",
+              "ZSCALER_SAML_EMAIL_ATTRIBUTE": "email_attribute", "ZSCALER_SAML_GROUPS_ATTRIBUTE": "groups_attribute",
+              "ZSCALER_SAML_ALLOWED_GROUPS": "allowed_groups"}
+SETTING_KEYS = tuple(STORE_KEYS.values()) + ("idp_cert_pem",)
+REQUIRED_SETTINGS = ("idp_entity_id", "idp_sso_url", "idp_cert_pem", "sp_entity_id", "acs_url")
+SETTING_LABELS = {"idp_entity_id": "The identity provider's entity ID", "idp_sso_url": "The identity provider's sign-on URL",
+                  "idp_cert_pem": "The identity provider's signing certificate", "sp_entity_id": "This server's entity ID",
+                  "acs_url": "This server's ACS URL", "email_attribute": "The email attribute",
+                  "groups_attribute": "The groups attribute", "allowed_groups": "The allowed groups"}
 # Public-key signatures with SHA-256 or stronger only: never SHA-1 or
 # SHA-224, never HMAC (a shared secret) and never DSA.
 SIGNATURE_METHODS = ("RSA_SHA256", "RSA_SHA384", "RSA_SHA512", "SHA256_RSA_MGF1", "SHA384_RSA_MGF1", "SHA512_RSA_MGF1",
@@ -107,23 +125,54 @@ class SamlError(ValueError):
     attacker-controlled XML beyond a short, escaped-by-the-caller reason)."""
 
 
-def enabled() -> bool:
+def from_environment() -> bool:
+    """SAML is set by the server's environment (ZSCALER_SAML_ENABLED): then
+    every value comes from the ZSCALER_SAML_* variables and the Team server
+    page shows them read-only."""
     return os.environ.get("ZSCALER_SAML_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _stored() -> Dict[str, Any]:
+    """The settings an administrator saved on the Team server page (kept in
+    the team server's encrypted account store). Empty off team mode."""
+    try:
+        import team_server
+        if not team_server.enabled():
+            return {}
+        return team_server.saml_settings()
+    except Exception:  # noqa: BLE001 - fail closed: no stored settings, SAML stays off
+        return {}
+
+
+def enabled() -> bool:
+    if from_environment():
+        return True
+    return _stored().get("enabled") is True
+
+
 def _env(name: str) -> str:
-    return os.environ.get(name, "").strip()
+    """One setting: from the environment when SAML is set there, else from
+    the Team server page's saved settings (never a mix of the two)."""
+    if from_environment():
+        return os.environ.get(name, "").strip()
+    v = _stored().get(STORE_KEYS.get(name, ""), "")
+    return v.strip() if isinstance(v, str) else ""
+
+
+def _team_errors() -> List[str]:
+    import team_server
+    return [] if team_server.enabled() else ["SAML sign-in is for team servers: set ZSCALER_TEAM_MODE=1 too"]
 
 
 def config_errors() -> List[str]:
     """What is missing or unsafe now that SAML is switched on. Empty: ready."""
     if not enabled():
         return []
+    if not from_environment():
+        return _team_errors() + settings_errors(_stored())
     import sso
-    import team_server
     errors = [f"{n} is not set" for n in REQUIRED_ENV if not _env(n)]
-    if not team_server.enabled():
-        errors.append("SAML sign-in is for team servers: set ZSCALER_TEAM_MODE=1 too")
+    errors += _team_errors()
     for n in ("ZSCALER_SAML_IDP_SSO_URL", "ZSCALER_SAML_ACS_URL"):
         if _env(n) and not sso.secure_url(_env(n)):
             errors.append(f"{n} must be https:// (plain http:// only to this computer)")
@@ -141,30 +190,217 @@ def require_configured() -> None:
     """Fail closed at start-up (and before each sign-in)."""
     errors = config_errors()
     if errors:
+        if not from_environment():
+            raise RuntimeError("SAML sign-in is turned on but not fully set up: " + "; ".join(errors) +
+                               ". Fix it on the Team server page, or turn SAML sign-in off there.")
         raise RuntimeError("ZSCALER_SAML_ENABLED is set but SAML sign-in is not fully configured: " + "; ".join(errors) +
                            ". Set every ZSCALER_SAML_* variable, or unset ZSCALER_SAML_ENABLED.")
 
 
-def idp_certs() -> List[Any]:
-    """The identity provider's signing certificates from the PEM file (one,
-    or two during a rotation). Refused: no certificate, more than four, or
-    a file over MAX_CERT_FILE."""
+def load_certs(raw: bytes, what: str) -> List[Any]:
+    """PEM certificates (one, or two during a rotation). Refused: none, more
+    than four, or more than MAX_CERT_FILE bytes."""
     from cryptography import x509
+    if len(raw) > MAX_CERT_FILE:
+        raise SamlError(f"{what} is too large to be a certificate file")
+    try:
+        certs = x509.load_pem_x509_certificates(raw)
+    except ValueError:
+        raise SamlError(f"{what} holds no PEM certificate") from None
+    if not certs or len(certs) > 4:
+        raise SamlError(f"{what} must hold one certificate (two during a rotation)")
+    return certs
+
+
+def idp_certs() -> List[Any]:
+    """The identity provider's signing certificates: the PEM file named by
+    ZSCALER_SAML_IDP_CERT_FILE, or the PEM saved on the Team server page."""
+    if not from_environment():
+        pem = _stored().get("idp_cert_pem")
+        return load_certs(pem.encode("utf-8") if isinstance(pem, str) else b"", "The signing certificate")
     path = _env("ZSCALER_SAML_IDP_CERT_FILE")
     try:
         with open(path, "rb") as f:
             raw = f.read(MAX_CERT_FILE + 1)
     except OSError:
         raise SamlError("ZSCALER_SAML_IDP_CERT_FILE cannot be read") from None
-    if len(raw) > MAX_CERT_FILE:
-        raise SamlError("ZSCALER_SAML_IDP_CERT_FILE is too large to be a certificate file")
+    return load_certs(raw, "ZSCALER_SAML_IDP_CERT_FILE")
+
+
+# ── settings saved on the Team server page ──────────────────────────────
+def settings_errors(s: Dict[str, Any], *, partial: bool = False) -> List[str]:
+    """What is missing or unsafe in page-saved settings. `partial`: only
+    check the values that are filled in (saving a draft while SAML is off)."""
+    import sso
+    errors = []
+    for key in REQUIRED_SETTINGS:
+        v = s.get(key)
+        if not partial and not (isinstance(v, str) and v.strip()):
+            errors.append(f"{SETTING_LABELS[key]} is missing")
+    for key in ("idp_sso_url", "acs_url"):
+        v = s.get(key)
+        if isinstance(v, str) and v.strip() and not sso.secure_url(v):
+            errors.append(f"{SETTING_LABELS[key]} must be https:// (plain http:// only to this computer)")
+    acs = s.get("acs_url")
+    if isinstance(acs, str) and acs.strip() and not acs.strip().split("?", 1)[0].endswith(ACS_PATH):
+        errors.append(f"{SETTING_LABELS['acs_url']} must end with {ACS_PATH}")
+    pem = s.get("idp_cert_pem")
+    if isinstance(pem, str) and pem.strip():
+        try:
+            load_certs(pem.encode("utf-8"), "The signing certificate")
+        except SamlError as e:
+            errors.append(str(e))
+    return errors
+
+
+def parse_idp_metadata(raw: Any) -> Dict[str, str]:
+    """The identity provider's entity ID, HTTP-Redirect sign-on URL and
+    signing certificates from its SAML metadata (an upload: untrusted).
+    Refused: over MAX_METADATA, a DTD or entity (XXE, entity expansion),
+    not well-formed, not exactly one identity provider, no HTTP-Redirect
+    sign-on service, no signing certificate, more than four. The metadata's
+    own signature is not checked: the administrator downloads it from their
+    identity provider's console and uploads it here themselves."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+    data = raw.encode("utf-8") if isinstance(raw, str) else raw
+    if not isinstance(data, (bytes, bytearray)) or not data:
+        raise SamlError("Send the identity provider's metadata as XML text.")
+    if len(data) > MAX_METADATA:
+        raise SamlError(f"The metadata is larger than {MAX_METADATA // 1024} KB: refused.")
+    lowered = bytes(data).lower()
+    if b"<!doctype" in lowered or b"<!entity" in lowered:
+        raise SamlError("The metadata carries a DTD or an entity declaration: refused.")
     try:
-        certs = x509.load_pem_x509_certificates(raw)
-    except ValueError:
-        raise SamlError("ZSCALER_SAML_IDP_CERT_FILE holds no PEM certificate") from None
-    if not certs or len(certs) > 4:
-        raise SamlError("ZSCALER_SAML_IDP_CERT_FILE must hold one certificate (two during a rotation)")
-    return certs
+        root = etree.fromstring(bytes(data), parser=_parser())
+    except etree.XMLSyntaxError:
+        raise SamlError("The metadata is not well-formed XML.") from None
+    docinfo = root.getroottree().docinfo
+    if docinfo.internalDTD is not None or docinfo.externalDTD is not None or any(True for _ in root.iter(etree.Entity)):
+        raise SamlError("The metadata carries a DTD or an entity: refused.")
+    md = "{%s}" % NS["md"]
+    if root.tag == md + "EntityDescriptor":
+        entities = [root]
+    elif root.tag == md + "EntitiesDescriptor":
+        entities = list(root.iter(md + "EntityDescriptor"))
+    else:
+        raise SamlError("This is not SAML metadata (no md:EntityDescriptor).")
+    idps = [(e, d) for e in entities for d in e.findall(md + "IDPSSODescriptor")]
+    if len(idps) != 1:
+        raise SamlError("The metadata must describe exactly one identity provider (one IDPSSODescriptor).")
+    entity, idp = idps[0]
+    entity_id = str(entity.get("entityID") or "").strip()
+    if not entity_id or len(entity_id) > MAX_TEXT:
+        raise SamlError("The metadata has no usable entityID.")
+    sso_url = ""
+    for svc in idp.findall(md + "SingleSignOnService"):
+        if svc.get("Binding") == BINDING_REDIRECT:
+            sso_url = str(svc.get("Location") or "").strip()
+            break
+    if not sso_url or len(sso_url) > MAX_TEXT:
+        raise SamlError("The metadata has no single sign-on service with the HTTP-Redirect binding.")
+    pems = []
+    for kd in idp.findall(md + "KeyDescriptor"):
+        if kd.get("use") not in (None, "signing"):
+            continue
+        for c in kd.iterfind(".//ds:X509Certificate", namespaces=NS):
+            b64 = "".join(str(c.text or "").split())
+            if len(b64) > MAX_CERT_FILE:
+                raise SamlError("A certificate in the metadata is too large.")
+            try:
+                cert = x509.load_der_x509_certificate(base64.b64decode(b64, validate=True))
+            except (ValueError, TypeError):
+                raise SamlError("A signing certificate in the metadata cannot be read.") from None
+            pem = cert.public_bytes(serialization.Encoding.PEM).decode("ascii")
+            if pem not in pems:
+                pems.append(pem)
+    if not pems:
+        raise SamlError("The metadata names no signing certificate.")
+    if len(pems) > 4:
+        raise SamlError("The metadata names more than four signing certificates.")
+    return {"idp_entity_id": entity_id, "idp_sso_url": sso_url, "idp_cert_pem": "".join(pems)}
+
+
+def cert_summary(certs: List[Any]) -> List[Dict[str, Any]]:
+    """What the page shows about each signing certificate (public facts)."""
+    from cryptography.hazmat.primitives import hashes
+    out = []
+    now = _clock()
+    for c in certs:
+        try:
+            until = c.not_valid_after_utc
+        except AttributeError:   # older cryptography
+            until = c.not_valid_after.replace(tzinfo=timezone.utc)
+        out.append({"subject": c.subject.rfc4514_string()[:MAX_TEXT], "not_after": until.strftime("%Y-%m-%d"),
+                    "expired": until.timestamp() <= now, "sha256": c.fingerprint(hashes.SHA256()).hex(":").upper()})
+    return out
+
+
+def settings_view() -> Dict[str, Any]:
+    """The SAML settings as the Team server page shows them: never more than
+    public values (entity IDs, addresses, certificate facts)."""
+    env = from_environment()
+    stored = _stored()
+    vals = {k: (_env(n) if env else (stored.get(k) if isinstance(stored.get(k), str) else "")) for n, k in STORE_KEYS.items()}
+    try:
+        certs = cert_summary(idp_certs()) if (_env("ZSCALER_SAML_IDP_CERT_FILE") if env else stored.get("idp_cert_pem")) else []
+    except SamlError:
+        certs = []
+    return {"source": "environment" if env else "page", "enabled": enabled(), **{k: vals.get(k, "") for k in STORE_KEYS.values()},
+            "certificates": certs, "errors": config_errors() if env else _team_errors() + settings_errors(stored),
+            "metadata_path": METADATA_PATH, "acs_path": ACS_PATH, "login_path": LOGIN_PATH}
+
+
+def save_settings(body: Dict[str, Any], *, by: str = "") -> Dict[str, Any]:
+    """Save the Team server page's SAML settings: the identity provider's
+    metadata (parsed: see parse_idp_metadata), or its entity ID, sign-on URL
+    and signing certificate, plus this server's entity ID and ACS URL; and
+    on or off. A value that is filled in must be valid; turning SAML on
+    needs every value. Refused when SAML is set by the environment."""
+    import team_server
+    if from_environment():
+        raise SamlError("SAML sign-in is set by this server's environment (ZSCALER_SAML_ENABLED): change it there.")
+    new = dict(team_server.saml_settings())
+    md = body.get("metadata")
+    if md not in (None, ""):
+        if not isinstance(md, str):
+            raise SamlError("Send the identity provider's metadata as XML text.")
+        new.update(parse_idp_metadata(md))
+    for key in SETTING_KEYS:
+        if key not in body or body[key] is None:
+            continue
+        v = body[key]
+        if not isinstance(v, str):
+            raise SamlError(f"{SETTING_LABELS.get(key, key)} must be text.")
+        if len(v) > (MAX_CERT_FILE if key == "idp_cert_pem" else MAX_TEXT):
+            raise SamlError(f"{SETTING_LABELS.get(key, key)} is too long.")
+        new[key] = v.strip()
+    if "enabled" in body:
+        if not isinstance(body["enabled"], bool):
+            raise SamlError("enabled must be true or false.")
+        new["enabled"] = body["enabled"]
+    errors = settings_errors(new, partial=not new.get("enabled"))
+    if errors:
+        what = "SAML sign-in cannot be turned on yet: " if new.get("enabled") else "Not saved: "
+        raise SamlError(what + "; ".join(errors) + ".")
+    team_server.save_saml_settings({k: new[k] for k in SETTING_KEYS + ("enabled",) if k in new}, by=by)
+    return settings_view()
+
+
+def check_settings() -> Dict[str, Any]:
+    """Check the settings without signing anybody in and without calling the
+    identity provider (no outbound call): every value present and safe, the
+    certificates readable and in date, and the request this server would
+    send. Returns {ok, problems, certificates, request}."""
+    view = settings_view()
+    problems = list(view["errors"])
+    certs = view["certificates"]
+    problems += [f"The signing certificate {c['sha256'][:23]}… expired on {c['not_after']}" for c in certs if c["expired"]]
+    request = None
+    if not problems:
+        request = {"destination": _env("ZSCALER_SAML_IDP_SSO_URL"), "issuer": _env("ZSCALER_SAML_SP_ENTITY_ID"),
+                   "acs_url": _env("ZSCALER_SAML_ACS_URL"), "binding": "HTTP-Redirect out, HTTP-POST back"}
+    return {"ok": not problems, "problems": problems, "certificates": certs, "request": request, "enabled": view["enabled"]}
 
 
 # ── the request (SP → IdP) ──────────────────────────────────────────────

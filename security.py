@@ -761,6 +761,7 @@ _UI_AUTH_EXEMPT_PREFIXES = ("/static/", "/report/")
 # Team mode adds its own sign-in page and call, and the SCIM endpoint (which
 # checks its own bearer token in team_server.TeamAccessMiddleware).
 _TEAM_EXEMPT_PATHS = {"/login", "/api/auth/team/login", "/api/auth/team/passkey/options", "/api/auth/team/passkey/login",
+                      "/api/auth/team/passkey/enroll",
                       "/api/auth/saml/login", "/api/auth/saml/acs", "/api/auth/saml/finish", "/api/auth/saml/metadata"}
 # The SAML assertion consumer service receives the identity provider's
 # cross-site form POST (HTTP-POST binding), so it carries the identity

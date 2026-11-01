@@ -723,7 +723,8 @@ what you get, what to do next.
   scripted fix.
 - **Team server** (`/report/team`; optional, off unless `ZSCALER_TEAM_MODE=1`)
   — several people on one server. Each signs in with their own account
-  (`/login`, or SSO matched to the account) and has a role (viewer,
+  (`/login`: a password, then their passkey if they have one; SAML 2.0 or
+  OpenID Connect SSO matched to the account; or a passkey alone) and has a role (viewer,
   operator, approver, administrator) and access per tenant profile (read,
   plan, apply, approve) that an administrator gives on this page; nothing is
   allowed until it is given, every route has an access rule
@@ -735,6 +736,9 @@ what you get, what to do next.
   through Cloudflare DNS) and will not serve other computers without it.
   POV templates and saved plans belong to who saved them and are shared from
   this page. On a team server the change queue's four-eyes is always on.
+  Its Sign-in section sets SAML sign-in up from the identity provider's
+  metadata (or typed values), tests it locally and turns it on or off, and
+  can require a passkey after the password.
   Optional in any mode: encryption of the app's stores on disk, with key
   rotation, and FIPS mode. See INSTALL.md and SECURITY.md, "Team server".
 - **Change queue** — the team's shared queue of changes prepared but not
