@@ -1,6 +1,6 @@
 # Where am I?
 
-**Zscaler Made Easy** (repository `berserkerjay/Zscaler-Made-Easy`, first named DLP-Check). A local FastAPI app (`dlp_api_server.py`) with a browser UI (`static/`) that **assesses, explains, builds, changes, backs up and audits** a customer's Zscaler tenant: ZIA, ZPA, Client Connector, ZDX, ZIdentity, Cloud & Branch Connector, AI Guard and the smaller Zscaler products. It runs on the admin's own machine (or in its Docker container, `zscaler-made-easy`, on port 8001), single-user by default; an optional team server mode adds accounts and per-tenant access.
+**Zscaler Made Easy** (repository `berserkerjay/Zscaler-Made-Easy`). A local FastAPI app (`dlp_api_server.py`) with a browser UI (`static/`) that **assesses, explains, builds, changes, backs up and audits** a customer's Zscaler tenant: ZIA, ZPA, Client Connector, ZDX, ZIdentity, Cloud & Branch Connector, AI Guard and the smaller Zscaler products. It runs on the admin's own machine (or in its Docker container, `zscaler-made-easy`, on port 8001), single-user by default; an optional team server mode adds accounts and per-tenant access.
 
 This folder is the **agent workspace**: plain-text instructions that route an agent to exactly the context one step of work needs. You are an AI agent doing one stage of one task. Read `CONTEXT.md` next.
 
