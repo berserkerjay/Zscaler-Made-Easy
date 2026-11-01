@@ -173,7 +173,7 @@ def parse(data: Any) -> Dict[str, List[str]]:
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue
-        if any(ord(c) < 32 or ord(c) == 127 for c in line) or "‮" in line:
+        if any(ord(c) < 32 or ord(c) == 127 for c in line) or "\u202e" in line:
             raise ListError(f"Line {n} holds control characters.")
         for tok in re.split(r"[\s,;]+", line):
             if not tok:
