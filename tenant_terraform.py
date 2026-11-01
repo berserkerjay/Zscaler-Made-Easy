@@ -11,7 +11,8 @@ writes one Terraform root module per product for the official providers:
     zscaler/zpa  ~> 4.4     ZPA (31 resource types)
     zscaler/ztc  ~> 0.2     Cloud & Branch Connector (10 resource types)
     zscaler/zcc  0.1.2-beta.3  Client Connector (beta provider: trusted networks, forwarding
-                            profiles, fail-open policy, device cleanup, web privacy)
+                            profiles, fail-open policy, device cleanup, web privacy,
+                            notification templates, ZIA posture profiles)
 
 The Client Connector provider (registry.terraform.io/providers/zscaler/zcc,
 github.com/zscaler/terraform-provider-zcc) has published pre-releases only
@@ -88,7 +89,19 @@ another branch) returns, with the same type keys where the two overlap
 ("zia.firewall_rules", "zpa.segment_groups", ...), so the backup's reader
 can feed generate() unchanged once both are merged.
 
+Client Connector notification templates and ZIA posture profiles have no
+call in zscaler-sdk-python 1.11.3, so they are read raw (GET only) through
+the signed-in client's own request executor, at the paths the zcc provider
+0.1.2-beta.3 manages them with (ZCC_RAW_PATHS; the provider's resource docs
+and schema).
+
 Assumed, not verifiable without a tenant:
+  - GET /zcc/papi/public/v2/notification-templates and
+    /zcc/papi/public/v2/zia-posture-profiles answer every object at once,
+    as a JSON array (or an envelope holding one), without paging, in the
+    camelCase the provider's docs name (isDefaultTemplate,
+    ziaNotificationTemplate, highTrustCriteria {cs: [{cn: [...]}]}, a
+    posture profile's platform as 1..5);
   - the ZPA policy rules the SDK reads in the v1 form (operands with lhs /
     rhs) map to the v2 resources' form by putting an operand whose lhs is
     "id" into `values` and every other operand into `entry_values`
@@ -264,6 +277,9 @@ class _Raw:
 # The schema tokens (tenant_terraform_schema)
 # ---------------------------------------------------------------------------
 
+_NESTED = ("blk", "objs", "obj")   # nested blocks; one nested object attribute (`x = {..}`); a list of them (`x = [{..}]`)
+
+
 def parse_schema(text: str) -> List[Tuple[str, str, bool, Any]]:
     """`name:kind` tokens -> [(name, kind, required, sub-schema or None)]."""
     out: List[Tuple[str, str, bool, Any]] = []
@@ -276,8 +292,9 @@ def parse_schema(text: str) -> List[Tuple[str, str, bool, Any]]:
         j = text.index(":", i)
         name = text[i:j]
         k = j + 1
-        if text.startswith("blk(", k):
-            depth, m = 0, k + 3
+        nested = next((w for w in _NESTED if text.startswith(w + "(", k)), None)
+        if nested:
+            depth, m = 0, k + len(nested)
             while True:
                 if text[m] == "(":
                     depth += 1
@@ -286,10 +303,10 @@ def parse_schema(text: str) -> List[Tuple[str, str, bool, Any]]:
                     if depth == 0:
                         break
                 m += 1
-            sub = parse_schema(text[k + 4:m])
+            sub = parse_schema(text[k + len(nested) + 1:m])
             k = m + 1
             req = k < n and text[k] == "!"
-            out.append((name, "blk", req, sub))
+            out.append((name, nested, req, sub))
             i = k + (1 if req else 0)
             continue
         m = k
@@ -402,12 +419,21 @@ def _t(key: str, resource: str, label: str, area: str, svc: str, method: Optiona
        args: Tuple[Any, ...] = (), singleton: bool = False, import_id: Optional[str] = None, name: str = "name",
        keep: Optional[Callable[[Dict[str, Any]], bool]] = None, per_type: bool = False, zpa_paged: bool = False,
        personal: bool = False, hook: Optional[str] = None, import_fmt: str = "{id}", secrets: Optional[Dict[str, str]] = None,
-       keep_why: str = "", extra: Optional[List[Tuple[str, Tuple[Any, ...]]]] = None, bound: bool = False) -> Dict[str, Any]:
+       keep_why: str = "", extra: Optional[List[Tuple[str, Tuple[Any, ...]]]] = None, bound: bool = False,
+       raw: Optional[str] = None) -> Dict[str, Any]:
     product = key.split(".", 1)[0]
     return {"key": key, "product": product, "resource": resource, "label": label, "area": area, "svc": svc, "method": method,
             "gate": gate, "args": args, "singleton": singleton, "import_id": import_id, "name": name, "keep": keep,
             "per_type": per_type, "zpa_paged": zpa_paged, "personal": personal, "hook": hook, "import_fmt": import_fmt,
-            "secrets": secrets or {}, "keep_why": keep_why, "extra": extra or [], "bound": bound}
+            "secrets": secrets or {}, "keep_why": keep_why, "extra": extra or [], "bound": bound, "raw": raw}
+
+
+# Client Connector reads the SDK has no call for: the paths the zcc provider
+# 0.1.2-beta.3 manages these resources at (its resource docs and schema
+# descriptions). assumed: answered whole (no paging), as a JSON array or an
+# envelope holding one.
+ZCC_RAW_PATHS = {"zcc.notification_templates": "/zcc/papi/public/v2/notification-templates",
+                 "zcc.zia_posture": "/zcc/papi/public/v2/zia-posture-profiles"}
 
 
 _P = ("scope", "zia_extras")
@@ -635,6 +661,11 @@ TYPES: List[Dict[str, Any]] = [
        gate=("scope", "zcc"), singleton=True, import_id="device_cleanup", hook="zcc_flags"),
     _t("zcc.web_privacy", "zcc_web_privacy", "Web privacy (end-user and device data collection)", "client_connector", "web_privacy",
        "get_web_privacy", gate=("scope", "zcc"), singleton=True, import_id="web_privacy", hook="zcc_flags"),
+    # Read raw (no SDK call): ZCC_RAW_PATHS. Imported by numeric id (the provider's ImportState takes an id or a name).
+    _t("zcc.notification_templates", "zcc_notification_template", "Notification templates", "client_connector", "", None,
+       gate=("scope", "zcc"), raw=ZCC_RAW_PATHS["zcc.notification_templates"]),
+    _t("zcc.zia_posture", "zcc_zia_posture", "ZIA posture profiles", "client_connector", "", None,
+       gate=("scope", "zcc"), hook="zcc_posture", raw=ZCC_RAW_PATHS["zcc.zia_posture"]),
 ]
 BY_KEY: Dict[str, Dict[str, Any]] = {t["key"]: t for t in TYPES}
 
@@ -654,8 +685,6 @@ NOT_COVERED: List[Tuple[str, str, str]] = [
      "does not have (CommonIDNameExternalID), so every read fails"),
     ("ztc", "Cloud & Branch Connector groups, locations and DNS / log forwarding rules",
      "zscaler-sdk-python 1.11.3 cannot read them as the provider writes them"),
-    ("zcc", "Notification templates and ZIA posture profiles (zcc_notification_template, zcc_zia_posture)",
-     "zscaler-sdk-python 1.11.3 has no call that reads them, so the export cannot see them; add them by hand"),
 ]
 
 
@@ -950,6 +979,48 @@ def _list_all(fn: Callable[..., Any], args: Tuple[Any, ...], q: Dict[str, Any], 
     return rows, None
 
 
+_RAW_ENVELOPES = ("list", "records", "items", "content", "data", "notificationTemplates", "ziaPostureProfiles", "profiles", "templates")
+
+
+def _raw_list(client: Any, path: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Every object at one fixed Client Connector path, GET only, through
+    the signed-in client's own request executor (the SDK's signing and
+    gateway routing; the offline client answers it from its store).
+    (rows, error). Paced like every Client Connector read."""
+    import zia_rate
+    svc = None
+    try:
+        svc = getattr(client, "zcc", None)
+    except Exception:  # noqa: BLE001 - a client without Client Connector
+        svc = None
+    ex = getattr(svc, "_request_executor", None) if svc is not None else None
+    if ex is None:
+        ex = getattr(client, "_request_executor", None)
+    if ex is None:
+        return [], "this sign-in has no Client Connector API (it needs a OneAPI API client)"
+    zia_rate.wait("GET", "", what="Client Connector read")
+    try:
+        made = ex.create_request("GET", path, {}, {}, params={})
+        req, err = (made[0], made[1]) if isinstance(made, tuple) and len(made) >= 2 else (made, None)
+        if err:
+            return [], one_line(str(err))[:200]
+        got = ex.execute(req)
+        resp, err = (got[0], got[1]) if isinstance(got, tuple) and len(got) >= 2 else (got, None)
+        if err:
+            return [], one_line(str(err))[:200]
+        data = resp.get_body() if resp is not None and hasattr(resp, "get_body") else resp
+        if isinstance(data, (bytes, str)):
+            data = json.loads(data) if data else []
+    except Exception as e:  # noqa: BLE001 - one failed read is reported, never raised
+        return [], f"{type(e).__name__}: {one_line(str(e))[:180]}"
+    if isinstance(data, dict):
+        inner = next((data[k] for k in _RAW_ENVELOPES if isinstance(data.get(k), list)), None)
+        data = inner if inner is not None else ([data] if "id" in data else [])
+    if not isinstance(data, list):
+        return [], "the answer was not a list"
+    return [dict(x) for x in data if isinstance(x, dict)], None
+
+
 def _nx_data(ret: Any) -> Any:
     from dlp_importer import _nx
     return _nx(ret)[0]
@@ -959,6 +1030,8 @@ def read_type(client: Any, t: Dict[str, Any], *, cancel: Any = None, microtenant
     """Every object of one type: (rows, error). Read-only."""
     import pack_export
     import pack_channels as pc
+    if t.get("raw"):
+        return _raw_list(client, t["raw"])
     svc, err = _service(client, t)
     if err:
         return [], err
@@ -1167,7 +1240,22 @@ def _hook_zcc_flags(row: Dict[str, Any], ctx: "_Ctx") -> Dict[str, Any]:
     return out
 
 
-HOOKS = {"zcc_flags": _hook_zcc_flags, "zcc_trusted_network": _hook_zcc_trusted_network, "engine_expression": _hook_engine_expression, "policy_v2": _hook_policy_v2, "provisioning_key": _hook_provisioning_key,
+# The zcc provider's platform names for the API's numeric platform (its helpers.PlatformIntToName).
+_ZCC_PLATFORMS = {"1": "ios", "2": "android", "3": "windows", "4": "macos", "5": "linux"}
+
+
+def _hook_zcc_posture(row: Dict[str, Any], ctx: "_Ctx") -> Dict[str, Any]:
+    """A ZIA posture profile as the zcc provider takes it: the platform by
+    name (ios, android, windows, macos, linux) where the API answers 1..5; a
+    platform this app does not know is left out (the profile is then listed
+    as not exported, never written with a guess)."""
+    out = dict(row)
+    p = str(row.get("platform") if row.get("platform") is not None else "").strip().lower()
+    out["platform"] = _ZCC_PLATFORMS.get(p, p if p in _ZCC_PLATFORMS.values() else None)
+    return out
+
+
+HOOKS = {"zcc_flags": _hook_zcc_flags, "zcc_posture": _hook_zcc_posture, "zcc_trusted_network": _hook_zcc_trusted_network, "engine_expression": _hook_engine_expression, "policy_v2": _hook_policy_v2, "provisioning_key": _hook_provisioning_key,
          "lss_name": _hook_lss_name, "pra_console": _hook_pra_console, "security_lists": _hook_security_lists}
 
 
@@ -1428,6 +1516,33 @@ def _render_attrs(schema: List[Tuple[str, str, bool, Any]], row: Dict[str, Any],
             for x in items:
                 if isinstance(x, dict) and x.get("external_id") not in (None, "") and x.get("name") not in (None, ""):
                     lines.append(f"{pad}{attr} {{\n{pad}  external_id = {hcl_str(x['external_id'])}\n{pad}  name = {hcl_str(x['name'])}\n{pad}}}")
+        elif kind == "obj":   # one nested object attribute: `name = { .. }`
+            if not isinstance(v, dict):
+                ctx.drop(t["resource"], attr)
+                continue
+            inner, miss = _render_attrs(sub, v, ctx, t, label, indent + 1, nested=True)
+            if miss:
+                ctx.drop(t["resource"], attr)
+                if req:
+                    missing.append(attr)
+                continue
+            if inner:
+                lines.append(f"{pad}{attr} = {{\n" + "\n".join(inner) + f"\n{pad}}}")
+        elif kind == "objs":   # a list of nested objects: `name = [{ .. }, ..]`
+            items = v if isinstance(v, list) else [v]
+            elems = []
+            for x in items:
+                if not isinstance(x, dict):
+                    continue
+                inner, miss = _render_attrs(sub, x, ctx, t, label, indent + 2, nested=True)
+                if miss:
+                    ctx.drop(t["resource"], attr)
+                    continue
+                elems.append(f"{pad}  {{\n" + "\n".join(inner) + f"\n{pad}  }},")
+            if elems:
+                lines.append(f"{pad}{attr} = [\n" + "\n".join(elems) + f"\n{pad}]")
+            elif req:
+                missing.append(attr)
         elif kind == "blk":
             items = v if isinstance(v, list) else [v]
             n_out = 0

@@ -71,6 +71,10 @@ def _value(attr: str, kind: str, sub, n: int):
     if kind == "blk":
         obj = {_camel(a): _value(a, k, s, n) for a, k, _r, s in sub}
         return obj if attr in SINGLE else [obj]
+    if kind == "obj":
+        return {_camel(a): _value(a, k, s, n) for a, k, _r, s in sub}
+    if kind == "objs":
+        return [{_camel(a): _value(a, k, s, n) for a, k, _r, s in sub}]
     raise AssertionError(kind)
 
 
@@ -110,6 +114,8 @@ def fixture_row(t, n: int = 1):
                                                              {"objectType": "SAML", "lhs": "12", "rhs": "Finance"}]}]
     if t["key"] == "zia.dlp_engines":
         row["engineExpression"] = "((D61.S > 1))"
+    if t["key"] == "zcc.zia_posture":
+        row["platform"] = 4   # the API's macOS
     # secrets the tenant would hold: never to be written
     row.update({"preSharedKey": CANARIES[0], "password": CANARIES[1], "passphrase": CANARIES[2], "privateKey": CANARIES[3],
                 "authenticationToken": CANARIES[4], "provisioningKey": CANARIES[5], "apiKey": CANARIES[6]})
@@ -132,10 +138,11 @@ def store_for(types, rows_per_type=1, extra=None):
             if t["key"] == "zcc.trusted_networks":
                 return {"trustedNetworkContracts": items}
             return items
-        body = rows[0] if t["singleton"] and not t["method"].startswith("list") else wrap(rows)
+        one = t["singleton"] and not (t["method"] or "list").startswith("list")
+        body = rows[0] if one else wrap(rows)
         responses[paths[0]] = {"status": 200, "body": body}
         for extra_path in paths[1:]:   # the other lists of the same type (other rule types, the other key type) are empty
-            responses.setdefault(extra_path, {"status": 200, "body": body if t["singleton"] and not t["method"].startswith("list") else wrap([])})
+            responses.setdefault(extra_path, {"status": 200, "body": body if one else wrap([])})
     responses.update(extra or {})
     st = ot.OfflineStore("snap-" + "1" * 16, "snapshot", responses, {"tenant_label": "Fixture tenant"})
     return ot.OfflineSdkClient(st, ot.creds_for(st))

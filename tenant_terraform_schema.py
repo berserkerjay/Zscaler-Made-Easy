@@ -13,6 +13,10 @@ Each entry is the provider's resource name and its configurable arguments
   extid              one block per ZPA segment: `{ external_id = "..", name = ".." }`
   secret             a value the export never writes: it becomes a sensitive variable
   blk(...)           nested blocks (one per element), with their own tokens
+  obj(...)           one nested object attribute, `name = { .. }` (a plugin
+                     framework SingleNestedAttribute)
+  objs(...)          a list of nested objects, `name = [{ .. }]` (a
+                     ListNestedAttribute)
 
 A trailing `!` marks an argument the provider requires.
 
@@ -529,6 +533,22 @@ SCHEMAS: Dict[str, str] = {
         "disable_crashlytics:b override_t2_protocol_setting:b restrict_remote_packet_capture:b "
         "grant_access_to_zscaler_log_folder:b export_logs_for_non_admin:b enable_auto_log_snippet:b enforce_secure_pac_urls:b "
         "enable_fqdn_match_for_vpn_bypasses:b"
+    ),
+    # zcc 0.1.2-beta.3 internal/framework/resources/notification_template.go and zia_posture.go (their Schema()):
+    # the nested settings are SingleNestedAttribute / ListNestedAttribute, written `x = {..}` / `x = [{..}]`.
+    "zcc_notification_template": (
+        "name:s! is_default_template:b enable_client:b enable_zia:b enable_app_updates:b enable_service_status:b "
+        "duration_in_seconds:n enable_persistent:b enable_do_not_disturb:b "
+        "zia_notification_template:obj(enable_zia_firewall:b enable_zia_firewall_popup:b enable_zia_dns:b enable_zia_dns_popup:b "
+        "enable_zia_ips:b enable_zia_ips_popup:b enable_zia_persistent:b) "
+        "zpa_notification_template:obj(enable_device_posture_failure:b enable_zpa_reauth:b zpa_reauth_interval_in_minutes:n "
+        "delay_posture_failure_seconds:n)"
+    ),
+    "zcc_zia_posture": (
+        "name:s! platform:s! "
+        "high_trust_criteria:obj(cs:objs(cn:objs(id:s! name:s udid:s))) "
+        "medium_trust_criteria:obj(cs:objs(cn:objs(id:s! name:s udid:s))) "
+        "low_trust_criteria:obj(cs:objs(cn:objs(id:s! name:s udid:s)))"
     ),
     "zcc_forwarding_profile": (
         "name:s! active:b condition_type:n dns_servers:s dns_search_domains:s enable_lwf_driver:b hostname:s "
