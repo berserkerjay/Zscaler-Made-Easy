@@ -1,0 +1,151 @@
+{
+ "area": "Security gates: team-mode isolation of kept records, the four gates on the older writes and deletes, Client Connector OTP behind write mode, forced password change, ACME renewal while running, store encryption coverage",
+ "title": "Wave 9: every write or delete route, old ones and the OTP reveal included, behind the write engine's gates; team mode keeps each tenant's records apart",
+ "standards": [
+  "ASVS V2.1.10",
+  "ASVS V2.5.1",
+  "ASVS V4.1.3",
+  "ASVS V4.2.1",
+  "ASVS V6.2.2",
+  "ASVS V7.2.2",
+  "ASVS V9.1.2",
+  "ASVS V11.1.3",
+  "ASVS V1.4.1",
+  "CWE-311",
+  "CWE-367",
+  "CWE-459",
+  "CWE-620",
+  "CWE-639",
+  "CWE-862",
+  "CWE-1188",
+  "CWE-298",
+  "WSTG-ATHZ-02",
+  "WSTG-ATHZ-04",
+  "WSTG-ATHN-09",
+  "WSTG-BUSL-04",
+  "WSTG-BUSL-06"
+ ],
+ "checks": [
+  {
+   "id": "W9-SG-C01",
+   "what": "Team mode: a viewer of tenant A lists only A's configuration backups and the templates they may use; download, diff, delete, restore, clone and template apply of tenant B's backup_id or template_id are refused before sign-in",
+   "standard": "ASVS V4.2.1",
+   "result": "pass"
+  },
+  {
+   "id": "W9-SG-C02",
+   "what": "A kept configuration template is deleted only by the person who kept it (or an administrator); the operations picker hides another person's private template",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W9-SG-C03",
+   "what": "/api/remediation/execute and /api/migrate/enable refuse a live run without, or with a stale, plan_hash with no tenant call; the Evaluate All enable makes one PUT, to the probed endpoint and field only",
+   "standard": "ASVS V11.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W9-SG-C04",
+   "what": "/api/dlp-packs/removal/apply(/start) needs DELETE <n> OBJECTS and /api/migrate/delete-all needs DELETE <n> RULES, checked on the server against the plan re-made from a fresh read; nothing is deleted otherwise",
+   "standard": "ASVS V1.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "W9-SG-C05",
+   "what": "The Client Connector OTP reveal is refused with write mode off, before sign-in, with nothing audited as shown",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W9-SG-C06",
+   "what": "An account an administrator creates or resets reaches only the password change (and who am I, sign-out) until its owner chooses a password",
+   "standard": "ASVS V2.1.10",
+   "result": "pass"
+  },
+  {
+   "id": "W9-SG-C07",
+   "what": "ACME: a certificate with 29 days left is renewed and loaded into the served TLS context; a failed renewal keeps the old certificate and is audited",
+   "standard": "ASVS V9.1.2",
+   "result": "pass"
+  },
+  {
+   "id": "W9-SG-C08",
+   "what": "With store encryption on, configuration backups, their index, templates, caches and sync jobs are sealed on disk, read back, re-sealed on key rotation; a sealed store without its key is an error, never an empty list",
+   "standard": "ASVS V6.2.2",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W9-SG-01",
+   "title": "In team mode configuration backups, templates, saved traffic reports, fleet history and tenant health were not bound to a tenant profile: a person of one tenant could list and restore another's",
+   "severity": "high",
+   "cwe": "CWE-639",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "kept records name their tenant profile and maker; list filters and resolvers for backup_id, template_id and saved_name check entitlement; restore and clone check read on the source",
+   "test": "tests/test_security_gates.py::test_another_tenants_backup_and_template_cannot_be_downloaded_or_compared"
+  },
+  {
+   "id": "W9-SG-02",
+   "title": "/api/remediation/execute and /api/migrate/enable wrote without a previewed plan hash, and the enable made blind PUT probes to guessed endpoints",
+   "severity": "high",
+   "cwe": "CWE-367",
+   "asvs": "V11.1.3",
+   "status": "fixed",
+   "fix": "a live run needs the dry run's plan_hash, re-plans and compares; the enable writes only the field its read-only probe found and reads it back",
+   "test": "tests/test_security_gates.py::test_the_evaluate_all_enable_writes_only_the_field_the_dry_run_found"
+  },
+  {
+   "id": "W9-SG-03",
+   "title": "Pack removal and delete-all deleted on confirm=true alone, without a typed phrase checked on the server",
+   "severity": "medium",
+   "cwe": "CWE-1188",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "DELETE <n> OBJECTS and DELETE <n> RULES are required and checked against the re-made plan's count",
+   "test": "tests/test_security_gates.py::test_pack_removal_without_the_typed_phrase_is_refused_before_sign_in"
+  },
+  {
+   "id": "W9-SG-04",
+   "title": "The Client Connector OTP reveal did not need write mode",
+   "severity": "medium",
+   "cwe": "CWE-862",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "refused with 403 before sign-in when write mode is off",
+   "test": "tests/test_zcc_otp.py::test_write_mode_off_refuses_the_otp_before_sign_in_and_audits_nothing_as_shown"
+  },
+  {
+   "id": "W9-SG-05",
+   "title": "An account created or reset by an administrator kept the administrator's password",
+   "severity": "medium",
+   "cwe": "CWE-620",
+   "asvs": "V2.1.10",
+   "status": "fixed",
+   "fix": "must_change_password: the middleware allows only the change route until the owner chooses a password; the Sign in page shows the form",
+   "test": "tests/test_security_gates.py::test_an_account_an_administrator_creates_reaches_only_the_password_change_until_it_is_changed"
+  },
+  {
+   "id": "W9-SG-06",
+   "title": "An ACME certificate was renewed only at start-up, so a server running past expiry served an expired certificate",
+   "severity": "low",
+   "cwe": "CWE-298",
+   "asvs": "V9.1.2",
+   "status": "fixed",
+   "fix": "a daily check renews below 30 days left and reloads the served TLS context, or says a restart is needed; a failure is audited",
+   "test": "tests/test_team_server_extras.py::test_acme_renew_once_renews_a_certificate_with_29_days_left_and_reloads_the_served_context"
+  },
+  {
+   "id": "W9-SG-07",
+   "title": "Store encryption did not cover configuration backups, templates, caches and sync jobs, and a sealed index without its key read as empty (the next save replaced it)",
+   "severity": "medium",
+   "cwe": "CWE-311",
+   "asvs": "V6.2.2",
+   "status": "fixed",
+   "fix": "sealed with store_crypto and listed in _store_paths; a sealed store without its key raises",
+   "test": "tests/test_team_server_extras.py::test_a_sealed_backup_list_without_its_key_is_an_error_not_an_empty_list"
+  }
+ ],
+ "tests_added": 41
+}

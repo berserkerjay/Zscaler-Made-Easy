@@ -179,8 +179,11 @@ def test_the_sign_in_page_has_the_password_change_form():
     """ASVS V2.1.10 · CWE-620 · WCAG 2.2 SC 3.3.2: the Sign in page carries a labelled form to choose the new password, shown when the server says so."""
     html = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "login.html"), encoding="utf-8").read()
     for needle in ('id="lgChange"', 'for="lgCur"', 'for="lgNew"', 'for="lgNew2"', "must_change_password", "password_change_required",
-                   "/api/team/me/password", 'data-help="team.password_change"'):
+                   "/api/team/me/password", 'id="lgChangeGo"'):
         assert needle in html, needle
+    catalog = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "help_catalog.js"), encoding="utf-8").read()
+    for sel in ("#lgCur", "#lgNew", "#lgNew2", "#lgChangeGo"):
+        assert f'"{sel}": {{' in catalog, f"no help entry for {sel}"
 
 
 # ── plan hash on the older writes ───────────────────────────────────────
