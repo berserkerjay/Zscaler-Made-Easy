@@ -1,11 +1,11 @@
 {
-  "passed": 21711,
-  "failed": 0,
-  "skipped": 14,
+  "passed": 21718,
+  "failed": 3,
+  "skipped": 13,
   "errors": 0,
-  "duration_s": 2714.5,
-  "commit": "d568741bfef8",
-  "date": "2026-10-30T06:34:19",
+  "duration_s": 1907.9,
+  "commit": "1044b83",
+  "date": "2026-11-01",
   "files": {
     "tests/test_accessibility.py": {
       "passed": 682,
@@ -143,7 +143,7 @@
       "skipped": 0
     },
     "tests/test_c6_checks.py": {
-      "passed": 1264,
+      "passed": 1276,
       "failed": 0,
       "skipped": 0
     },
@@ -463,8 +463,8 @@
       "skipped": 0
     },
     "tests/test_flow_pages.py": {
-      "passed": 62,
-      "failed": 0,
+      "passed": 60,
+      "failed": 2,
       "skipped": 0
     },
     "tests/test_flow_player_evidence.py": {
@@ -588,8 +588,8 @@
       "skipped": 0
     },
     "tests/test_new_marks.py": {
-      "passed": 94,
-      "failed": 0,
+      "passed": 67,
+      "failed": 1,
       "skipped": 0
     },
     "tests/test_no_implicit_reads.py": {
@@ -773,9 +773,9 @@
       "skipped": 0
     },
     "tests/test_pdf_writer.py": {
-      "passed": 11,
+      "passed": 12,
       "failed": 0,
-      "skipped": 2
+      "skipped": 1
     },
     "tests/test_permissions.py": {
       "passed": 4,
@@ -1214,6 +1214,11 @@
     },
     "tests/test_zpa_overview.py": {
       "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_zpa_policy_completeness.py": {
+      "passed": 23,
       "failed": 0,
       "skipped": 0
     }
