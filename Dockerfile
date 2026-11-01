@@ -128,5 +128,5 @@ LABEL org.opencontainers.image.title="Zscaler Made Easy" \
 # app); files on existing data volumes belong to its user id.
 USER dlpcheck
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/ping', timeout=4).status == 200 else 1)"
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD ["python", "docker_healthcheck.py"]
 CMD ["python", "dlp_api_server.py"]

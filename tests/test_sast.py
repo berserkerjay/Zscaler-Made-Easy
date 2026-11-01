@@ -32,6 +32,8 @@ EXCLUDED = ["./tests/", "./.venv/", "./venv/", "./build/", "./dist/", "./node_mo
 # false positive explained on its line; adding one means adding it here, in
 # the same review. docs/qa/findings/w7-sast.json records the triage.
 REVIEWED_SUPPRESSIONS = {
+    # The container healthcheck opens a fixed http(s)://127.0.0.1 ping URL; no scheme comes from input.
+    ("docker_healthcheck.py", "B310"): 1,
     # An address compared to word a message, or a family probe: nothing binds.
     ("dlp_api_server.py", "B104"): 1,
     ("workload_path.py", "B104"): 1,
