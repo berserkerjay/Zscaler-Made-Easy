@@ -150,7 +150,7 @@
     what: 'Reads Zscaler AI Guard, only when AI Guard is ticked on the Scope page: its detection policies (what each checks in prompts and in answers, and whether it blocks or only detects), the policy match rules that pick a policy, the LLM providers, the LLM applications (whether they keep prompts and encrypt them) and the applications\' credentials by name. Test a prompt sends one made-up prompt from a fixed list and shows what each detector did.',
     why: 'AI Guard is what stops a prompt carrying card numbers, personal data or an injection from reaching a GenAI model. A policy that only detects, that never looks at the answers, or that no rule uses, protects nothing; an application that keeps prompts unencrypted stores what people typed in readable form.',
     when: 'During a GenAI review, after building an AI Guard detection policy, and before switching a policy from Monitor to Block.',
-    get: 'The policies with their detectors, the match rules, the applications and credential names (never a key), and for a test prompt the overall action and each detector\'s verdict. The same configuration is scored in the assessment (AIG.1 to AIG.6).',
+    get: 'The policies with their detectors, the match rules, the applications and credential names (never a key), and for a test prompt the overall action and each detector\'s verdict. The same configuration is scored in the assessment (AIG.1 to AIG.7, provider credentials by name and date only).',
     next: 'Fix what the AI Guard checks flag: add prompt-injection and output detectors, encrypt stored prompts, give each application a credential, then test the prompts again and move the policy to Block in Bulk changes.',
   };
   X.efficacy = {

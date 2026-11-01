@@ -294,8 +294,8 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 150,
-            "accepted": 5,
+            "fixed": 151,
+            "accepted": 7,
             "records": [
               "c6-assessment",
               "c6-checks",
@@ -311,7 +311,8 @@
               "w8-zia-forwarding",
               "w8-zia-governance",
               "w8-zpa-policy",
-              "w8-zpa-rbac"
+              "w8-zpa-rbac",
+              "w9-coverage-checks"
             ]
           },
           "coverage": {
@@ -481,7 +482,7 @@
     }
   ],
   "counts": {
-    "findings": 713,
+    "findings": 716,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -500,22 +501,22 @@
       },
       "low": {
         "open": 2,
-        "fixed": 393,
+        "fixed": 394,
         "accepted": 3
       },
       "info": {
         "open": 0,
         "fixed": 71,
-        "accepted": 48
+        "accepted": 50
       }
     },
     "checks": {
-      "pass": 646,
+      "pass": 653,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11297
+    "tests_added": 11409
   },
   "findings": [
     {
@@ -1365,6 +1366,38 @@
       "slug": "w8-zwa-aiguard",
       "area": "functionality",
       "sub_area": "builders"
+    },
+    {
+      "id": "W9-CC-01",
+      "title": "The ZPA ZIA cloud configuration answer (zpa/zia_customer_config.py get_zia_cloud_service_config) holds the ZIA password, API key and sandbox token; reading it to check the link would put secrets in the run",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-200",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "ZPA.22 reads only check_zia_cloud_config (GET /config/isZiaCloudConfigAvailable, a yes/no answer); a test asserts the configuration path is never read or captured",
+      "test": "tests/test_w9_coverage_checks.py::test_zpa22_never_reads_the_zia_credentials",
+      "commit": "51cba5b",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W9-CC-03",
+      "title": "Check 5.2 still says Endpoint DLP resources are not listed by the ZIA API; the SDK 1.11.3 lists them per channel, now read by B.17",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "left unchanged (outside this slice); B.17 reads and scores the resources",
+      "test": "tests/test_w9_coverage_checks.py::test_b17_rule_on_an_empty_group_is_a_finding",
+      "commit": "51cba5b",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-01",
@@ -10791,6 +10824,22 @@
       "sub_area": "builders"
     },
     {
+      "id": "W9-CC-02",
+      "title": "The live assessment client would have cached the AI Guard provider credentials answer whole, apiCredentials included",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-312",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "dlp_assessment_full_auto.metadata_only reduces the answer to names, types and dates in Client.get and SdkClient._raw_get before it is cached",
+      "test": "tests/test_w9_coverage_checks.py::test_the_live_client_keeps_only_metadata",
+      "commit": "51cba5b",
+      "reason": "",
+      "slug": "w9-coverage-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13915,6 +13964,44 @@
       "checks": 8,
       "findings": 5,
       "tests_added": 46
+    },
+    {
+      "slug": "w9-coverage-checks",
+      "area": "Functionality and security: the remaining high-value resources read and scored (zscaler_full_checks B.17, FW.10, THR.12, GOV.9, ZPA.22-24, HLT.5-6; zscaler_genai_checks AIG.7), their scope and channel gating, metadata-only reads of key-holding lists, sample tenant and snapshot reads",
+      "title": "Ten new scored checks checked against the installed SDK 1.11.3, the Scope rule, the Endpoint DLP channel, secret handling and unknown-not-pass, offline on the sample tenant",
+      "standards": [
+        "ASVS V1.14.1",
+        "ASVS V2.10.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.3.1",
+        "ASVS V7.4.1",
+        "ASVS V8.3.4",
+        "CWE-20",
+        "CWE-74",
+        "CWE-117",
+        "CWE-200",
+        "CWE-262",
+        "CWE-272",
+        "CWE-280",
+        "CWE-284",
+        "CWE-312",
+        "CWE-324",
+        "CWE-391",
+        "CWE-532",
+        "CWE-694",
+        "CWE-754",
+        "CWE-863",
+        "CWE-1164",
+        "CWE-1287",
+        "WSTG-ATHZ-02",
+        "WSTG-ERRH-01",
+        "SSDF PW.4.1",
+        "SSDF PW.8.2"
+      ],
+      "checks": 7,
+      "findings": 3,
+      "tests_added": 112
     }
   ],
   "standards": {

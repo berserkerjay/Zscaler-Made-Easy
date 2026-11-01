@@ -5,6 +5,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-01
+
+### More of the tenant read and scored
+- The assessment now reads the remaining high-value resources and scores what they hide. Endpoint DLP: rules scoped to a resource group that was deleted or holds no printers, drives or shares match nothing (B.17; the resource groups and resources of each channel are read, with Endpoint DLP on Zscaler). ZPA: segments that send traffic to ZIA for inspection while ZPA's ZIA cloud link is not configured (ZPA.22; only the yes/no availability is read, never the ZIA cloud configuration and its credentials), user portals without an acceptable use policy (ZPA.23), user portal links on no enabled portal (ZPA.24), automatic deletion of disconnected App Connectors and Service Edges turned off (HLT.5) and connector groups held on an older version profile (HLT.6). ZIA: partner integrations left disabled (THR.12), traffic capture rules left enabled, a privacy risk (GOV.9), and time intervals that name no day, so rules scoped to them never match (FW.10). AI Guard: LLM provider credentials expired, expiring within 30 days, or a year old with no expiry (AIG.7).
+- Secrets stay out: provider credentials and partner integrations are kept as names, types and dates the moment they are read (the key under apiCredentials is dropped before the answer is cached, judged or saved in a snapshot). A field the API does not return is "unknown" with the reason, never a pass.
+- Every read is under its Scope page key (ZIA platform, ZPA, DLP with the Endpoint DLP channel, AI Guard), listed in Required API access, saved in snapshots and answered by the sample tenant, which now shows a disabled SD-WAN integration, a capture rule left on, a time interval with no day, connector auto-delete off and an unrotated Gemini key. Findings map to the compliance frameworks where a control applies.
+
 ## 2026-10-31
 
 ### Path coverage: unread conditions never match, Category lookup, UCaaS one-click

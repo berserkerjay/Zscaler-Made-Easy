@@ -608,8 +608,9 @@ what you get, what to do next.
   Service Edges enrolled with each), web server and client signing
   certificates; and App Connector groups with no connector. Each signal
   comes with the plain steps to fix it. The assessment carries the same
-  signals as checks HLT.1 to HLT.4. Only names, dates and states are kept,
-  never a certificate or key.
+  signals as checks HLT.1 to HLT.4, plus automatic deletion of disconnected
+  connectors (HLT.5) and connector groups held on an older version profile
+  (HLT.6). Only names, dates and states are kept, never a certificate or key.
   read-back, and roll back. *Incidents in depth* on the same page reads one
   incident by id (or *Details* beside a latest transaction): its details,
   what triggered it (names and match counts), its change history and its
@@ -627,9 +628,18 @@ what you get, what to do next.
   AI Guard's policy detection and shows each detector's verdict; free text
   is refused; live it needs an AI Guard API key in the server's
   `AIGUARD_API_KEY`, the sample tenant answers with a made-up detector. The
-  assessment scores the same configuration (AIG.1 to AIG.6), plus Workflow
+  assessment scores the same configuration (AIG.1 to AIG.7; AIG.7 reads the
+  LLM provider credentials by name and date only, the key is dropped as it
+  is read), plus Workflow
   Automation incidents (ZWA.1 to ZWA.4), EDM and IDM indexes (DLP.IDX1 to
   IDX3) and ZPA Browser Access and Privileged Remote Access (ZPA.BA1 to BA4).
+  It also scores Endpoint DLP rules scoped to empty or deleted resource
+  groups (B.17), ZPA segments inspected by ZIA without ZPA's ZIA cloud link
+  (ZPA.22; only the yes/no availability is read, never the ZIA credentials
+  it holds), user portals without an acceptable use policy and portal links
+  on no enabled portal (ZPA.23, ZPA.24), partner integrations left disabled
+  (THR.12), traffic capture rules left enabled (GOV.9) and time intervals
+  that name no day (FW.10).
 - **Digest — the evaluation loop** — when you click *Run the loop now*
   (or run `continuous_eval.py --once`) it re-reads the guidance sources
   and, for every profile that remembers its secret, only what that
