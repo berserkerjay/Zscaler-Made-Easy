@@ -1143,9 +1143,13 @@ def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say,
         raise _err("Pick the re-authentication and idle timeouts from the lists.")
     if not (want_access or want_timeout or want_insp or iso):
         raise _err("Pick at least one policy: access, timeout, inspection or isolation.")
+    above_raw = spec.get("access_above")
+    above = _id(above_raw, "The access rule to place the new one above") if above_raw not in (None, "") else ""
+    if above and not want_access:
+        raise _err("A position is for the access rule: tick Access as well, or leave 'Place it above' empty.")
     nspec = {"type": "zpa_policies", "prefix": p, "access": want_access, "timeout": want_timeout, "inspection": want_insp,
              "isolation_profile_id": iso, "reauth_timeout": rt, "reauth_idle_timeout": it,
-             "access_scim_groups": scim_pick, "access_saml": saml_pick}
+             "access_scim_groups": scim_pick, "access_saml": saml_pick, "access_above": above}
     zpa = _zpa(client)
     kinds = ["segment", "segment_group"] + [k for k, on in (("access_rule", want_access), ("timeout_rule", want_timeout), ("inspection_rule", want_insp),
                                             ("inspection_profile", want_insp), ("isolation_rule", bool(iso))) if on]
@@ -1161,8 +1165,10 @@ def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say,
     shown = f"{len(apps)} application segment{'s' if len(apps) != 1 else ''} named {p}-…"
     if want_access:
         scim_vals, saml_vals, who = _plan_identities(zpa, plan, scim_pick, saml_pick, say, cancel) if (scim_pick or saml_pick) else ([], [], "")
-        plan.ensure("access_rule", f"{p}-access", {"action": "ALLOW", "apps": apps, "scim_groups": scim_vals, "saml": saml_vals},
-                    data["access_rule"], summary=f"allow {shown}" + (f" for {who}" if who else " for every user"))
+        akey = plan.ensure("access_rule", f"{p}-access", {"action": "ALLOW", "apps": apps, "scim_groups": scim_vals, "saml": saml_vals},
+                           data["access_rule"], summary=f"allow {shown}" + (f" for {who}" if who else " for every user"))
+        if above:
+            plan_position(plan, akey, f"{p}-access", above, data["access_rule"])
         if scim_vals and saml_vals:
             plan.warnings.append("The access rule needs both: one of the SCIM groups and one of the SAML values (the SDK puts each kind in its "
                                  "own condition, and a rule's conditions are joined with AND).")
@@ -1197,8 +1203,65 @@ def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say,
         plan.ensure("isolation_rule", f"{p}-isolation", {"action": "ISOLATE", "apps": apps, "profile": iso}, data["isolation_rule"],
                     summary=f"isolate {shown} with {_name(prof) if prof else iso}")
         plan.warnings.append("ZPA isolation applies to Browser Access (clientless) users of these applications.")
-    plan.warnings.append("New rules are added at the end of each policy (assumed ZPA behaviour); a rule above them still decides first.")
+    plan.warnings.append("New rules are added at the end of each policy (assumed ZPA behaviour); a rule above them still decides first."
+                         + (" The access rule is then moved to the position you picked." if above else ""))
     return plan.done(f"Build the ZPA policy rules for {p}", "zpa_policies", nspec)
+
+
+# ── The access rule's position (policies.bulk_reorder_rules) ───────────
+
+def _rule_order(r: Dict[str, Any]) -> int:
+    return ao._int(zr.get(r, "ruleOrder"), 10 ** 9)
+
+
+def _is_default_rule(r: Dict[str, Any]) -> bool:
+    return bool(zr.as_bool(zr.get(r, "defaultRule")))
+
+
+def _access_sequence(rows: List[Dict[str, Any]]) -> List[str]:
+    """The access policy's rule ids top first, the Default rule left out
+    (it is always last and is not part of a reorder; assumed, as
+    ops_rule_csv sends it)."""
+    return [_oid(r) for r in sorted(rows, key=_rule_order) if _oid(r) and not _is_default_rule(r)]
+
+
+def plan_position(plan: "_Plan", akey: str, name: str, above: str, rows: List[Dict[str, Any]], *, undo: bool = False) -> None:
+    """Move the access rule `name` just above rule `above` after it is built:
+    one bulk_reorder_rules write with the whole order, guarded by the
+    order read now (any other change in between is a conflict)."""
+    target = next((r for r in rows if _oid(r) == above), None)
+    own = _by_name(rows, name)
+    obj = plan.obj("access_rule", name, _oid(own) if own is not None else None)
+    gkey = f"order:{name}"
+    if target is None:
+        plan.blockers.append(f"The access rule to place '{name}' above ({above}) is not in ZPA now. Read the tenant again and pick it.")
+        return
+    if _is_default_rule(target):
+        plan.blockers.append("The Default rule is always last: leave 'Place it above' empty to put the rule at the end.")
+        return
+    if own is not None and _oid(own) == above:
+        plan.blockers.append(f"'{name}' cannot be placed above itself: pick another rule.")
+        return
+    seq = _access_sequence(rows)
+    others = [i for i in seq if own is None or i != _oid(own)]
+    where = f"above '{_name(target)}' (order {zr.get(target, 'ruleOrder')})"
+    if akey and any(u["key"] == akey and u["status"] == "excluded" for u in plan.items):
+        plan.items.append(ao._unit(f"{gkey}:position", gkey, "access_rule", obj, "position", None, where, status="excluded",
+                                   reason="not moved: the access rule is not built"))
+        return
+    if own is not None and _oid(own) in seq and seq.index(_oid(own)) == seq.index(above) - 1:
+        plan.items.append(ao._unit(f"{gkey}:position", gkey, "access_rule", obj, "position", where, where, status="noop",
+                                   reason="already just above it"))
+        return
+    now = ("last (a new rule is added at the end)" if own is None else
+           f"order {zr.get(own, 'ruleOrder')}")
+    dep = [akey] if own is None else []
+    plan.items.append(ao._unit(f"{gkey}:position", gkey, "access_rule", obj, "position", now, where, depends_on=dep,
+                               reason=("Puts it back where it was before the build: " if undo else "Moves it: ")
+                                      + "PUT /policySet/{id}/rules/reorder (policies.bulk_reorder_rules) with the whole order."))
+    plan.groups.append({"key": gkey, "handler": "zpa_b_order", "target": {"kind": "access_rule", "name": name, "prefix": plan.prefix,
+                                                                         "rule": {"ref": akey} if own is None else _oid(own),
+                                                                         "above": above, "above_name": _name(target), "expect": others}})
 
 
 # ── zpa_prefix_delete ──────────────────────────────────────────────────
@@ -1230,6 +1293,24 @@ def _check_restore(v: Any) -> List[Dict[str, Any]]:
     return out
 
 
+def _check_move_back(v: Any, p: str) -> List[Dict[str, Any]]:
+    """An Undo's access rules to move back ([{id, name, above}]), validated."""
+    if v in (None, ""):
+        return []
+    if not isinstance(v, list) or len(v) > 10:
+        raise _err("move_back must be a short list.")
+    out = []
+    for e in v:
+        if not isinstance(e, dict):
+            raise _err("A move_back entry is malformed.")
+        name = _clean_text(e.get("name"), 255)
+        if not name.startswith(p + "-"):
+            raise _err("A move_back entry names a rule without the prefix.")
+        above = e.get("above")
+        out.append({"id": _id(e.get("id"), "move_back"), "name": name, "above": _id(above, "move_back") if above not in (None, "") else None})
+    return out
+
+
 def plan_prefix_delete(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     p = check_prefix(spec.get("prefix"))
     everything = spec.get("everything") is True
@@ -1244,13 +1325,35 @@ def plan_prefix_delete(client: Any, spec: Dict[str, Any], scope: Dict[str, Any],
         select.append((m.group(1), m.group(2)))
     restore = _check_restore(spec.get("restore"))
     undo = spec.get("undo") is True
-    if not everything and not select and not restore:
+    move_back = _check_move_back(spec.get("move_back"), p) if undo else []
+    if not everything and not select and not restore and not move_back:
         raise _err(f"Pick the objects named {p}-… to delete, or tick 'everything with this prefix'.")
     nspec = {"type": "zpa_prefix_delete", "prefix": p, "everything": everything, "select": [f"{k}:{i}" for k, i in select],
              "restore": restore, "undo": undo}
+    if move_back:
+        nspec["move_back"] = move_back
     zpa = _zpa(client)
     data, _ = read(zpa, DELETE_ORDER, say, cancel)
     plan = _Plan(p)
+    # An Undo moves an existing access rule back where it was before the build.
+    for m in move_back:
+        row = next((r for r in data["access_rule"] if _oid(r) == m["id"]), None)
+        if row is None or _name(row) != m["name"]:
+            plan.items.append(ao._unit(f"order:{m['name']}:position", f"order:{m['name']}", "access_rule", plan.obj("access_rule", m["name"], m["id"]),
+                                       "position", None, None, status="noop", reason="no longer in ZPA under this name, so it is not moved"))
+            continue
+        if m["above"] is not None and not any(_oid(r) == m["above"] for r in data["access_rule"]):
+            m = dict(m, above=None)     # the rule it sat above is gone: it goes to the end
+        if m["above"] is None:
+            seq = _access_sequence(data["access_rule"])
+            obj = plan.obj("access_rule", m["name"], m["id"])
+            gkey = f"order:{m['name']}"
+            plan.items.append(ao._unit(f"{gkey}:position", gkey, "access_rule", obj, "position", f"order {zr.get(row, 'ruleOrder')}", "last",
+                                       reason="Puts it back where it was before the build (the end of the policy)."))
+            plan.groups.append({"key": gkey, "handler": "zpa_b_order", "target": {"kind": "access_rule", "name": m["name"], "prefix": p, "rule": m["id"],
+                                                                                 "above": None, "above_name": "", "expect": [i for i in seq if i != m["id"]]}})
+        else:
+            plan_position(plan, "", m["name"], m["above"], data["access_rule"], undo=True)
     rows = {(k, _oid(r)): r for k in DELETE_ORDER for r in data[k]}
     others = other_prefixes(p, data)
     st = {key: state(key[0], r) for key, r in rows.items()}
@@ -1488,7 +1591,50 @@ def _h_delete(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
         run.log(f"[ZPA {KINDS[t['kind']]['label']}] {t['name']}: deleted")
 
 
-HANDLERS = {"zpa_b_create": _h_create, "zpa_b_update": _h_update, "zpa_b_delete": _h_delete}
+def _h_order(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
+    """The access rule moved just above another: the order is read again, the
+    other rules must be in the order the preview saw, then one write."""
+    t = g["target"]
+    try:
+        rid = resolve(t["rule"], run)
+    except _Unresolved as e:
+        run.mark(units, "skipped", f"not attempted: {e}")
+        return
+    rows, err = list_kind(run.zpa, "access_rule", _gate(None))
+    if err:
+        _halt_or_fail(run, units, err, "the access policy rules")
+        return
+    seq = _access_sequence(rows)
+    if rid not in seq:
+        run.mark(units, "failed", "", error=f"'{t['name']}' is not in the access policy when read again")
+        run.counts["failed"] += 1
+        return
+    others = [i for i in seq if i != rid]
+    if others != list(t["expect"]) or (t["above"] is not None and t["above"] not in others):
+        run.mark(units, "conflict", "the access policy's order changed since the preview; the order was left as it is")
+        return
+    i = seq.index(rid)
+    t["was_above"] = seq[i + 1] if i + 1 < len(seq) else None     # for the Undo: where it sat before
+    new = list(others)
+    if t["above"] is None:
+        new.append(rid)
+    else:
+        new.insert(new.index(t["above"]), rid)
+    fn = getattr(getattr(run.zpa, "policies", None), "bulk_reorder_rules", None)
+    if fn is None:
+        run.mark(units, "failed", "", error="the installed zscaler-sdk-python has no policies.bulk_reorder_rules")
+        run.counts["failed"] += 1
+        return
+    out = ops.call(fn, "access", new, op="update", kind="zpa_access_rule", name="access policy order", log=run.log)
+    ops._audit_write("update", "zpa_access_rule", rid, f"access policy order ({t['name']})", None, out)
+    if run.outcome(units, out, "update"):
+        t["applied_order"] = new
+        for u in units:
+            u["object"] = dict(u["object"], id=rid)
+        run.log(f"[ZPA access policy] {t['name']}: moved " + (f"above '{t.get('above_name')}'" if t["above"] else "to the end"))
+
+
+HANDLERS = {"zpa_b_create": _h_create, "zpa_b_update": _h_update, "zpa_b_delete": _h_delete, "zpa_b_order": _h_order}
 
 
 def verify(run: Any) -> Dict[str, Any]:
@@ -1503,6 +1649,23 @@ def verify(run: Any) -> Dict[str, Any]:
         base = "segment" if t["kind"] == "pra_segment" else t["kind"]
         oid = t.get("id") or applied[0]["object"].get("id")
         out["checked"] += len(applied)
+        if g["handler"] == "zpa_b_order":
+            rows, err = list_kind(run.zpa, "access_rule", _gate(None))
+            seq = _access_sequence(rows) if not err else []
+            if err:
+                out["unread"].append(f"{t['name']}: {err}")
+                for u in applied:
+                    u["verified"] = None
+                continue
+            ok = oid in seq and (seq.index(oid) == len(seq) - 1 if t["above"] is None else
+                                 t["above"] in seq and seq.index(oid) == seq.index(t["above"]) - 1)
+            for u in applied:
+                u["verified"] = bool(ok)
+            if ok:
+                out["confirmed"] += len(applied)
+            else:
+                out["mismatched"].append(f"{t['name']}: not at the position asked when read back")
+            continue
         row, err = get_one(run.zpa, base, oid)
         if g["handler"] == "zpa_b_delete":
             ok = row is None and _gone(err)
@@ -1535,20 +1698,32 @@ def inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if result.get("type") == "zpa_prefix_delete":
         return None
     prefix = (result.get("spec") or {}).get("prefix")
-    select, restore = [], []
+    select, restore, move_back = [], [], []
+    created_ids = {str(u["object"].get("id")) for g in result.get("groups") or [] if g["handler"] == "zpa_b_create"
+                   for u in result.get("items") or [] if u.get("group") == g["key"] and u.get("status") == "applied"}
     for g in result.get("groups") or []:
         applied = [u for u in result.get("items") or [] if u.get("group") == g["key"] and u.get("status") == "applied"]
         if not applied:
             continue
         t = g["target"]
         base = "segment" if t["kind"] == "pra_segment" else t["kind"]
+        if g["handler"] == "zpa_b_order":
+            rid = str(applied[0]["object"].get("id") or "")
+            # A rule this build created is deleted by the Undo (the others keep
+            # their order); one that existed is moved back where it was.
+            if rid and rid not in created_ids:
+                move_back.append({"id": rid, "name": t["name"], "above": t.get("was_above")})
+            continue
         if g["handler"] == "zpa_b_create" and applied[0]["object"].get("id"):
             select.append(f"{base}:{applied[0]['object']['id']}")
         elif g["handler"] == "zpa_b_update" and t.get("before_state") is not None and base in UPDATABLE:
             restore.append({"kind": base, "id": t["id"], "name": t["name"], "before": t["before_state"], "after": t["applied_state"]})
-    if not (select or restore) or not prefix:
+    if not (select or restore or move_back) or not prefix:
         return None
-    return {"type": "zpa_prefix_delete", "prefix": prefix, "everything": False, "select": select, "restore": restore, "undo": True}
+    out = {"type": "zpa_prefix_delete", "prefix": prefix, "everything": False, "select": select, "restore": restore, "undo": True}
+    if move_back:
+        out["move_back"] = move_back
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1624,6 +1799,10 @@ def read_objects(client: Any, scope: Dict[str, Any], say, cancel) -> Dict[str, A
             "idps": idps[:MAX_PICK_IDPS * 5], "scim_groups": scim, "scim_truncated": scim_cut,
             "saml_attributes": [{"id": _oid(r), "name": _name(r), "idp_id": zr.as_str(zr.get(r, "idpId"))}
                                 for r in data["saml_attributes"][:MAX_PICK_SAML] if _oid(r)],
+            # The access policy in order, for the access rule's "Place it above" (the Default rule is always last).
+            "access_rules": [{"id": _oid(r), "name": _name(r)[:200], "order": zr.as_str(zr.get(r, "ruleOrder")),
+                              "action": zr.as_str(zr.get(r, "action")).upper()}
+                             for r in sorted(data["access_rule"], key=_rule_order) if _oid(r) and not _is_default_rule(r)][:MAX_INVENTORY],
             "errors": {LIST_LABELS.get(k, k): v for k, v in errors.items()},
             "limits": {"csv_rows": MAX_CSV_ROWS, "csv_bytes": MAX_CSV_BYTES, "rule_identities": MAX_RULE_IDENTITIES}}
 

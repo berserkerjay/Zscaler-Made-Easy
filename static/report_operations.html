@@ -33,7 +33,7 @@
           <label class="op-kind"><input type="radio" name="opKind" value="rule_state" checked><span><strong>Enable or disable rules</strong><span class="df-hint">Up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control, the four DLP channels, DNS Control and IPS; one field (the state) per operation.</span></span></label>
           <label class="op-kind"><input type="radio" name="opKind" value="reorder"><span><strong>Reorder a policy</strong><span class="df-hint">Put one policy's rules in the order you want; the fewest rules move, the Default, predefined and read-only rules never move, and only the order changes.</span></span></label>
           <label class="op-kind"><input type="radio" name="opKind" value="url_categories"><span><strong>URL category change</strong><span class="df-hint">Add, remove, move or copy URLs on custom URL categories (or into a new one), with the rules in scope that use each category.</span></span></label>
-          <label class="op-kind"><input type="radio" name="opKind" value="zpa_domains"><span><strong>ZPA segment domains</strong><span class="df-hint">Move or copy domains between application segments, or clone a segment with its settings, with the domain and port overlap check. Needs ZPA ticked on the Scope page.</span></span></label>
+          <label class="op-kind"><input type="radio" name="opKind" value="zpa_domains"><span><strong>ZPA segment domains</strong><span class="df-hint">Add typed domains to an application segment, remove them, move or copy domains between segments, or clone a segment with its settings, with the domain and port overlap check. Needs ZPA ticked on the Scope page.</span></span></label>
         </fieldset>
         <fieldset class="op-kinds" id="opBuildKinds" hidden>
           <legend class="df-h">Build new</legend>
@@ -424,19 +424,29 @@
     }
     function renderZpa(res, where) {
       const segs = res.segments || [];
-      const act = ($('opZAct') || {}).value || 'move', src = ($('opZSrc') || {}).value || (segs[0] || {}).id || '', tgt = ($('opZTgt') || {}).value || '';
+      const zh = (S.handoff && S.handoff.zpa) || null;   // ZPA rows from Test a list (Fix selected)
+      const act = ($('opZAct') || {}).value || (zh ? (zh.purpose === 'block' ? 'remove' : 'add') : 'move');
+      const src = ($('opZSrc') || {}).value || (zh && zh.purpose === 'block' && zh.segment_id) || (segs[0] || {}).id || '';
+      const tgt = ($('opZTgt') || {}).value || (zh && zh.purpose !== 'block' && zh.segment_id) || '';
       const name = ($('opZName') || {}).value || '', move = ($('opZMove') || {}).checked || false, typed = ($('opZNew') || {}).value || '';
+      const addText = $('opZAdd') ? $('opZAdd').value : (zh ? (zh.domains || []).join('\n') : '');
       const srcSeg = segs.find(s => String(s.id) === String(src));
+      if (zh && zh.purpose === 'block' && !S.domPick.size && srcSeg) (zh.domains || []).forEach(d => { if ((srcSeg.domains || []).includes(d)) S.domPick.add(d); });
+      const acts = [['add', 'Add typed domains to a segment'], ['remove', 'Remove domains from a segment'], ['move', 'Move domains'], ['copy', 'Copy domains'], ['clone', 'Clone a segment']];
+      const pickList = act !== 'add' ? `<div class="op-row"><span class="df-hint">Pick domains from ${E(srcSeg ? srcSeg.name : 'the segment')}:</span><span class="df-chip" id="opZCount">${S.domPick.size} picked</span></div>
+        <ul class="op-checks">${(srcSeg ? srcSeg.domains : []).map(d => `<li><label><input type="checkbox" data-d="${E(d)}"${S.domPick.has(d) ? ' checked' : ''}> ${E(d)}</label></li>`).join('') || '<li class="df-hint">No domains.</li>'}</ul>` : '';
       where.innerHTML = `${errorsHtml(res)}
         <div class="op-row"><label class="df-ctl"><span class="lbl">Action</span><select id="opZAct" aria-label="ZPA action">
-          ${[['move', 'Move domains'], ['copy', 'Copy domains'], ['clone', 'Clone a segment']].map(([v, l]) => `<option value="${v}"${v === act ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-          <label class="df-ctl"><span class="lbl">From</span><select id="opZSrc" aria-label="Source segment">${segOptions(segs, src)}</select></label>
-          ${act !== 'clone' ? `<label class="df-ctl"><span class="lbl">To</span><select id="opZTgt" aria-label="Target segment">${segOptions(segs.filter(s => String(s.id) !== String(src)), tgt, '<option value="">Pick a segment…</option>')}</select></label>`
-            : `<label class="df-ctl"><span class="lbl">New segment name</span><input id="opZName" value="${E(name)}" aria-label="New segment name"></label>
-               <label class="df-ctl"><input type="checkbox" id="opZMove"${move ? ' checked' : ''}><span>Move the picked domains out of the source</span></label>`}</div>
-        <div class="op-row"><span class="df-hint">Pick domains from ${E(srcSeg ? srcSeg.name : 'the segment')}:</span><span class="df-chip" id="opZCount">${S.domPick.size} picked</span></div>
-        <ul class="op-checks">${(srcSeg ? srcSeg.domains : []).map(d => `<li><label><input type="checkbox" data-d="${E(d)}"${S.domPick.has(d) ? ' checked' : ''}> ${E(d)}</label></li>`).join('') || '<li class="df-hint">No domains.</li>'}</ul>
+          ${acts.map(([v, l]) => `<option value="${v}"${v === act ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          ${act !== 'add' ? `<label class="df-ctl"><span class="lbl">From</span><select id="opZSrc" aria-label="Source segment">${segOptions(segs, src)}</select></label>` : ''}
+          ${act === 'clone' ? `<label class="df-ctl"><span class="lbl">New segment name</span><input id="opZName" value="${E(name)}" aria-label="New segment name"></label>
+               <label class="df-ctl"><input type="checkbox" id="opZMove"${move ? ' checked' : ''}><span>Move the picked domains out of the source</span></label>`
+            : act === 'remove' ? '' : `<label class="df-ctl"><span class="lbl">To</span><select id="opZTgt" aria-label="Target segment">${segOptions(act === 'add' ? segs : segs.filter(s => String(s.id) !== String(src)), tgt, '<option value="">Pick a segment…</option>')}</select></label>`}</div>
+        ${act === 'add' ? `<label class="op-block"><span class="lbl">Domains to add (one per line)</span><textarea id="opZAdd" rows="4" maxlength="60000" spellcheck="false" aria-label="Domains to add to the segment, one per line" aria-describedby="opZAddHint">${E(addText)}</textarea></label>
+          <div class="df-hint" id="opZAddHint">Host names or wildcard domains such as *.corp.example. They take the segment's ports; one already in another segment on overlapping ports is left out, with where it is.</div>` : ''}
+        ${pickList}
         ${act === 'clone' ? `<label class="op-block"><span class="lbl">New domains for the clone (one per line), besides the ones picked above</span><textarea id="opZNew" rows="3" aria-label="New domains for the clone">${E(typed)}</textarea></label>` : ''}
+        ${zh ? `<div class="bp-card info"><div>${E((zh.domains || []).length)} destination(s) from Test a list rows ${E((zh.rows || []).slice(0, 12).join(', '))} ${zh.purpose === 'block' ? 'should be blocked: taking them out of the segment hands them to ZIA\'s policy.' : 'should be reachable: add them to the segment that publishes the application, or build a new segment and access rule with the ZPA builder.'}</div></div>` : ''}
         <div class="df-hint">A domain may sit in two segments only on ports that do not overlap: the preview excludes any domain that would, and says where it already is.</div>`;
       ['opZAct', 'opZSrc', 'opZTgt'].forEach(id => { const el = $(id); if (el) el.addEventListener('change', () => { if (id === 'opZSrc') S.domPick.clear(); renderZpa(res, where); $(id) && $(id).focus(); }); });
       where.querySelectorAll('input[data-d]').forEach(cb => cb.addEventListener('change', () => { cb.checked ? S.domPick.add(cb.dataset.d) : S.domPick.delete(cb.dataset.d); $('opZCount').textContent = `${S.domPick.size} picked`; }));
@@ -468,10 +478,13 @@
         if (!spec.urls.length) throw new Error('List or pick at least one URL.');
         return spec;
       }
-      const act = $('opZAct').value, spec = { type: 'zpa_domains', action: act, source: $('opZSrc').value };
+      const act = $('opZAct').value, spec = { type: 'zpa_domains', action: act };
+      if (act !== 'add') spec.source = $('opZSrc').value;
       if (act === 'clone') { spec.name = $('opZName').value; spec.move = $('opZMove').checked; spec.domains = [...S.domPick].concat(lines(($('opZNew') || {}).value)); }
+      else if (act === 'add') { spec.target = $('opZTgt').value; spec.domains = lines(($('opZAdd') || {}).value).slice(0, 500); if (!spec.target) throw new Error('Pick the segment to add the domains to.'); }
+      else if (act === 'remove') { spec.domains = [...S.domPick]; }
       else { spec.target = $('opZTgt').value; spec.domains = [...S.domPick]; if (!spec.target) throw new Error('Pick the target segment.'); }
-      if (!spec.domains.length) throw new Error('Pick at least one domain.');
+      if (!spec.domains.length) throw new Error(act === 'add' ? 'Type at least one domain.' : 'Pick at least one domain.');
       return spec;
     }
 

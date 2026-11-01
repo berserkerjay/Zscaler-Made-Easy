@@ -12,7 +12,7 @@
   const F = { prefix: '', mode: 'create', cg: '', location: 'san_jose', max: '5', wDomain: '', wTcp: '1-65535', wUdp: '', vertical: '', pDomain: '',
     csv: '', csvName: '', enable: false, baDomain: '', baPort: '443', baCert: '', rdp: '', ssh: '', portal: '', segCg: '',
     access: true, timeout: true, inspection: false, iso: '', rt: '28800', it: '3600', everything: false, pick: new Set(),
-    who: 'everyone', scim: new Set(), saml: [], scimFind: '', samlAttr: '', samlVal: '' };
+    who: 'everyone', scim: new Set(), saml: [], scimFind: '', samlAttr: '', samlVal: '', above: '' };
   const MAX_WHO = 20;
   const PREFIX = /^[A-Za-z0-9_-]{1,20}$/;
   let E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -129,7 +129,10 @@
   function renderPolicies(res, where, H) {
     where.innerHTML = `${errs(res)}${prefixRow()}
       <div class="df-hint">The rules cover every application segment named with the prefix.</div>
-      <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbAccess" data-f="access"${F.access ? ' checked' : ''}><span>Access: allow the applications</span></label></div>
+      <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbAccess" data-f="access" data-rerender="1"${F.access ? ' checked' : ''}><span>Access: allow the applications</span></label>
+        <label class="df-ctl"><span class="lbl">Place it above</span><select id="zbAbove" data-f="above" aria-describedby="zbAboveHint"${F.access ? '' : ' disabled'}>
+          <option value="">Last (the end of the access policy)</option>${(res.access_rules || []).map(r => `<option value="${E(r.id)}"${String(F.above) === String(r.id) ? ' selected' : ''}>${E(r.order)}. ${E(r.name)}${r.action ? ` (${E(r.action.toLowerCase())})` : ''}</option>`).join('')}</select></label></div>
+      <div class="df-hint" id="zbAboveHint">ZPA evaluates access rules top down and the first match decides: put the rule above a rule that would otherwise block these users. The preview shows the move; Undo puts it back.</div>
       <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbTimeout" data-f="timeout"${F.timeout ? ' checked' : ''}><span>Timeout: re-authenticate every</span></label>
         <label class="df-ctl"><span class="sr-only">Re-authentication timeout</span><select id="zbRt" data-f="rt" aria-label="Re-authentication timeout">${opt(res.timeouts, F.rt)}</select></label>
         <label class="df-ctl"><span class="lbl">or after idle</span><select id="zbIt" data-f="it">${opt(res.idle_timeouts, F.it)}</select></label></div>
@@ -187,6 +190,7 @@
   function specPolicies() {
     const spec = { type: 'zpa_policies', prefix: needPrefix(), access: !!F.access, timeout: !!F.timeout, inspection: !!F.inspection,
       isolation_profile_id: F.iso, reauth_timeout: F.rt, reauth_idle_timeout: F.it };
+    if (F.access && F.above) spec.access_above = String(F.above);
     if (!spec.access && !spec.timeout && !spec.inspection && !spec.isolation_profile_id) throw new Error('Pick at least one policy.');
     if (F.who === 'some') {
       if (!spec.access) throw new Error('Tick Access to limit the access rule to SCIM groups or SAML values.');
