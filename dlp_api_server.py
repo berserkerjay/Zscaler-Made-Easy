@@ -38,7 +38,7 @@ from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTM
 
 import tenant_auth
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ── Security hardening (secure-by-design controls) ───────────────────
 from security import (
@@ -7075,8 +7075,10 @@ async def operations_zcc_domain_users(req: ZccDomainUsersRequest, request: Reque
         raise HTTPException(status_code=400, detail=str(e))
     _audit.record("zcc_domain_users_export", actor=_actor(request) or _security.current_actor(), domain=dom, users=len(rows))
     body = ops_zcc_admin.domain_users_csv(rows, dom).encode("utf-8")
+    # The domain matched _DOMAIN_RE; the filename keeps only plain-token characters of it all the same.
+    fname = "client-connector-users-" + "".join(c if c.isascii() and (c.isalnum() or c in "-_.") else "_" for c in dom) + "-personal-data.csv"
     return Response(content=body, media_type="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="client-connector-users-{dom}-personal-data.csv"',
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"',
                              "Cache-Control": "no-store"})
 
 
@@ -9868,6 +9870,7 @@ async def traffic_logs_siem(siem: str = "splunk", hours: int = 24, user: str = "
 # and an audit record.
 class TrafficLogWatchSettings(BaseModel):
     """The watched folder, whether the daily report is on, the hour (this computer's time), keep names, how many reports to keep."""
+    model_config = ConfigDict(extra="forbid")   # a server-wide setting: a body carrying anything else (credentials, scope) is a 422
     enabled: bool = False
     folder: str = ""
     hour: int = 6
@@ -9966,6 +9969,7 @@ async def _start_tlw_timer() -> None:
 # server-wide change: the writer check and an audit record.
 class SyslogStartRequest(BaseModel):
     """Where the listener listens: an IP address of this computer (127.0.0.1 unless allow_remote), a port from 1024 and UDP or TCP."""
+    model_config = ConfigDict(extra="forbid")   # never start a network listener on a body carrying anything else
     host: str = "127.0.0.1"
     port: int = 5514
     protocol: str = "udp"
@@ -9981,7 +9985,13 @@ class SyslogStartRequest(BaseModel):
 
 class SyslogStopRequest(BaseModel):
     """Stop listening; clear=true also forgets the lines that arrived."""
+    model_config = ConfigDict(extra="forbid")
     clear: bool = False
+
+
+class SyslogClearRequest(BaseModel):
+    """Forget the lines that arrived: no fields (no body, or {}); anything else is a 422."""
+    model_config = ConfigDict(extra="forbid")
 
 
 @app.get("/api/traffic-logs/syslog")
@@ -10015,7 +10025,7 @@ async def traffic_logs_syslog_stop(req: SyslogStopRequest, request: Request):
 
 
 @app.post("/api/traffic-logs/syslog/clear")
-async def traffic_logs_syslog_clear(request: Request):
+async def traffic_logs_syslog_clear(request: Request, req: Optional[SyslogClearRequest] = None):
     """Forget the lines that arrived (they were only ever in memory; writer only)."""
     import syslog_listener as sl
     _security.require_writer()
@@ -13304,6 +13314,8 @@ class VendorImport(BaseModel):
 
 
 class VendorFetch(BaseModel):
+    """The provider whose published list to fetch now; nothing else."""
+    model_config = ConfigDict(extra="forbid")
     provider: str = Field("", max_length=20)
 
 
@@ -13331,6 +13343,9 @@ async def vendor_endpoints_settings(req: VendorSettings, request: Request):
 async def vendor_endpoints_refresh(req: VendorFetch, request: Request):
     """Fetch one provider's list now (only when it publishes one and fetching is on). 409 when off, 502 when refused."""
     import vendor_endpoints
+    if req.provider not in vendor_endpoints.PROVIDERS:   # bad input is a 400 before anything is fetched, never a 502
+        raise HTTPException(status_code=400, detail="Not a provider this app knows: "
+                            + ", ".join(p["label"] for p in vendor_endpoints.PROVIDERS.values()) + ".")
     _security.require_writer()
     try:
         out = await asyncio.to_thread(vendor_endpoints.fetch, req.provider)
