@@ -4835,9 +4835,12 @@ async def config_backups_list():
         caches = {}
     # Team mode: every backup and template names its tenant profile (and its
     # maker); a person sees only those of the profiles they may read.
-    backups = [b for b in cb.list_backups() if _team.may_reach_record(_team.record_profiles(b), b.get("owner_id"))]
-    templates = [t for t in cb.list_templates() if _team.may_reach("template_id", t.get("id"))]
-    schedules = {pid: v for pid, v in cb.schedules().items() if _team.may("read", pid)}
+    try:
+        backups = [b for b in cb.list_backups() if _team.may_reach_record(_team.record_profiles(b), b.get("owner_id"))]
+        templates = [t for t in cb.list_templates() if _team.may_reach("template_id", t.get("id"))]
+        schedules = {pid: v for pid, v in cb.schedules().items() if _team.may("read", pid)}
+    except cb.BackupError as e:   # a sealed list whose key is not on this computer
+        raise _cfg_err(e, 409)
     return {"backups": backups, "templates": templates, "schedules": schedules, "caches": caches, "coverage": cb.coverage()}
 
 
@@ -15085,6 +15088,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     if tls and store_crypto.fips_mode():
         ssl_args["ssl_ciphers"] = store_crypto.FIPS_TLS_CIPHERS   # TLS 1.2 suites; TLS 1.3 suites are the platform OpenSSL's
         print("  FIPS mode: only FIPS-approved algorithms in this app's own choices (see SECURITY.md for what that does not cover).")
+    if tls and tls.get("acme"):
+        # Renew the ACME certificate while the server runs and load it into
+        # the running TLS context (uvicorn's ssl_context_factory, where this
+        # uvicorn has it; otherwise a renewal says a restart is needed).
+        import inspect
+        import server_acme
+        if "ssl_context_factory" in inspect.signature(uvicorn.Config.__init__).parameters:
+            ssl_args["ssl_context_factory"] = server_acme.context_factory
+        server_acme.start_renewal()
+        print(f"  ACME: the certificate is checked every {server_acme.check_seconds() / 3600:g} hours and renewed in place "
+              f"when fewer than {server_acme.RENEW_DAYS} days are left.")
     try:
         if not is_debug():
             # Suppress access log spam in production mode (one line per request)

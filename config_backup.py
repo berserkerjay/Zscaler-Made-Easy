@@ -820,7 +820,11 @@ def _read_index() -> Dict[str, Any]:
     try:
         with open(_index_path(), "rb") as f:
             data = safe_files.strict_json_loads(store_crypto.open_text(f.read(_sealed_cap(4 * 1024 * 1024)).decode("utf-8")))
-    except (OSError, ValueError, UnicodeDecodeError, store_crypto.StoreLocked):
+    except store_crypto.StoreLocked as e:
+        # A sealed index whose key is not here is not an empty index: the
+        # next save would otherwise replace the list of every backup.
+        raise BackupError(f"The backup list is encrypted and cannot be opened here: {e}")
+    except (OSError, ValueError, UnicodeDecodeError):
         data = {}
     if not isinstance(data, dict):
         data = {}

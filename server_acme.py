@@ -22,8 +22,12 @@ Declared outbound destinations, used only with ZSCALER_TLS=acme: the ACME
 directory's host (acme-v02.api.letsencrypt.org by default; every address
 the directory names must be on that same host) and api.cloudflare.com.
 Every answer is size-capped and parsed defensively. A certificate is
-renewed at start-up when it has fewer than 30 days left; a renewal that
-fails keeps serving the old certificate while it is valid.
+renewed at start-up when it has fewer than 30 days left, and again while
+the server runs: a background check (every ZSCALER_ACME_CHECK_HOURS, 12 by
+default) renews it once fewer than 30 days are left and loads the new
+certificate into the running server's TLS context, so new connections get
+it without a restart. A renewal that fails keeps serving the old
+certificate while it is valid, and says so (stderr and the audit log).
 
 Cryptography: the account key and the certificate key are ECDSA P-256
 keys made with the pinned `cryptography` package; requests are signed with
@@ -37,8 +41,9 @@ import datetime as _dt
 import hashlib
 import json
 import os
+import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 LETS_ENCRYPT = "https://acme-v02.api.letsencrypt.org/directory"
@@ -410,6 +415,96 @@ def ensure(*, session=None, log=print) -> Dict[str, Any]:
             print(f"  ACME renewal failed ({str(e)[:200]}); serving the current certificate, {left:.0f} day(s) left.", file=sys.stderr)
             return {"cert": cert, "key": key, "fingerprint": server_tls.fingerprint(cert), "self_signed": False, "generated": False, "acme": True}
         raise RuntimeError(f"Could not get a certificate through ACME: {e}") from None
+
+
+# ── renewal while the server runs ───────────────────────────────────────
+CHECK_HOURS_DEFAULT = 12.0
+_CONTEXTS: List[Any] = []          # the running server's ssl.SSLContext(s), registered at start-up
+_CONTEXTS_LOCK = threading.Lock()
+
+
+def check_seconds() -> float:
+    """How often the running server checks its certificate (1 to 168 hours)."""
+    try:
+        h = float(os.environ.get("ZSCALER_ACME_CHECK_HOURS", "") or CHECK_HOURS_DEFAULT)
+    except ValueError:
+        h = CHECK_HOURS_DEFAULT
+    return max(1.0, min(168.0, h)) * 3600
+
+
+def register_context(ctx: Any) -> Any:
+    """Remember the TLS context the server serves with, so a renewed
+    certificate is loaded into it (new handshakes use it; no restart)."""
+    with _CONTEXTS_LOCK:
+        if ctx is not None and all(c is not ctx for c in _CONTEXTS):
+            _CONTEXTS.append(ctx)
+    return ctx
+
+
+def context_factory(_config: Any, default_factory: Callable[[], Any]) -> Any:
+    """uvicorn's ssl_context_factory: its own context, registered for renewal."""
+    return register_context(default_factory())
+
+
+def renew_once(*, session=None, log=print) -> Dict[str, Any]:
+    """Check the certificate now; renew it when fewer than RENEW_DAYS are
+    left and load the new one into every registered TLS context. Returns
+    {renewed, reloaded, days_left, restart_needed}. A failed renewal while
+    the old certificate is still valid keeps it (ensure says so); one with
+    no valid certificate left raises."""
+    import server_tls
+    info = ensure(session=session, log=log)
+    out = {"renewed": bool(info.get("generated")), "reloaded": 0, "restart_needed": False,
+           "days_left": _days_left(info["cert"]), "fingerprint": info.get("fingerprint")}
+    if not info.get("generated"):
+        if out["days_left"] is not None and out["days_left"] <= RENEW_DAYS:
+            _audit_event("acme_renewal_failed", days_left=round(out["days_left"], 1),
+                         note="the renewal did not succeed; the current certificate is still served")
+        return out
+    with _CONTEXTS_LOCK:
+        contexts = list(_CONTEXTS)
+    for ctx in contexts:
+        ctx.load_cert_chain(info["cert"], info["key"])   # the same context object: new handshakes get the new certificate
+        out["reloaded"] += 1
+    server_tls.remember(info)
+    out["restart_needed"] = not contexts
+    if not contexts:
+        import sys
+        print("  The ACME certificate was renewed; restart the server to serve it (this server's TLS context could not be "
+              "reloaded in place).", file=sys.stderr)
+    _audit_event("acme_certificate_reloaded" if contexts else "acme_certificate_renewed_restart_needed",
+                 contexts=out["reloaded"], fingerprint=info.get("fingerprint"))
+    return out
+
+
+def _audit_event(event: str, **fields: Any) -> None:
+    try:
+        import audit
+        audit.record(event, actor="the app itself (no signed-in request)", **fields)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def start_renewal(*, interval: Optional[float] = None, stop: Optional[threading.Event] = None,
+                  session=None, log=print) -> threading.Thread:
+    """A daemon thread that calls renew_once every `interval` seconds
+    (check_seconds()) until `stop` is set. A failure is logged and audited;
+    the next check tries again."""
+    stop = stop or threading.Event()
+    every = check_seconds() if interval is None else float(interval)
+
+    def loop() -> None:
+        while not stop.wait(every):
+            try:
+                renew_once(session=session, log=log)
+            except Exception as e:  # noqa: BLE001 - the server keeps serving; the next check tries again
+                import sys
+                print(f"  ACME certificate check failed: {str(e)[:200]}", file=sys.stderr)
+                _audit_event("acme_renewal_failed", error=type(e).__name__)
+    t = threading.Thread(target=loop, name="acme-renewal", daemon=True)
+    t.stop = stop  # type: ignore[attr-defined]
+    t.start()
+    return t
 
 
 def _days_left(cert_path: str) -> Optional[float]:

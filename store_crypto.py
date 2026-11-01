@@ -7,8 +7,13 @@ default, when every store stays the plain owner-only JSON it always was).
                                    snapshots, the change queue, proposals,
                                    deployment and bulk-change records,
                                    workspace notes, POVs and their templates,
-                                   the team server's accounts and the audit
-                                   log (line by line)
+                                   the team server's accounts, the audit
+                                   log (line by line), configuration backups
+                                   with their index, templates and per-profile
+                                   configuration caches, scheduled sync jobs,
+                                   the Client Connector fleet history, the SSL
+                                   coverage history and saved traffic log
+                                   reports
     DLP_CHECK_STORE_KEY_FILE       where the key file is kept when the OS
                                    credential store is not available
                                    (default store_keys.json beside the data,
@@ -217,7 +222,8 @@ def _store_paths() -> List[Dict[str, Any]]:
                 if os.path.isfile(p):
                     out.append({"path": p, "lines": lines})
     for mod, fn in (("tenant_profiles", "store_path"), ("change_queue", "store_path"), ("proposals", "store_path"),
-                    ("deployments", "store_path"), ("workspace_notes", "store_path"), ("team_server", "store_path")):
+                    ("deployments", "store_path"), ("workspace_notes", "store_path"), ("team_server", "store_path"),
+                    ("sync_jobs", "store_path"), ("zcc_fleet_history", "history_path"), ("ssl_coverage", "history_path")):
         try:
             add(getattr(__import__(mod), fn)())
         except Exception:  # noqa: BLE001 - a store that cannot say where it is has nothing to seal
@@ -235,6 +241,14 @@ def _store_paths() -> List[Dict[str, Any]]:
         add(pov._templates_path())
     except Exception:  # noqa: BLE001
         pass
+    # Stores made of many files: configuration backups (index, bk-*, tpl-*,
+    # cache-*) and saved traffic log reports.
+    for mod in ("config_backup", "traffic_logs"):
+        try:
+            for p in getattr(__import__(mod), "store_files")():
+                add(p)
+        except Exception:  # noqa: BLE001 - a store that cannot list itself has nothing to seal
+            pass
     try:
         import audit
         add(audit.path(), lines=True)

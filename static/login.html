@@ -19,6 +19,7 @@
   .lg-msg.bad { color: var(--fail); }
   .lg-or { margin: 1.1rem 0 0.4rem; font-size: 0.82rem; color: var(--dim); }
   .lg-foot { font-size: 0.8rem; color: var(--dim); margin-top: 1rem; }
+  .lg-change-title { font-size: 1.05rem; margin: 0 0 0.2rem; }
 </style>
 <link rel="stylesheet" href="/static/hover_help.css">
 <script src="/static/glass.js"></script>
@@ -40,6 +41,21 @@
         </div>
         <div class="lg-msg" id="lgMsg" role="alert" aria-live="assertive"></div>
       </form>
+      <form id="lgChange" novalidate hidden aria-labelledby="lgChangeTitle">
+        <h2 id="lgChangeTitle" class="lg-change-title">Choose your own password<span class="help-mark" data-help="team.password_change" tabindex="0" role="button" aria-label="Help: why you choose a new password">?</span></h2>
+        <p class="lg-foot">An administrator set the password you signed in with, so choose your own before you go on. Then sign in again with it.</p>
+        <label for="lgCur">Password you signed in with</label>
+        <input id="lgCur" type="password" autocomplete="current-password" maxlength="1024" required>
+        <label for="lgNew">New password</label>
+        <input id="lgNew" type="password" autocomplete="new-password" maxlength="1024" required aria-describedby="lgNewHint">
+        <p class="lg-foot" id="lgNewHint">At least <span id="lgMin">12</span> characters, not your user name, and not the one you signed in with.</p>
+        <label for="lgNew2">New password again</label>
+        <input id="lgNew2" type="password" autocomplete="new-password" maxlength="1024" required>
+        <div class="lg-actions">
+          <button type="submit" class="rp-btn primary" id="lgChangeGo">Save the new password</button>
+        </div>
+        <div class="lg-msg" id="lgChangeMsg" role="alert" aria-live="assertive"></div>
+      </form>
       <div id="lgSso" hidden>
         <p class="lg-or">Or sign in through your organisation's identity provider:</p>
         <a class="rp-btn" id="lgSsoBtn" href="/api/auth/sso/login">Sign in with SSO</a>
@@ -55,9 +71,14 @@
   (function () {
     const $ = id => document.getElementById(id);
     const msg = (t, bad) => { $('lgMsg').textContent = t || ''; $('lgMsg').className = 'lg-msg' + (bad ? ' bad' : ''); };
+    const cmsg = (t, bad) => { $('lgChangeMsg').textContent = t || ''; $('lgChangeMsg').className = 'lg-msg' + (bad ? ' bad' : ''); };
+    // A password an administrator set must be replaced before anything else
+    // (the server refuses every other call until then).
+    const askForNewPassword = () => { $('lgForm').hidden = true; $('lgSso').hidden = true; $('lgChange').hidden = false; $('lgCur').focus(); };
     fetch('/api/auth/status', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).then(s => {
       if (!s) return;
       if (!s.team) { msg('This server is not a team server, so there is no account to sign in to here. Open the app instead.', true); $('lgGo').disabled = true; return; }
+      if (s.unlocked && s.password_change_required) { askForNewPassword(); return; }
       if (s.unlocked) { window.location.replace('/'); return; }
       if (s.oidc) $('lgSso').hidden = false;
     }).catch(() => {});
@@ -70,10 +91,30 @@
         const r = await fetch('/api/auth/team/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }) });
         let body = {}; try { body = await r.json(); } catch (err) { /* not json */ }
+        if (r.ok && body.must_change_password) { msg(''); $('lgCur').value = password; askForNewPassword(); $('lgNew').focus(); return; }
         if (r.ok) { $('lgPass').value = ''; msg('Signed in.'); window.location.replace('/'); return; }
         msg(typeof body.detail === 'string' ? body.detail : 'Sign-in failed.', true);
       } catch (err) { msg('The server did not answer. Is it running?', true); }
-      finally { $('lgGo').disabled = false; $('lgPass').value = ''; $('lgPass').focus(); }
+      finally { $('lgGo').disabled = false; $('lgPass').value = ''; if (!$('lgForm').hidden) $('lgPass').focus(); }
+    });
+    $('lgChange').addEventListener('submit', async e => {
+      e.preventDefault();
+      const current = $('lgCur').value, next = $('lgNew').value;
+      if (!current || !next) { cmsg('Fill in both passwords.', true); return; }
+      if (next !== $('lgNew2').value) { cmsg('The two new passwords differ.', true); $('lgNew2').focus(); return; }
+      $('lgChangeGo').disabled = true; cmsg('Saving…');
+      try {
+        const r = await fetch('/api/team/me/password', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ current, new: next }) });
+        let body = {}; try { body = await r.json(); } catch (err) { /* not json */ }
+        if (r.ok) {
+          ['lgCur', 'lgNew', 'lgNew2'].forEach(id => { $(id).value = ''; });
+          $('lgChange').hidden = true; $('lgForm').hidden = false;
+          msg('Your new password is saved. Sign in with it now.'); $('lgUser').focus(); return;
+        }
+        cmsg(typeof body.detail === 'string' ? body.detail : 'The password could not be changed.', true);
+      } catch (err) { cmsg('The server did not answer. Is it running?', true); }
+      finally { $('lgChangeGo').disabled = false; }
     });
   })();
   </script>

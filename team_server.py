@@ -292,6 +292,7 @@ def public_user(u: Dict[str, Any]) -> Dict[str, Any]:
             "groups": list(u.get("groups") or []), "created": u.get("created"), "updated": u.get("updated"),
             "password_algorithm": str(u.get("password") or "").split("$", 1)[0] or None,
             "needs_password_reset": bool(store_crypto.fips_mode() and str(u.get("password") or "").startswith("scrypt$")),
+            "must_change_password": bool(u.get("must_change_password") and u.get("password")),
             "locked": float(u.get("locked_until") or 0) > now,
             "locked_until": u.get("locked_until") if float(u.get("locked_until") or 0) > now else None,
             "failed_logins": int(u.get("failed") or 0), "sso_linked": bool(u.get("oidc_sub"))}
@@ -336,7 +337,10 @@ def _active_admins(data: Dict[str, Any], *, except_id: str = "") -> int:
 
 
 def create_user(*, username: Any, role: Any = "viewer", password: Any = None, display_name: Any = "", email: Any = "",
-                source: str = "local", external_id: Any = "", active: bool = True, by: str = "") -> Dict[str, Any]:
+                source: str = "local", external_id: Any = "", active: bool = True, by: str = "",
+                must_change: bool = False) -> Dict[str, Any]:
+    """A new account. `must_change`: the password was chosen by someone else
+    (an administrator), so its owner must choose their own at first sign-in."""
     name = _check_username(username)
     role = _check_role(role)
     pw_hash = ""
@@ -352,7 +356,8 @@ def create_user(*, username: Any, role: Any = "viewer", password: Any = None, di
         now = _now_iso()
         data["users"][uid] = {"id": uid, "username": name, "display_name": _clean(display_name), "email": _clean(email).lower(),
                               "role": role, "active": bool(active), "password": pw_hash, "groups": [], "source": source,
-                              "external_id": _clean(external_id), "created": now, "updated": now, "failed": 0, "locked_until": 0}
+                              "external_id": _clean(external_id), "created": now, "updated": now, "failed": 0, "locked_until": 0,
+                              "must_change_password": bool(must_change and pw_hash)}
         _write(data)
     _audit("team_user_created", actor=by or None, user=name, role=role, source=source)
     return get_user(uid) or {}
@@ -399,7 +404,10 @@ def update_user(uid: str, *, by: str = "", **fields: Any) -> Dict[str, Any]:
     return u
 
 
-def set_password(uid: str, password: Any, *, by: str = "") -> None:
+def set_password(uid: str, password: Any, *, by: str = "", must_change: bool = False) -> None:
+    """Set a password; every session of the account ends. `must_change`: an
+    administrator's reset, so the owner must choose their own at the next
+    sign-in. Their own change (must_change False) clears that."""
     u = get_user(uid)
     if not u:
         raise TeamError("No such account.", 404)
@@ -409,10 +417,21 @@ def set_password(uid: str, password: Any, *, by: str = "") -> None:
         rec = data["users"].get(uid)
         if not isinstance(rec, dict):
             raise TeamError("No such account.", 404)
-        rec.update(password=h, failed=0, locked_until=0, updated=_now_iso())
+        rec.update(password=h, failed=0, locked_until=0, updated=_now_iso(), must_change_password=bool(must_change))
         _write(data)
     _end_sessions(uid)
-    _audit("team_password_set", actor=by or None, user=u.get("username"))
+    _audit("team_password_set", actor=by or None, user=u.get("username"), must_change=bool(must_change))
+
+
+# What a person whose password must be changed may still reach (beyond the
+# public routes): who they are, and the change itself.
+PASSWORD_CHANGE_ROUTES = frozenset({"GET /api/team/me", "POST /api/team/me/password"})
+PASSWORD_CHANGE_REQUIRED = ("Choose a new password first: your password was set by an administrator, so it must be changed at "
+                            "this sign-in (Sign in page, or POST /api/team/me/password). Nothing else is available until then.")
+
+
+def must_change_password(u: Optional[Dict[str, Any]]) -> bool:
+    return bool(u and u.get("must_change_password") and u.get("password"))
 
 
 def unlock_user(uid: str, *, by: str = "") -> None:
@@ -1452,6 +1471,11 @@ class TeamAccessMiddleware:
             await deny(401, "Sign in required.", "not signed in",
                        {"token_required": True, "sso_required": True, "sso_login_url": LOGIN_PATH})
             return
+        if must_change_password(user) and f"{'GET' if method == 'HEAD' else method} {template}" not in PASSWORD_CHANGE_ROUTES:
+            # First sign-in with a password an administrator chose (or after
+            # an administrator's reset): only the change itself is reachable.
+            await deny(403, PASSWORD_CHANGE_REQUIRED, "password change required", {"password_change_required": True})
+            return
         admin = user.get("role") == "admin"
         if action == "admin" and not admin:
             await deny(403, f"Only a team server administrator may do this; you are signed in as {user.get('username')} "
@@ -1720,8 +1744,8 @@ def _cli(argv: Optional[List[str]] = None) -> int:
             if not u:
                 print("No such account.")
                 return 1
-            set_password(u["id"], pw, by="command line")
-            print(f"Password of {u['username']} changed; their sessions ended.")
+            set_password(u["id"], pw, by="command line", must_change=True)
+            print(f"Password of {u['username']} changed; their sessions ended. They choose their own at their next sign-in.")
     except TeamError as e:
         print(str(e))
         return 1

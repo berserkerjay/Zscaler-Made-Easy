@@ -70,6 +70,7 @@ def status_fields(request: Request) -> Dict[str, Any]:
             "user": u.get("username") if u else None, "role": u.get("role") if u else None,
             "may_write": bool(u and "apply" in team.ROLE_ACTIONS.get(str(u.get("role")), ())),
             "is_admin": bool(u and u.get("role") == "admin"),
+            "password_change_required": team.must_change_password(u),
             "sso_login_url": "/login", "logout_url": "/api/auth/logout",
             "oidc": sso.sso_enabled(), "oidc_login_url": "/api/auth/sso/login" if sso.sso_enabled() else None}
 
@@ -118,9 +119,11 @@ def register(app: FastAPI) -> None:
             headers = {"Retry-After": "60"} if e.status in (423, 429) else None
             return JSONResponse({"detail": str(e)}, status_code=e.status, headers=headers)
         sid = team.start_session(u, via="password", previous_sid=request.cookies.get(security.SSO_SESSION_COOKIE))
-        resp = JSONResponse({"ok": True, "user": u.get("username"), "role": u.get("role")})
+        must = team.must_change_password(u)
+        resp = JSONResponse({"ok": True, "user": u.get("username"), "role": u.get("role"), "must_change_password": must})
         security.set_session_cookie(resp, request, sid)
-        audit.record("team_login", actor=u.get("username"), via="password", role=u.get("role"), client=client)
+        audit.record("team_login", actor=u.get("username"), via="password", role=u.get("role"), client=client,
+                     **({"must_change_password": True} if must else {}))
         return resp
 
     @app.get("/api/team/me")
@@ -149,6 +152,8 @@ def register(app: FastAPI) -> None:
         if not u.get("password") or not team.verify_password(str(data.get("current") or ""), u.get("password")):
             audit.record("team_password_change_refused", reason="the current password was wrong")
             raise HTTPException(status_code=403, detail="The current password is not right.")
+        if isinstance(data.get("new"), str) and data.get("new") == data.get("current"):
+            raise HTTPException(status_code=400, detail="Choose a password different from the current one.")
         try:
             team.set_password(u["id"], data.get("new"), by=u.get("username"))
         except team.TeamError as e:
@@ -181,8 +186,11 @@ def register(app: FastAPI) -> None:
         _on()
         data = await _body(request)
         try:
+            # A password an administrator types is theirs, not the new person's:
+            # its owner chooses their own at first sign-in.
             u = team.create_user(username=data.get("username"), role=data.get("role") or "viewer", password=data.get("password") or None,
-                                 display_name=data.get("display_name") or "", email=data.get("email") or "", by=security.current_actor())
+                                 display_name=data.get("display_name") or "", email=data.get("email") or "", by=security.current_actor(),
+                                 must_change=True)
         except team.TeamError as e:
             _fail(e)
         return {"user": team.public_user(u)}
@@ -218,11 +226,13 @@ def register(app: FastAPI) -> None:
 
     @app.post("/api/team/users/{user_id}/password")
     async def team_user_password(user_id: str, request: Request):
-        """Set an account's password (an administrator's reset). Its sessions end."""
+        """Set an account's password (an administrator's reset). Its sessions
+        end, and its owner must choose their own password at the next sign-in."""
         _on()
         data = await _body(request)
         try:
-            team.set_password(user_id, data.get("password"), by=security.current_actor())
+            me = team.current_user() or {}
+            team.set_password(user_id, data.get("password"), by=security.current_actor(), must_change=user_id != me.get("id"))
         except team.TeamError as e:
             _fail(e)
         return {"ok": True}

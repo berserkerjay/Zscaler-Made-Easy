@@ -165,8 +165,10 @@ def clean_entry(e: Any) -> Optional[Dict[str, Any]]:
 _PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
 
 
-def _read_doc(p: str) -> Any:
-    """The file's JSON (a sealed file, store_crypto, opened first), or None."""
+def _read_doc(p: str, strict: bool = False) -> Any:
+    """The file's JSON (a sealed file, store_crypto, opened first), or None.
+    `strict` (a writer): a sealed file whose key is not here raises
+    StoreLocked instead of reading as no history, so it is never replaced."""
     try:
         if os.path.getsize(p) > MAX_FILE_BYTES * 4 // 3 + 256:
             return None
@@ -175,13 +177,17 @@ def _read_doc(p: str) -> Any:
         if len(text) > MAX_FILE_BYTES:
             return None
         return json.loads(text)
-    except (OSError, ValueError, RecursionError, store_crypto.StoreLocked):
+    except store_crypto.StoreLocked:
+        if strict:
+            raise
+        return None
+    except (OSError, ValueError, RecursionError):
         return None
 
 
-def _profiles(p: str) -> Dict[str, str]:
+def _profiles(p: str, strict: bool = False) -> Dict[str, str]:
     """{tenant label: tenant profile id} for the labels a profile was named for."""
-    data = _read_doc(p)
+    data = _read_doc(p, strict)
     pr = data.get("profiles") if isinstance(data, dict) else None
     if not isinstance(pr, dict):
         return {}
@@ -194,9 +200,9 @@ def profile_of(tenant: Any, path: Optional[str] = None) -> str:
     return _profiles(path or history_path()).get(tenant_key(tenant), "")
 
 
-def _load_all(path: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+def _load_all(path: Optional[str] = None, strict: bool = False) -> Dict[str, List[Dict[str, Any]]]:
     p = path or history_path()
-    data = _read_doc(p)
+    data = _read_doc(p, strict)
     t = data.get("tenants") if isinstance(data, dict) else None
     if not isinstance(t, dict):
         return {}
@@ -224,13 +230,13 @@ def record(tenant: Any, snap: Dict[str, Any], path: Optional[str] = None, *, pro
     key = tenant_key(tenant)
     p = path or history_path()
     with _LOCK:
-        data = _load_all(p)
+        data = _load_all(p, strict=True)
         hist = [h for h in data.pop(key, []) if not (h["at"] == clean["at"] and h["source"] == clean["source"])]
         hist = sorted(hist + [clean], key=lambda r: r["at"])[-HISTORY_KEEP:]
         data[key] = hist
         while len(data) > HISTORY_TENANTS:
             data.pop(next(iter(data)))
-        profs = {k: v for k, v in _profiles(p).items() if k in data}
+        profs = {k: v for k, v in _profiles(p, strict=True).items() if k in data}
         if _PROFILE_ID.match(str(profile_id or "")):
             profs[key] = profile_id
         _write(p, {"version": 1, "tenants": data, "profiles": profs})
@@ -242,7 +248,7 @@ def forget(tenant: Any, path: Optional[str] = None) -> int:
     key = tenant_key(tenant)
     p = path or history_path()
     with _LOCK:
-        data = _load_all(p)
+        data = _load_all(p, strict=True)
         gone = len(data.pop(key, []))
         if gone:
             _write(p, {"version": 1, "tenants": data, "profiles": {k: v for k, v in _profiles(p).items() if k in data}})

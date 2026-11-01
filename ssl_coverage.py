@@ -786,12 +786,16 @@ def history_path() -> str:
     return os.path.join(os.path.dirname(_cache_path()), "ssl_coverage_history.json")
 
 
-def _load_all(path: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+def _load_all(path: Optional[str] = None, strict: bool = False) -> Dict[str, List[Dict[str, Any]]]:
     import store_crypto
     try:
         with open(path or history_path(), "r", encoding="utf-8") as f:
             data = json.loads(store_crypto.open_text(f.read()))   # a sealed file (store encryption) is opened first
-    except (OSError, ValueError, store_crypto.StoreLocked):
+    except store_crypto.StoreLocked:
+        if strict:
+            raise   # a writer never replaces a history it could not open
+        return {}
+    except (OSError, ValueError):
         return {}
     t = data.get("tenants") if isinstance(data, dict) else None
     return {str(k): [e for e in v if isinstance(e, dict)] for k, v in t.items() if isinstance(v, list)} if isinstance(t, dict) else {}
@@ -831,7 +835,7 @@ def record(tenant: str, rep: Mapping[str, Any], path: Optional[str] = None) -> L
     key = tenant_auth.scrub_classic_login(str(tenant or "tenant"))[:120]
     p = path or history_path()
     with _HISTORY_LOCK:
-        data = _load_all(p)
+        data = _load_all(p, strict=True)
         hist = (data.pop(key, []) + [history_entry(rep)])[-HISTORY_KEEP:]
         data[key] = hist
         while len(data) > HISTORY_TENANTS:
