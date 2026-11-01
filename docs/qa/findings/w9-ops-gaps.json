@@ -30,7 +30,7 @@
   },
   {
    "id": "xlsx-bomb-xxe",
-   "what": "zip bomb (ratio, total size, entry count), DTD/entity and oversize workbooks refused; a normal one parses",
+   "what": "zip bomb (ratio, total size, entry count), DTD/entity and oversize workbooks refused; a normal one parses; a sheet over the row, cell, column or shared-string cap is refused, streamed with bounded memory",
    "standard": "ASVS V12.1.1",
    "result": "pass"
   },
@@ -50,6 +50,12 @@
    "id": "route-tables",
    "what": "the new route and the traffic-log watch and syslog routes have team rules and a write classification; the syslog clear needs a writer and is audited",
    "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "tf-posture-incomplete",
+   "what": "the ZIA posture profile list is reported as possibly incomplete, never as complete",
+   "standard": "ASVS V7.4.1",
    "result": "pass"
   }
  ],
@@ -86,7 +92,51 @@
    "fix": "Raw GET at the provider's v2 paths (assumed shape), written in the provider's nested-attribute form.",
    "test": "tests/test_tf_providers_w9.py::test_a_oneapi_sample_tenant_exports_notification_templates_and_zia_posture_with_the_settings",
    "commit": "fe9b98f"
+  },
+  {
+   "id": "W9-OPS-GAPS-04",
+   "title": "The whole-tenant export treated the ZIA posture profile list as complete, though the API is documented to cut it short silently",
+   "severity": "medium",
+   "cwe": "CWE-392",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Every export that reads the list says it may be incomplete, with the count read (report, export_report.json, READMEs, job result, Exports page).",
+   "test": "tests/test_tf_providers_w9.py::test_the_zia_posture_list_is_reported_as_possibly_incomplete_never_as_complete",
+   "commit": "4c56386"
+  },
+  {
+   "id": "W9-OPS-GAPS-05",
+   "title": "The workbook reader parsed a whole sheet part into memory (734 MB peak for a 3 MB upload) and cut a sheet past the row cap short instead of refusing it",
+   "severity": "medium",
+   "cwe": "CWE-400",
+   "asvs": "V12.1.1",
+   "status": "fixed",
+   "fix": "Streamed iterative parse with the caps checked as bytes are inflated; a sheet over the row, filled-cell, column or shared-string cap is refused, reading stopping at the cap.",
+   "test": "tests/test_zcc_lists_w9.py::test_a_large_sheet_is_refused_early_with_bounded_memory_and_work",
+   "commit": "03468b7"
+  },
+  {
+   "id": "W9-OPS-GAPS-06",
+   "title": "No test proved that clearing or stopping the syslog listener needs the writer and is audited",
+   "severity": "low",
+   "cwe": "CWE-862",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "Tests: without the writer clear and stop are 403 and keep the lines; with it each writes its audit record.",
+   "test": "tests/test_traffic_log_sources.py::test_clearing_or_stopping_the_listener_without_the_writer_is_refused_and_keeps_the_lines",
+   "commit": "a086dcd"
+  },
+  {
+   "id": "W9-OPS-GAPS-07",
+   "title": "The release notes said every new assistant tool checks the server's scope, though the case-notes tools (local notes) take no Scope key",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.1.2",
+   "status": "fixed",
+   "fix": "The CHANGELOG says which tools check scope and that the case-notes tools work on the app's local notes.",
+   "test": "tests/test_mcp_tools_w9.py::test_the_changelog_says_which_assistant_tools_check_scope",
+   "commit": "a086dcd"
   }
  ],
- "tests_added": 52
+ "tests_added": 65
 }
