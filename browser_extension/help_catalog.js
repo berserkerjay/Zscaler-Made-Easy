@@ -6977,6 +6977,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "#paManual > summary": {
+    "what": "Opens Manual inputs: a PAC file or bypass lists that are not in the tenant, to see what they would do for this destination.",
+    "input": "Nothing to type here. Click it to open or close the section. Everything in it is optional.",
+    "effect": "local"
+   },
    "#paDevQ": {
     "what": "Sets the user whose enrolled devices to look up in the Client Connector Portal.",
     "input": "Optional. The user's sign-in name or part of it, like jane@acme.com or jane. 2 to 128 characters. Press Enter to find devices.",
