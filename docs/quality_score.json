@@ -2,21 +2,28 @@
   "schema_version": 1,
   "generated_by": "tools/quality_score.py",
   "run": {
-    "commit": "d568741bfef8",
-    "date": "2026-10-30T06:34:19",
-    "passed": 21711,
-    "failed": 0,
+    "commit": "a4475c4",
+    "date": "2026-11-01",
+    "passed": 21844,
+    "failed": 4,
     "errors": 0,
-    "skipped": 14,
-    "duration_s": 2714.5
+    "skipped": 13,
+    "duration_s": 2001.0
   },
   "overall": {
-    "score": 100,
+    "score": 79,
     "raw": 100.0,
-    "grade": "A",
-    "label": "Strong",
-    "meaning": "Tests pass, no serious finding is open and the standards are well covered.",
-    "cap": null
+    "grade": "C",
+    "label": "Fair",
+    "meaning": "4 tests failed in the recorded run. Usable, with gaps worth closing soon.",
+    "cap": {
+      "kind": "tests",
+      "severity": "",
+      "limit": 79,
+      "findings": [],
+      "applied": true,
+      "reason": "4 tests failed or errored in the recorded run; any failed test caps the overall score at 79 (grade C at best)."
+    }
   },
   "areas": [
     {
@@ -36,9 +43,9 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 21711,
-            "failed": 0,
-            "skipped": 14,
+            "passed": 21844,
+            "failed": 4,
+            "skipped": 13,
             "files": null
           },
           "findings": {
@@ -80,7 +87,7 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2477,
+            "passed": 2482,
             "failed": 0,
             "skipped": 0,
             "files": 14
@@ -127,8 +134,8 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2902,
-            "failed": 0,
+            "passed": 2913,
+            "failed": 1,
             "skipped": 0,
             "files": 18
           },
@@ -176,7 +183,7 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 4212,
+            "passed": 4248,
             "failed": 0,
             "skipped": 0,
             "files": 13
@@ -267,10 +274,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 3738,
+            "passed": 3800,
             "failed": 0,
             "skipped": 0,
-            "files": 24
+            "files": 25
           },
           "findings": {
             "score": 100.0,
@@ -350,8 +357,8 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2336,
-            "failed": 0,
+            "passed": 2346,
+            "failed": 1,
             "skipped": 4,
             "files": 20
           },
@@ -393,21 +400,21 @@
       "key": "motion",
       "name": "Motion",
       "weight": 15,
-      "score": 100.0,
+      "score": 99.9,
       "subs": [
         {
           "key": "motion",
           "name": "Motion",
-          "score": 100.0,
+          "score": 99.9,
           "based_on": [
             "tests",
             "findings",
             "coverage"
           ],
           "tests": {
-            "score": 100.0,
-            "passed": 833,
-            "failed": 0,
+            "score": 99.8,
+            "passed": 831,
+            "failed": 2,
             "skipped": 1,
             "files": 12
           },
