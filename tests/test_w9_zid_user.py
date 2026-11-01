@@ -244,6 +244,8 @@ def test_reset_sends_the_published_raw_call_once_and_the_temporary_password_reac
     got = oz.reveal(tok, actor="alice")
     assert got == {"name": "avery@acme.example", "secret": CANARY_PW}
     assert oz.reveal(tok, actor="alice") is None
+    # After the one reveal it is still in no result, job log, audit entry or record.
+    assert CANARY_PW not in sinks(isolated, p, r, rec, extra=caplog.text)
 
 
 def test_a_plain_reset_answer_still_never_lands_in_a_log():

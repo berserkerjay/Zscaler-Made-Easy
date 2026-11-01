@@ -5,6 +5,17 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-01
+
+### Day-to-day admin: ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users
+- **Activate pending ZIA changes.** A Day-to-day admin operation on Bulk changes: it reads ZIA's activation status and shows it. When changes are pending you preview, then type ACTIVATE; when nothing is pending (ACTIVE) or an activation is already running, it is refused, and a status it cannot read is unknown (never taken for pending). The status is read again right before the activation and read back after it; the run is audited with who did it. There is no Undo: the preview says an activation cannot be taken back, and that it makes every pending change live, whoever saved it.
+- **Rename or delete a URL category.** Rename one custom URL category (rules keep using it) or delete one no rule uses; the preview lists the rules that use it, a delete needs DELETE and its name, and Undo renames it back or creates it again with its URLs.
+- **IP source and destination groups.** Edit an IP source group's addresses (or make a new one), delete a source or destination group no rule uses (DELETE and its name), and import or export groups as CSV (the file is checked as untrusted and capped; exported cells are safe for spreadsheets). Undo puts every list back.
+- **DLP dictionaries and engines.** Create, edit or delete one custom dictionary (phrases, patterns, match type, proximity) or engine (its expression, explained in plain words before and after), or change a predefined dictionary's confidence. A change to what an enabled DLP rule detects, through an engine or directly, asks APPLY and the number of changes typed (rules that cannot be checked count as using it); a delete is refused while anything uses it.
+- **Edit a ZIdentity user.** Change one user's display name, first and last name, email, department and groups; the user is sent back as read with only those fields changed, read back, and Undo puts them back.
+- **Reset a ZIdentity user's password or MFA.** A raw call to ZIdentity's public API (the Zscaler SDK has none), behind the named assessor and RESET and the login typed; it cannot be undone. A temporary password ZIdentity answers is shown once, to the person who applied, and is never kept, logged, audited or exported.
+- Toggling one Private Service Edge on or off is now covered by its own tests (payload, gates, a change since the preview, a failed write and Undo).
+
 ## 2026-10-31
 
 ### Path coverage: unread conditions never match, Category lookup, UCaaS one-click

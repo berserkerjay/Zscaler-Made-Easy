@@ -22,14 +22,63 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders",
-    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score"
+    "2026-11-01": "Day-to-day admin: ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users",
+    "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
   "features": [
+    {
+      "id": "zia-activation", "release": "2026-11-01", "label": "Activate pending ZIA changes",
+      "what": "Activate pending ZIA changes: reads ZIA's activation status, activates what is pending with ACTIVATE typed, refuses when nothing is pending. No Undo.",
+      "changelog": ["Activate pending ZIA changes"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zia_activation\"]", "shown": "once the page lists the operation types" },
+        { "page": "/report/operations", "at": "#opAdminNew" }
+      ]
+    },
+    {
+      "id": "url-category-manage", "release": "2026-11-01", "label": "Rename or delete a URL category",
+      "what": "Rename one custom URL category, or delete one no rule uses (DELETE and its name typed), with Undo.",
+      "changelog": ["Rename or delete a URL category"],
+      "marks": [
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"url_category_manage\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "ip-group-admin", "release": "2026-11-01", "label": "IP source and destination groups",
+      "what": "IP groups: edit an IP source group, delete a group no rule uses, and import or export groups as CSV, with Undo.",
+      "changelog": ["IP source and destination groups"],
+      "marks": [
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"ip_group_admin\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "dlp-object-edit", "release": "2026-11-01", "label": "DLP dictionaries and engines",
+      "what": "Create, edit or delete one custom DLP dictionary or engine, its expression explained in plain words, with Undo.",
+      "changelog": ["DLP dictionaries and engines"],
+      "marks": [
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"dlp_object_edit\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "zid-user-edit", "release": "2026-11-01", "label": "Edit a ZIdentity user",
+      "what": "Edit one ZIdentity user's names, email, department and groups, with Undo.",
+      "changelog": ["Edit a ZIdentity user"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zid_user_edit\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "zid-user-reset", "release": "2026-11-01", "label": "Reset a ZIdentity user's password or MFA",
+      "what": "Reset one ZIdentity user's password or let the user skip MFA once (a raw call to ZIdentity's public API). A temporary password is shown once. No Undo.",
+      "changelog": ["Reset a ZIdentity user's password or MFA"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zid_user_reset\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
     {
       "id": "category-lookup", "release": "2026-10-31", "label": "Category lookup",
       "what": "Category lookup on the Path analyzer: a URL, host or category's ZIA categories and every rule that names them, in evaluation order.",
@@ -69,46 +118,6 @@ window.WHATS_NEW = {
       "what": "Shadowed rules finds a later firewall rule whose sites are all Microsoft 365 endpoints, hidden by the Office 365 One Click rule.",
       "changelog": ["Shadowed rules"],
       "marks": [{ "page": "/report/shadow", "at": ".rp-hero h1" }]
-    },
-    {
-      "id": "live-motion", "release": "2026-10-29", "label": "Live motion",
-      "what": "The result shows as a live flow. It stays still under reduced motion, pauses when the tab is hidden, and is said in words too.",
-      "changelog": ["Live motion"],
-      "marks": [
-        {"page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]"},
-        {"page": "/report/path", "at": "#paFlowRefH"},
-        {"page": "/report/path", "at": "#paFlowH", "shown": "after Analyze"},
-        {"page": "/report/path", "at": "#plFlowH", "shown": "after a list is tested"},
-        {"page": "/report/motion", "at": "#tpH"},
-        {"page": "/report/dataflow", "at": "#dfMotionTitle"},
-        {"page": "/report/sslflow", "at": "#sfWalkTitle", "shown": "after a read"},
-        {"page": "/report/sslcoverage", "at": "#hRiver", "shown": "after a read"},
-        {"page": "/report/zpa", "at": "#zoFlowH", "shown": "after a read"},
-        {"page": "/report/zpa", "at": "#zpWalkH", "shown": "after Diagnose"},
-        {"page": "/report/insights", "at": "#tiFlowH", "shown": "after a read"},
-        {"page": "/report/live", "at": "#lfLanesH"},
-        {"page": "/report/bypass", "at": "#bpFlowH", "shown": "after a read"}
-      ]
-    },
-    {
-      "id": "liquid-glass", "release": "2026-10-29", "label": "Liquid Glass",
-      "what": "The Liquid Glass look: see-through, blurred bars, cards, dialogs and buttons, with a switch in Advanced settings to turn it off.",
-      "changelog": ["Liquid Glass"],
-      "marks": [
-        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
-        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#appearance\"]"},
-        {"page": "/report/advanced", "at": "#advGlass"}
-      ]
-    },
-    {
-      "id": "quality-score", "release": "2026-10-29", "label": "Quality and security score",
-      "what": "The quality and security score for this app, built from every QA record, the standards each test covers and the last full test run.",
-      "changelog": ["Quality and security score"],
-      "marks": [
-        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
-        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#quality\"]"},
-        {"page": "/report/advanced", "at": "#advQsH"}
-      ]
     },
     {
       "id": "rule-editor", "release": "2026-10-31", "label": "Edit a rule",
