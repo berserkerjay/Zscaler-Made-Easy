@@ -46,6 +46,9 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 # home in the app's pages to mark. A new phrase must either be covered by a
 # manifest feature's "changelog" list or be added here with its reason.
 EXCLUDED = {
+    # The agent workspace is for the agents that build the app, not a page or a control.
+    "Layered context": "agent workspace files in the repository, not in the app",
+    "Compiled references that can't drift": "agent workspace files in the repository, not in the app",
     # The entry's own structure, not features.
     "What you asked for": "the request, not a feature",
     "How": "how the change was built",
