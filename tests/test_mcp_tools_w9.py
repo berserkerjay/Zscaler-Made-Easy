@@ -130,6 +130,22 @@ def test_each_new_tool_refuses_when_its_scope_is_not_ticked(tool, args, local, m
     assert "ZSCALER_MCP_SCOPES" in out["how_to_fix"]
 
 
+def test_the_changelog_says_which_assistant_tools_check_scope(local, monkeypatch):
+    """ASVS V1.1.2 · V14.3.3 · CWE-1059 · WSTG-INFO-05: the case-notes tools work on the app's local notes and take no Scope key (they answer with the scope ticking something else), so the release notes do not claim every new tool checks the server's scope first; they say which ones do."""
+    # Arrange
+    monkeypatch.setenv("ZSCALER_MCP_SCOPES", "dlp")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    text = open(os.path.join(root, "CHANGELOG.md"), encoding="utf-8").read()
+    section = text.split("## 2026-11-01", 1)[1].split("\n## ", 1)[0]
+    line = next(ln for ln in section.splitlines() if ln.startswith("- Assistant (MCP) tools"))
+    # Act
+    notes = call("case_notes")
+    # Assert
+    assert notes.get("code") != "not_in_scope", notes
+    assert "Each is read-only toward the tenant, checks the server's scope first" not in line
+    assert "each tool that reads tenant data checks the server's scope first" in line and "case-notes tools work on the app's local notes" in line
+
+
 def test_the_new_tools_take_no_secret_or_scope_argument_and_the_note_tool_is_not_marked_read_only():
     """ASVS V1.4.1 · CWE-841: the new tools take no credential, scope or write switch; only add_case_note (local notes) is not read-only, and none is destructive."""
     # Arrange

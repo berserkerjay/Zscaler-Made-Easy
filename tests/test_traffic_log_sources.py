@@ -376,6 +376,66 @@ def test_the_listener_is_off_by_default_and_its_routes_need_the_writer(api, monk
     assert sl.current() is None or sl.current().stop_event.is_set()
 
 
+def _held_listener(monkeypatch):
+    """A listener holding two lines, never bound to a socket (feed() is its one intake)."""
+    lst = sl.Listener(sl.check_settings("127.0.0.1", 5514, "udp", False))
+    for n in range(2):
+        assert lst.feed(f"<134>Oct 31 10:00:0{n} nss01 zscaler-nss: line {n}".encode(), "127.0.0.1")
+    monkeypatch.setattr(sl, "_CURRENT", lst)
+    return lst
+
+
+def _audit_events():
+    path = os.environ["DLP_CHECK_AUDIT"]
+    if not os.path.exists(path):
+        return []
+    return [json.loads(ln) for ln in open(path, encoding="utf-8").read().splitlines() if ln.strip()]
+
+
+@pytest.mark.parametrize("route,body", [("/api/traffic-logs/syslog/clear", None), ("/api/traffic-logs/syslog/stop", {"clear": True})])
+def test_clearing_or_stopping_the_listener_without_the_writer_is_refused_and_keeps_the_lines(api, monkeypatch, route, body):
+    """ASVS V4.1.1 · V4.1.3 · CWE-285 · CWE-862 · WSTG-ATHZ-02: clearing the lines that arrived, or stopping the listener, without the writer is a 403; the lines are kept, the listener keeps running and nothing is audited as done."""
+    # Arrange
+    import security
+    lst = _held_listener(monkeypatch)
+    monkeypatch.setattr(security, "may_write", lambda: False)
+    # Act
+    r = api.post(route, json=body) if body is not None else api.post(route)
+    # Assert
+    assert r.status_code == 403, r.text
+    assert len(lst.lines) == 2 and not lst.stop_event.is_set()
+    assert not [e for e in _audit_events() if e["event"] in ("traffic_logs_syslog_clear", "traffic_logs_syslog_stop")]
+
+
+def test_clearing_the_lines_with_the_writer_is_audited(api, monkeypatch):
+    """ASVS V7.1.3 · V7.2.2 · CWE-778 · WSTG-ATHZ-02: with the writer, clearing forgets the lines that arrived and writes a traffic_logs_syslog_clear audit record naming the actor."""
+    # Arrange
+    import security
+    lst = _held_listener(monkeypatch)
+    monkeypatch.setattr(security, "may_write", lambda: True)
+    # Act
+    r = api.post("/api/traffic-logs/syslog/clear")
+    # Assert
+    assert r.status_code == 200 and r.json()["lines"] == 0 and len(lst.lines) == 0
+    rec = [e for e in _audit_events() if e["event"] == "traffic_logs_syslog_clear"]
+    assert len(rec) == 1 and rec[0]["actor"], rec
+
+
+def test_stopping_the_listener_with_the_writer_is_audited(api, monkeypatch):
+    """ASVS V7.1.3 · V7.2.2 · CWE-778 · WSTG-ATHZ-02: with the writer, stopping (and clearing) the listener writes a traffic_logs_syslog_stop audit record naming the actor, whether the lines were cleared and how many arrived; no line's text is in it."""
+    # Arrange
+    import security
+    lst = _held_listener(monkeypatch)
+    monkeypatch.setattr(security, "may_write", lambda: True)
+    # Act
+    r = api.post("/api/traffic-logs/syslog/stop", json={"clear": True})
+    # Assert
+    assert r.status_code == 200 and r.json()["running"] is False and lst.stop_event.is_set() and len(lst.lines) == 0
+    rec = [e for e in _audit_events() if e["event"] == "traffic_logs_syslog_stop"]
+    assert len(rec) == 1 and rec[0]["actor"] and rec[0]["cleared"] is True and rec[0]["received"] == 2, rec
+    assert "line 0" not in json.dumps(rec)
+
+
 def test_lines_that_arrived_are_analysed_as_untrusted_and_never_written(api, monkeypatch, tmp_path):
     """ASVS V5.1.4 · V8.3.4 · CWE-20 · CWE-532 · CWE-312: NSS JSON lines that arrived are analysed like an upload (a hostile value stays data); nothing is written to disk until a report is saved, and the save is counts only."""
     # Arrange
