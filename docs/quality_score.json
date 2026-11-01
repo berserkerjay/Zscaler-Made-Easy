@@ -2,43 +2,50 @@
   "schema_version": 1,
   "generated_by": "tools/quality_score.py",
   "run": {
-    "commit": "d568741bfef8",
-    "date": "2026-10-30T06:34:19",
-    "passed": 21711,
-    "failed": 0,
+    "commit": "cf7e145a7663",
+    "date": "2026-10-31T02:07:15",
+    "passed": 21637,
+    "failed": 133,
     "errors": 0,
-    "skipped": 14,
-    "duration_s": 2714.5
+    "skipped": 13,
+    "duration_s": 1995.4
   },
   "overall": {
-    "score": 100,
-    "raw": 100.0,
-    "grade": "A",
-    "label": "Strong",
-    "meaning": "Tests pass, no serious finding is open and the standards are well covered.",
-    "cap": null
+    "score": 79,
+    "raw": 99.8,
+    "grade": "C",
+    "label": "Fair",
+    "meaning": "133 tests failed in the recorded run. Usable, with gaps worth closing soon.",
+    "cap": {
+      "kind": "tests",
+      "severity": "",
+      "limit": 79,
+      "findings": [],
+      "applied": true,
+      "reason": "133 tests failed or errored in the recorded run; any failed test caps the overall score at 79 (grade C at best)."
+    }
   },
   "areas": [
     {
       "key": "regression",
       "name": "Regression",
       "weight": 25,
-      "score": 100.0,
+      "score": 99.8,
       "subs": [
         {
           "key": "regression",
           "name": "Regression",
-          "score": 100.0,
+          "score": 99.8,
           "based_on": [
             "tests",
             "findings",
             "coverage"
           ],
           "tests": {
-            "score": 100.0,
-            "passed": 21711,
-            "failed": 0,
-            "skipped": 14,
+            "score": 99.4,
+            "passed": 21637,
+            "failed": 133,
+            "skipped": 13,
             "files": null
           },
           "findings": {
@@ -67,7 +74,7 @@
       "key": "secure_by_design",
       "name": "Secure by design",
       "weight": 35,
-      "score": 100.0,
+      "score": 99.6,
       "subs": [
         {
           "key": "write_paths",
@@ -80,7 +87,7 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2477,
+            "passed": 2496,
             "failed": 0,
             "skipped": 0,
             "files": 14
@@ -119,16 +126,16 @@
         {
           "key": "untrusted_input",
           "name": "Untrusted input",
-          "score": 100.0,
+          "score": 98.2,
           "based_on": [
             "tests",
             "findings",
             "coverage"
           ],
           "tests": {
-            "score": 100.0,
-            "passed": 2902,
-            "failed": 0,
+            "score": 95.5,
+            "passed": 2775,
+            "failed": 130,
             "skipped": 0,
             "files": 18
           },
@@ -267,7 +274,7 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 3738,
+            "passed": 3747,
             "failed": 0,
             "skipped": 0,
             "files": 24
@@ -309,10 +316,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 1723,
+            "passed": 1762,
             "failed": 0,
             "skipped": 3,
-            "files": 26
+            "files": 27
           },
           "findings": {
             "score": 100.0,
@@ -350,8 +357,8 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2336,
-            "failed": 0,
+            "passed": 2315,
+            "failed": 1,
             "skipped": 4,
             "files": 20
           },
@@ -393,21 +400,21 @@
       "key": "motion",
       "name": "Motion",
       "weight": 15,
-      "score": 100.0,
+      "score": 99.9,
       "subs": [
         {
           "key": "motion",
           "name": "Motion",
-          "score": 100.0,
+          "score": 99.9,
           "based_on": [
             "tests",
             "findings",
             "coverage"
           ],
           "tests": {
-            "score": 100.0,
-            "passed": 833,
-            "failed": 0,
+            "score": 99.8,
+            "passed": 831,
+            "failed": 2,
             "skipped": 1,
             "files": 12
           },
