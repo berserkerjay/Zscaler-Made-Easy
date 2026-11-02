@@ -5,14 +5,19 @@
   "static/dashboard.js",
   "static/flow_pages.js",
   "static/guide.js",
+  "static/index.html",
+  "static/report_theme.js",
   "tests/js/flow_browser_acceptance.mjs",
   "tests/js/flow_browser_harness_helpers.mjs",
-  "tests/test_c6_path.py"
+  "tests/test_accessibility.py",
+  "tests/test_c6_path.py",
+  "tests/test_flow_pages.py"
  ],
  "standards": [
   "CWE-1188",
   "CWE-362",
   "CWE-400",
+  "WCAG SC 1.4.3",
   "WCAG SC 2.2.2",
   "WCAG SC 2.3.3",
   "WCAG SC 2.4.3",
@@ -64,6 +69,18 @@
    "id": "perf-measure",
    "what": "the 5,000-rule firewall analysis keeps its 2 s CPU budget, measured as the best of three cold runs (fresh tenant, parse caches cleared); one noisy run passes, a regression on every run still fails; about 1.0 s here on two CPUs, unchanged from main",
    "standard": "CWE-400",
+   "result": "pass"
+  },
+  {
+   "id": "theme-flip",
+   "what": "on /report/traffic-logs and /report/advanced, drawn before report_theme.js applies a saved light theme, under reduced motion: no colour transition starts and no text keeps the dark theme's white (CI read 1.04:1 on both pages)",
+   "standard": "WCAG SC 1.4.3 · CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "stream-frames",
+   "what": "the stream motion check compares packet positions after at least 700 ms and three rendered frames (CI's zpa run had packets but no frame in the window); delaying the zpa page's frames to 800 ms apart fails the old sampling and passes the new",
+   "standard": "WCAG SC 2.2.2",
    "result": "pass"
   }
  ],
@@ -121,7 +138,18 @@
    "fix": "static/flow_pages.js mountStream seeds each moving link with its steady-state packets when motion starts",
    "test": "tests/test_flow_pages.py",
    "commit": ""
+  },
+  {
+   "id": "W10-NC-06",
+   "title": "A report page drawn before report_theme.js applied a saved light theme started a colour transition on every element; under reduced motion each kept the dark theme's white text until the next frame, so on a slow machine the light page showed white text (1.04:1)",
+   "severity": "medium",
+   "cwe": "CWE-1188",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "static/report_theme.js applies the theme with transitions held off for one style pass (html.theme-switching in the shared stylesheet, static/index.html)",
+   "test": "tests/test_accessibility.py",
+   "commit": ""
   }
  ],
- "tests_added": 11
+ "tests_added": 13
 }

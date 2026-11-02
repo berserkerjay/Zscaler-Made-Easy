@@ -4,7 +4,16 @@
 // follow when the theme is switched in another tab.
 (function () {
   function apply(theme, save) {
+    // At once, never as a transition. This script runs at the end of the
+    // page, which may already be drawn in the other theme; each element
+    // would then start a colour transition, and under reduced motion (every
+    // transition 0.01 ms) it keeps its old colour until the next frame
+    // starts it: on a slow machine, white text on the light page.
+    const root = document.documentElement;
+    root.classList.add('theme-switching');
     document.body.classList.toggle('theme-light', theme === 'light');
+    void root.offsetWidth;   // resolve every element's new style while transitions are off
+    root.classList.remove('theme-switching');
     if (save) { try { localStorage.setItem('zassess_theme', theme); } catch (e) { /* private mode */ } }
     const btn = document.getElementById('themeToggleBtn');
     if (btn) {
