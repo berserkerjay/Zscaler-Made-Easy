@@ -9,8 +9,10 @@ pinned in terraform/*/.terraform.lock.hcl. This script:
   * gives every Python component its SPDX licence from
     tools/third_party_licenses.json (a package missing from that file is an
     error, so a new dependency cannot land without a licence decision);
-  * gives the root component the project's own licence (Apache-2.0, the
-    text in LICENSE);
+  * gives the root component the project's own licence, read from
+    pyproject.toml's `license` (Apache-2.0, the text in LICENSE), and writes
+    the root component's fields in one fixed (sorted) order, so the output is
+    the same whether or not cyclonedx-py already copied the licence over;
   * adds each Terraform provider pinned in the lockfiles, with its licence;
   * gives every Python component its package URL as bom-ref (cyclonedx-py
     uses the lock's line numbers, which move whenever the lock changes);
@@ -35,6 +37,7 @@ import json
 import os
 import re
 import sys
+import tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -88,6 +91,15 @@ def licence_ids(expression: str) -> set[str]:
 
 def _canon(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def project_licence(root: str = ROOT) -> str:
+    """The project's own SPDX licence: pyproject.toml's `license` (PEP 639)."""
+    with open(os.path.join(root, "pyproject.toml"), "rb") as f:
+        spdx = tomllib.load(f).get("project", {}).get("license")
+    if not isinstance(spdx, str) or not spdx.strip():
+        raise SystemExit("pyproject.toml has no SPDX `license` string in [project]")
+    return spdx.strip()
 
 
 def load_license_map(path: str = LICENSE_MAP) -> dict:
@@ -185,8 +197,11 @@ def enrich(sbom: dict, licences: dict | None = None, root: str = ROOT) -> dict:
     sbom["components"] = comps
 
     meta = sbom.setdefault("metadata", {})
-    rootc = meta.setdefault("component", {"bom-ref": "root-component", "type": "application", "name": "dlp-check"})
-    rootc["licenses"] = _licence_entry(licences["project"])
+    rootc = dict(meta.get("component") or {"bom-ref": "root-component", "type": "application", "name": "dlp-check"})
+    rootc["licenses"] = _licence_entry(project_licence(root))
+    # Sorted, as cyclonedx-py writes it when pyproject declares a licence, so a
+    # regenerated SBOM never differs from the committed one by key order alone.
+    rootc = meta["component"] = {k: rootc[k] for k in sorted(rootc)}
     root_ref = rootc.get("bom-ref", "root-component")
 
     # Package URLs as bom-refs, so a ref names the package, not a lock line.

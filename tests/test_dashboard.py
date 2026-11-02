@@ -245,3 +245,80 @@ def test_report_details_are_part_of_the_tenant_configuration():
     assert "[org, who].forEach(el => { const f = el.closest('.field'); if (f) box.querySelector('#dbConnectReportBody').appendChild(f); });" in js
     assert "actions.insertAdjacentElement('beforebegin', box)" in js, "above Authenticate"
     assert ".db-connect-report" in _read("dashboard.css")
+
+
+# The 2.5 s refresh (static/dashboard.js refreshCurrent, static/guide.js
+# _gdRender) rewrote the Scope page's Run assessment label, the last-run note
+# (rebuilding its button) and the sign-in live region on every tick, unchanged.
+# A press that straddled a tick lost its click: CI's native-click acceptance
+# missed #dbScopeRun and the profile buttons that way. Ticks are counted by
+# wrapping setInterval before the page loads, so the wait is for two real
+# ticks of each timer, never a fixed delay.
+_IDLE_REFRESH_DRIVER = r"""
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const si = window.setInterval; window.__ticks = 0;
+  window.setInterval = function (fn, ms, ...a) { return si.call(window, ms === 2500 && typeof fn === 'function' ? function () { try { return fn.apply(this, a); } finally { window.__ticks++; } } : fn, ms, ...a); }; })()` });
+await send('Page.navigate', { url: base + '/' });
+await until(() => ev(`document.readyState === 'complete' && !!window.__dbReady && !!document.getElementById('dbLastRunGo') && !!document.getElementById('dbScopeRun') && typeof _gdIdent === 'function'`), 'the dashboard');
+// Signed in, as after Authenticate: the live region holds a sentence.
+await ev(`(() => { document.getElementById('vd').value = 'browser-fixture'; GD.conn = { ok: true, vd: _gdIdent(), label: 'Browser fixture' }; _gdRender(); return true; })()`);
+const settled = await until(() => ev(`window.__ticks >= 2 && window.__ticks`), 'the first refresh ticks');
+const out = await ev(`new Promise(resolve => {
+  const watch = { dbScopeRun: [], dbLastRun: [], authStatus: [] };
+  const run = document.getElementById('dbScopeRun'), go = document.getElementById('dbLastRunGo');
+  for (const id of Object.keys(watch)) new MutationObserver(ms => ms.forEach(m => watch[id].push(m.type + ' ' + (m.attributeName || '')))).observe(document.getElementById(id),
+    { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'disabled', 'aria-busy', 'hidden'] });
+  const start = window.__ticks;
+  const poll = () => window.__ticks >= start + 4 ? resolve({ watch, ticks: window.__ticks - start, sameRun: run === document.getElementById('dbScopeRun'),
+    sameGo: go === document.getElementById('dbLastRunGo'), status: document.getElementById('authStatus').textContent.slice(0, 40) }) : setTimeout(poll, 50);
+  poll();
+})`);
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+
+def test_the_idle_refresh_never_rebuilds_controls_or_repeats_the_live_status(tmp_path):
+    """WCAG 2.2 SC 4.1.3, 2.4.3 · CWE-1188: two refresh ticks of each 2.5 s timer leave Run assessment, the last-run note's button and the sign-in status untouched (they were rewritten every tick)."""
+    from test_findings_reflow import CDP_PRELUDE, run_in_browser
+    out = run_in_browser(tmp_path, CDP_PRELUDE + _IDLE_REFRESH_DRIVER, timeout=120)
+    assert out["ticks"] >= 4 and out["status"].startswith("Signed in to Browser fixture"), out
+    assert out["watch"] == {"dbScopeRun": [], "dbLastRun": [], "authStatus": []}, out
+    assert out["sameRun"] and out["sameGo"], out
+
+
+# Switching to the Scope page swaps the page's content; it used to scroll
+# there smoothly, so for a few frames Run assessment and the channel ticks
+# slid under a pointer already pressing them (CI's native click landed on a
+# channel label instead of Run assessment). Frames are sampled with
+# requestAnimationFrame, never a fixed delay.
+_SCOPE_JUMP_DRIVER = r"""
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 700, deviceScaleFactor: 1, mobile: false });
+await send('Page.navigate', { url: base + '/' });
+await until(() => ev(`document.readyState === 'complete' && !!window.__dbReady && !!document.querySelector('.db-item[data-db="scope"]')`), 'the dashboard');
+const out = await ev(`new Promise(resolve => {
+  document.querySelector('.db-item[data-db="scope"]').click();
+  const run = () => Math.round(document.getElementById('dbScopeRun').getBoundingClientRect().top);
+  // Painted frames only. Sampling starts at the second frame: the first
+  // frame's other callbacks (the icon and help-mark passes, queued after
+  // this one) still change the layout before that frame is painted, so a
+  // sample taken in it can show a layout nobody saw; each later frame's
+  // first callback sees what the previous frame painted.
+  const tops = [], runs = [];
+  const frame = () => { tops.push(Math.round(document.getElementById('dbScopeView').getBoundingClientRect().top)); runs.push(run());
+    if (tops.length < 8) requestAnimationFrame(frame); else resolve({ tops, runs, y: Math.round(scrollY), max: document.documentElement.scrollHeight - innerHeight }); };
+  requestAnimationFrame(() => requestAnimationFrame(frame));
+})`);
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+
+def test_opening_the_scope_page_jumps_to_it_instead_of_sliding_controls_under_the_pointer(tmp_path):
+    """WCAG 2.2 SC 2.3.3, 3.2.1 · CWE-1188: from the dashboard, the Scope link shows the Scope page at its top at once, and it and Run assessment stay put over the next frames (they slid there smoothly)."""
+    from test_findings_reflow import CDP_PRELUDE, run_in_browser
+    out = run_in_browser(tmp_path, CDP_PRELUDE + _SCOPE_JUMP_DRIVER, timeout=120)
+    # The Scope page and its Run assessment stay where they first appear on
+    # screen, frame after frame, and that is the Scope page's top (or the page's end).
+    # (1 px of slack: scroll anchoring settles sub-pixel offsets.)
+    assert max(out["tops"]) - min(out["tops"]) <= 1 and max(out["runs"]) - min(out["runs"]) <= 1, out
+    assert abs(out["tops"][0]) <= 1 or out["y"] >= out["max"] - 1, out

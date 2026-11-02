@@ -392,7 +392,13 @@ const key = async (k, mods = 0) => {
 const frames = n => ev(`new Promise(r => { let i = 0; const f = () => (++i >= ${n} ? r(true) : requestAnimationFrame(f)); requestAnimationFrame(f); })`);
 const dotsMove = host => ev(`new Promise(r => {
   const pos = () => [...document.querySelectorAll('${host} circle.fa-dot')].map(c => c.getAttribute('cx') + ',' + c.getAttribute('cy')).join(' ');
-  const a = pos(); setTimeout(() => { const b = pos(); r({ n: document.querySelectorAll('${host} circle.fa-dot').length, moved: a !== b && b !== '' }); }, 700); })`);
+  // At least 700 ms and three rendered frames: a picture moves only on a
+  // frame, and on a slow runner (software raster of the glass backdrop)
+  // frames can be hundreds of ms apart. Capped at 10 s, then sampled as is.
+  const a = pos(), t0 = performance.now(); let frames = 0, done = false;
+  const end = () => { if (done) return; done = true; const b = pos(); r({ n: document.querySelectorAll('${host} circle.fa-dot').length, moved: a !== b && b !== '', frames }); };
+  const f = () => { frames++; if (frames >= 3 && performance.now() - t0 >= 700) end(); else if (!done) requestAnimationFrame(f); };
+  requestAnimationFrame(f); setTimeout(end, 10000); })`);
 async function open(url, ready) {
   await send('Page.navigate', { url: base + url });
   await until(() => ev(`document.readyState === 'complete'`), url + ' load');
@@ -401,6 +407,7 @@ async function open(url, ready) {
 // A page's stream picture: keyboard toggle, text alternative, motion.
 async function stream(host, reducedRun) {
   const out = {};
+  out.atStart = await ev(`document.querySelectorAll('${host} circle.fa-dot').length`);   // as soon as the picture is ready
   out.boxes = await ev(`document.querySelectorAll('${host} .fa-box').length`);
   out.links = await ev(`document.querySelectorAll('${host} .fp-link').length`);
   out.alt = await ev(`(() => { const s = document.querySelector('${host} svg'); const d = s && document.getElementById(s.getAttribute('aria-describedby')); return { role: s && s.getAttribute('role'), label: s && s.getAttribute('aria-label'), lines: d ? [...d.querySelectorAll('li')].map(li => li.textContent) : [] }; })()`);
@@ -537,8 +544,9 @@ def test_the_stream_picture_renders_with_a_text_alternative(motion, page):
 
 @pytest.mark.parametrize("page", STREAMS)
 def test_the_stream_picture_moves_and_a_keyboard_press_pauses_it(motion, page):
-    """WCAG 2.2 SC 2.2.2 · SC 2.1.1: packets move on their own, the toggle is reached by Shift+Tab from the picture, and Enter pauses every packet."""
+    """WCAG 2.2 SC 2.2.2 · SC 2.1.1: packets are on the links as soon as the picture is ready and move on their own, the toggle is reached by Shift+Tab from the picture, and Enter pauses every packet."""
     m = motion["normal"][page]
+    assert m["atStart"] > 0, m   # it was empty until a slow link's random start came round (up to seconds)
     assert m["button0"] == "Pause motion" and m["first"]["n"] > 0 and m["first"]["moved"]
     assert m["focusIsToggle"] and m["button1"] == "Play motion" and m["note1"] == "Motion paused."
     assert m["second"]["n"] == 0

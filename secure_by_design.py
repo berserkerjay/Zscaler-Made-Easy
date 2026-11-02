@@ -18,7 +18,8 @@ from __future__ import annotations
 import os
 import re
 import sys
-from typing import Any, Dict, List
+import threading
+from typing import Any, Dict, List, Tuple
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -108,6 +109,45 @@ def _python_sources() -> List[str]:
     return out
 
 
+def _tenant_write_count(src: str) -> int:
+    n = 0
+    for line in src.splitlines():
+        st = line.strip()
+        if st.startswith(("#", "def ", "async def ")):
+            continue
+        if _TENANT_WRITE_RE.search(line):
+            n += 1
+    return n
+
+
+# Tokenizing every source file takes seconds of pure-Python CPU (it holds
+# the GIL, so the server's other requests stall meanwhile). The sources do
+# not change while the server runs, except through an update, so each
+# file's facts are kept per (path, mtime, size, inode) and rescanned only
+# when the file changes.
+_FACTS: Dict[str, Tuple[Tuple[int, int, int], List[int], int]] = {}
+_FACTS_LOCK = threading.Lock()
+
+
+def _file_facts(path: str) -> Tuple[List[int], int]:
+    """(dangerous lines, tenant write calls) of one source file, scanned
+    again only when the file changed since the last scan."""
+    try:
+        st = os.stat(path)
+        key = (st.st_mtime_ns, st.st_size, st.st_ino)
+    except OSError:
+        return [], 0
+    with _FACTS_LOCK:
+        hit = _FACTS.get(path)
+    if hit and hit[0] == key:
+        return list(hit[1]), hit[2]
+    src = _read(path)
+    facts = (_dangerous_lines(src), _tenant_write_count(src))
+    with _FACTS_LOCK:
+        _FACTS[path] = (key, facts[0], facts[1])
+    return list(facts[0]), facts[1]
+
+
 def _direct_tenant_writers() -> Dict[str, int]:
     """{file: number of calls} for every module outside the shared path
     that sends a write to the tenant itself."""
@@ -116,12 +156,9 @@ def _direct_tenant_writers() -> Dict[str, int]:
         rel = os.path.relpath(p, APP_DIR).replace(os.sep, "/")
         if rel in _SHARED_PATH:
             continue
-        for line in _read(p).splitlines():
-            st = line.strip()
-            if st.startswith(("#", "def ", "async def ")):
-                continue
-            if _TENANT_WRITE_RE.search(line):
-                out[rel] = out.get(rel, 0) + 1
+        n = _file_facts(p)[1]
+        if n:
+            out[rel] = n
     return out
 
 
@@ -245,7 +282,7 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
     # ── Reduce entire classes of vulnerability ───────────────────────────
     hits: List[str] = []
     for p in _python_sources():
-        hits += [f"{os.path.relpath(p, APP_DIR)}:{n}" for n in _dangerous_lines(_read(p))]
+        hits += [f"{os.path.relpath(p, APP_DIR)}:{n}" for n in _file_facts(p)[0]]
     if not hits:
         checks.append(_check("constructs", "No eval, exec, pickle, os.system or shell=True in the app's Python", P_OWN, "classes", "pass",
                              f"{len(_python_sources())} source files scanned; Python is a memory-safe language, and the app has no SQL and one HTML escaper at every render site.",

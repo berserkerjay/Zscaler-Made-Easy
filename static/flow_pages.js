@@ -480,13 +480,31 @@
         return true;
       });
     }
+    // Motion starts in its steady state: each moving link already carries
+    // the packets it would hold after running a while (spaced SPEED / rate
+    // apart, phased by its own random start), so a picture that says it is
+    // moving is never empty for the first second or more of a slow link.
+    function warm() {
+      L.forEach(x => {
+        if (!(x.l.rate > 0) || x.l.state === 'idle' || x.l.state === 'unknown') return;
+        if (!x.len) x.len = x.p.getTotalLength();
+        const end = x.l.state === 'stop' ? x.len * 0.5 : x.len;
+        for (let k = 0; dots.length < MAX; k++) {
+          const d = SPEED * (k + x.acc) / x.l.rate;
+          if (d >= end) break;
+          const q = x.p.getPointAtLength(d);
+          const c = FA.svgEl('circle', { r: x.l.state === 'live' && x.l.width > 6 ? 4 : 3, class: `fa-dot fp-dot tone-${x.l.tone || 'on'}`, cx: q.x.toFixed(1), cy: q.y.toFixed(1) }, dotG);
+          dots.push({ x, d, c, popped: 0 });
+        }
+      });
+    }
     function sync() {
       const on = playing() && !dead;
       btn.textContent = on ? 'Pause motion' : 'Play motion';
       stage.classList.toggle('fp-moving', on);
       note.textContent = on ? (o.moving || 'Packets move along each link; the list below says the same in words.')
         : (FA.reduced() && chosen == null ? 'Motion is off because your system asks for reduced motion. Play motion starts it.' : 'Motion paused.');
-      if (on && !stopJob) { last = 0; stopJob = clock.add(tick); }
+      if (on && !stopJob) { last = 0; warm(); stopJob = clock.add(tick); }
       if (!on && stopJob) { stopJob(); stopJob = null; dots.forEach(b => b.c.remove()); dots = []; }
     }
     btn.addEventListener('click', () => { chosen = !playing(); if (o.onMotion) o.onMotion(chosen); sync(); });

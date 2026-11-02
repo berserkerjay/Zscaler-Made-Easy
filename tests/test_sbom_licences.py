@@ -83,6 +83,43 @@ def test_the_committed_sbom_and_notices_are_what_the_enricher_produces():
     assert _read("THIRD_PARTY_NOTICES.md") == enrich.notices(sbom)
 
 
+def test_the_committed_sbom_is_byte_for_byte_what_regeneration_writes():
+    """SSDF PS.3.2 · CWE-1059 · SLSA Provenance: the committed SBOM file is exactly what the enricher writes, key order included (CI's git diff compares bytes)."""
+    enrich = _enricher()
+    committed = _read("docs", "sbom.cdx.json")
+    assert enrich._dump(enrich.enrich(json.loads(committed))) == committed
+
+
+def test_the_root_component_is_written_the_same_whether_or_not_cyclonedx_copied_the_licence():
+    """SSDF PS.3.2 · CWE-1059: the root component comes out in one fixed key order with pyproject's licence, whatever order cyclonedx-py emitted it in."""
+    enrich = _enricher()
+    base = {k: v for k, v in _sbom().items()}
+    without = copy.deepcopy(base)
+    without["metadata"]["component"] = {"bom-ref": "root-component", "description": "d", "name": "dlp-check",
+                                        "type": "application", "version": "1"}
+    with_licence = copy.deepcopy(base)
+    with_licence["metadata"]["component"] = {"bom-ref": "root-component", "description": "d",
+                                             "licenses": [{"license": {"id": "MIT"}}], "name": "dlp-check",
+                                             "type": "application", "version": "1"}
+    a = enrich._dump(enrich.enrich(without))
+    b = enrich._dump(enrich.enrich(with_licence))
+    assert a == b
+    root = json.loads(a)["metadata"]["component"]
+    assert list(root) == sorted(root)
+    assert _licence(root) == "Apache-2.0"
+
+
+def test_the_root_licence_comes_from_pyproject(tmp_path):
+    """SSDF PS.3.1 · CWE-1059: the root component's licence is pyproject.toml's SPDX `license`; a pyproject without one stops the build."""
+    enrich = _enricher()
+    assert enrich.project_licence() == "Apache-2.0"
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\nlicense = "MIT"\n', encoding="utf-8")
+    assert enrich.project_licence(str(tmp_path)) == "MIT"
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n', encoding="utf-8")
+    with pytest.raises(SystemExit, match="license"):
+        enrich.project_licence(str(tmp_path))
+
+
 def test_a_locked_package_without_a_recorded_licence_stops_the_build():
     enrich = _enricher()
     sbom = _sbom()
