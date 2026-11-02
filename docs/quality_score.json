@@ -15038,6 +15038,7 @@
     ],
     "wstg": 67,
     "slsa": [
+      "SLSA Provenance",
       "SLSA v1.0",
       "SLSA v1.0 Build L2",
       "SLSA v1.0 Build L2 (provenance)",

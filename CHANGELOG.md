@@ -9,6 +9,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-11-01
 
+### Advanced settings no longer slows the server each time it is opened
+- The CISA Secure by Design score on Advanced settings scanned every source file again (about 5 seconds of processor time) each time the page was opened, and leaving the page did not stop the scan, so opening it again and again piled scans up and the app's pages, Advanced settings included, loaded more slowly each time until they stalled. The scan now remembers each file's result until the file changes (measuring again takes a hundredth of a second), and requests that arrive while a measurement runs share it.
+- The SBOM (`docs/sbom.cdx.json`) is regenerated, and `tools/sbom_enrich.py` takes the app's own licence (Apache-2.0) from `pyproject.toml` and writes the root component in a fixed order, so regenerating it as `docs/SBOM.md` describes gives the committed file byte for byte.
+
 ### Agent workspace: layered context for the AI agents that build this app
 - **`agent-workspace/`** organises how AI agents work on the repository as a pipeline of plain-text stages: Spec → Build → Verify → Integrate → Release. Each stage has a contract (inputs, numbered steps, outputs, review gate), and every hand-off is a markdown file a person can read and edit before the next stage runs.
 - **Layered context**: `IDENTITY.md` (what the app is and what it promises), `CONTEXT.md` (which stage to go to), the stage contracts, `_config/` (rules: safe writes, routes, testing, shared files, UI, SDK, naming, git) and `references/` (facts about the code), each with an index, so an agent loads a few thousand tokens of what its step needs instead of exploring the whole repository.
