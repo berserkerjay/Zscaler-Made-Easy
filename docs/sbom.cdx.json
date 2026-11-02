@@ -6794,16 +6794,16 @@
     "component": {
       "bom-ref": "root-component",
       "description": "Zscaler DLP assessment and policy-pack deployment: 300+ automated checks, guided deploy / verify / remove of policy packs, reports and continuous evaluation.",
-      "name": "dlp-check",
-      "type": "application",
-      "version": "2026.9.13",
       "licenses": [
         {
           "license": {
             "id": "Apache-2.0"
           }
         }
-      ]
+      ],
+      "name": "dlp-check",
+      "type": "application",
+      "version": "2026.9.13"
     },
     "properties": [
       {
