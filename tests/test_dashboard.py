@@ -298,10 +298,15 @@ await until(() => ev(`document.readyState === 'complete' && !!window.__dbReady &
 const out = await ev(`new Promise(resolve => {
   document.querySelector('.db-item[data-db="scope"]').click();
   const run = () => Math.round(document.getElementById('dbScopeRun').getBoundingClientRect().top);
-  const tops = [], runs = [];   // painted frames only: what the click handler leaves before the first frame is never seen
+  // Painted frames only. Sampling starts at the second frame: the first
+  // frame's other callbacks (the icon and help-mark passes, queued after
+  // this one) still change the layout before that frame is painted, so a
+  // sample taken in it can show a layout nobody saw; each later frame's
+  // first callback sees what the previous frame painted.
+  const tops = [], runs = [];
   const frame = () => { tops.push(Math.round(document.getElementById('dbScopeView').getBoundingClientRect().top)); runs.push(run());
     if (tops.length < 8) requestAnimationFrame(frame); else resolve({ tops, runs, y: Math.round(scrollY), max: document.documentElement.scrollHeight - innerHeight }); };
-  requestAnimationFrame(frame);
+  requestAnimationFrame(() => requestAnimationFrame(frame));
 })`);
 console.log(JSON.stringify(out));
 ws.close(); p.kill(); process.exit(0);
