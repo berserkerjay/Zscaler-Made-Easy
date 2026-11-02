@@ -21,6 +21,12 @@
   window.__dbReady = true;
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = id => document.getElementById(id);
+  // The 2.5 s refresh writes only what changed. Rewriting an unchanged
+  // label or note rebuilt the controls inside it (and re-ran the icon and
+  // hover-help passes) every tick, so a press that straddled a tick lost
+  // its click and a focused control lost focus.
+  const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+  const setHtml = (el, html) => { if (!el || el.__dbHtml === html) return false; el.innerHTML = html; el.__dbHtml = html; return true; };
 
   // ── 1. Sidebar ──────────────────────────────────────────────────
   document.body.classList.add('db-layout');
@@ -192,7 +198,7 @@
     setMenu(false);
     if (k === 'scope') { showScopeView(); setCurrent('scope'); return; }
     hideScopeView();
-    if (k === 'dashboard') { const r = $('results'); if (r && getComputedStyle(r).display !== 'none') r.scrollIntoView({ behavior: 'smooth', block: 'start' }); else window.scrollTo({ top: 0, behavior: 'smooth' }); setCurrent('dashboard'); return; }
+    if (k === 'dashboard') { const r = $('results'); if (r && getComputedStyle(r).display !== 'none') r.scrollIntoView({ behavior: 'instant', block: 'start' }); else window.scrollTo({ top: 0, behavior: 'instant' }); setCurrent('dashboard'); return; }
     if (typeof _stepGo === 'function') _stepGo(k);
     setCurrent(k);
   }));
@@ -428,7 +434,11 @@
     const foot = $('dbFooter'); if (foot && !foot.hidden) { foot.dataset.dbHiddenFor = 'scope'; foot.hidden = true; }
     scopeView.hidden = false;
     renderChannelsList();
-    scopeView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // A jump, not an animation ('instant': the page's CSS makes 'auto'
+    // smooth): the content was just swapped, and a smooth scroll carried the
+    // newly shown controls (Run assessment, the channel ticks) under a
+    // pointer that was already pressing them.
+    scopeView.scrollIntoView({ behavior: 'instant', block: 'start' });
     say('Scope assessment.');
   }
   function hideScopeView() {
@@ -466,6 +476,7 @@
     if (!cur || cur.dataset.db !== 'dashboard') { lastRun.hidden = true; return; }
     const det = window.GD && GD.profileDetail;
     const last = det && det.last_assessed;
+    let fresh = false;
     if (last) {
       // A previous result is shown as exactly that — labelled with its run
       // time — and a run that scored nothing shows "—", not 0%.
@@ -477,18 +488,18 @@
         const idx = score >= 90 ? 4 : score >= 75 ? 3 : score >= 50 ? 2 : score >= 25 ? 1 : 0;
         bandHost.innerHTML = ['Ad Hoc', 'Initial', 'Developing', 'Managed', 'Optimized'].map((b, i) => `<span class="${i < idx ? 'done' : i === idx ? 'now' : ''}" ${i === idx ? 'aria-current="true"' : ''}>${b}</span>`).join('');
       } else if (bandHost) bandHost.innerHTML = '';
-      const sn = $('scoreNum'); if (sn) sn.textContent = measured ? `${score}%` : '—';
-      const sl = $('scoreLabel'); if (sl) sl.textContent = last.maturity || (measured ? 'Maturity level' : 'Not assessed');
-      const sm = $('scoreMeta'); if (sm) sm.textContent = `Previous result · run ${new Date(last.at).toLocaleString()}`;
-      const cp = $('dbCompPct'), ct = $('dbCompTxt');
-      if (cp) cp.textContent = '—';
-      if (ct) ct.textContent = `last run: ${last.checks ?? '?'} checks`;
+      setText($('scoreNum'), measured ? `${score}%` : '—');
+      setText($('scoreLabel'), last.maturity || (measured ? 'Maturity level' : 'Not assessed'));
+      setText($('scoreMeta'), `Previous result · run ${new Date(last.at).toLocaleString()}`);
+      setText($('dbCompPct'), '—');
+      setText($('dbCompTxt'), `last run: ${last.checks ?? '?'} checks`);
       const journey = last.journey ? ` · journey stage ${last.journey.stage ?? 0} of 5` : '';
-      lastRun.innerHTML = `<span>Showing the last recorded assessment for ${E(det.name || 'this tenant')}, run ${E(new Date(last.at).toLocaleString())}${journey}.</span> <button type="button" class="db-lastrun-btn" id="dbLastRunGo">Run a fresh assessment</button>`;
+      fresh = setHtml(lastRun, `<span>Showing the last recorded assessment for ${E(det.name || 'this tenant')}, run ${E(new Date(last.at).toLocaleString())}${journey}.</span> <button type="button" class="db-lastrun-btn" id="dbLastRunGo">Run a fresh assessment</button>`);
     } else {
-      lastRun.innerHTML = `<span>No assessment recorded yet for this tenant — the tiles below fill in once you run one.</span> <button type="button" class="db-lastrun-btn" id="dbLastRunGo">Connect to the tenant &rarr;</button>`;
+      fresh = setHtml(lastRun, `<span>No assessment recorded yet for this tenant — the tiles below fill in once you run one.</span> <button type="button" class="db-lastrun-btn" id="dbLastRunGo">Connect to the tenant &rarr;</button>`);
     }
-    const go = $('dbLastRunGo');
+    // Bound once per rebuilt note; an unchanged note keeps its button.
+    const go = fresh && $('dbLastRunGo');
     if (go) go.addEventListener('click', () => { const btn = aside.querySelector(`.db-item[data-db="${last ? 'scope' : 'configure'}"]`); if (btn) btn.click(); });
     lastRun.hidden = false;
   }
@@ -516,11 +527,13 @@
     const user = legacy ? (($('zuser') || {}).value || '').trim() : '';
     const prof = (window.GD && GD.profile) ? GD.profile : '';
     const name = vd ? `${vd}${cloud ? ' · ' + cloud : ''}` : (user ? `classic API${cloud ? ' · ' + cloud : ''}` : '');
-    const t = $('dbCurTenant'); if (t) { t.textContent = name || (prof ? `profile ${prof}` : 'not connected'); t.title = t.textContent; }
-    const s = $('dbCurSaved'); if (s) s.textContent = prof ? 'Profile selected' : 'Never';
-    // The Scope assessment page's Run button follows the real run button.
+    const t = $('dbCurTenant'); if (t) { setText(t, name || (prof ? `profile ${prof}` : 'not connected')); if (t.title !== t.textContent) t.title = t.textContent; }
+    setText($('dbCurSaved'), prof ? 'Profile selected' : 'Never');
+    // The Scope assessment page's Run button follows the real run button,
+    // and is rewritten only when that state flips (its label's glyph is
+    // replaced by an icon, so comparing the text would rewrite it each tick).
     const run = $('dbScopeRun'), btn = $('runBtn');
-    if (run && btn) { const busy = !!btn.disabled; run.disabled = busy; run.setAttribute('aria-busy', String(busy)); run.textContent = busy ? '⏳ Running…' : '▶ Run assessment'; }
+    if (run && btn) { const busy = !!btn.disabled; if (run.getAttribute('aria-busy') !== String(busy)) { run.disabled = busy; run.setAttribute('aria-busy', String(busy)); run.textContent = busy ? '⏳ Running…' : '▶ Run assessment'; } }
     renderLastRunOrEmpty();
   }
   refreshCurrent(); setInterval(refreshCurrent, 2500);

@@ -699,11 +699,48 @@ class BodySizeLimitMiddleware:
 _monotonic = time.monotonic   # the rate limiter's clock (tests replace it)
 
 
+def _loopback_client(request: Request) -> bool:
+    import ipaddress
+    host = request.client.host if request.client else ""
+    try:
+        return ipaddress.ip_address(str(host).split("%", 1)[0]).is_loopback
+    except ValueError:
+        return False
+
+
+def _signed_in_read(request: Request) -> bool:
+    """A read (GET or HEAD) from the person using the app: with the gate on,
+    a request carrying the UI token or a live sign-in session; with it off
+    (ZSCALER_UI_AUTH=0, served on loopback only), a loopback request with a
+    loopback Host. Anything else, every write and every request not signed
+    in, counts against the rate limit. Never raises: a request that cannot
+    be placed counts."""
+    if request.method not in ("GET", "HEAD"):
+        return False
+    try:
+        if not _gate_on():
+            return _loopback_client(request) and _loopback_host_header(request) and not _arrived_beyond_loopback(request)
+        caller = _caller_for(request, sso_session(request))
+        if caller["actor"] == LOCAL_TOKEN_ACTOR:
+            return ui_token_ok(_token_from_request(request))
+        return caller["actor"] not in (NOT_SIGNED_IN, LOCAL_NO_TOKEN_ACTOR)
+    except Exception:  # noqa: BLE001 - the limiter never fails a request over this
+        return False
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     Tiny in-process token-bucket per client IP. Defends against runaway
-    scripts hammering the API. Not a substitute for a real WAF, but
-    sufficient for a single-user desktop tool.
+    scripts hammering the API and floods of calls that are not signed in
+    (which would otherwise fill the audit log with refusals). Not a
+    substitute for a real WAF, but sufficient for a single-user desktop tool.
+
+    Reads by the signed-in user (_signed_in_read) are not counted: one page
+    asks for 5 to 20 status and data reads as it opens (the sign-in state,
+    write mode, the offline banner...), so moving quickly between pages or
+    reopening several tabs used to run the bucket dry and answer the app's
+    own pages 429. Writes and everything not signed in still count; sign-in
+    attempts also have their own per-address limits (team_server).
     """
 
     def __init__(self, app: ASGIApp, rps: int = 20, burst: int = 60):
@@ -714,7 +751,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Only rate-limit /api/* — static is local
-        if not request.url.path.startswith("/api/"):
+        if not request.url.path.startswith("/api/") or _signed_in_read(request):
             return await call_next(request)
         ip = request.client.host if request.client else "unknown"
         now = _monotonic()

@@ -203,6 +203,9 @@
     outline-offset: 2px;
   }
 
+  /* A theme switch applies at once (report_theme.js holds this class for
+     one style pass): no element transitions from the old theme's colours. */
+  html.theme-switching *, html.theme-switching *::before, html.theme-switching *::after { transition: none !important; }
   /* Respect prefers-reduced-motion — disables every animation /
      transition for users with vestibular disorders (WCAG 2.3.3). */
   @media (prefers-reduced-motion: reduce) {
