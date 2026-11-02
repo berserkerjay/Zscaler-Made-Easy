@@ -1,0 +1,28 @@
+{
+ "area": "Builders and untrusted input: ZPA segment settings in bulk, the URL category analyzer beyond 2,000 URLs, ANY in pack level lists",
+ "title": "Bulk ZPA segment edit on the shared engine (Browser Access, PRA and inspection segments kept intact), resumable URL lookups with bounded memory, ANY level lists normalised or refused",
+ "standards": [
+  "ASVS V4.1.3", "ASVS V4.2.1", "ASVS V5.1.3", "ASVS V7.2.2", "ASVS V8.3.1", "ASVS V11.1.4", "ASVS V11.1.6",
+  "OWASP Top 10 2021 A01", "OWASP Top 10 2021 A04", "WSTG-ATHZ-02", "WSTG-ATHZ-04", "WSTG-INPV-01", "WSTG-BUSL-05",
+  "CWE-20", "CWE-200", "CWE-362", "CWE-367", "CWE-400", "CWE-639", "CWE-754", "CWE-770", "CWE-835", "CWE-840", "CWE-841", "CWE-863"
+ ],
+ "checks": [
+  {"id": "W7-PS-C01", "what": "ZPA segment settings in bulk out of scope (ZPA not ticked): plan and picker refused before anything is read", "standard": "ASVS V4.1.3 · CWE-863 · WSTG-ATHZ-02", "result": "pass"},
+  {"id": "W7-PS-C02", "what": "Unknown fields (name, domain_names), bad values, bad ids, bad port ranges and more than 200 segments are refused before a read", "standard": "ASVS V5.1.3 · CWE-20", "result": "pass"},
+  {"id": "W7-PS-C03", "what": "Against a fake whose update replaces the segment: every other setting, Browser Access apps (sent back as read), PRA and inspection apps survive; commonAppsDto is never sent; the read-back flags a dropped app", "standard": "ASVS V7.2.2 · CWE-754", "result": "pass"},
+  {"id": "W7-PS-C04", "what": "Preview keeps the last server group, the last port range, an application's port; refuses a domain on overlapping ports in two segments; skips read-only segments", "standard": "ASVS V5.1.3 · CWE-840", "result": "pass"},
+  {"id": "W7-PS-C05", "what": "Plan hash (moved tenant: plan_changed, nothing written), re-read conflict per field, exact Undo, the sample tenant through the installed SDK", "standard": "ASVS V11.1.6 · CWE-367 · CWE-362", "result": "pass"},
+  {"id": "W7-PS-C06", "what": "Analyzer: 2,500 URLs in one run, 100 per request, progress logged; Continue sends no URL twice; a persistent 429 ends the run; a refused batch is not retried in a loop; Stop keeps what was looked up; a total bound with the count named", "standard": "ASVS V11.1.4 · CWE-400 · CWE-770 · CWE-835", "result": "pass"},
+  {"id": "W7-PS-C07", "what": "Checkpoints: in memory only, bound to actor, tenant and categories, expire, evicted by count and size; the job result carries only a token; a bad or foreign token is a 400 before sign-in", "standard": "ASVS V4.2.1 · ASVS V8.3.1 · CWE-639 · CWE-200", "result": "pass"},
+  {"id": "W7-PS-C08", "what": "Packs: [\"ANY\"] trust / risk levels expanded in the pack reader, the deploy payload, the rule signature and Terraform; ANY mixed with levels, unknown levels and non-lists refused with the reason", "standard": "ASVS V5.1.3 · CWE-20 · WSTG-INPV-01", "result": "pass"}
+ ],
+ "findings": [
+  {"id": "W7-PARITY-01", "title": "A literal [\"ANY\"] device trust or user risk level list in a pack was passed through to the API and to Terraform unchanged (the provider takes explicit values only)", "severity": "low", "cwe": "CWE-20", "asvs": "V5.1.3", "status": "fixed", "fix": "pack_channels.normalize_levels / level_problem, applied in pack_deploy.load_pack_file, build_payload, policy_signature_extra and pack_terraform.load_pack", "test": "tests/test_pack_any_levels.py::test_terraform_writes_the_explicit_lists"},
+  {"id": "W7-PARITY-02", "title": "The URL category analyzer kept sending lookup batches after ZIA refused one for its rate limit through every retry", "severity": "low", "cwe": "CWE-400", "asvs": "V11.1.4", "status": "fixed", "fix": "lookup_batches(stop_on_rate_limit=True) ends the run; the unsent URLs are left for Continue", "test": "tests/test_url_analyzer_resume.py::test_a_rate_limit_zia_keeps_answering_ends_the_run_and_continue_retries_it"}
+ ],
+ "notes": [
+  "Assumed (marked in ops_zpa_fields.py and url_tools.py): a PUT keeps a PRA or inspection segment's applications when it carries no commonAppsDto; sending a Browser Access segment's clientlessApps back as read is safe; the ICMP access values; a segment needs a port range and a server group, an application's port stays inside the TCP ranges, one domain is never in two segments on overlapping ports; a segment shared from another microtenant is changed only there; /urlLookup falls under ZIA's POST limit of 400 an hour.",
+  "The Endpoint DLP pack retired on 2026-09-11 is not restored; the reason and the replacement are on the pack library page and in POLICY_PACKS.md, for the owner to confirm."
+ ],
+ "tests_added": 45
+}

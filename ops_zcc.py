@@ -54,14 +54,34 @@ rest from the portal's own payload); that a new profile goes last
 (ruleOrder = profiles on that platform + 1); and the install options of the
 Client Connector installers.
 
-Secrets: tamper-protection passwords are not set here (set them in the
-Client Connector Portal); install tokens and passwords are masked in every
-answer unless revealed, and none is logged, audited or recorded.
+Secrets: the app profile's tamper-protection passwords (uninstall, turn
+off Internet security, log out) may be set by a build. The admin types them
+in password fields; the request carries them beside the operation, never in
+it (`tamper_passwords`), and they reach the handler through
+passwords_in_flight() for that one preview or apply. The spec names only
+which passwords are set and a salt; the plan carries a salted, keyed digest
+of each (so the plan hash moves when a password is typed differently at
+apply) and shows "set (hidden)"; the create call is the only place a
+password is written to; the read-back says "set" or "not set"; every error
+text is masked (tenant_auth.mask_secrets) before it is logged, audited or
+shown. Nothing stores a password: not the plan, the record, the audit log,
+job logs, snapshots, exports or the browser. Undo deletes the profiles the
+build created (and their passwords with them); it never restores a
+password, because none is kept. Field names (zscaler-sdk-python 1.11.3
+zcc/models/webpolicy.py): WindowsPolicy disable_password, logout_password,
+uninstall_password (snake case on the wire); MacOSPolicy disablePassword,
+logoutPassword, uninstallPassword. Install tokens and passwords are masked
+in every answer unless revealed, and none is logged, audited or recorded.
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import copy
+import hashlib
+import hmac
 import json
+import secrets
 import re
 import threading
 import unicodedata
@@ -88,6 +108,10 @@ ASSUMED = [
     "A new app profile is put last: its rule order is the number of profiles on that platform plus one.",
     "An inactive forwarding profile can be linked to an app profile.",
     "The installer options (MSI properties, EXE and macOS installbuilder.sh flags) are those Zscaler documents for Client Connector.",
+    "A tamper password is set by the create call's platform policy fields (Windows: windowsPolicy uninstall_password, disable_password, "
+    "logout_password; macOS: macPolicy uninstallPassword, disablePassword, logoutPassword, and the snake-case keys the portal payload "
+    "carries); the disable password is the one that turns off Internet security (ZIA); at most 128 characters.",
+    "A profile read back with a password field present and not empty has it set; a read-back without the field cannot confirm it.",
 ]
 
 
@@ -684,11 +708,105 @@ APP_TEMPLATES: Dict[str, Dict[str, Any]] = {
                                     "macos": "What the Client Connector Portal creates when you add a macOS profile and save without changes."}},
 }
 NOT_SET_HERE = [
-    "Tamper protection passwords (logout, exit, uninstall, turning ZIA, ZPA or ZDX off) are not set here, so no password travels "
-    "through this app: set them in the Client Connector Portal after the profile is created.",
+    "The exit password and the passwords that turn ZPA, ZDX or Endpoint DLP off are not set here: set them in the Client Connector "
+    "Portal. The uninstall, turn-off and log-out passwords can be set below; they are typed, sent once in the create call and never kept.",
     "The modern Client Connector user interface and notification templates are tenant-specific or ignored by the API: choose them in "
     "the Client Connector Portal.",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Tamper-protection passwords: typed, sent once, never kept
+# ---------------------------------------------------------------------------
+
+# key: (label, what it does, the platform policy keys it is written to per platform)
+TAMPER: Dict[str, Dict[str, Any]] = {
+    "uninstall": {"label": "Uninstall password",
+                  "explain": "A user needs this password to uninstall Client Connector, so it cannot simply be removed.",
+                  "keys": {"windows": ("uninstall_password",), "macos": ("uninstallPassword", "uninstall_password")}},
+    "disable": {"label": "Turn off Internet security password",
+                "explain": "A user needs this password to turn off Internet security (ZIA) in Client Connector.",
+                "keys": {"windows": ("disable_password",), "macos": ("disablePassword", "disable_password")}},
+    "logout": {"label": "Log out password",
+               "explain": "A user needs this password to log out of Client Connector.",
+               "keys": {"windows": ("logout_password",), "macos": ("logoutPassword", "logout_password")}},
+}
+TAMPER_FIELD = {k: f"{k}_password" for k in TAMPER}      # the request's field per password (audit.py masks *password*)
+PASSWORD_MAX = 128
+HIDDEN = "set (hidden)"
+_SALT_RE = re.compile(r"^[0-9a-f]{32,64}$")
+# Keys the digest so a plan's digest cannot be tried offline: it never
+# leaves this process (a restart between preview and apply means preview again).
+_PEPPER = secrets.token_bytes(32)
+_IN_FLIGHT: "contextvars.ContextVar[Optional[Dict[str, str]]]" = contextvars.ContextVar("zcc_tamper_passwords", default=None)
+TAMPER_NOTES = [
+    "Passwords: typed on this page, sent once in the create call and never kept. The plan shows \"set (hidden)\" and carries only a "
+    "salted digest of each, so the plan hash changes if a different password is typed at apply. They are not in the plan, the record, "
+    "the audit log, the job log, snapshots, exports or the browser's storage.",
+    "Undo deletes the profiles this build creates, and their passwords with them. It cannot restore a password: none is ever kept, so "
+    "if a password must change later, set it in the Client Connector Portal.",
+]
+
+
+def _lc(label: str) -> str:
+    return label[:1].lower() + label[1:]
+
+
+def check_passwords(raw: Any) -> Dict[str, str]:
+    """The typed passwords from a request ({uninstall_password, ...}),
+    checked: known fields only, text, 1 to PASSWORD_MAX characters, no
+    control characters. BuilderError in words; the words never repeat a value."""
+    if raw in (None, {}):
+        return {}
+    if not isinstance(raw, dict):
+        raise BuilderError("The passwords must be sent as fields of tamper_passwords.")
+    by_field = {v: k for k, v in TAMPER_FIELD.items()}
+    out: Dict[str, str] = {}
+    for f, v in raw.items():
+        kind = by_field.get(str(f))
+        if kind is None:
+            raise BuilderError("Only the uninstall, turn-off and log-out passwords can be set here.")
+        if v in (None, ""):
+            continue
+        if not isinstance(v, str) or len(v) > PASSWORD_MAX:
+            raise BuilderError(f"The {_lc(TAMPER[kind]['label'])} must be text of at most {PASSWORD_MAX} characters.")
+        if any(unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp") for c in v) or not v.strip():
+            raise BuilderError(f"The {_lc(TAMPER[kind]['label'])} has a character it may not hold (a control character or only spaces).")
+        out[kind] = v
+    return out
+
+
+@contextlib.contextmanager
+def passwords_in_flight(values: Optional[Dict[str, str]]):
+    """The typed passwords for this one preview or apply (this thread only),
+    gone when it ends."""
+    token = _IN_FLIGHT.set(dict(values or {}))
+    try:
+        yield
+    finally:
+        _IN_FLIGHT.reset(token)
+
+
+def _in_flight() -> Dict[str, str]:
+    return dict(_IN_FLIGHT.get() or {})
+
+
+def password_digest(salt: str, kind: str, value: str) -> str:
+    """A salted, keyed digest of one typed password (PBKDF2-HMAC-SHA256):
+    what the plan and its hash carry instead of the password."""
+    return hashlib.pbkdf2_hmac("sha256", value.encode("utf-8", "surrogatepass"), _PEPPER + f"{salt}:{kind}".encode("ascii"), 60_000).hex()
+
+
+def mask_passwords(text: Any, values: Optional[Dict[str, str]] = None) -> str:
+    """`text` with every typed password masked in every encoding a request
+    carries it in (tenant_auth.mask_secrets): for an error, a log line or an
+    audit entry."""
+    import tenant_auth
+    out = str(text if text is not None else "")
+    for v in (values if values is not None else _in_flight()).values():
+        if v:
+            out = tenant_auth.mask_secrets(out, {"password": v}).replace("[redacted password]", "********")
+    return out
 
 
 def _template_keys(kind: str, template: str, platform: str) -> List[str]:
@@ -709,6 +827,8 @@ def catalog() -> Dict[str, Any]:
                                   for k, v in APP_TEMPLATES.items()],
                     "settings": [s.meta() for s in APP_SETTINGS[p]]} for p in PLATFORMS},
         "not_set_here": list(NOT_SET_HERE),
+        "tamper": {"fields": [{"key": k, "field": TAMPER_FIELD[k], "label": v["label"], "explain": v["explain"]} for k, v in TAMPER.items()],
+                   "max": PASSWORD_MAX, "notes": list(TAMPER_NOTES)},
         "assumed": list(ASSUMED),
         "install": install_catalog(),
         "api": API_CALLS,
@@ -780,8 +900,16 @@ def normalize_spec(spec: Any) -> Dict[str, Any]:
     by_key = {s.key: s for s in APP_SETTINGS[platform]}
     out_app = {"template": atpl, "name": check_name(app.get("name"), "app profile"),
                "settings": _keys(app.get("settings"), by_key, _template_keys("app", atpl, platform), "app profile settings")}
-    if ftpl != "existing" and out_fwd["name"].lower() == out_app["name"].lower():
-        pass   # different object types may share a name; allowed
+    tamper = app.get("tamper")
+    if tamper not in (None, {}):
+        if not isinstance(tamper, dict) or not isinstance(tamper.get("set"), list) or any(k not in TAMPER for k in tamper["set"]):
+            raise BuilderError("The passwords to set are the uninstall, turn-off and log-out passwords.")
+        chosen = [k for k in TAMPER if k in set(tamper["set"])]
+        if chosen:
+            salt = str(tamper.get("salt") or "")
+            if not _SALT_RE.match(salt):
+                raise BuilderError("The passwords' salt is missing: reload the page and type the passwords again.")
+            out_app["tamper"] = {"set": chosen, "salt": salt}
     return {"platform": platform, "forwarding": out_fwd, "app": out_app, "enable": spec.get("enable") is True}
 
 
@@ -1014,22 +1142,31 @@ def read_objects(client: Any, scope: Dict[str, Any], say: Callable[[str], None],
     return {"catalog": catalog(), "inventory": inv, "errors": {f"zcc_{k}": v for k, v in inv["errors"].items()}}
 
 
-def _call(fn: Callable[..., Any], *args: Any, op: str, kind: str, name: str, log: LogFn, kw: Optional[Dict[str, Any]] = None):
+def _call(fn: Callable[..., Any], *args: Any, op: str, kind: str, name: str, log: LogFn, kw: Optional[Dict[str, Any]] = None,
+          secrets: Optional[Dict[str, str]] = None):
     """One SDK write through pack_ops.call (retries, rate pacing, Stop, the
     run's fatal refusals), ZCC's success "false" read as a refusal, and one
-    object_write audit entry."""
+    object_write audit entry. With `secrets` (typed passwords the body
+    carries) every error text is masked before pack_ops logs, audits or
+    returns it, and the answer's body is never kept."""
     import pack_ops as ops
 
     def sdk_call(*a: Any, **k: Any) -> Any:
-        ret = fn(*a, **k)
+        if secrets:
+            try:
+                ret = fn(*a, **k)
+            except Exception as e:  # noqa: BLE001 — re-raised masked; pack_ops turns it into a failed Outcome
+                raise RuntimeError(mask_passwords(f"{type(e).__name__}: {str(e)[:1000]}", secrets)) from None
+        else:
+            ret = fn(*a, **k)
         if not isinstance(ret, tuple) or len(ret) < 3:
-            return ret
+            return ({"id": _get(_plain(ret), "id")}, None, None) if secrets and ret is not None else ret
         data, resp, err = ret[:3]
         if err:
-            return ret
+            return (None, resp, mask_passwords(_err_text(err), secrets)) if secrets else ret
         why = _rejected(resp, data)
         if why:
-            return (None, resp, why)
+            return (None, resp, mask_passwords(why, secrets) if secrets else why)
         body = _wire(resp)
         rid = _get(body, "id") if isinstance(body, dict) else None
         if rid is None:
@@ -1065,6 +1202,17 @@ def plan_build(client: Any, spec: Any, scope: Dict[str, Any], say: Callable[[str
     spec = dict(normalize_spec(spec), type=BUILD)
     plat = spec["platform"]
     plabel = PLATFORMS[plat]["label"]
+    tamper = spec["app"].get("tamper") or {}
+    target_tamper = None
+    if tamper.get("set"):
+        typed = _in_flight()
+        missing = [_lc(TAMPER[k]["label"]) for k in tamper["set"] if not typed.get(k)]
+        if missing:
+            raise BuilderError("Type the " + " and the ".join(missing) + " again: a password is never kept, so the preview and the apply "
+                               "each need it typed. Nothing was read or written.")
+        # The plan (and its hash) carries a salted, keyed digest, never the password.
+        target_tamper = {"set": list(tamper["set"]), "salt": tamper["salt"],
+                         "digest": {k: password_digest(tamper["salt"], k, typed[k]) for k in tamper["set"]}}
     blockers: List[str] = []
     warnings: List[str] = []
     say("Reading the forwarding profiles…")
@@ -1140,9 +1288,14 @@ def plan_build(client: Any, spec: Any, scope: Dict[str, Any], say: Callable[[str
             reason += " Not in this tenant, left out: " + ", ".join(ctx["app_missing"]) + "."
         items.append(ao._unit(f"app:{s.key}", "g_app", "zcc_setting", aobj, s.label, s.portal_default, s.value if on else s.portal_default,
                               status="change" if on else "excluded", reason=reason, depends_on=dep))
+    if target_tamper:
+        for k in tamper["set"]:
+            items.append(ao._unit(f"app:tamper_{k}", "g_app", "zcc_setting", aobj, TAMPER[k]["label"], "not set", HIDDEN,
+                                  reason=TAMPER[k]["explain"] + " Typed on this page, sent once in the create call, never kept.", depends_on=dep))
     groups.append({"key": "g_app", "handler": "zcc_create_app", "target": {
         "name": app_name, "platform": plat, "app_ids": list(ctx["app_ids"]), "enable": spec["enable"],
-        "forwarding": {"create": create_fwd, "id": fwd_id, "name": fwd_name}, "body": body}})
+        "forwarding": {"create": create_fwd, "id": fwd_id, "name": fwd_name}, "body": body,
+        **({"tamper": target_tamper} if target_tamper else {})}})
     calls = []
     if create_fwd:
         c = API_CALLS["create_forwarding"]
@@ -1164,7 +1317,8 @@ def plan_build(client: Any, spec: Any, scope: Dict[str, Any], say: Callable[[str
              f"Create {plat_title}, linked to the forwarding profile \"{fwd_name}\"")
     return {"type": BUILD, "product": "zcc", "title": title, "spec": spec, "items": items, "groups": groups, "warnings": warnings,
             "blockers": blockers, "notes": calls + ["Each profile is checked again right before it is created; a name someone took "
-                                                    "meanwhile stops it and nothing is overwritten."] + NOT_SET_HERE,
+                                                    "meanwhile stops it and nothing is overwritten."]
+            + (list(TAMPER_NOTES) if target_tamper else []) + NOT_SET_HERE,
             "confirm_phrase": f"CREATE {app_name.upper()}", "assumed": list(ASSUMED)}
 
 
@@ -1242,7 +1396,28 @@ def _h_create_app(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> N
         return _rollback(run, t, "its name was taken meanwhile")
     body = copy.deepcopy(t["body"])
     body["forwardingProfileId"] = int(fid) if fid.isdigit() else fid
-    out = _call(_zcc(run.client).web_policy.web_policy_edit, op="create", kind="zcc_app_profile", name=t["name"], log=run.log, kw=body)
+    typed: Dict[str, str] = {}
+    tamper = t.get("tamper") or {}
+    if tamper.get("set"):
+        # The passwords typed for this apply, checked against the previewed
+        # digest, written into this one request body and nowhere else.
+        typed = {k: v for k, v in _in_flight().items() if k in tamper["set"]}
+        if set(typed) != set(tamper["set"]) or any(not hmac.compare_digest(password_digest(tamper["salt"], k, typed[k]), str(tamper["digest"].get(k)))
+                                                   for k in tamper["set"]):
+            run.mark(units, "conflict", "the passwords typed for this apply are not the ones previewed; nothing was created")
+            return _rollback(run, t, "the passwords typed differ from the preview")
+        pol = body.setdefault(PLATFORMS[t["platform"]]["policy_key"], {})
+        for k in tamper["set"]:
+            for key in TAMPER[k]["keys"][t["platform"]]:
+                pol[key] = typed[k]
+    out = _call(_zcc(run.client).web_policy.web_policy_edit, op="create", kind="zcc_app_profile", name=t["name"], log=run.log, kw=body,
+                secrets=typed or None)
+    if typed:
+        for k in tamper["set"]:
+            for key in TAMPER[k]["keys"][t["platform"]]:
+                body[PLATFORMS[t["platform"]]["policy_key"]][key] = ""
+        typed.clear()
+    del body
     aid = _fresh_id(out.id) if out.ok else ""
     if out.ok and not aid:
         rows, err = read_apps(run.client, t["platform"])
@@ -1258,6 +1433,21 @@ def _h_create_app(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> N
         run.log(f"[Client Connector] app profile \"{t['name']}\": created (id {aid})")
     else:
         _rollback(run, t, out.error or "refused")
+
+
+def tamper_state(row: Dict[str, Any], plat: str, kind: str) -> Optional[bool]:
+    """Whether a profile as read back has the password set (True), empty
+    (False) or does not say (None, the field is not in the answer). The
+    value is never returned."""
+    seen = False
+    for key in TAMPER[kind]["keys"].get(plat, ()):
+        for where in (_get(row, PLATFORMS[plat]["policy_key"]), row):
+            v = _get(where, key) if isinstance(where, dict) else None
+            if v is not None:
+                seen = True
+                if str(v).strip():
+                    return True
+    return False if seen else None
 
 
 def _setting_for(u: Dict[str, Any], plat: str) -> Optional[Setting]:
@@ -1292,6 +1482,10 @@ def verify_build(run: Any) -> Dict[str, Any]:
         label = f"{u['object'].get('name')}: {u['field'] if u['kind'] == 'zcc_setting' else 'exists'}"
         if row is None:
             u["verified"] = None
+        elif u["kind"] == "zcc_setting" and u["key"].startswith("app:tamper_"):
+            u["verified"] = tamper_state(row, plat, u["key"][len("app:tamper_"):])
+            if u["verified"] is None:
+                u["reason"] = (u.get("reason") or "") + " The read-back does not show this field, so it could not be confirmed."
         elif u["kind"] == "zcc_setting":
             s = _setting_for(u, plat)
             try:

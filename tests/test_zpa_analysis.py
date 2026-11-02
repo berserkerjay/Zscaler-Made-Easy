@@ -80,12 +80,16 @@ def messy():
             _seg("s-git", "Git servers", ["git.corp.example"], [(22, 22), (443, 443)], "sg-eng", ["srv-dc1"]),
             _seg("s-jira", "Jira", ["jira.corp.example"], [(443, 443)], "sg-eng", ["srv-dc1"]),
             _seg("s-mirror", "Git mirror", ["git.corp.example"], [(443, 443)], "sg-eng", ["srv-dc1"]),
-            _seg("s-wild", "Corp wildcard", ["*.corp.example"], [(80, 80), (443, 443)], "sg-gen", ["srv-dc1"]),
+            # Also a Browser Access segment (reached from unmanaged browsers).
+            _seg("s-wild", "Corp wildcard", ["*.corp.example"], [(80, 80), (443, 443)], "sg-gen", ["srv-dc1"],
+                 clientlessApps=[{"id": "ca1", "name": "corp", "enabled": True}]),
             _seg("s-pay", "Payroll", ["payroll.corp.example"], [(443, 443)], "sg-fin", ["srv-dc1"]),
             _seg("s-unused", "Unused app", ["unused.corp.example"], [(8443, 8443)], "sg-misc", ["srv-dc1"]),
             _seg("s-legacy", "Legacy app", ["legacy.corp.example"], [(443, 443)], "sg-old", ["srv-dc1"]),
             _seg("s-broad", "Everything dot com", ["*.com", "10.0.0.0/8"], [(1, 65535)], "sg-gen", ["srv-dc1"], bypassType="ALWAYS"),
-            _seg("s-rdp", "RDP jump hosts", ["rdp.corp.example", "10.20.30.0/24"], [(3389, 3389)], "sg-gen", ["srv-dc1"], healthReporting="NONE"),
+            # Also a Privileged Remote Access segment.
+            _seg("s-rdp", "RDP jump hosts", ["rdp.corp.example", "10.20.30.0/24"], [(3389, 3389)], "sg-gen", ["srv-dc1"], healthReporting="NONE",
+                 commonAppsDto={"appsConfig": [{"appTypes": ["SECURE_REMOTE_ACCESS"]}]}),
             _seg("s-orphan", "Orphan app", ["orphan.corp.example"], [(443, 443)], "sg-gen", []),
             _seg("s-intra", "Intranet", ["intranet.corp.example"], [(443, 443)], "sg-gen", ["srv-branch"], bypassType="ON_NET"),
             _seg("s-wide", "Wide ports", ["wide.corp.example"], [(5000, 9000)], "sg-gen", ["srv-dc1"]),
@@ -149,9 +153,31 @@ def messy():
             "timeout": [_rule("t1", 1, "Reauth everyone", "RE_AUTH"), _rule("t2", 2, "Reauth engineering", "RE_AUTH", _cond(SCIM("g-eng"))),
                         _rule("t3", 3, "Default", "RE_AUTH", defaultRule=True)],
             "client_forwarding": [_rule("f1", 1, "Bypass all", "BYPASS")],
-            "inspection": [_rule("i1", 1, "Inspect engineering", "INSPECT", _cond(GRP("sg-eng")))],
+            "inspection": [_rule("i1", 1, "Inspect engineering", "INSPECT", _cond(GRP("sg-eng")), zpnInspectionProfileId="ip1")],
             "isolation": [],
+            "capabilities": [_rule("cap1", 1, "Jump host full transfer", "CHECK_CAPABILITIES", _cond(APP("s-rdp")),
+                                   privilegedCapabilities={"capabilities": ["CLIPBOARD_COPY", "FILE_DOWNLOAD", "MONITOR_SESSION"]})],
+            # The credential rule's action name is assumed (the SDK does not list one).
+            "credential": [_rule("cr1", 1, "Shared admin login", "INJECT_CREDENTIALS", _cond(_op("CONSOLE", "id", "con-1")),
+                                 credential={"id": "cred-1", "name": "plant-admin"})],
+            "redirection": [_rule("rd1", 1, "Branch always via PSE", "REDIRECT_ALWAYS", serviceEdgeGroups=[{"id": "pse-1", "name": "Branch PSE"}]),
+                            _rule("rd2", 2, "Prefer a PSE", "REDIRECT_PREFERRED")],
+            "clientless": [],
         },
+        "servers": [{"id": "sv1", "name": "old-db", "address": "10.0.0.5", "enabled": True, "appServerGroupIds": []}],
+        "inspection_profiles": [{"id": "ip1", "name": "OWASP monitor", "paranoiaLevel": "1", "globalControlActions": ["PREDEFINED:PASS", "CUSTOM:NONE"],
+                                 "predefinedControls": [{"id": "pc1", "action": "PASS"}]}],
+        "custom_controls": [{"id": "cc1", "name": "Block admin path", "action": "BLOCK", "associatedInspectionProfileNames": []}],
+        "business_continuity": [{"id": "bc1", "backupEnabled": True, "maxAllowedDownTime": "30", "maxAllowedDownTimeUnit": "MINUTES",
+                                 "sitespPrivateKey": "-----BEGIN PRIVATE KEY-----canary-bc-key", "idpCert": "canary-bc-cert"}],
+        "private_clouds": [{"id": "pc1", "name": "Plant site", "enabled": True, "siteControllerGroupIds": [{"id": "pcg1", "name": "Plant floor"}]}],
+        "private_cloud_groups": [{"id": "pcg1", "name": "Plant floor", "enabled": True}],
+        "private_cloud_controllers": [{"id": "pcc1", "name": "plant-pcc-1", "enabled": True, "privateCloudControllerGroupId": "pcg1",
+                                       "controlChannelStatus": "ZPN_STATUS_DISCONNECTED"}],
+        "branch_connector_groups": [{"id": "bcg1", "name": "Store 12", "enabled": True}],
+        "branch_connectors": [],
+        "cloud_connector_groups": [{"id": "ccg1", "name": "AWS us-east-1", "enabled": True}],
+        "cloud_connectors": [{"id": "ccn1", "name": "aws-cc-1", "enabled": True, "edgeConnectorGroupId": "ccg1", "fingerprint": "canary-fp"}],
     }
 
 
@@ -185,8 +211,13 @@ def clean():
             ],
             "timeout": [_rule("t1", 1, "Engineering", "RE_AUTH", _cond(SCIM("g-eng"))), _rule("t2", 2, "Default", "RE_AUTH", defaultRule=True)],
             "client_forwarding": [], "isolation": [],
-            "inspection": [_rule("i1", 1, "Inspect all web", "INSPECT", _cond(GRP("sg-eng"), GRP("sg-ops")))],
+            "inspection": [_rule("i1", 1, "Inspect all web", "INSPECT", _cond(GRP("sg-eng"), GRP("sg-ops")), zpnInspectionProfileId="ip1")],
+            "redirection": [], "credential": [], "capabilities": [], "clientless": [],
         },
+        "servers": [], "business_continuity": [], "private_clouds": [], "private_cloud_groups": [], "private_cloud_controllers": [],
+        "branch_connector_groups": [], "branch_connectors": [], "cloud_connector_groups": [], "cloud_connectors": [],
+        "inspection_profiles": [{"id": "ip1", "name": "OWASP block", "globalControlActions": ["PREDEFINED:BLOCK"], "customControls": [{"id": "cc1", "action": "BLOCK"}]}],
+        "custom_controls": [{"id": "cc1", "name": "Admin path", "action": "BLOCK", "associatedInspectionProfileNames": [{"id": "ip1", "name": "OWASP block"}]}],
     }
 
 
@@ -205,6 +236,16 @@ from zscaler.zpa.models.server_group import ServerGroup  # noqa: E402
 from zscaler.zpa.models.service_edge_groups import ServiceEdgeGroup  # noqa: E402
 from zscaler.zpa.models.service_edges import ServiceEdge  # noqa: E402
 from zscaler.zpa.models.trusted_network import TrustedNetwork  # noqa: E402
+from zscaler.zpa.models.app_protection_profile import AppProtectionProfile, CustomControls  # noqa: E402
+from zscaler.zpa.models.application_servers import AppServers  # noqa: E402
+from zscaler.zpa.models.branch_connectors import BranchConnectorController  # noqa: E402
+from zscaler.zpa.models.business_continuity import BusinessContinuity  # noqa: E402
+from zscaler.zpa.models.cloud_connector_controller import CloudConnectorController  # noqa: E402
+from zscaler.zpa.models.cloud_connector_groups import CloudConnectorGroup  # noqa: E402
+from zscaler.zpa.models.common import CommonIDName  # noqa: E402
+from zscaler.zpa.models.private_cloud import PrivateCloud  # noqa: E402
+from zscaler.zpa.models.private_cloud_controller import PrivateCloudController  # noqa: E402
+from zscaler.zpa.models.private_cloud_group import PrivateCloudGroup  # noqa: E402
 
 SERVICES = {   # service attribute: (list method, data key, SDK model)
     "application_segment": ("list_segments", "segments", ApplicationSegments),
@@ -219,7 +260,23 @@ SERVICES = {   # service attribute: (list method, data key, SDK model)
     "posture_profiles": ("list_posture_profiles", "posture_profiles", PostureProfile),
     "trusted_networks": ("list_trusted_networks", "trusted_networks", TrustedNetwork),
     "machine_groups": ("list_machine_groups", "machine_groups", MachineGroup),
+    "servers": ("list_servers", "servers", AppServers),
+    "business_continuity": ("list_business_continuity_settings", "business_continuity", BusinessContinuity),
+    "private_cloud": ("list_private_clouds", "private_clouds", PrivateCloud),
+    "private_cloud_group": ("list_cloud_groups", "private_cloud_groups", PrivateCloudGroup),
+    "private_cloud_controller": ("list_cloud_controllers", "private_cloud_controllers", PrivateCloudController),
+    "branch_connector_group": ("list_branch_connector_groups", "branch_connector_groups", CommonIDName),
+    "branch_connectors": ("list_branch_connectors", "branch_connectors", BranchConnectorController),
+    "cloud_connector_groups": ("list_cloud_connector_groups", "cloud_connector_groups", CloudConnectorGroup),
+    "cloud_connector_controller": ("list_cloud_connectors", "cloud_connectors", CloudConnectorController),
 }
+# A service with more than one list: (service, method) -> (data key, SDK model).
+METHODS = {("app_protection", "list_profiles"): ("inspection_profiles", AppProtectionProfile),
+           ("app_protection", "list_custom_controls"): ("custom_controls", CustomControls)}
+# Lists added after the first fixtures: a fixture without them answers an empty list.
+NEW_KEYS = {"servers", "business_continuity", "private_clouds", "private_cloud_groups", "private_cloud_controllers",
+            "branch_connector_groups", "branch_connectors", "cloud_connector_groups", "cloud_connectors",
+            "inspection_profiles", "custom_controls"}
 
 
 class FakeResp:
@@ -260,7 +317,8 @@ class FakeService:
             elif self._name == "scim_groups":
                 items, model = t.data["scim_groups"].get(args[0], []), SCIMGroup
             else:
-                items, model = t.data[SERVICES[self._name][1]], SERVICES[self._name][2]
+                key, model = METHODS.get((self._name, attr)) or SERVICES[self._name][1:]
+                items = t.data.get(key, []) if key in NEW_KEYS else t.data[key]
             chunk = copy.deepcopy(items[(page - 1) * size: page * size])
             return [model(copy.deepcopy(x)) for x in chunk], FakeResp(chunk), None
         return lister
@@ -297,10 +355,14 @@ def test_the_reader_reads_every_list_read_only_and_keeps_raw_values():
     names = {(c[0], c[1]) for c in t.calls}
     for svc, (method, _k, _m) in SERVICES.items():
         assert (svc, method) in names, svc
-    assert {c[2][0] for c in t.calls if c[0] == "policies"} == {"access", "timeout", "client_forwarding", "inspection", "isolation"}
+    for svc, method in METHODS:
+        assert (svc, method) in names, (svc, method)
+    assert {c[2][0] for c in t.calls if c[0] == "policies"} == {"access", "timeout", "client_forwarding", "inspection", "isolation",
+                                                               "redirection", "credential", "capabilities", "clientless"}
     assert [c[2] for c in t.calls if c[0] == "scim_groups"] == [("idp1",)], "SCIM groups only for the IdPs the rules name"
     assert not t.writes and all(c[1].startswith("list_") for c in t.calls)
-    assert all(c[3].get("page_size") == "500" for c in t.calls), "pages of the SDK's documented maximum"
+    assert all(c[3].get("page_size") == "500" for c in t.calls if c[0] != "business_continuity"), "pages of the SDK's documented maximum"
+    assert [c[3] for c in t.calls if c[0] == "business_continuity"] == [{}], "the business continuity list takes no parameters"
     git = next(s for s in snap["segments"] if s["id"] == "s-git")
     assert git["tcp"] == [[22, 22], [443, 443]] and git["tcp_raw"]["legacy"] == ["22", "22", "443", "443"]
     static = next(g for g in snap["server_groups"] if g["id"] == "srv-static")
@@ -423,7 +485,8 @@ def test_the_catalog_has_at_least_fifteen_documented_templates():
 
 def test_every_template_fires_on_the_messy_tenant(messy_out):
     fired = {f["template"] for f in messy_out["findings"]}
-    missing = {c["id"] for c in za.CATALOG} - fired - {"ZPA-AP-07"}
+    # AP-07 needs no access rules and IN-01 no INSPECT rule at all: each has its own test.
+    missing = {c["id"] for c in za.CATALOG} - fired - {"ZPA-AP-07", "ZPA-IN-01"}
     assert not missing, f"templates never exercised: {missing}"
     for f in messy_out["findings"]:
         assert set(f) >= {"template", "severity", "object", "reason", "fix"}
@@ -633,8 +696,9 @@ def test_a_deny_rule_and_the_default_deny(snap):
 def test_server_and_connector_hops_and_an_unreachable_allow(snap):
     d = za.diagnose(snap, ENG, "jira.corp.example", 443)
     keys = [h["key"] for h in d["hops"]]
-    assert keys == ["user", "segment", "segment_group", "access", "server_groups", "connectors"]
-    assert "DC1 connectors" in d["hops"][-1]["detail"] and "2 of 2 connected" in d["hops"][-1]["detail"]
+    assert keys == ["user", "segment", "segment_group", "access", "server_groups", "connectors", "business_continuity"]
+    cons = next(h for h in d["hops"] if h["key"] == "connectors")
+    assert "DC1 connectors" in cons["detail"] and "2 of 2 connected" in cons["detail"]
     data = messy()
     for c in data["connectors"]:
         c["controlChannelStatus"] = "ZPN_STATUS_DISCONNECTED"

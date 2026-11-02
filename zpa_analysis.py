@@ -151,6 +151,50 @@ CATALOG: List[Dict[str, Any]] = [
     {"id": "ZPA-SE-01", "title": "Private Service Edge group not serving", "severity": "medium", "scope": "Private Service Edges",
      "checks": "An enabled Private Service Edge group with no service edge, or whose every edge is disconnected.",
      "needs": ["service_edge_groups"]},
+    # ── policy completeness: inspection, forwarding, PRA, redirection, browser ──
+    {"id": "ZPA-IN-01", "title": "Web segments with no inspection rule at all", "severity": "medium", "scope": "App segments and inspection policy",
+     "checks": "The inspection (AppProtection) policy has no enabled INSPECT rule, yet enabled segments serve web ports (80, 443, 8080, 8443): no private web application is inspected for attacks.",
+     "needs": ["segments", "policy:inspection"]},
+    {"id": "ZPA-IN-02", "title": "Inspection profile only monitors", "severity": "medium", "scope": "Inspection profiles",
+     "checks": "An AppProtection inspection profile whose every control action is PASS (log only): attacks it detects are let through. Medium when an enabled INSPECT rule uses it, low otherwise.",
+     "needs": ["inspection_profiles"]},
+    {"id": "ZPA-IN-03", "title": "Custom inspection control never attached", "severity": "low", "scope": "Inspection custom controls",
+     "checks": "A custom AppProtection control that no inspection profile uses: it was written but inspects nothing.",
+     "needs": ["custom_controls"]},
+    {"id": "ZPA-CF-01", "title": "Client forwarding bypasses a sensitive segment", "severity": "high", "scope": "Client forwarding policy",
+     "checks": "An enabled client forwarding rule with action BYPASS that decides for an enabled sensitive segment (directory, database, remote admin ports, a Privileged Remote Access segment, or a name that says finance, payroll, HR, health, production or similar): Client Connector sends that traffic outside ZPA, so no access rule applies to it. High when the rule has no user condition, medium when it applies to some users only.",
+     "needs": ["segments", "policy:client_forwarding"]},
+    {"id": "ZPA-PR-01", "title": "Privileged access lets data out", "severity": "medium", "scope": "Privileged capabilities policy",
+     "checks": "An enabled privileged capabilities rule that grants clipboard copy, or file upload or download without ZIA sandbox inspection, on Privileged Remote Access sessions. High when it applies to every user or every application.",
+     "needs": ["policy:capabilities"]},
+    {"id": "ZPA-PR-02", "title": "Privileged sessions not recorded", "severity": "low", "scope": "Privileged capabilities policy",
+     "checks": "Privileged Remote Access segments exist, but no enabled capabilities rule grants session recording to any of them, so privileged sessions leave no recording to review.",
+     "needs": ["segments", "policy:capabilities"]},
+    {"id": "ZPA-PR-03", "title": "Privileged credential given without a user condition", "severity": "medium", "scope": "Privileged credential policy",
+     "checks": "An enabled privileged credential rule with no user, group or attribute condition: everyone who reaches the console gets the stored credential.",
+     "needs": ["policy:credential"]},
+    {"id": "ZPA-RD-01", "title": "Redirection to a service edge group that cannot serve", "severity": "high", "scope": "Redirection policy",
+     "checks": "An enabled REDIRECT_ALWAYS or REDIRECT_PREFERRED rule with no Private Service Edge group, or whose every group is deleted, disabled or has no connected edge. High for REDIRECT_ALWAYS (users have no fallback), medium for REDIRECT_PREFERRED.",
+     "needs": ["policy:redirection"]},
+    {"id": "ZPA-BP-01", "title": "Browser Access without browser protection", "severity": "low", "scope": "Browser protection policy",
+     "checks": "Enabled Browser Access segments that no enabled MONITOR rule of the browser protection (clientless session protection) policy reaches: stolen session cookies are not watched for.",
+     "needs": ["segments", "policy:clientless"]},
+    {"id": "ZPA-IS-01", "title": "Unmanaged access without isolation", "severity": "medium", "scope": "Isolation policy",
+     "checks": "An enabled Browser Access segment (reached from unmanaged devices with no Client Connector) that an enabled ALLOW access rule reaches, but no enabled ISOLATE rule reaches first: data can be downloaded or copied to an unmanaged device. High when the segment is sensitive.",
+     "needs": ["segments", "policy:access", "policy:isolation"]},
+    # ── infrastructure behind the diagnostics ──
+    {"id": "ZPA-SV-03", "title": "Application server in no server group", "severity": "low", "scope": "Application servers",
+     "checks": "An enabled application server that no server group lists: it is defined but serves nothing.",
+     "needs": ["servers"]},
+    {"id": "ZPA-PC-01", "title": "Private Cloud Controller group not serving", "severity": "medium", "scope": "Private Cloud Controllers",
+     "checks": "An enabled Private Cloud Controller group with no controller, or whose every controller is disconnected.",
+     "needs": ["private_cloud_groups", "private_cloud_controllers"]},
+    {"id": "ZPA-BC-01", "title": "Business continuity has nothing to fail over to", "severity": "medium", "scope": "Business continuity",
+     "checks": "Business continuity settings exist, but no enabled Private Cloud Controller is connected, so users have nowhere to go when the ZPA cloud is unreachable.",
+     "needs": ["business_continuity", "private_cloud_controllers"]},
+    {"id": "ZPA-EC-01", "title": "Branch or Cloud Connector group with no connector", "severity": "low", "scope": "Branch and Cloud Connectors",
+     "checks": "An enabled Branch Connector or Cloud Connector group that holds no enabled connector, so no workload traffic reaches ZPA through it.",
+     "needs": []},
 ]
 CATALOG_BY_ID = {c["id"]: c for c in CATALOG}
 
@@ -198,6 +242,16 @@ class _Index:
         for g in self.connector_groups.values():
             if g["id"] not in self.connectors_by_group and g.get("embedded_connectors"):
                 self.connectors_by_group[g["id"]] = list(g["embedded_connectors"])
+
+        self.servers_by_group: Dict[str, List[Dict[str, Any]]] = {}
+        for x in _lst(snap, "servers"):
+            for gid in x.get("server_group_ids") or []:
+                self.servers_by_group.setdefault(gid, []).append(x)
+        self.service_edge_groups = _by_id(_lst(snap, "service_edge_groups"))
+        self.edges_by_group: Dict[str, List[Dict[str, Any]]] = {}
+        for e in _lst(snap, "service_edges"):
+            if e.get("group_id"):
+                self.edges_by_group.setdefault(e["group_id"], []).append(e)
 
     def read(self, key: str) -> bool:
         c = (self.snap.get("collections") or {}).get(key)
@@ -880,7 +934,7 @@ def _t_server_groups(snap, ix):
     for g in _lst(snap, "server_groups"):
         if g.get("enabled") is False:
             continue
-        servers = [s for s in g["servers"] if s["enabled"]]
+        servers = [s for s in _group_servers(g, ix) if s.get("enabled") is not False]
         if g["dynamic_discovery"] is False and not servers:
             out.append(_finding("ZPA-SV-01", "high", g["name"], "server group", g["id"],
                                 f"Server group \"{g['name']}\" has dynamic discovery off and no enabled server, so the segments using it have nothing to connect to.",
@@ -970,6 +1024,306 @@ def _t_service_edges(snap, ix):
     return out
 
 
+# ── policy completeness ─────────────────────────────────────────────────
+# A segment is sensitive when it serves directory, database or remote admin
+# ports (CRITICAL_PORTS), is a Privileged Remote Access segment, or its name
+# or a domain says what it holds (assumed vocabulary, English names).
+SENSITIVE_NAME = re.compile(r"\b(financ\w*|payroll|billing|hr|human resources|pci|card|phi|patient|health\w*|medical|bank\w*|treasury|"
+                            r"prod|production|critical|core|erp|sap|crm|legal|secret|confidential|domain controller|active directory)\b", re.I)
+# Capabilities that move data out of a privileged session uninspected (SDK
+# add_capabilities_rule_v2: the INSPECT_FILE_* variants go through the ZIA sandbox).
+LEAKY_CAPABILITIES = {"CLIPBOARD_COPY": "clipboard copy", "FILE_DOWNLOAD": "file download without inspection",
+                      "FILE_UPLOAD": "file upload without inspection"}
+
+
+def _sensitive(seg: Dict[str, Any]) -> Optional[str]:
+    """Why a segment is sensitive, in words, or None."""
+    if (seg.get("flags") or {}).get("pra"):
+        return "it is a Privileged Remote Access segment"
+    ports = sorted(set(_serves_port(seg, CRITICAL_PORTS) + _serves_port(seg, CRITICAL_PORTS, "udp")))
+    m = SENSITIVE_NAME.search(seg.get("name") or "") or next((SENSITIVE_NAME.search(d.replace(".", " ").replace("-", " "))
+                                                             for d in seg.get("domains") or [] if SENSITIVE_NAME.search(d.replace(".", " ").replace("-", " "))), None)
+    if m:
+        return f"its name or domain says \"{m.group(0)}\""
+    # A segment open to every port serves the critical ones too, but that alone
+    # is the over-broad finding (ZPA-AS-04/05), not a sign of what it holds.
+    if ports and not any(a <= 1 and b >= 65535 for a, b in seg.get("tcp") or []):
+        return f"it serves port{'s' if len(ports) > 1 else ''} {_names([str(p) for p in ports], 4)}"
+    return None
+
+
+def _first_reaching(rules: List[Dict[str, Any]], seg: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+    """(the first enabled rule that reaches seg with no user condition, the
+    rules reaching seg before it that have user conditions)."""
+    conditional = []
+    for r in rules:
+        if not _reaches(r, seg):
+            continue
+        if _user_conditions(r):
+            conditional.append(r)
+            continue
+        return r, conditional
+    return None, conditional
+
+
+def _t_no_inspection(snap, ix):
+    if [r for r in _enabled_rules(snap, "inspection") if r["action"] == "INSPECT"]:
+        return []   # ZPA-AS-09 judges segment by segment
+    web = [s for s in _lst(snap, "segments") if s["enabled"] and _serves_port(s, WEB_PORTS)]
+    if not web:
+        return []
+    return [_finding("ZPA-IN-01", "medium", "Inspection policy", "policy", "inspection",
+                     f"The inspection (AppProtection) policy has no enabled INSPECT rule, so none of the {len(web)} enabled web segment{'s' if len(web) != 1 else ''} "
+                     f"({_names([s['name'] for s in web], 4)}) is inspected for attacks such as injection or cross-site scripting.",
+                     "Create an inspection profile with Zscaler's predefined OWASP controls and an INSPECT rule for the web segments (start in monitor mode, then block).",
+                     segments=[s["name"] for s in web][:50])]
+
+
+def _t_inspection_profiles(snap, ix):
+    used: Dict[str, List[str]] = {}
+    for r in _enabled_rules(snap, "inspection"):
+        if r["action"] == "INSPECT" and r.get("inspection_profile_id"):
+            used.setdefault(r["inspection_profile_id"], []).append(r["name"])
+    out = []
+    for p in _lst(snap, "inspection_profiles"):
+        if p.get("monitor_only") is not True:
+            continue
+        rules = used.get(p["id"]) or []
+        sev = "medium" if rules else "low"
+        out.append(_finding("ZPA-IN-02", sev, p["name"], "inspection profile", p["id"],
+                            f"Inspection profile \"{p['name']}\" only monitors: every control action is PASS, so attacks it detects are logged but let through"
+                            + (f", and the INSPECT rule{'s' if len(rules) != 1 else ''} {_names(rules, 3)} use{'s' if len(rules) == 1 else ''} it." if rules else "."),
+                            "Once the logs show no false positives, set the profile's controls (or its global action) to Block."))
+    return out
+
+
+def _t_custom_controls(snap, ix):
+    attached = {cid for p in _lst(snap, "inspection_profiles") for cid in p.get("custom_control_ids") or []}
+    out = []
+    for c in _lst(snap, "custom_controls"):
+        if c.get("profiles") or c["id"] in attached:
+            continue
+        out.append(_finding("ZPA-IN-03", "low", c["name"], "custom control", c["id"],
+                            f"Custom inspection control \"{c['name']}\" is not attached to any inspection profile, so it inspects nothing.",
+                            "Attach it to the inspection profile of the segments it was written for, or delete it."))
+    return out
+
+
+def _t_forwarding_bypass(snap, ix):
+    rules = _enabled_rules(snap, "client_forwarding")
+    if not rules:
+        return []
+    out = []
+    for s in _lst(snap, "segments"):
+        if not s["enabled"]:
+            continue
+        why = _sensitive(s)
+        if not why:
+            continue
+        decided, conditional = _first_reaching(rules, s)
+        hit = next((r for r in conditional if r["action"] == "BYPASS"), None)
+        if decided is not None and decided["action"] == "BYPASS" and hit is None:
+            out.append(_finding("ZPA-CF-01", "high", s["name"], "app segment", s["id"],
+                                f"Client forwarding rule \"{decided['name']}\" (BYPASS) decides for app segment \"{s['name']}\" for every user, and {why}: Client Connector sends this traffic outside ZPA, so no access rule, posture check or inspection applies to it.",
+                                f"Change \"{decided['name']}\" to Intercept, or narrow it so it no longer applies to \"{s['name']}\".",
+                                rule=decided["name"]))
+        elif hit is not None:
+            out.append(_finding("ZPA-CF-01", "medium", s["name"], "app segment", s["id"],
+                                f"Client forwarding rule \"{hit['name']}\" (BYPASS) applies to app segment \"{s['name']}\" for some users ({_names([ix.operand_label(o) for c in _user_conditions(hit) for o in c['operands']], 3)}), and {why}: for them this traffic goes outside ZPA.",
+                                f"Confirm those users reach \"{s['name']}\" through another controlled path, or change \"{hit['name']}\" to Intercept.",
+                                rule=hit["name"]))
+    return out
+
+
+def _all_apps_or_users(r: Dict[str, Any]) -> bool:
+    sc = _app_scope(r)
+    return not _user_conditions(r) or (sc is not None and bool(sc.get("all")))
+
+
+def _t_pra_capabilities(snap, ix):
+    out = []
+    for r in _enabled_rules(snap, "capabilities"):
+        leaky = [LEAKY_CAPABILITIES[c] for c in (r.get("capabilities") or []) if c in LEAKY_CAPABILITIES]
+        if not leaky:
+            continue
+        broad = _all_apps_or_users(r)
+        out.append(_finding("ZPA-PR-01", "high" if broad else "medium", r["name"], "capabilities rule", r["id"],
+                            f"Privileged capabilities rule \"{r['name']}\" allows {_and_list(leaky)} in Privileged Remote Access sessions"
+                            + (" for every user or every application" if broad else "") + ", so data can leave the privileged system without inspection.",
+                            "Remove clipboard copy, and use the inspected file transfer options (file upload and download through the ZIA sandbox), for the users who need them only."))
+    return out
+
+
+def _t_pra_recording(snap, ix):
+    pra = [s for s in _lst(snap, "segments") if s["enabled"] and (s.get("flags") or {}).get("pra")]
+    if not pra:
+        return []
+    rec = [r for r in _enabled_rules(snap, "capabilities") if "RECORD_SESSION" in (r.get("capabilities") or [])]
+    out = []
+    for s in pra:
+        if any(_reaches(r, s) for r in rec):
+            continue
+        out.append(_finding("ZPA-PR-02", "low", s["name"], "app segment", s["id"],
+                            f"No enabled capabilities rule grants session recording for Privileged Remote Access segment \"{s['name']}\", so privileged sessions to it leave no recording to review.",
+                            "Add Record session to a capabilities rule that applies to this segment."))
+    return out
+
+
+def _t_pra_credentials(snap, ix):
+    out = []
+    for r in _enabled_rules(snap, "credential"):
+        if _user_conditions(r) and any(o["type"] not in ("CONSOLE",) + APP_TYPES for c in _user_conditions(r) for o in c["operands"]):
+            continue
+        named = (r.get("credential") or r.get("credential_pool") or {}).get("name")
+        what = f"\"{named}\"" if named else "a stored credential"
+        out.append(_finding("ZPA-PR-03", "medium", r["name"], "credential rule", r["id"],
+                            f"Privileged credential rule \"{r['name']}\" gives {what} with no user, group or attribute condition, so everyone who reaches the console signs in with it.",
+                            "Add the SCIM groups or SAML attributes of the administrators who need this credential."))
+    return out
+
+
+def _edge_group_state(gid: str, ix: _Index) -> Optional[str]:
+    """Why a Private Service Edge group cannot serve, or None when it can or it is not known."""
+    g = ix.service_edge_groups.get(gid)
+    if g is None:
+        return "deleted" if ix.complete("service_edge_groups") else None
+    if g.get("enabled") is False:
+        return "disabled"
+    edges = [e for e in (ix.edges_by_group.get(gid) or g.get("service_edges") or []) if e.get("enabled") is not False]
+    if not edges:
+        return "empty" if (g.get("edges_listed") or ix.read("service_edges")) else None
+    if all(e.get("connected") is False for e in edges):
+        return "disconnected"
+    return None
+
+
+def _t_redirection(snap, ix):
+    out = []
+    for r in _enabled_rules(snap, "redirection"):
+        act = r["action"]
+        if act not in ("REDIRECT_ALWAYS", "REDIRECT_PREFERRED"):
+            continue
+        sev = "high" if act == "REDIRECT_ALWAYS" else "medium"
+        groups = r.get("service_edge_group_ids") or []
+        if not groups:
+            out.append(_finding("ZPA-RD-01", sev, r["name"], "redirection rule", r["id"],
+                                f"Redirection rule \"{r['name']}\" ({act}) names no Private Service Edge group, so the users it applies to have nowhere to be redirected.",
+                                "Add the Private Service Edge groups this rule is for, or change it to REDIRECT_DEFAULT."))
+            continue
+        states = {g: _edge_group_state(g, ix) for g in groups}
+        if all(states.values()):
+            names = [f"{(ix.service_edge_groups.get(g) or {}).get('name') or (r.get('service_edge_group_names') or {}).get(g) or g} ({st})"
+                     for g, st in states.items()]
+            out.append(_finding("ZPA-RD-01", sev, r["name"], "redirection rule", r["id"],
+                                f"Redirection rule \"{r['name']}\" ({act}) sends users to {_names(names, 3)}, none of which can serve"
+                                + (", and REDIRECT_ALWAYS leaves them no fallback to the public ZPA cloud." if act == "REDIRECT_ALWAYS" else ", so they fall back to the public ZPA cloud."),
+                                "Bring a Private Service Edge in those groups back online, point the rule at a group that serves, or change it to REDIRECT_DEFAULT."))
+    return out
+
+
+def _t_browser_protection(snap, ix):
+    ba = [s for s in _lst(snap, "segments") if s["enabled"] and (s.get("flags") or {}).get("browser_access")]
+    if not ba:
+        return []
+    mon = [r for r in _enabled_rules(snap, "clientless") if r["action"] == "MONITOR"]
+    out = []
+    for s in ba:
+        if any(_reaches(r, s) for r in mon):
+            continue
+        out.append(_finding("ZPA-BP-01", "low", s["name"], "app segment", s["id"],
+                            f"No enabled browser protection rule monitors Browser Access segment \"{s['name']}\", so a stolen session cookie used from another browser is not detected.",
+                            "Add a MONITOR rule to the browser protection policy for the Browser Access segments."))
+    return out
+
+
+def _t_unmanaged_isolation(snap, ix):
+    allow = [r for r in _enabled_rules(snap, "access") if r["action"] in ("ALLOW", "REQUIRE_APPROVAL")]
+    iso = _enabled_rules(snap, "isolation")
+    out = []
+    for s in _lst(snap, "segments"):
+        if not s["enabled"] or not (s.get("flags") or {}).get("browser_access"):
+            continue
+        if not any(_reaches(r, s) for r in allow):
+            continue
+        isolated = False
+        for r in iso:
+            if not _reaches(r, s):
+                continue
+            if r["action"] == "ISOLATE":
+                isolated = True
+                break
+            if r["action"] == "BYPASS_ISOLATE" and not _user_conditions(r):
+                break
+        if isolated:
+            continue
+        why = _sensitive(s)
+        out.append(_finding("ZPA-IS-01", "high" if why else "medium", s["name"], "app segment", s["id"],
+                            f"Browser Access segment \"{s['name']}\" is allowed from unmanaged browsers, but no isolation rule isolates it"
+                            + (f", and {why}" if why else "") + ": files and text can be downloaded or copied to a device the company does not manage.",
+                            "Add an ISOLATE rule for the segment with an isolation profile that blocks download, upload and copy, or limit the access rule to Client Connector devices."))
+    return out
+
+
+def _t_unused_servers(snap, ix):
+    listed = {x["id"] for g in _lst(snap, "server_groups") for x in g.get("servers") or [] if x.get("id")}
+    out = []
+    for x in _lst(snap, "servers"):
+        if x.get("enabled") is False or x.get("server_group_ids") or x["id"] in listed:
+            continue
+        out.append(_finding("ZPA-SV-03", "low", x["name"], "application server", x["id"],
+                            f"Application server \"{x['name']}\" is in no server group, so it serves nothing.",
+                            "Add it to the server group of the application it belongs to, or delete it."))
+    return out
+
+
+def _t_private_cloud(snap, ix):
+    by_group: Dict[str, List[Dict[str, Any]]] = {}
+    for c in _lst(snap, "private_cloud_controllers"):
+        if c.get("group_id"):
+            by_group.setdefault(c["group_id"], []).append(c)
+    out = []
+    for g in _lst(snap, "private_cloud_groups"):
+        if g.get("enabled") is False:
+            continue
+        cons = [c for c in by_group.get(g["id"], []) if c.get("enabled") is not False]
+        if not cons:
+            out.append(_finding("ZPA-PC-01", "medium", g["name"], "private cloud controller group", g["id"],
+                                f"Private Cloud Controller group \"{g['name']}\" has no controller, so it brokers nothing.",
+                                "Enroll Private Cloud Controllers in the group, or delete it."))
+        elif all(c.get("connected") is False for c in cons):
+            out.append(_finding("ZPA-PC-01", "medium", g["name"], "private cloud controller group", g["id"],
+                                f"Every Private Cloud Controller of group \"{g['name']}\" ({_names([c['name'] for c in cons])}) is disconnected.",
+                                "Check the controller hosts and their outbound access to the ZPA cloud."))
+    return out
+
+
+def _t_business_continuity(snap, ix):
+    if not _lst(snap, "business_continuity"):
+        return []
+    live = [c for c in _lst(snap, "private_cloud_controllers") if c.get("enabled") is not False and c.get("connected")]
+    if live:
+        return []
+    return [_finding("ZPA-BC-01", "medium", "Business continuity", "business continuity", "business_continuity",
+                     "Business continuity is set up, but no enabled Private Cloud Controller is connected, so users have nowhere to go when the ZPA cloud is unreachable.",
+                     "Deploy Private Cloud Controllers in a Private Cloud site (at least two per site) and check they connect.")]
+
+
+def _t_edge_connectors(snap, ix):
+    out = []
+    for gkey, ckey, label in (("branch_connector_groups", "branch_connectors", "Branch Connector"),
+                              ("cloud_connector_groups", "cloud_connectors", "Cloud Connector")):
+        if not (ix.read(gkey) and ix.complete(ckey)):
+            continue
+        have = {c["group_id"] for c in _lst(snap, ckey) if c.get("group_id") and c.get("enabled") is not False}
+        for g in _lst(snap, gkey):
+            if g.get("enabled") is False or g["id"] in have:
+                continue
+            out.append(_finding("ZPA-EC-01", "low", g["name"], f"{label.lower()} group", g["id"],
+                                f"{label} group \"{g['name']}\" holds no enabled {label}, so no workload traffic reaches ZPA through it.",
+                                f"Deploy {label}s in the group, or delete it if the site is retired."))
+    return out
+
+
 _TEMPLATES = {
     "ZPA-AP-01": _shadowed, "ZPA-AP-02": _t_dangling, "ZPA-AP-03": _t_idp, "ZPA-AP-04": _t_catch_all,
     "ZPA-AP-05": _t_default_deny, "ZPA-AP-06": _t_no_conditions, "ZPA-AP-07": _t_no_access_rules,
@@ -977,6 +1331,11 @@ _TEMPLATES = {
     "ZPA-AS-06": _t_bypass, "ZPA-AS-07": _t_health, "ZPA-AS-08": _t_no_server_group, "ZPA-AS-09": _t_inspection,
     "ZPA-AS-10": _t_cleartext, "ZPA-SG-01": _t_segment_groups, "ZPA-SV-01": _t_server_groups,
     "ZPA-CG-01": _t_connector_groups, "ZPA-AC-01": _t_stale, "ZPA-SE-01": _t_service_edges,
+    "ZPA-IN-01": _t_no_inspection, "ZPA-IN-02": _t_inspection_profiles, "ZPA-IN-03": _t_custom_controls,
+    "ZPA-CF-01": _t_forwarding_bypass, "ZPA-PR-01": _t_pra_capabilities, "ZPA-PR-02": _t_pra_recording,
+    "ZPA-PR-03": _t_pra_credentials, "ZPA-RD-01": _t_redirection, "ZPA-BP-01": _t_browser_protection,
+    "ZPA-IS-01": _t_unmanaged_isolation, "ZPA-SV-03": _t_unused_servers, "ZPA-PC-01": _t_private_cloud,
+    "ZPA-BC-01": _t_business_continuity, "ZPA-EC-01": _t_edge_connectors,
 }
 # Templates produced by another template's function (same input).
 _PRODUCED_BY = {"ZPA-AS-02": "ZPA-AS-01", "ZPA-SV-02": "ZPA-SV-01", "ZPA-CG-02": "ZPA-CG-01", "ZPA-CG-03": "ZPA-CG-01", "ZPA-CG-04": "ZPA-CG-01"}
@@ -1002,6 +1361,9 @@ def _analyze(snap: Dict[str, Any], now: Optional[float]) -> Dict[str, Any]:
         miss = [k for k in c["needs"] if not ix.read(k)]
         if c["id"] == "ZPA-AP-06" and not any(ix.read(f"policy:{p}") for p in ("timeout", "client_forwarding", "inspection", "isolation")):
             miss = ["policy:timeout"]
+        if c["id"] == "ZPA-EC-01" and not any(ix.read(g) and ix.complete(k) for g, k in (("branch_connector_groups", "branch_connectors"),
+                                                                                          ("cloud_connector_groups", "cloud_connectors"))):
+            miss = ["branch_connector_groups"]
         missing_for[c["id"]] = miss
         status[c["id"]] = "not_assessed" if miss else "assessed"
     for tid, fn in _TEMPLATES.items():
@@ -1032,6 +1394,51 @@ def _analyze(snap: Dict[str, Any], now: Optional[float]) -> Dict[str, Any]:
                        "with_findings": sum(1 for c in catalog if c["status"] == "findings")}}
 
 
+def snapshot_from_lists(lists: Dict[str, Optional[List[Dict[str, Any]]]]) -> Dict[str, Any]:
+    """A snapshot (zpa_reader's shape) from raw API lists the assessment
+    already read: {collection key or "policy:<type>": [raw objects] or None
+    (not read)}. Each list is taken as complete (the assessment reads one
+    page of up to 500). Pure: nothing is read here."""
+    import zpa_reader as zr
+    norm = {"segments": zr.normalize_segment, "segment_groups": zr.normalize_segment_group, "server_groups": zr.normalize_server_group,
+            "connector_groups": zr.normalize_connector_group, "connectors": zr.normalize_connector,
+            "service_edge_groups": zr.normalize_service_edge_group, "service_edges": zr.normalize_service_edge,
+            "servers": zr.normalize_server, "inspection_profiles": zr.normalize_inspection_profile,
+            "custom_controls": zr.normalize_custom_control, "business_continuity": zr.normalize_business_continuity,
+            "private_cloud_groups": zr.normalize_private_cloud_group, "private_cloud_controllers": zr.normalize_private_cloud_controller}
+    snap: Dict[str, Any] = {"collections": {}, "policies": {}, "scim_groups": {}}
+    for key, items in lists.items():
+        ok = isinstance(items, list)
+        snap["collections"][key] = {"label": key.replace("policy:", "").replace("_", " "), "read": ok, "count": len(items) if ok else 0,
+                                    "complete": ok, "error": None if ok else "not read"}
+        rows = [x for x in (items or []) if isinstance(x, dict)]
+        if key.startswith("policy:"):
+            if ok:
+                ptype = key.split(":", 1)[1]
+                snap["policies"][ptype] = zr.order_rules([zr.normalize_rule(r, i, ptype) for i, r in enumerate(rows)])
+        elif key in norm:
+            snap[key] = [norm[key](x) for x in rows] if ok else None
+    return snap
+
+
+def run_templates(snap: Dict[str, Any], ids: Iterable[str]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """(findings, ids not assessed) of the named templates over a snapshot."""
+    _MEMO.cache = {}
+    try:
+        ix = _Index(snap)
+        findings: List[Dict[str, Any]] = []
+        skipped: List[str] = []
+        for tid in ids:
+            if any(not ix.read(k) for k in CATALOG_BY_ID[tid]["needs"]):
+                skipped.append(tid)
+                continue
+            findings.extend(f for f in _TEMPLATES[tid](snap, ix) if f["template"] == tid)
+        findings.sort(key=lambda f: (SEV_RANK.get(f["severity"], 9), f["object"].lower()))
+        return findings, skipped
+    finally:
+        _MEMO.cache = None
+
+
 def _need_label(snap: Dict[str, Any], key: str) -> str:
     c = (snap.get("collections") or {}).get(key) or {}
     return c.get("label") or key.replace("policy:", "").replace("_", " ")
@@ -1046,6 +1453,8 @@ ASSUMPTIONS = [
     "A wildcard such as *.example.com matches subdomains of example.com, not example.com itself.",
     "SAML and SCIM attribute values are compared exactly, ignoring case; SCIM groups are matched by id or name.",
     "Conditions this tool cannot evaluate (location, risk score, Chrome Enterprise, console, branch or edge connector) are treated as depending on facts you did not give.",
+    "An inspection profile whose every control action is PASS only monitors (it logs and lets the request through); global actions are read as \"<controls>:<action>\" (assumed from the values ZPA shows).",
+    "A segment is treated as sensitive when it is a Privileged Remote Access segment, serves directory, database or remote admin ports, or its name or a domain says finance, payroll, HR, health, production or similar (an English vocabulary, assumed).",
 ]
 
 
@@ -1195,15 +1604,72 @@ def _norm_user(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         saml = {str(k).strip().lower(): ([str(x).strip() for x in v] if isinstance(v, list) else [str(v).strip()]) for k, v in saml.items() if str(k).strip()}
     else:
         saml = None
+    names = u.get("scim_attr_names")
     return {"idp": one(u.get("idp")), "scim_groups": lst(u.get("scim_groups")) if u.get("scim_groups") is not None else None,
             "saml": saml if saml else None, "client_type": one(u.get("client_type")), "platform": one(u.get("platform")),
             "posture_pass": lst(u.get("posture_pass")) if u.get("posture_pass") is not None else None,
             "trusted_networks": lst(u.get("trusted_networks")) if u.get("trusted_networks") is not None else None,
-            "country": one(u.get("country")), "machine_group": one(u.get("machine_group"))}
+            "country": one(u.get("country")), "machine_group": one(u.get("machine_group")),
+            # ZPA identity (zpa_identity): whether the SCIM groups given are
+            # every group the user is in for their IdP (a group not listed is
+            # then not theirs) or only some (it stays unknown), and the IdP's
+            # SCIM attribute names by id, to match SCIM conditions by name.
+            "scim_complete": u.get("scim_complete") is not False,
+            "scim_attr_names": {str(k): str(v) for k, v in names.items()} if isinstance(names, dict) else {}}
 
 
 def _ci(a: str, b: str) -> bool:
     return (a or "").strip().lower() == (b or "").strip().lower()
+
+
+def user_idp(u: Dict[str, Any], ix: _Index) -> Optional[str]:
+    """The id of the IdP the user signs in with, when the user context names
+    one this tenant has (by id or name); None otherwise."""
+    want = u.get("idp")
+    if not want:
+        return None
+    if want in ix.idps:
+        return want
+    return next((i for i, x in ix.idps.items() if _ci(x.get("name") or "", want)), None)
+
+
+def operand_idp(o: Dict[str, Any], ix: _Index) -> str:
+    """The IdP an identity operand belongs to: a SCIM group's lhs (v1) or
+    idpId, a SAML attribute's idpId (from the tenant's SAML attributes), a
+    SCIM attribute operand's idpId. "" when the rule does not say."""
+    t = o["type"]
+    if t == "SCIM_GROUP":
+        g = ix.scim.get(o["rhs"])
+        return o.get("idp_id") or (o["lhs"] if o["lhs"] not in ("", "id") else "") or str((g or {}).get("idp_id") or "")
+    if t == "SAML":
+        a = ix.saml.get(o["lhs"])
+        return str((a or {}).get("idp_id") or o.get("idp_id") or "")
+    if t == "SCIM":
+        return o.get("idp_id") or ""
+    return ""
+
+
+def _other_idp(o: Dict[str, Any], u: Dict[str, Any], ix: _Index) -> Optional[str]:
+    """Why an identity operand cannot hold for this user's IdP, or None. A
+    user signs in through one IdP, and SCIM groups, SCIM attributes and SAML
+    attributes are each defined for one IdP: an operand of another IdP is
+    not met (assumed from ZPA's per-IdP identity model: the SDK models carry
+    idpId on SCIMGroup, SAMLAttribute and Operand). The IdP's own switches
+    are read as the ZPA-ID-02 check reads them: SCIM-based policy off, or
+    SAML-based policy disabled, means its conditions are never met."""
+    uid = user_idp(u, ix)
+    if uid is None:
+        return None
+    oid = operand_idp(o, ix)
+    if oid and oid != uid:
+        other = ix.idps.get(oid)
+        return f"it belongs to IdP {other['name'] if other else oid}, not the user's"
+    idp = ix.idps.get(uid) or {}
+    if o["type"] in ("SCIM_GROUP", "SCIM") and idp.get("scim_policy") is False:
+        return f"IdP {idp.get('name') or uid} has SCIM-based policy off"
+    if o["type"] == "SAML" and idp.get("saml_policy_disabled") is True:
+        return f"IdP {idp.get('name') or uid} has SAML-based policy disabled"
+    return None
 
 
 def _eval_operand(o: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[str, Any]], ix: _Index) -> Tuple[Optional[bool], str]:
@@ -1213,22 +1679,30 @@ def _eval_operand(o: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[str, 
         return (bool(seg) and seg["id"] == rhs), "app"
     if t == "APP_GROUP":
         return (bool(seg) and seg.get("segment_group_id") == rhs), "app"
+    if t in ("SCIM_GROUP", "SCIM", "SAML") and u.get("idp") and _other_idp(o, u, ix):
+        return False, "IdP"
     if t == "SCIM_GROUP":
         if u["scim_groups"] is None:
             return None, "SCIM groups"
         g = ix.scim.get(rhs)
         names = {rhs.lower(), (o.get("name") or "").lower(), (g or {}).get("name", "").lower()} - {""}
-        return any(x.lower() in names for x in u["scim_groups"]), "SCIM groups"
+        if any(x.lower() in names for x in u["scim_groups"]):
+            return True, "SCIM groups"
+        # Only part of the user's groups is known: one not listed may still be theirs.
+        return (False if u.get("scim_complete", True) else None), "SCIM groups"
     if t in ("SAML", "SCIM"):
         if u["saml"] is None:
             return None, "SAML attributes" if t == "SAML" else "SCIM attributes"
         a = ix.saml.get(lhs) if t == "SAML" else None
-        keys = {lhs.lower(), (o.get("name") or "").lower()} | ({a["name"].lower(), (a.get("saml_name") or "").lower()} if a else set())
+        scim_name = (u.get("scim_attr_names") or {}).get(lhs, "") if t == "SCIM" else ""
+        keys = {lhs.lower(), (o.get("name") or "").lower(), scim_name.lower()} | \
+            ({a["name"].lower(), (a.get("saml_name") or "").lower()} if a else set())
         keys.discard("")
         vals = [v for k, vs in u["saml"].items() if k in keys for v in vs]
+        label = a["name"] if a else (scim_name or o.get("name") or lhs)
         if not vals:
-            return None, f"attribute {a['name'] if a else (o.get('name') or lhs)}"
-        return any(_ci(v, rhs) for v in vals), f"attribute {a['name'] if a else (o.get('name') or lhs)}"
+            return None, f"attribute {label}"
+        return any(_ci(v, rhs) for v in vals), f"attribute {label}"
     if t == "IDP":
         if u["idp"] is None:
             return None, "IdP"
@@ -1308,6 +1782,15 @@ def evaluate_rule(rule: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[st
     v = _or(results) if any_of else _and(results)
     if not results:
         v = True
+    # Rule fields outside the conditions that this tool does not evaluate
+    # (zpa_reader.normalize_rule, rule_fields module "zpa"): the rule can
+    # match only if they hold too, so a match is conditional on them.
+    other = [str(f.get("label") or f.get("field")) for f in rule.get("unknown_fields") or [] if isinstance(f, dict)]
+    if other and v is True:
+        v = None
+        unevaluable += other
+    elif other and v is None:
+        unevaluable += other
     if v is True:
         return {"status": "matched", "why": "Every condition matches." if results else "It has no conditions, so it matches every request.", "depends_on": []}
     if v is False:
@@ -1453,7 +1936,7 @@ def diagnose(snap: Dict[str, Any], user: Optional[Dict[str, Any]], destination: 
 
     # The other policies, first match each (informational)
     other = {}
-    for ptype, label in (("timeout", "Timeout policy"), ("client_forwarding", "Client forwarding policy"), ("inspection", "Inspection policy"), ("isolation", "Isolation policy")):
+    for ptype, label in OTHER_POLICIES:
         prules = (snap.get("policies") or {}).get(ptype)
         if prules is None:
             other[ptype] = {"label": label, "read": False}
@@ -1462,6 +1945,9 @@ def diagnose(snap: Dict[str, Any], user: Optional[Dict[str, Any]], destination: 
         cond = [x for x in w if x["status"] == "conditional"]
         other[ptype] = {"label": label, "read": True, "rule": ({"name": r["name"], "action": r["action"], "order": r.get("order")} if r else None),
                         "conditional": [{"name": x["name"], "action": x["action"], "depends_on": x["depends_on"]} for x in cond[:3]]}
+
+    # Where the connection is brokered, and what is there when the ZPA cloud is not.
+    hops.extend(_infrastructure_hops(snap, ix, u))
 
     # The verdict. An earlier rule that depends on a fact not given makes
     # the answer depend on the user only when it would decide differently
@@ -1498,6 +1984,50 @@ def diagnose(snap: Dict[str, Any], user: Optional[Dict[str, Any]], destination: 
             "other_policies": other, "hops": hops,
             "verdict": {"outcome": outcome, "headline": headline, "summary": summary,
                         "segment": seg_obj["name"], "rule": rule_name or None, "reachable": reach}}
+
+
+OTHER_POLICIES = (("timeout", "Timeout policy"), ("client_forwarding", "Client forwarding policy"), ("inspection", "Inspection policy"),
+                  ("isolation", "Isolation policy"), ("redirection", "Redirection policy"), ("credential", "Privileged credential policy"),
+                  ("capabilities", "Privileged capabilities policy"), ("clientless", "Browser protection policy"))
+
+
+def _infrastructure_hops(snap: Dict[str, Any], ix: _Index, u: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Informational hops: the Branch or Cloud Connector groups a workload
+    connects through (for those client types), and the business continuity
+    fallback (Private Cloud Controllers) when it is set up."""
+    hops: List[Dict[str, Any]] = []
+    ct = u.get("client_type") or ""
+    for client, gkey, ckey, label in (("zpn_client_type_branch_connector", "branch_connector_groups", "branch_connectors", "Branch Connector"),
+                                      ("zpn_client_type_edge_connector", "cloud_connector_groups", "cloud_connectors", "Cloud Connector")):
+        if ct != client:
+            continue
+        if not ix.read(gkey):
+            hops.append({"key": "edge_connectors", "label": f"{label}s", "status": "unknown", "detail": f"The {label} groups could not be read."})
+            continue
+        groups = [g for g in _lst(snap, gkey) if g.get("enabled") is not False]
+        per = {}
+        for c in _lst(snap, ckey):
+            if c.get("enabled") is not False and c.get("group_id"):
+                per[c["group_id"]] = per.get(c["group_id"], 0) + 1
+        if not groups:
+            hops.append({"key": "edge_connectors", "label": f"{label}s", "status": "blocked",
+                         "detail": f"The client type is {label}, but no enabled {label} group exists, so no workload connects this way."})
+        else:
+            hops.append({"key": "edge_connectors", "label": f"{label}s", "status": "ok" if any(per.values()) else "warn",
+                         "detail": "; ".join(f"\"{g['name']}\": {per.get(g['id'], 0)} connector{'s' if per.get(g['id'], 0) != 1 else ''}" for g in groups[:6]) + "."})
+    if ix.read("business_continuity") and _lst(snap, "business_continuity"):
+        cons = [c for c in _lst(snap, "private_cloud_controllers") if c.get("enabled") is not False]
+        up = [c for c in cons if c.get("connected")]
+        if not ix.read("private_cloud_controllers"):
+            detail, st = "Business continuity is set up; the Private Cloud Controllers could not be read.", "unknown"
+        elif not cons:
+            detail = "Business continuity is set up, but no Private Cloud Controller is deployed to take over if the ZPA cloud is unreachable."
+        else:
+            detail = (f"Business continuity is set up: if the ZPA cloud is unreachable, {len(up)} of {len(cons)} Private Cloud Controller"
+                      f"{'s' if len(cons) != 1 else ''} {'is' if len(cons) == 1 else 'are'} connected to take over.")
+            st = "ok" if up else "warn"
+        hops.append({"key": "business_continuity", "label": "Business continuity", "status": st, "detail": detail})
+    return hops
 
 
 def _user_text(u: Dict[str, Any]) -> str:
@@ -1545,9 +2075,9 @@ def _serving(seg: Dict[str, Any], ix: _Index) -> Dict[str, Any]:
     else:
         sg_status = "ok"
         def how(g):
-            return "dynamic discovery" if g.get("dynamic_discovery") is not False else f"{len(g.get('servers') or [])} server(s)"
+            return "dynamic discovery" if g.get("dynamic_discovery") is not False else f"{len(_group_servers(g, ix))} server(s)"
         sg_detail = "; ".join(f"\"{g['name']}\" ({how(g)})" for g in live) + "."
-        empty = [g for g in live if g.get("dynamic_discovery") is False and not [s for s in g.get("servers") or [] if s.get("enabled")]]
+        empty = [g for g in live if g.get("dynamic_discovery") is False and not [s for s in _group_servers(g, ix) if s.get("enabled")]]
         if empty and len(empty) == len(live):
             sg_status, sg_detail = "blocked", sg_detail + " None has a server to connect to."
     up_total = sum(g["connected"] for g in groups)
@@ -1568,9 +2098,15 @@ def _serving(seg: Dict[str, Any], ix: _Index) -> Dict[str, Any]:
     short = (_names([f"\"{g['name']}\"" for g in live], 2) or "no server group") + \
         (f" through {_names(quoted, 2)} ({up_total} connector{'s' if up_total != 1 else ''} connected)" if groups else "")
     return {"server_groups": [{"id": g["id"], "name": g["name"], "missing": bool(g.get("missing")), "enabled": g.get("enabled", True) is not False,
-                               "dynamic_discovery": g.get("dynamic_discovery"), "servers": len(g.get("servers") or [])} for g in sgs],
+                               "dynamic_discovery": g.get("dynamic_discovery"), "servers": len(_group_servers(g, ix))} for g in sgs],
             "connector_groups": groups, "sg_status": sg_status, "sg_detail": sg_detail, "cg_status": cg_status, "cg_detail": cg_detail,
             "reachable": reachable, "why_down": why, "short": short}
+
+
+def _group_servers(g: Dict[str, Any], ix: _Index) -> List[Dict[str, Any]]:
+    """A server group's servers: as the group lists them, else from the
+    application server list (each server names its groups)."""
+    return list(g.get("servers") or []) or list(ix.servers_by_group.get(g.get("id") or "", []))
 
 
 def _summary(outcome: str, seg: Dict[str, Any], decided: Optional[Dict[str, Any]], walked: List[Dict[str, Any]], serve: Dict[str, Any]) -> str:

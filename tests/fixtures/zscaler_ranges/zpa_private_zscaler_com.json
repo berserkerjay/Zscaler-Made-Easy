@@ -1,0 +1,4 @@
+{"content": [
+ {"Service": "ZPA Public Service Edges", "IPs": ["13.52.0.0/22", "52.65.226.0/24"], "Domains": ["*.private.zscaler.com", "*.zpath.net"]},
+ {"Service": "ZPA Log Streaming", "IPs": ["44.226.112.0/24"]}
+]}

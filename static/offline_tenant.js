@@ -22,7 +22,7 @@
     if (text != null) n.textContent = String(text);
     return n;
   }
-  function active() { return S.status.mode === 'sample' || S.status.mode === 'snapshot'; }
+  function active() { return S.status.mode === 'sample' || S.status.mode === 'snapshot' || S.status.mode === 'simulation'; }
   function tell() {
     window.ZME_OFFLINE = active() ? S.status : null;
     try { window.dispatchEvent(new CustomEvent('zme:offline', { detail: Object.assign({ from: 'connect' }, S.status) })); } catch (e) { /* old browser */ }
@@ -55,6 +55,12 @@
   }
   async function leave() {
     if (S.busy) return; S.busy = true; draw();
+    // A simulation is left by dropping its in-memory copy: back to the sample or the snapshot it was made from.
+    if (S.status.mode === 'simulation') {
+      try { const d = await api('/api/offline/simulation/discard', {}); afterSwitch(d, d.message || 'The simulation was dropped.'); }
+      catch (e) { say(`Could not leave the simulation: ${e.message}`); }
+      S.busy = false; draw(); return;
+    }
     try { afterSwitch(await api('/api/offline/leave', {}), 'Back to the live tenant.'); }
     catch (e) { say(`Could not leave: ${e.message}`); }
     S.busy = false; draw();
@@ -199,7 +205,8 @@
     host.appendChild(el('p', { class: 'gd-need' }, 'No tenant at hand? Try the app on a made-up company. A snapshot keeps a copy of a tenant\'s settings (only what is in scope, never a secret) so you can open it offline later or see what changed since.'));
     const row = el('div', { class: 'gd-prof-controls zo-row' });
     if (active()) {
-      row.appendChild(el('button', { type: 'button', class: 'gd-btn primary', onclick: leave, disabled: S.busy }, S.status.mode === 'sample' ? 'Leave the sample' : 'Close the snapshot'));
+      row.appendChild(el('button', { type: 'button', class: 'gd-btn primary', onclick: leave, disabled: S.busy },
+        S.status.mode === 'simulation' ? 'Leave the simulation' : S.status.mode === 'sample' ? 'Leave the sample' : 'Close the snapshot'));
     } else {
       row.appendChild(el('button', { type: 'button', class: 'gd-btn primary', onclick: trySample, disabled: S.busy }, 'Try with a sample tenant'));
       row.appendChild(el('button', { type: 'button', class: 'gd-btn quiet', onclick: save, disabled: S.busy }, 'Save a snapshot'));
@@ -212,8 +219,10 @@
     if (S.job) row.appendChild(el('button', { type: 'button', class: 'gd-btn quiet', onclick: stop }, 'Stop'));
     host.appendChild(row);
     if (active()) {
-      host.appendChild(el('p', { class: 'gd-need' }, S.status.mode === 'sample'
-        ? `Using ${S.status.company || 'the sample tenant'}: nothing here is real. Every page reads it; a change you deploy changes only its copy in this app's memory.`
+      host.appendChild(el('p', { class: 'gd-need' }, S.status.mode === 'simulation'
+        ? `Using a simulation of ${(S.status.simulation || {}).base_label || 'the offline tenant'}: an in-memory copy with rehearsed changes applied. Nothing here is real, and nothing was written to a tenant, the sample tenant or a saved snapshot.`
+        : S.status.mode === 'sample'
+        ? `Using ${S.status.company || 'the sample tenant'}: nothing here is real. Every page reads it; plans and dry runs work here as a rehearsal, and nothing is ever applied to it.`
         : `In use: ${S.status.tenant_label}, offline and read-only. Nothing is read from or sent to a tenant.`));
     }
     host.appendChild(el('p', { id: 'zoStatus', class: 'gd-need', role: 'status', 'aria-live': 'polite' }, S.msg));

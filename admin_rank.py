@@ -28,7 +28,8 @@ Sources (what is relied on, and what is assumed):
 Assumed (not confirmed in a source, said where it matters):
 
   * A rule without a rank, or with one outside 0..7, sits at rank 7 (the
-    rank the API gives new rules; remediation.py and pack_deploy.py use it).
+    lowest; what new rules get while Admin Ranking is off or unknown, see
+    rank_inherit, which picks the rank a new or moved rule needs).
   * Rank ties fall back to rule order, then rule id; the default rule stays
     last whatever its rank.
   * Through the SDK client a missing enableAdminRankAccess reads as false

@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
+from zscaler.zpa.policies import PolicySetControllerAPI
+
 CANARY_KEY = "3|CANARY-PROVISIONING-KEY-q9Zx7Lm2Vt8Rb4Nw|do-not-leak"
 RULE_TYPES = ("access", "timeout", "inspection", "isolation")
 
@@ -21,7 +23,8 @@ class Tenant:
         self.n = 72058304855000000
         self.rows: Dict[str, Dict[str, Dict[str, Any]]] = {k: {} for k in (
             "connector_group", "provisioning_key", "segment_group", "server_group", "segment", "inspection_profile", "pra_console",
-            "isolation_profile", "pra_portal", "certificate", "enrollment") + tuple(f"rule:{t}" for t in RULE_TYPES)}
+            "isolation_profile", "pra_portal", "certificate", "enrollment", "idp", "saml_attribute", "scim_group")
+            + tuple(f"rule:{t}" for t in RULE_TYPES)}
         self.writes: List[tuple] = []
         self.reads: List[str] = []
         self.add("enrollment", {"name": "Connector"})
@@ -63,7 +66,8 @@ def _body(kw: Dict[str, Any]) -> Dict[str, Any]:
         elif k == "clientless_app_ids":
             out["clientlessApps"] = v
         elif k == "conditions":
-            out["conditions"] = [{"operator": "OR", "operands": [{"objectType": c[0].upper(), "lhs": c[1], "rhs": c[2]} for c in v]}] if v else []
+            # The SDK's own v1 template: what add_access_rule sends.
+            out["conditions"] = PolicySetControllerAPI._create_conditions_v1(list(v)) if v else []
         else:
             out[_camel(k)] = v
     return out
@@ -262,6 +266,23 @@ def _rule_apps(r):
     return [str(o.get("rhs")) for c in r.get("conditions") or [] for o in c.get("operands") or [] if o.get("objectType") == "APP"]
 
 
+class ScimGroups(_Svc):
+    """scim_groups: list_scim_groups(idp_id) (with scim_user_name, the groups
+    of one user: rows carry "members") and get_scim_group(id)."""
+
+    def list_scim_groups(self, idp_id, query_params=None):
+        q = dict(query_params or {})
+        self.t.reads.append("list:scim_group")
+        rows = [r for r in self.t.rows["scim_group"].values() if str(r.get("idpId")) == str(idp_id)]
+        if q.get("scim_user_name") is not None:
+            rows = [r for r in rows if q["scim_user_name"] in (r.get("members") or [])]
+        return [{k: v for k, v in r.items() if k != "members"} for r in _page(rows, q)], None, None
+
+    def get_scim_group(self, group_id, query_params=None):
+        r, resp, err = self._get(group_id)
+        return ({k: v for k, v in r.items() if k != "members"} if r else None), resp, err
+
+
 class Policies(_Svc):
     def list_rules(self, policy_type, query_params=None):
         return self._list(query_params, kind=f"rule:{policy_type}")
@@ -273,7 +294,23 @@ class Policies(_Svc):
         kw = dict(kw)
         if "action" in kw:
             kw["action"] = str(kw["action"]).upper()
-        return self._add(kw, kind=f"rule:{t}")
+        rows = [r for r in self.t.rows[f"rule:{t}"].values() if not r.get("defaultRule")]
+        # A new rule goes to the end of its policy (the builder's assumed ZPA behaviour), above the Default rule.
+        return self._add(kw, kind=f"rule:{t}", ruleOrder=str(max([int(r.get("ruleOrder") or 0) for r in rows] or [0]) + 1))
+
+    def bulk_reorder_rules(self, policy_type, rules_orders, **kw):
+        """The whole order in one call (SDK 1.11.3 policies.bulk_reorder_rules): the ids top first, the Default rule left out."""
+        k = f"rule:{policy_type}"
+        ids = [str(x) for x in rules_orders]
+        rows = self.t.rows[k]
+        if any(i not in rows for i in ids) or len(set(ids)) != len(ids):
+            return None, None, "HTTP 400: unknown or repeated rule id"
+        if sorted(ids) != sorted(i for i, r in rows.items() if not r.get("defaultRule")):
+            return None, None, "HTTP 400: the order must name every rule but the Default rule"
+        for n, i in enumerate(ids, 1):
+            rows[i]["ruleOrder"] = str(n)
+        self.t.writes.append(("reorder", k, ",".join(ids)))
+        return None, None, None
 
     def add_access_rule(self, name, action, **kw):
         return self._rule("access", dict(kw, name=name, action=action))
@@ -324,6 +361,9 @@ class Zpa:
         self.certificates = Simple(t, "certificate")
         self.pra_console = Consoles(t, "pra_console")
         self.policies = Policies(t, "rule:access")
+        self.idp = Simple(t, "idp")
+        self.saml_attributes = Simple(t, "saml_attribute")
+        self.scim_groups = ScimGroups(t, "scim_group")
 
 
 class Client:

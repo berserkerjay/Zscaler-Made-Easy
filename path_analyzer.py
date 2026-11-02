@@ -199,7 +199,7 @@ def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any], platform
     say "not in scope" for what is now in it."""
     return (bool(snapshot) and snapshot_scope_key(snapshot) == scope.get("key") and zia_path_modules.snapshot_ready(snapshot, scope) and
             ("zcc" not in scope.get("read", []) or
-             ((snapshot.get("client_connector") or {}).get("profile_schema") == 4 and
+             ((snapshot.get("client_connector") or {}).get("profile_schema") == 5 and
               (snapshot.get("client_connector") or {}).get("profile_platform") in (None, platform))))
 
 
@@ -208,7 +208,8 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
             cancel: Any = None, context: Optional[Dict[str, Any]] = None, lookup: Optional[Dict[str, Any]] = None,
             protocol: Optional[str] = None, port: Optional[int] = None,
             packs: Optional[List[Dict[str, Any]]] = None,
-            identity: Any = None) -> Dict[str, Any]:
+            identity: Any = None, device: Optional[Dict[str, Any]] = None,
+            manual: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The live analysis. `scope` (data_flow.path_scope: the Scope page's
     ticked scopes and the channels marked Zscaler) is required, and only
     the parts of the tenant in it are read; every other hop says "not in
@@ -227,7 +228,15 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     every ZIA module in order, `zia_modules` in the result; the steps
     before ZIA, such as the evaluated PAC file, are `modules`). `packs`
     (data_flow.load_packs(), read once by a caller that traces many
-    destinations) saves reading the pack library again for each one."""
+    destinations) saves reading the pack library again for each one.
+    `device` (path_device: a device picked from the Client Connector
+    Portal) replaces the platform with the device's, follows the app
+    profile the Portal reports for it, and adds the result's `device`
+    block (what applied and why, what is unknown). `manual` (path_manual.
+    parse: pasted PAC text, VPN gateways, Z-Tunnel 2.0 lists) adds the
+    result's `manual_inputs` block; in its "merge" mode the inputs are
+    added to every app profile read and the whole trace is a what-if.
+    Neither the inputs nor the merged profiles are kept with the read."""
     _log = log or (lambda m: None)
 
     def _stopped() -> Stopped:
@@ -246,6 +255,8 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     traffic = zia_path_modules.traffic_context(d, protocol, port)
     network = network if network in {n["key"] for n in NETWORKS} else "off"
     platform = platform if platform in PLATFORMS else "windows"
+    if device and device.get("platform") in PLATFORMS:
+        platform = device["platform"]   # the picked device's platform, not the select's
     if snapshot and not reusable(snapshot, scope, platform):
         _log("The tenant read kept from before was made for a different scope; reading again for what is in scope now.")
         snapshot = None
@@ -302,15 +313,35 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     rd["pac_url"] = pac_url(d, traffic)
     if traffic["web"] and traffic["encrypted"] is False:
         context = dict(context or {}, plaintext=True)   # plain HTTP: no TLS on this path
+    # The protocol and port decide what Client Connector's forwarding mode
+    # carries (zcc_bypass: Z-Tunnel 1.0 and Enforce proxy carry web traffic only).
+    context = dict(context or {}, traffic={k: traffic[k] for k in ("protocol", "port", "web", "label")})
     # What-if (path_whatif): rules scoped to the identity given apply, the
     # others are skipped; the PAC file is evaluated by pac_eval, never run.
     import path_whatif
     ident = path_whatif.normalize_identity(identity)
     zia_t, wcounts = path_whatif.apply_identity(zia, ident)
+    # Microsoft's published Microsoft 365 endpoint list, for the rules that
+    # name app services (app_services): the one kept, or for the sample
+    # tenant its excerpt; None leaves those criteria unknown.
+    import app_services
+    zia_t = dict(zia_t, _app_service_list=app_services.current(client))
     if ident:
         _log(f"Evaluating rules scoped to the identity you gave: {wcounts['applies']} apply, {wcounts['skipped']} are for others, {wcounts['open']} still depend on something not given.")
+    zcc_t, dctx = zcc, None
+    if device:
+        import path_device
+        zcc_t, dctx = path_device.apply_device(zcc, device)
+        _log("Using the device you picked: " + (f"the app profile the Client Connector Portal reports for it ({dctx['profile']['name']})."
+                                                 if dctx.get("profile") else "its platform; its app profile is chosen as for any device (see The device)."))
+    merged = None
+    if manual and manual.get("mode") == "merge":
+        import path_manual
+        zcc_t, merged = path_manual.apply(zcc_t, manual)
+        _log(f"What-if: your manual inputs are added to the {merged['profiles']} app profile(s) read"
+             + (", and the pasted PAC replaces the linked one" if manual.get("pac_text") else "") + ". Nothing is written.")
     _log("Tracing the path hop by hop…")
-    t = trace(rd, network, platform, zcc, zia_t, load_packs() if packs is None else packs, scope=scope, context=context)
+    t = trace(rd, network, platform, zcc_t, zia_t, load_packs() if packs is None else packs, scope=scope, context=context)
     zm = zia_path_modules.evaluate(t, d, traffic, zia_t, lk, context)
     zia_path_modules.extend_trace(t, zm)
     verdict = derive_verdict(t, d, lk)
@@ -323,16 +354,33 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                    for a in ASSUMPTIONS] + zia_path_modules.ASSUMPTIONS + [admin_rank.describe(zia.get("admin_ranking"))] + traffic["notes"]
     if ident:
         assumptions[0] = path_whatif.assumption(ident)
+    if device:
+        assumptions[1] = path_device.assumption(device, network)
     if scope["not_in_scope"]:
         assumptions.append("Only what is in scope on the Scope page was read; these parts are not in scope and their hops are not assessed: "
                            + ", ".join(PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in scope["not_in_scope"]) + ".")
     out = {"required_controls": zia.get("required_controls", []), "destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
            "zia_modules": zm, "admin_ranking": admin_rank.recorded(zia.get("admin_ranking")),
+           "app_service_list": zm.get("app_service_list"),
            # The steps before ZIA in the shared hop shape (the evaluated PAC
            # file here; zpa_path.merge puts ZPA and the connector in front).
            "modules": [h["module_hop"] for h in t.get("hops") or [] if h.get("module_hop")],
            "network": network, "platform": platform, "read_at": time.time(), "fresh_read": snapshot is None,
            "whatif": path_whatif.whatif(zia_t, t["destination"], ident, wcounts, scope.get("not_in_scope"))}
+    if device:
+        out["device"] = path_device.describe(device, dctx, t, network)
+        verdict["impacts"] = list(verdict.get("impacts") or []) + out["device"]["impacts"]
+    if manual:
+        import path_manual
+        out["manual_inputs"] = path_manual.evaluate(manual, d, traffic, rd["pac_url"])
+        if merged is not None:
+            out["manual_inputs"]["merged"] = merged
+            verdict["hypothetical"] = True
+            verdict["headline"] = "What-if (your manual inputs added): " + verdict["headline"]
+            assumptions.insert(0, "What-if: the manual inputs you typed are added to every app profile read"
+                               + (" and the pasted PAC replaces the linked PAC" if manual.get("pac_text") else "")
+                               + "; they are not in the tenant.")
+        assumptions += path_manual.ASSUMED
     # Recent traffic to this destination: only when ZIA Insights is in
     # scope, and never faked. Z-Insights cannot filter by host or domain,
     # so this says so without asking the tenant anything.

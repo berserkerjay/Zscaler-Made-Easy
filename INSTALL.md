@@ -1,5 +1,7 @@
 # Installing Zscaler Made Easy — a walkthrough for someone doing this for the first time
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 This page assumes you have never installed a developer tool before. It
 does not assume you know what Python, Git, Docker or a terminal are; each
 one is explained the first time it comes up. Pick **one** of the four
@@ -62,7 +64,7 @@ one on the Releases page; the attestation says GitHub itself built it,
 from this repository's code, with its release workflow, and records the
 commit. It is a signed record (SLSA build provenance) that the GitHub CLI
 checks. Install the GitHub CLI once from https://cli.github.com, sign in
-with `gh auth login` (the repository is private, so use the account that
+with `gh auth login` (while the repository is private, use the account that
 can see it), then:
 
 ```bash
@@ -179,9 +181,10 @@ installing only puts the program on your computer.
       [work laptop box](#work-laptop-tls-inspection-or-a-proxy) before you
       start; it changes one step.
 - [ ] **Access to the GitHub repository** `github.com/berserkerjay/Zscaler-Made-Easy`.
-      It is **private**: someone on the team must add your GitHub account
-      first. If the page says "404" or asks you to sign in and then still
-      refuses, that is the reason.
+      The code is open source (Apache-2.0); the repository's visibility
+      (public or **private**) is set by its owner. While it is private, someone
+      on the team must add your GitHub account first. If the page says "404" or asks
+      you to sign in and then still refuses, that is the reason.
 - [ ] **A decision: ZIP or Git.** See
       [Two ways to get the files](#two-ways-to-get-the-files) below. Git is
       one extra install and lets the app update itself; a ZIP is simpler
@@ -704,7 +707,7 @@ Proxies** (Linux: `docs.docker.com/engine/daemon/proxy/`).
 
 **Step 2 — Get the code with git.** Use `git clone`, not a ZIP: the
 update script (Step 3 and every update after it) only works in a git
-clone. The repository is private, so git asks you to sign in to GitHub
+clone. While the repository is private, git asks you to sign in to GitHub
 the first time.
 
 - **Windows:** if `git --version` in PowerShell says "not recognized",
@@ -838,7 +841,7 @@ hand: the app only knows where it is published from `DLP_CHECK_HOST_BIND`.
 - **Update notice in the app:** a minute after the page opens, and every
   6 hours while it stays open, the app checks GitHub and shows a notice at
   the top when a newer build is out (both for the container and for a
-  local install). Because the repository is private, the container needs
+  local install). While the repository is private, the container needs
   a read-only GitHub token for that check: create a fine-grained token on
   GitHub (*Settings → Developer settings → Fine-grained tokens*, only this
   repository, *Contents: read*), put `DLP_CHECK_GITHUB_TOKEN=<the token>`
@@ -933,7 +936,7 @@ Docker can fetch the code from GitHub itself and build it, so you need
 nothing but Docker (Step 1) and a terminal. It is the same image as
 above, run with the same settings as `docker-compose.yml`.
 
-**1. A GitHub token for Docker.** The repository is private, so Docker
+**1. A GitHub token for Docker.** While the repository is private, Docker
 needs a read-only token to fetch it. On `github.com`: your avatar →
 **Settings** → **Developer settings** → **Personal access tokens** →
 **Fine-grained tokens** → **Generate new token**; *Repository access*:
@@ -1122,6 +1125,87 @@ Sign out**, and the token is neither printed nor written to
 `ui_token.txt` (scripts that sent it must sign in instead).
 
 ---
+
+## Team server (optional): several people on one server
+
+By default the app is for one person, on one computer: it listens on this
+computer only and asks for its UI token. Leave it that way unless a team
+needs to share one server. Team mode is **off unless you turn it on**.
+
+**What it gives you.** Each person signs in with their own account. Each
+account has a role (viewer, operator, approver, administrator) and is given
+access per tenant profile (read, plan, apply, approve). Every change is in
+the audit log with who made it and for which tenant profile; a change
+request needs a second person to approve it.
+
+**1. Turn it on and make the first administrator.** In `local_settings.env`
+(or the `.env` next to `docker-compose.yml`):
+
+```
+ZSCALER_TEAM_MODE=1
+```
+
+Then, once, in the app folder (it asks for the password twice; at least 12
+characters):
+
+```
+python team_server.py add-admin alice
+```
+
+In the container: `docker compose exec zscaler-made-easy python team_server.py add-admin alice`.
+
+**2. Turn on HTTPS.** A team server that other computers can reach does
+not start without it. Pick one:
+
+- your own certificate: `ZSCALER_TLS_CERT=/path/cert.pem` and `ZSCALER_TLS_KEY=/path/key.pem`;
+- a self-signed one made on the first start: `ZSCALER_TLS=self-signed` (add the
+  names people type in `ZSCALER_TLS_HOSTNAMES`). The start-up window prints its
+  SHA-256 fingerprint: check that the browser shows the same before you trust it;
+- Let's Encrypt through your Cloudflare DNS: `ZSCALER_TLS=acme`,
+  `ZSCALER_ACME_DOMAINS=team.example.com`, optionally `ZSCALER_ACME_EMAIL`. Store a
+  Cloudflare API token that may edit that zone's DNS with
+  `python server_acme.py set-cloudflare-token` (kept in the OS credential store;
+  on Linux add `DLP_CHECK_SECRET_STORE=file` to keep it in an owner-only file).
+  The certificate renews at start-up when fewer than 30 days are left. This is
+  the only time the app talks to Let's Encrypt and Cloudflare.
+
+Optionally `ZSCALER_TLS_REDIRECT_PORT=80` makes plain `http://` only redirect
+to HTTPS. Then let others reach it: `ZSCALER_BIND_HOST=0.0.0.0` (local
+install) or `DLP_CHECK_HOST_BIND=0.0.0.0` (container).
+
+**3. Add people and give access.** Open `https://<server>:8000/login`, sign
+in, and open **Team server** (top right). Add accounts, pick a role, and
+under *Access to tenant profiles* tick what each may do on which profile.
+Nothing is allowed until you give it. With SSO configured too (the
+`ZSCALER_SSO_*` settings), people can use **Sign in with SSO**; their
+account is matched by a verified email. To have your identity provider
+create and remove accounts and groups, make a SCIM token on the same page
+and give the provider the SCIM address it shows (`/api/scim/v2`).
+
+**4. Optional hardening.** `DLP_CHECK_STORE_ENCRYPTION=1` encrypts the app's
+stores on disk (`python store_crypto.py seal-all` seals what is already
+there; `python store_crypto.py rotate` changes the key). `DLP_CHECK_FIPS_MODE=1`
+keeps the app to FIPS-approved algorithms (passwords made before must then be
+set again: `python team_server.py reset-password <name>`); it does not make
+Python itself a validated module, see SECURITY.md.
+
+Sessions end after 15 quiet minutes (a warning comes first) and after 8 hours
+at most; five wrong passwords lock an account for 15 minutes
+(`python team_server.py unlock <name>`, or **Unlock** on the Team server
+page). Restarting the server signs everyone out.
+
+SAML 2.0 sign-in: on the Team server page, Sign-in section, paste or choose
+your identity provider's metadata, check this server's entity ID and ACS URL
+(enter both at your identity provider), save, **Test the settings**, then
+**Turn SAML sign-in on**. Administrator accounts are not linked by email:
+click **Allow SAML link** on the account, then sign in with SAML within 15
+minutes. Passkeys: set `ZSCALER_TEAM_PASSKEY_ORIGIN` to the
+address people open the server at (for example `https://zme.example.com`);
+each person adds one on the Team server page, and the same section can
+require one after the password. A lost device: **Remove passkeys** on the
+page, or `python team_server.py remove-passkeys <name>`; `python
+team_server.py require-passkey off` stops requiring them. SECURITY.md,
+"Team server", has the details and the threat model.
 
 ## Connecting to a Zscaler tenant
 

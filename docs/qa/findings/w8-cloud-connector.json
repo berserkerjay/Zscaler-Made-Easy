@@ -1,0 +1,70 @@
+{
+ "area": "Cloud & Branch Connector (ZTW): the read-only connector read and page (ztw_overview.py, static/report_ztw.html, /api/ztw/*), the ZTW.1 to ZTW.8 assessment checks, the Scope page key ztw, snapshot capture and masking, the sample tenant's connector set-up and the Path analyzer's workload link",
+ "title": "Connector read verified against the installed SDK, secrets and people kept out of every output, eight checks with not-applicable handling, scope gating before sign-in and the workload trace reusing the read",
+ "standards": [
+  "ASVS V4.1.3",
+  "ASVS V4.2.1",
+  "ASVS V5.1.3",
+  "ASVS V5.3.3",
+  "ASVS V8.3.4",
+  "ASVS V11.1.4",
+  "ASVS V14.2.1",
+  "CWE-79",
+  "CWE-200",
+  "CWE-284",
+  "CWE-312",
+  "CWE-359",
+  "CWE-522",
+  "CWE-639",
+  "CWE-697",
+  "CWE-754",
+  "WSTG-ATHZ-02",
+  "WSTG-INFO-05",
+  "WSTG-CLNT-01",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 2.1.1",
+  "WCAG 2.2 SC 4.1.2"
+ ],
+ "checks": [
+  {"id": "ZTW-SDK", "what": "Every ztw service, read method and path the page and the checks use exists in zscaler-sdk-python 1.11.3 (ztw_service.py properties, ec_groups, forwarding_rules, workload_groups, ip_source_groups, ip_destination_groups, forwarding_gateways, location_management, location_template, activation, admin_roles, admin_users, api_keys, account_details, public_cloud_info) and every method sends GET; provisioning_url is never called", "standard": "ASVS V14.2.1", "result": "pass"},
+  {"id": "ZTW-READONLY", "what": "A read of the sample tenant calls list_* and get_status only; a write method on any service fails the test", "standard": "ASVS V4.1.3", "result": "pass"},
+  {"id": "ZTW-SECRETS", "what": "No API key value, pre-shared key, admin name or e-mail, or location IP address in the read, the job result, the Excel workbook or the JSON export; admins and addresses are counted", "standard": "ASVS V8.3.4", "result": "pass"},
+  {"id": "ZTW-SCOPE", "what": "POST /api/ztw/start is a 400 before sign-in without the ztw Scope key and for the classic ZIA API sign-in; the analysis client refuses a /ztw read when ztw is not ticked; the ZTW checks are selected only by ztw, never by another key or the legacy full scope", "standard": "ASVS V4.1.3", "result": "pass"},
+  {"id": "ZTW-NA", "what": "Each check is INFO (not applicable) when the connector groups are unreadable or none is deployed, and a 404 on the groups says not licensed", "standard": "CWE-754", "result": "pass"},
+  {"id": "ZTW-CHECKS", "what": "A healthy set-up passes all eight checks; each gap (single connector, inactive connector, mixed versions, failed upgrade, DIRECT for every destination, scoped DIRECT, disabled DIRECT, gateway not failing closed, pending or unknown activation, location or template without firewall or IPS, one admin, no read-only role, password sign-in, an old API key in seconds or milliseconds, a disabled key) gives the expected result and names the object", "standard": "CWE-697", "result": "pass"},
+  {"id": "ZTW-REUSE", "what": "The page keeps its workload lists as a pathztw read; the Path analyzer's workload trace reuses it for the same tenant (no second connector read) and refuses it for another tenant", "standard": "ASVS V4.2.1", "result": "pass"},
+  {"id": "ZTW-XSS", "what": "Hostile names in connector groups, rules, gateways, locations and the tenant label render as text in Chrome (no element created, no script run); trace links stay on /report/path with the kept read id; the Path analyzer accepts only an id shaped like a kept read", "standard": "ASVS V5.3.3", "result": "pass"},
+  {"id": "ZTW-REFLOW", "what": "The page with every table shown does not scroll sideways at 320px and the result filters are keyboard reachable", "standard": "WCAG 2.2 SC 1.4.10", "result": "pass"},
+  {"id": "ZTW-SNAPSHOT", "what": "The snapshot plan holds the 14 connector paths only with ztw ticked; a captured snapshot of the sample masks the API key value and the pre-shared key", "standard": "CWE-312", "result": "pass"}
+ ],
+ "findings": [
+  {
+   "id": "W8-ZTW-01",
+   "title": "A snapshot or offline read would have kept a Cloud & Branch Connector provisioning URL or an admin's mobile app tokens: the secret-name rules did not cover provUrl, provUrlData or execMobileAppTokens",
+   "severity": "medium",
+   "cwe": "CWE-522",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "offline_tenant._OTP_KEY masks prov(isioning)Url(Data) and mobileAppTokens under any value type; ztw_overview masks them again on its own read",
+   "test": "tests/test_w8_cloud_connector.py::test_a_provisioning_url_is_masked_in_a_read_and_in_a_snapshot",
+   "commit": "342e67f"
+  },
+  {
+   "id": "W8-ZTW-02",
+   "title": "The sample tenant had no Cloud & Branch Connector answers, so the Path analyzer's traffic from a workload could not be tried offline",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.6",
+   "status": "fixed",
+   "fix": "The sample tenant carries connector groups, forwarding rules, workload groups, gateways, locations, templates, activation, admins, roles, an API key (placeholder value, masked) and a cloud account, with a gap for every check",
+   "test": "tests/test_w8_cloud_connector.py::test_the_sample_tenant_has_a_gap_for_every_check",
+   "commit": "a47a346"
+  }
+ ],
+ "notes": [
+  "Verified against zscaler-sdk-python 1.11.3 (zscaler/ztw/*.py and zscaler/ztw/models/*.py): every service, method, path and field name the read uses; the activation service is client.ztw.activate (not activation).",
+  "Assumed (said on the page and in ztw_overview.ASSUMPTIONS): operationalStatus ACTIVE means a connector is serving; the activation status values (EDITS_PRESENT, PENDING, EDITS_CLEARED, ...); location template settings use camelCase inside template; a rule with no destination criteria matches every destination; 365 days as the API key rotation age.",
+  "Read-only by design: no Cloud & Branch Connector write is offered, so the write gates are not involved."
+ ],
+ "tests_added": 45
+}

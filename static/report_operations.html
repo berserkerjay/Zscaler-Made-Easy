@@ -14,7 +14,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Bulk</span> changes</h1>
-      <p>Enable or disable many rules at once, put a policy's rules in a new order, move URLs between custom URL categories, and move ZPA domains between application segments. Every change is previewed item by item from the tenant as it is now, applied only in write mode after you confirm the exact plan, checked again right before each write, read back, recorded and reversible with Undo.</p>
+      <p>Enable or disable many rules at once, put a policy's rules in a new order, move URLs between custom URL categories, move ZPA domains between application segments, change settings on many ZPA segments at once, and create, edit, copy or delete one rule (Build new, Edit a rule). Every change is previewed item by item from the tenant as it is now, applied only in write mode after you confirm the exact plan, checked again right before each write, read back, recorded and reversible with Undo.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -30,15 +30,19 @@
         <h2 class="df-h" id="opH1">1. Pick the operation</h2>
         <fieldset class="op-kinds">
           <legend class="sr-only">Operation</legend>
-          <label class="op-kind"><input type="radio" name="opKind" value="rule_state" checked><span><strong>Enable or disable rules</strong><span class="df-hint">Up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control and the four DLP channels; one field (the state) per operation.</span></span></label>
+          <label class="op-kind"><input type="radio" name="opKind" value="rule_state" checked><span><strong>Enable or disable rules</strong><span class="df-hint">Up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control, the four DLP channels, DNS Control and IPS; one field (the state) per operation.</span></span></label>
           <label class="op-kind"><input type="radio" name="opKind" value="reorder"><span><strong>Reorder a policy</strong><span class="df-hint">Put one policy's rules in the order you want; the fewest rules move, the Default, predefined and read-only rules never move, and only the order changes.</span></span></label>
           <label class="op-kind"><input type="radio" name="opKind" value="url_categories"><span><strong>URL category change</strong><span class="df-hint">Add, remove, move or copy URLs on custom URL categories (or into a new one), with the rules in scope that use each category.</span></span></label>
-          <label class="op-kind"><input type="radio" name="opKind" value="zpa_domains"><span><strong>ZPA segment domains</strong><span class="df-hint">Move or copy domains between application segments, or clone a segment with its settings, with the domain and port overlap check. Needs ZPA ticked on the Scope page.</span></span></label>
+          <label class="op-kind"><input type="radio" name="opKind" value="zpa_domains"><span><strong id="opKindZpaH">ZPA segment domains</strong><span class="df-hint">Add typed domains to an application segment, remove them, move or copy domains between segments, or clone a segment with its settings, with the domain and port overlap check. Needs ZPA ticked on the Scope page.</span></span></label>
         </fieldset>
         <fieldset class="op-kinds" id="opBuildKinds" hidden>
           <legend class="df-h">Build new</legend>
         </fieldset>
-        <div class="df-hint" id="opSanction">Cloud application sanction (Sanctioned / Unsanctioned) is not offered: the Zscaler SDK this app uses can set it but cannot read an application's current state, so a preview, the conflict check and an exact Undo are not possible. Change it in the ZIA Admin Portal.</div>
+        <fieldset class="op-kinds" id="opAdminKinds" hidden>
+          <legend class="df-h">Day-to-day admin</legend>
+        </fieldset>
+        <div class="df-hint" id="opSanction">Cloud application sanction (Sanctioned / Unsanctioned) is the operation <strong>Sanction or unsanction cloud apps</strong> above; it needs ZIA platform and ZIA Insights ticked on the Scope page.</div>
+        <div class="df-hint" id="opAdminNew">New day-to-day edits: activate pending ZIA changes, rename or delete a URL category, IP groups, DLP dictionaries and engines, and one ZIdentity user (details, password or MFA). Each is listed above once the page has loaded.</div>
       </section>
 
       <section aria-labelledby="opH2">
@@ -71,6 +75,7 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/compliance_choice.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>
@@ -84,7 +89,7 @@
       conflict: ['Conflict, left as it is', 'st-warn'], failed: ['Failed', 'st-fail'], skipped: ['Not attempted', 'st-warn'], rolled_back: ['Created, then removed again', 'st-warn'] };
     const FAMILY = { rule_state: 'rules', reorder: 'rules', url_categories: 'url_categories', zpa_domains: 'zpa_segments' };
     const S = { kind: 'rule_state', objects: {}, selected: new Set(), filter: '', policyFilter: '', order: null, orderPolicy: '', orderType: '',
-      urlPick: new Set(), domPick: new Set(), assessor: '', preview: null, previewJob: null, spec: null, undoOf: null, write: null, busy: false, job: null, stopAsked: false, startToken: null };
+      urlPick: new Set(), domPick: new Set(), zpaIdx: 0, assessor: '', preview: null, previewJob: null, spec: null, undoOf: null, write: null, busy: false, job: null, stopAsked: false, startToken: null };
 
     // The typed confirmation, compared as the server does (security.typed_phrase_matches):
     // surrounding spaces ignored, one character for one, case-insensitive only where the
@@ -222,6 +227,7 @@
 
     // ── Step 1 ──
     function onKind(r) {
+      if (FAMILY[S.kind] !== FAMILY[r.value]) S.query = '';   // a search belongs to one family's list
       S.kind = r.value; S.preview = null; S.undoOf = null; $('opPdf').hidden = true;
       $('opPlan').innerHTML = '<div class="df-hint">Pick the objects, then preview.</div>'; $('opApply').innerHTML = ''; $('opResult').innerHTML = '';
       renderObjects();
@@ -232,12 +238,47 @@
     // (admin_ops.register). Each ships static/ops_<name>.js, which calls
     // window.OPS_PLUGINS.register({type, render(res, where, S, H), spec(S, H)})
     // and then runs through the same read, preview, gates, apply and Undo.
-    window.OPS_PLUGINS = { defs: {}, register(def) { if (def && def.type) { this.defs[def.type] = def; if (S.kind === def.type) renderObjects(); } } };
-    const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m) };
+    window.OPS_PLUGINS = { defs: {}, state: S, register(def) { if (def && def.type) { this.defs[def.type] = def; if (S.kind === def.type) renderObjects(); } } };
+    // A builder's typed secrets (the Client Connector tamper passwords): sent
+    // beside the operation for its preview and apply, never part of S.spec.
+    const plugSecrets = type => { const d = window.OPS_PLUGINS.defs[type]; return d && typeof d.secrets === 'function' ? (d.secrets(S) || {}) : {}; };
+    // body(): the tenant sign-in and the Scope page selection a plugin's own read-only lookups send;
+    // runJob(): the shared job runner (Stop, the live log) for a plugin's read-only job;
+    // read(query): a form that searches (users) reads again with what was typed.
+    // ── The ZPA sections of a Fix selected hand-off: one per segment and
+    // purpose. The picker fills the form with the one picked: a row to block
+    // opens ZPA segment domains (take it out of its segment), a row to allow
+    // opens ZPA policy rules (an access rule for the segment that already
+    // holds it, above the rule that denies it).
+    function zpaSec() { const z = (S.handoff && S.handoff.zpa) || []; return z.length ? z[Math.min(Math.max(0, S.zpaIdx || 0), z.length - 1)] : null; }
+    const zpaKindFor = z => (z && z.purpose === 'allow' ? 'zpa_policies' : 'zpa_domains');
+    function zpaPickerHtml() {
+      const z = (S.handoff && S.handoff.zpa) || [];
+      if (z.length < 2) return '';
+      return `<div class="op-row"><label class="df-ctl"><span class="lbl">Segment from Test a list</span><select id="opZHand" aria-describedby="opZHandHint">
+        ${z.map((x, i) => `<option value="${i}"${i === (S.zpaIdx || 0) ? ' selected' : ''}>${E(x.segment)}: ${(x.domains || []).length} destination(s) ${x.purpose === 'block' ? 'to block' : 'to allow'}</option>`).join('')}</select></label>
+        <span class="df-hint" id="opZHandHint">${E(z.length)} segments came from Test a list. Fix one, then pick the next here.</span></div>`;
+    }
+    function wireZpaPicker() {
+      const el = $('opZHand'); if (!el) return;
+      el.addEventListener('change', () => {
+        S.zpaIdx = Number(el.value) || 0; S.domPick.clear();
+        const want = zpaKindFor(zpaSec()), radio = document.querySelector(`input[name="opKind"][value="${want}"]`);
+        $('opObjects').innerHTML = '';   // the form starts again from the picked segment
+        if (radio && S.kind !== want) { radio.checked = true; onKind(radio); } else renderObjects();
+        say(`Segment ${zpaSec().segment} picked${S.objects[FAMILY[want]] ? '' : ': read from the tenant'}.`);
+        const again = $('opZHand'); if (again) again.focus(); else if (radio) radio.focus();
+      });
+    }
+    const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m), body: x => body(x),
+      zpaSec: () => zpaSec(), zpaPicker: () => zpaPickerHtml(), wireZpaPicker: () => wireZpaPicker(),
+      runJob: (u, p, w, t) => runJob(u, p, w, t), fail: (w, t, m, f) => fail(w, t, m, f), preview: (u, p) => preview(u, p, null), detailText,
+      read: q => { S.query = String(q || '').slice(0, 100); $('opRead').click(); } };
     (async function loadBuilders() {
       let list = [];
       try { const r = await fetch('/api/operations/plugins', { cache: 'no-store' }); if (r.ok) list = (await r.json()).plugins || []; } catch (e) { list = []; }
-      const box = $('opBuildKinds'), loaded = new Set();
+      const box = $('opBuildKinds'), admin = $('opAdminKinds'), main = document.querySelector('fieldset.op-kinds:not(#opBuildKinds):not(#opAdminKinds)'), loaded = new Set();
+      let builders = 0;
       list.forEach(p => {
         if (!/^[a-z][a-z0-9_]{1,40}$/.test(p.type) || !/^[a-z][a-z0-9_]{1,40}$/.test(p.family)) return;
         FAMILY[p.type] = p.family;
@@ -245,7 +286,20 @@
         lab.className = 'op-kind';
         lab.innerHTML = `<input type="radio" name="opKind" value="${E(p.type)}"><span><strong>${E(p.label)}</strong><span class="df-hint">${E(p.hint)}</span></span>`;
         lab.querySelector('input').addEventListener('change', e => onKind(e.target));
-        box.appendChild(lab);
+        // A change to existing objects sits with the other changes; day-to-day admin in its own box; a builder under Build new.
+        if ((p.group === 'Change' || p.group === 'Change existing') && main) main.appendChild(lab); else if (p.group === 'Day-to-day admin') admin.appendChild(lab); else { box.appendChild(lab); builders++; }
+        // A local plugin (local_plugins.py) ships no script: its operation is
+        // typed as JSON here, then previewed and applied like any other.
+        if (!p.script) window.OPS_PLUGINS.register({ type: p.type, render: (res, where) => {
+          where.innerHTML = `${errorsHtml(res || {})}<p class="df-hint">This operation comes from a local plugin an admin approved in Advanced settings. Type its operation as JSON (the plugin's documentation says which fields); the preview shows exactly what it would change.</p>
+            <label class="op-block"><span class="lbl">Operation (JSON)</span><textarea id="opPlugJson" rows="6" aria-label="Operation for the local plugin, as JSON">${E(S.plugJson || '{}')}</textarea></label>`;
+          $('opPlugJson').addEventListener('input', e => { S.plugJson = e.target.value; });
+        }, spec: () => {
+          let o;
+          try { o = JSON.parse(S.plugJson || '{}'); } catch (e) { throw new Error('The operation is not valid JSON.'); }
+          if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('The operation must be a JSON object.');
+          return Object.assign({}, o, { type: p.type });
+        } });
         // One script serves several types (ops_zpa.js has four): load each once.
         if (/^ops_[a-z0-9_]{1,40}\.js$/.test(p.script || '') && !loaded.has(p.script)) {
           loaded.add(p.script);
@@ -254,13 +308,15 @@
           document.body.appendChild(sc);
         }
       });
-      box.hidden = !list.length;
+      box.hidden = !builders; admin.hidden = !admin.querySelector('input');
+      pickHandoffKind();
       // ?build=<type> (a finding's or another page's link) picks that
       // builder once, for every registered type: it only selects the form.
       // A ?fix= hand-off picks its own operation, so it wins.
       const q = new URLSearchParams(location.search), want = q.get('build') || '';
-      const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && box.querySelector(`input[name="opKind"][value="${want}"]`);
-      if (pick && !pick.checked) { pick.checked = true; onKind(pick); }
+      const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && document.querySelector(`input[name="opKind"][value="${want}"]`);
+      // The browser may restore a radio's tick on its own (form state): the operation follows S.kind, not the tick.
+      if (pick && (!pick.checked || S.kind !== want)) { pick.checked = true; onKind(pick); }
     })();
 
     // ── Step 2: read and pick ──
@@ -269,7 +325,7 @@
       const fam = FAMILY[S.kind], where = $('opObjects');
       $('opRead').disabled = true; say('Reading from the tenant.');
       try {
-        const snap = await runJob('/api/operations/objects/start', body({ family: fam }), where, 'Reading from the tenant');
+        const snap = await runJob('/api/operations/objects/start', body({ family: fam, query: S.query || '' }), where, 'Reading from the tenant');
         const res = snap.result || {};
         if (res.status !== 'done') throw new Error(res.stopped || res.message || 'The read did not finish.');
         S.objects[fam] = res;
@@ -396,21 +452,33 @@
     }
     function renderZpa(res, where) {
       const segs = res.segments || [];
-      const act = ($('opZAct') || {}).value || 'move', src = ($('opZSrc') || {}).value || (segs[0] || {}).id || '', tgt = ($('opZTgt') || {}).value || '';
+      const zh = zpaSec();   // ZPA rows from Test a list (Fix selected): the segment picked (the first one at first)
+      const zseg = zh ? segs.find(s => s.name === zh.segment) : null;
+      const act = ($('opZAct') || {}).value || (zh ? (zh.purpose === 'block' ? 'remove' : 'add') : 'move');
+      const src = ($('opZSrc') || {}).value || (zh && zh.purpose === 'block' && zseg && zseg.id) || (segs[0] || {}).id || '';
+      const tgt = ($('opZTgt') || {}).value || '';
       const name = ($('opZName') || {}).value || '', move = ($('opZMove') || {}).checked || false, typed = ($('opZNew') || {}).value || '';
+      const addText = $('opZAdd') ? $('opZAdd').value : (zh ? (zh.domains || []).join('\n') : '');
       const srcSeg = segs.find(s => String(s.id) === String(src));
-      where.innerHTML = `${errorsHtml(res)}
+      if (zh && zh.purpose === 'block' && !S.domPick.size && srcSeg) (zh.domains || []).forEach(d => { if ((srcSeg.domains || []).includes(d)) S.domPick.add(d); });
+      const acts = [['add', 'Add typed domains to a segment'], ['remove', 'Remove domains from a segment'], ['move', 'Move domains'], ['copy', 'Copy domains'], ['clone', 'Clone a segment']];
+      const pickList = act !== 'add' ? `<div class="op-row"><span class="df-hint">Pick domains from ${E(srcSeg ? srcSeg.name : 'the segment')}:</span><span class="df-chip" id="opZCount">${S.domPick.size} picked</span></div>
+        <ul class="op-checks">${(srcSeg ? srcSeg.domains : []).map(d => `<li><label><input type="checkbox" data-d="${E(d)}"${S.domPick.has(d) ? ' checked' : ''}> ${E(d)}</label></li>`).join('') || '<li class="df-hint">No domains.</li>'}</ul>` : '';
+      where.innerHTML = `${errorsHtml(res)}${zpaPickerHtml()}
         <div class="op-row"><label class="df-ctl"><span class="lbl">Action</span><select id="opZAct" aria-label="ZPA action">
-          ${[['move', 'Move domains'], ['copy', 'Copy domains'], ['clone', 'Clone a segment']].map(([v, l]) => `<option value="${v}"${v === act ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-          <label class="df-ctl"><span class="lbl">From</span><select id="opZSrc" aria-label="Source segment">${segOptions(segs, src)}</select></label>
-          ${act !== 'clone' ? `<label class="df-ctl"><span class="lbl">To</span><select id="opZTgt" aria-label="Target segment">${segOptions(segs.filter(s => String(s.id) !== String(src)), tgt, '<option value="">Pick a segment…</option>')}</select></label>`
-            : `<label class="df-ctl"><span class="lbl">New segment name</span><input id="opZName" value="${E(name)}" aria-label="New segment name"></label>
-               <label class="df-ctl"><input type="checkbox" id="opZMove"${move ? ' checked' : ''}><span>Move the picked domains out of the source</span></label>`}</div>
-        <div class="op-row"><span class="df-hint">Pick domains from ${E(srcSeg ? srcSeg.name : 'the segment')}:</span><span class="df-chip" id="opZCount">${S.domPick.size} picked</span></div>
-        <ul class="op-checks">${(srcSeg ? srcSeg.domains : []).map(d => `<li><label><input type="checkbox" data-d="${E(d)}"${S.domPick.has(d) ? ' checked' : ''}> ${E(d)}</label></li>`).join('') || '<li class="df-hint">No domains.</li>'}</ul>
+          ${acts.map(([v, l]) => `<option value="${v}"${v === act ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          ${act !== 'add' ? `<label class="df-ctl"><span class="lbl">From</span><select id="opZSrc" aria-label="Source segment">${segOptions(segs, src)}</select></label>` : ''}
+          ${act === 'clone' ? `<label class="df-ctl"><span class="lbl">New segment name</span><input id="opZName" value="${E(name)}" aria-label="New segment name"></label>
+               <label class="df-ctl"><input type="checkbox" id="opZMove"${move ? ' checked' : ''}><span>Move the picked domains out of the source</span></label>`
+            : act === 'remove' ? '' : `<label class="df-ctl"><span class="lbl">To</span><select id="opZTgt" aria-label="Target segment">${segOptions(act === 'add' ? segs : segs.filter(s => String(s.id) !== String(src)), tgt, '<option value="">Pick a segment…</option>')}</select></label>`}</div>
+        ${act === 'add' ? `<label class="op-block"><span class="lbl">Domains to add (one per line)</span><textarea id="opZAdd" rows="4" maxlength="60000" spellcheck="false" aria-label="Domains to add to the segment, one per line" aria-describedby="opZAddHint">${E(addText)}</textarea></label>
+          <div class="df-hint" id="opZAddHint">Host names or wildcard domains such as *.corp.example. They take the segment's ports; one already in another segment on overlapping ports is left out, with where it is.</div>` : ''}
+        ${pickList}
         ${act === 'clone' ? `<label class="op-block"><span class="lbl">New domains for the clone (one per line), besides the ones picked above</span><textarea id="opZNew" rows="3" aria-label="New domains for the clone">${E(typed)}</textarea></label>` : ''}
+        ${zh ? `<div class="bp-card info"><div>${E((zh.domains || []).length)} destination(s) from Test a list rows ${E((zh.rows || []).slice(0, 12).join(', '))}, carried by ZPA segment ${E(zh.segment)}${zseg ? '' : ' (not found when read: pick the segment)'}, ${zh.purpose === 'block' ? 'should be blocked: taking them out of the segment hands them to ZIA\'s policy.' : 'should be reachable: ZPA denies them, and they are already in this segment, so adding them to it changes nothing. The fix is an access rule for this segment above the rule that denies them: pick ZPA policy rules under Build new (it opens with this segment picked).'}</div></div>` : ''}
         <div class="df-hint">A domain may sit in two segments only on ports that do not overlap: the preview excludes any domain that would, and says where it already is.</div>`;
       ['opZAct', 'opZSrc', 'opZTgt'].forEach(id => { const el = $(id); if (el) el.addEventListener('change', () => { if (id === 'opZSrc') S.domPick.clear(); renderZpa(res, where); $(id) && $(id).focus(); }); });
+      wireZpaPicker();
       where.querySelectorAll('input[data-d]').forEach(cb => cb.addEventListener('change', () => { cb.checked ? S.domPick.add(cb.dataset.d) : S.domPick.delete(cb.dataset.d); $('opZCount').textContent = `${S.domPick.size} picked`; }));
     }
 
@@ -440,10 +508,13 @@
         if (!spec.urls.length) throw new Error('List or pick at least one URL.');
         return spec;
       }
-      const act = $('opZAct').value, spec = { type: 'zpa_domains', action: act, source: $('opZSrc').value };
+      const act = $('opZAct').value, spec = { type: 'zpa_domains', action: act };
+      if (act !== 'add') spec.source = $('opZSrc').value;
       if (act === 'clone') { spec.name = $('opZName').value; spec.move = $('opZMove').checked; spec.domains = [...S.domPick].concat(lines(($('opZNew') || {}).value)); }
+      else if (act === 'add') { spec.target = $('opZTgt').value; spec.domains = lines(($('opZAdd') || {}).value).slice(0, 500); if (!spec.target) throw new Error('Pick the segment to add the domains to.'); }
+      else if (act === 'remove') { spec.domains = [...S.domPick]; }
       else { spec.target = $('opZTgt').value; spec.domains = [...S.domPick]; if (!spec.target) throw new Error('Pick the target segment.'); }
-      if (!spec.domains.length) throw new Error('Pick at least one domain.');
+      if (!spec.domains.length) throw new Error(act === 'add' ? 'Type at least one domain.' : 'Pick at least one domain.');
       return spec;
     }
 
@@ -460,6 +531,8 @@
         if (!res.plan_hash) throw new Error('The preview did not finish.');
         S.preview = res; S.previewJob = snap.job_id; S.spec = (snap.extra && snap.extra.operation) || payload.operation; S.undoOf = undoOf || null;
         renderPlan(res);
+        const plugPrev = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[res.type];
+        if (plugPrev && typeof plugPrev.preview === 'function') plugPrev.preview(res, $('opPlan'), H, snap.job_id);   // e.g. the plan as CSV
         const pdf = $('opPdf'); pdf.href = `/api/operations/jobs/${encodeURIComponent(S.previewJob)}/plan.pdf`; pdf.hidden = false;
         renderApply();
         // An Undo starts from a button that the preview removes: focus goes to the plan it made.
@@ -471,10 +544,12 @@
     $('opPreview').addEventListener('click', () => {
       let spec;
       try { spec = buildSpec(); } catch (e) { fail($('opPlan'), 'Nothing to preview yet', e.message, true); say(e.message); return; }
-      preview('/api/operations/preview/start', body({ operation: spec }), null);
+      preview('/api/operations/preview/start', body(Object.assign({ operation: spec }, plugSecrets(spec.type))), null);
     });
 
-    const fmt = (v, field) => v == null ? '' : field === 'urls' || field === 'domain_names' ? (v ? 'listed' : 'not listed') : field === 'exists' ? (v ? 'exists' : 'does not exist') : String(v);
+    // A list reads as a comma list, an object (a rule's changed columns) as "column: value; ...".
+    const fmt = (v, field) => v == null ? '' : ['urls', 'domain_names', 'addresses', 'dest_ip_groups', 'nw_services'].includes(field) ? (v ? 'listed' : 'not listed') : field === 'exists' ? (v ? 'exists' : 'does not exist')
+      : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? Object.entries(v).map(([k, x]) => `${k}: ${x}`).join('; ') : String(v);
     const chip = st => { const [l, c] = STATUS[st] || [st, '']; return `<span class="df-chip ${c}">${E(l)}</span>`; };
     function objName(u) { const o = u.object || {}; return `${E(o.name || o.id || '')}${o.policy_label ? ` <span class="df-by">${E(o.policy_label)}${o.rule_type ? ' · ' + E(o.rule_type) : ''}</span>` : o.type === 'url_category' ? ' <span class="df-by">URL category</span>' : o.type === 'zpa_segment' ? ' <span class="df-by">ZPA segment</span>' : ''}`; }
     function itemsTable(items, caption) {
@@ -482,7 +557,20 @@
         <thead><tr><th scope="col">Object</th><th scope="col">Field</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">Status</th><th scope="col">Why</th></tr></thead>
         <tbody>${items.map(u => `<tr><td>${objName(u)}</td><td>${E(u.value ? `${u.field}: ${u.value}` : u.field)}</td><td>${E(fmt(u.before, u.field))}</td><td>${E(fmt(u.after, u.field))}</td>
           <td>${chip(u.status)}${u.verified === true ? ' <span class="df-chip st-ok">read back</span>' : u.verified === false ? ' <span class="df-chip st-fail">not as expected</span>' : ''}</td>
-          <td>${E([u.reason, u.error, u.explanation].filter(Boolean).join(' — '))}</td></tr>`).join('') || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table></div>`;
+          <td>${E([u.reason, u.error, u.explanation, u.stored ? `read back: ${u.stored}` : ''].filter(Boolean).join(' — '))}</td></tr>`).join('') || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table></div>`;
+    }
+    // The admin rank each new or moved rule takes, and why (rank_inherit).
+    const RANK_STATE = { on: ['Admin ranking on', 'st-ok'], off: ['Admin ranking off', ''], unknown: ['Admin ranking not known', 'st-warn'], out_of_scope: ['Admin ranking not read', 'st-warn'] };
+    function rankCard(rp) {
+      if (!rp || !(rp.rules || []).length) return '';
+      const [label, cls] = Object.prototype.hasOwnProperty.call(RANK_STATE, rp.state) ? RANK_STATE[rp.state] : RANK_STATE.unknown;
+      return `<h3 class="op-h" id="opRankH">Admin rank of the rules this change places</h3>
+        <div class="op-summary"><span class="df-chip ${E(cls)}">${E(label)}</span><span class="df-hint">${E(rp.describe || '')}</span></div>
+        <div class="df-tablewrap"><table class="df-table op-rank" aria-labelledby="opRankH"><caption class="sr-only">Admin rank per rule</caption>
+          <thead><tr><th scope="col">Rule</th><th scope="col">Policy</th><th scope="col">Rank</th><th scope="col">Order</th><th scope="col">Why</th></tr></thead>
+          <tbody>${rp.rules.map(r => `<tr><td>${E(r.name)}</td><td>${E(r.policy)}</td><td>${r.before != null && r.before !== r.rank ? `${E(r.before)} → ` : ''}${E(r.rank)}${r.assumed ? ' <span class="df-by">assumed</span>' : ''}</td>
+            <td>${r.order != null ? E(r.order) : 'last'}${r.asked_order != null && r.order !== r.asked_order ? ` <span class="df-by">asked ${E(r.asked_order)}</span>` : ''}</td>
+            <td>${E(r.why)}${r.warning ? `<br><strong>${E(r.warning)}</strong>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
     }
     function listCard(title, rows, cls) { return rows && rows.length ? `<div class="bp-card ${cls}"><div class="t">${E(title)}</div><ul>${rows.map(r => `<li>${E(r)}</li>`).join('')}</ul></div>` : ''; }
     function renderPlan(p) {
@@ -490,13 +578,17 @@
       const impact = (p.impact || []).length ? `<h3 class="op-h">Rules that use the affected categories</h3><div class="df-tablewrap"><table class="df-table"><caption class="sr-only">Impact</caption>
           <thead><tr><th scope="col">Category</th><th scope="col">Rules in scope that name it</th></tr></thead>
           <tbody>${p.impact.map(i => `<tr><td>${E(i.category)}</td><td>${(i.rules || []).length ? i.rules.map(r => `${E(r.name)} <span class="df-by">${E(r.policy_label)}, order ${E(r.order)}, ${E(String(r.state || '').toLowerCase())}</span>`).join('<br>') : E(i.detail)}</td></tr>`).join('')}</tbody></table></div>` : '';
-      const order = (p.order_after || []).length ? `<h3 class="op-h">Order after the change</h3><ol class="op-order op-after">${p.order_after.map(r => `<li${r.moved ? ' class="op-moved"' : ''}><span class="op-pos">${E(r.order)}</span><span>${E(r.name)}</span>${r.moved ? '<span class="df-chip st-block">moves</span>' : r.locked ? '<span class="df-chip">fixed</span>' : ''}</li>`).join('')}</ol>` : '';
+      const order = (p.order_after || []).length ? `<h3 class="op-h">Order after the change</h3><ol class="op-order op-after">${p.order_after.map(r => `<li${r.moved ? ' class="op-moved"' : ''}><span class="op-pos">${E(r.order)}</span><span>${E(r.name)}</span>${r.rank != null ? `<span class="df-by">rank ${E(r.rank)}</span>` : ''}${r.moved ? '<span class="df-chip st-block">moves</span>' : r.locked ? '<span class="df-chip">fixed</span>' : ''}${r.rank_changed ? '<span class="df-chip st-warn">new rank</span>' : ''}</li>`).join('')}</ol>` : '';
       $('opPlan').innerHTML = `
         <div class="op-summary"><strong>${E(p.title)}</strong>${S.undoOf ? ' <span class="df-chip st-warn">Undo</span>' : ''}
           <span class="df-chip st-block">${E(c.change)} to change</span><span class="df-chip">${E(c.noop)} already as asked</span><span class="df-chip${c.excluded ? ' st-warn' : ''}">${E(c.excluded)} excluded</span></div>
         <div class="df-hint">Plan ${E(String(p.plan_hash).slice(0, 16))}… · ${E(p.tenant_label)} · ${E(p.writes)} write${p.writes === 1 ? '' : 's'}${p.needs_activation ? ', then one ZIA activation' : ''}</div>
+        ${p.rehearsal ? `<div class="bp-card info op-rehearsal" role="note"><div class="t">${E(p.rehearsal.note)}</div><div>${E(p.rehearsal.apply)}</div></div>` : ''}
         ${listCard('Blocked', p.blockers, 'risk')}${listCard('Check before applying', p.warnings, 'warn')}${listCard('How this is applied', p.notes, 'info')}
-        ${impact}${order}<h3 class="op-h">Items</h3>${itemsTable(p.items || [], 'Planned items')}`;
+        ${impact}${order}${rankCard(p.rank_plan)}<h3 class="op-h">Items</h3>${itemsTable(p.items || [], 'Planned items')}`;
+      // A builder may add its own part to the preview (the rule editor's plain sentence and fields, a PAC diff, each Fix change in plain words).
+      const plugPlan = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[p.type];
+      if (plugPlan && typeof plugPlan.plan === 'function') plugPlan.plan(p, $('opPlan'), H);
     }
 
     // ── Step 4: apply ──
@@ -512,17 +604,24 @@
       const gates = [];
       gates.push(on ? ['ok', 'Write mode is on.'] : ['no', w.can_toggle ? 'Write mode is off: turn it on in Deploy policy packs (you type the confirmation phrase), then come back.' : `Write mode is off${w.reason ? ': ' + w.reason : (w.how_to_enable ? ': ' + w.how_to_enable : '')}.`]);
       gates.push(ready ? ['ok', `${p.counts.change} change${p.counts.change === 1 ? '' : 's'} to apply.`] : ['no', p.status === 'blocked' ? 'The plan is blocked (see above).' : 'Nothing to change.']);
+      if (p.rehearsal) gates.unshift(['no', p.rehearsal.apply]);   // the sample or a snapshot: a rehearsal, never applied
       where.innerHTML = `<ul class="op-gates">${gates.map(([s, t]) => `<li class="${s === 'ok' ? 'ok' : 'no'}"><span class="df-chip ${s === 'ok' ? 'st-ok' : 'st-warn'}">${s === 'ok' ? 'ready' : 'needed'}</span> ${E(t)}</li>`).join('')}</ul>
         <div class="op-row"><label class="df-ctl"><span class="lbl">Assessor's name</span><input id="opAssessor" value="${E(assessor)}" aria-label="Assessor's name" placeholder="Jane Doe, Zscaler DS Engineer"></label></div>
         ${p.confirm_phrase ? `<div class="op-row"><label class="df-ctl"><span class="lbl">Type <strong class="op-phrase">${E(p.confirm_phrase)}</strong> to confirm</span><input id="opPhrase" autocomplete="off" spellcheck="false" aria-label="Type ${E(p.confirm_phrase)} to confirm"></label></div>` : ''}
         <div class="op-row"><label class="df-ctl"><input type="checkbox" id="opAgree"><span>I reviewed this plan${S.undoOf ? ' (the Undo)' : ''} and the customer agreed to it.</span></label></div>
         <div class="op-row"><button type="button" class="rp-btn primary" id="opGo" disabled aria-describedby="opGoWhy">Apply ${E(p.counts.change)} change${p.counts.change === 1 ? '' : 's'}</button>
           <span class="df-hint" id="opGoWhy" aria-live="polite"></span></div>
-        <div class="df-hint">Each item is read again right before its write; anything someone changed meanwhile is skipped, never overwritten.</div>`;
+        <div class="df-hint">Each item is read again right before its write; anything someone changed meanwhile is skipped, never overwritten.</div>
+        ${simOffered(p) ? `<div class="bp-card info op-simbox" id="opSimBox" role="group" aria-labelledby="opSimH"><div class="t" id="opSimH">Try it on a simulation</div>
+          <div>${E(p.rehearsal.simulate)}</div>
+          <div class="df-hint">It needs only this plan${p.confirm_phrase ? ' and the phrase typed above' : ''}. Nothing reaches a tenant, the sample tenant or a saved snapshot.</div>
+          <div class="op-row"><button type="button" class="rp-btn" id="opSimulate" disabled aria-describedby="opSimWhy">Apply to a simulation</button>
+            <span class="df-hint" id="opSimWhy" aria-live="polite"></span></div></div>` : ''}`;
       // Apply stays disabled until every gate on this page is met: write mode, a
       // plan with changes, the assessor's name, the review box and the exact phrase.
       const arm = () => {
         const need = [];
+        if (p.rehearsal) need.push('the live tenant (this is a rehearsal)');
         if (!on) need.push('write mode');
         if (!ready) need.push('a plan with changes');
         if (!$('opAssessor').value.trim()) need.push("the assessor's name");
@@ -530,11 +629,20 @@
         if (p.confirm_phrase && !phraseMatches(($('opPhrase') || {}).value, p.confirm_phrase)) need.push(`${p.confirm_phrase} typed exactly`);
         $('opGo').disabled = S.busy || need.length > 0;
         $('opGoWhy').textContent = need.length ? `Still needed: ${need.join(', ')}.` : 'Ready to apply.';
+        const sim = $('opSimulate');
+        if (sim) {
+          const simNeed = [];
+          if (!ready) simNeed.push('a plan with changes');
+          if (p.confirm_phrase && !phraseMatches(($('opPhrase') || {}).value, p.confirm_phrase)) simNeed.push(`${p.confirm_phrase} typed exactly`);
+          sim.disabled = S.busy || simNeed.length > 0;
+          $('opSimWhy').textContent = simNeed.length ? `Still needed: ${simNeed.join(', ')}.` : 'Ready to apply to a simulation.';
+        }
       };
       $('opAssessor').addEventListener('input', e => { S.assessor = e.target.value.trim(); arm(); });
       $('opAgree').addEventListener('change', arm);
       const ph = $('opPhrase'); if (ph) ph.addEventListener('input', arm);
       $('opGo').addEventListener('click', apply);
+      if ($('opSimulate')) $('opSimulate').addEventListener('click', simulate);
       if (kept) { if (ph) ph.value = kept.phrase; $('opAgree').checked = kept.agree; }
       arm();
       if (kept && kept.focus && $(kept.focus)) $(kept.focus).focus();
@@ -547,20 +655,75 @@
       if (S.preview.confirm_phrase && !phraseMatches(phrase, S.preview.confirm_phrase)) { say(`Type ${S.preview.confirm_phrase} to confirm.`); $('opPhrase').focus(); return; }
       S.assessor = $('opAssessor').value.trim();
       if (!S.assessor) { say("Enter the assessor's name: the change record names who made it."); $('opAssessor').focus(); return; }
-      const payload = body({ operation: S.spec, plan_hash: S.preview.plan_hash, confirm: true, confirm_text: phrase, undo_of: S.undoOf || '', assessor: S.assessor });
+      const payload = body(Object.assign({ operation: S.spec, plan_hash: S.preview.plan_hash, confirm: true, confirm_text: phrase, undo_of: S.undoOf || '', assessor: S.assessor },
+        S.undoOf ? {} : plugSecrets(S.spec && S.spec.type)));
+      // A builder may hand the apply what must never be in the operation (a typed pre-shared key): only `secrets`, kept in memory server-side.
+      const plugApply = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[S.kind];
+      if (plugApply && typeof plugApply.applyExtra === 'function' && !S.undoOf) { const x = plugApply.applyExtra(S, H) || {}; if (x.secrets) payload.secrets = x.secrets; }
       $('opGo').disabled = true; say('Applying the change.');
       try {
         const snap = await runJob('/api/operations/apply/start', payload, where, 'Applying the change');
-        renderResult(snap.result || {}, snap.logs || []);
+        renderResult(Object.assign({ job_id: snap.job_id }, snap.result || {}), snap.logs || [], snap.job_id);
       } catch (e) { fail(where, 'The change could not be applied', e.message); say(`The change could not be applied: ${e.message}`); }
       finally { loadHistory(); }
     }
-    function renderResult(r, logs) {
+    // ── A rehearsal applied to a simulation (an in-memory copy of the sample
+    // tenant or the opened snapshot, POST /api/offline/simulate/operation).
+    // The real apply stays refused there; this browser then uses the copy, so
+    // the Path analyzer and Test a list read the result until it is left.
+    const simOffered = p => !!(p && p.rehearsal && p.rehearsal.simulate && !S.undoOf);
+    const tellOffline = () => { try { window.dispatchEvent(new CustomEvent('zme:offline', { detail: { from: 'operations' } })); } catch (e) { /* old browser */ } };
+    async function simulate() {
+      if (S.busy || !simOffered(S.preview)) return;
+      const p = S.preview, where = $('opResult');
+      const phrase = ($('opPhrase') || {}).value || '';
+      if (p.confirm_phrase && !phraseMatches(phrase, p.confirm_phrase)) { say(`Type ${p.confirm_phrase} to confirm.`); $('opPhrase').focus(); return; }
+      const payload = body(Object.assign({ operation: S.spec, plan_hash: p.plan_hash, confirm: true, confirm_text: phrase }, plugSecrets(S.spec && S.spec.type)));
+      const plugApply = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[S.kind];
+      if (plugApply && typeof plugApply.applyExtra === 'function') { const x = plugApply.applyExtra(S, H) || {}; if (x.secrets) payload.secrets = x.secrets; }
+      S.busy = true; $('opSimulate').disabled = true; say('Applying the change to a simulation.');
+      let r = null;
+      try {
+        const res = await fetch('/api/offline/simulate/operation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${res.status}`);
+        r = d;
+      } catch (e) { fail(where, 'Not applied to a simulation', e.message, true); say(`Not applied to a simulation: ${e.message}`); }
+      finally { S.busy = false; }
+      if (!r) { renderApply(); return; }
+      renderResult(r, [], '');
+      if (r.simulation) { showSimulation(where, r.simulation); tellOffline(); }
+    }
+    function showSimulation(where, sim) {
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = String(text); return n; };
+      const n = (sim.applied || []).length;
+      const card = mk('div', 'bp-card info op-simulation'); card.id = 'opSimCard'; card.setAttribute('role', 'note');
+      card.appendChild(mk('div', 't', 'Simulation: nothing here is real'));
+      card.appendChild(mk('div', '', sim.note || ''));
+      card.appendChild(mk('div', 'df-hint', `Made from ${sim.base_label || 'the offline tenant'}. ${n} change${n === 1 ? '' : 's'} applied to this simulation so far. Every page now reads the simulation until you leave it.`));
+      const row = mk('div', 'op-row');
+      const path = mk('a', 'rp-btn', 'Check it in the Path analyzer'); path.id = 'opSimPath'; path.href = '/report/path';
+      const leave = mk('button', 'rp-btn', 'Leave the simulation'); leave.type = 'button'; leave.id = 'opSimLeave';
+      const msg = mk('span', 'df-hint'); msg.setAttribute('role', 'status');
+      leave.addEventListener('click', async () => {
+        leave.disabled = true;
+        try {
+          const res = await fetch('/api/offline/simulation/discard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${res.status}`);
+          msg.textContent = d.message || 'The simulation was dropped.'; path.remove(); leave.remove(); say(msg.textContent); tellOffline();
+        } catch (e) { leave.disabled = false; msg.textContent = `Could not leave the simulation: ${e.message}`; }
+      });
+      row.append(path, leave, msg); card.appendChild(row);
+      where.prepend(card);
+    }
+    function renderResult(r, logs, jobId) {
       const where = $('opResult');
       if (r.status === 'plan_changed') { where.innerHTML = `<div class="bp-card warn" role="alert"><div class="t">The tenant changed since the preview</div><div>${E(r.message)} Preview again.</div></div>`; say('The tenant changed since the preview; nothing was written.'); return; }
       if (['refused', 'blocked'].includes(r.status)) { fail(where, 'Nothing was written', r.message || (r.blockers || []).join(' ')); return; }
       const c = r.counts_run || {}, v = r.verification || {}, act = r.activation;
       const head = { applied: ['Applied', 'info'], partial: ['Partly applied', 'warn'], failed: ['Not applied', 'risk'], stopped: ['Stopped', 'warn'], nothing_applied: ['Nothing applied', 'warn'], nothing_to_do: ['Nothing to change', 'info'] }[r.status] || [r.status, 'warn'];
+      if (r.simulation) head[0] += ' to the simulation';
       where.innerHTML = `<div class="bp-card ${head[1]}" role="status" tabindex="-1" id="opResultCard"><div class="t">${E(head[0])}: ${E(r.title)}</div>
           <div>${E(c.applied || 0)} applied, ${E(c.conflict || 0)} conflict${c.conflict === 1 ? '' : 's'}, ${E(c.failed || 0)} failed, ${E(c.skipped || 0)} not attempted, ${E(c.noop || 0)} already as asked, ${E(c.excluded || 0)} excluded.
           ${r.stopped ? ` ${E(r.stopped)}` : ''} Read back: ${E(v.confirmed || 0)} of ${E(v.checked || 0)} confirmed${(v.mismatched || []).length ? `; ${E(v.mismatched.join('; '))}` : ''}.
@@ -568,7 +731,8 @@
           ${r.operation_id ? ` Recorded as ${E(r.operation_id)}.` : ''}${r.record_error ? ` ${E(r.record_error)}` : ''}</div>
           ${r.operation_id && r.inverse ? `<div class="op-row"><button type="button" class="rp-btn" data-undo="${E(r.operation_id)}">Undo this change (preview first)</button></div>` : ''}</div>
         ${itemsTable(r.items || [], 'Result per item')}
-        <details class="pa-details"><summary>What was done (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
+        <details class="pa-details"><summary>What was done (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>
+        ${jobId && /^[A-Za-z0-9_-]{1,40}$/.test(jobId) ? `<div class="op-row"><a class="rp-btn" id="opApiCalls" href="/report/advanced?job=${E(jobId)}#apicalls" target="_blank" rel="noopener">API calls of this run</a></div>` : ''}`;
       where.querySelectorAll('button[data-undo]').forEach(b => b.addEventListener('click', () => undo(b.dataset.undo)));
       const plugDone = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[r.type];
       if (plugDone && typeof plugDone.result === 'function') plugDone.result(r, where, H);   // e.g. a value shown once
@@ -598,9 +762,20 @@
     }
 
     // ── A hand-off from the Path analyzer's Test a list view (?fix=<id>):
-    // the URL category change is picked and its "add" list filled in. It
-    // only fills the form: reading, the preview and the four write gates
-    // are the same as for any change typed here.
+    // the Cloud Firewall, DNS Control, ATP and URL filtering rows fill "Fix
+    // rows from Test a list" (picked first), the URL filtering rows also the
+    // URL category change's "add" list, and the rows ZPA carries, per
+    // segment, ZPA segment domains (to block) or ZPA policy rules (to allow:
+    // an access rule for the segment), picked when nothing else is in the
+    // hand-off. It only fills the forms: reading, the preview and the four
+    // write gates are the same as for any change typed here.
+    function pickHandoffKind() {
+      const h = S.handoff;
+      if (!h) return;
+      const want = (h.fixes || []).length ? 'list_fix' : (h.urls || []).length ? 'url_categories' : (h.zpa || []).length ? zpaKindFor(zpaSec()) : 'list_fix';
+      const radio = document.querySelector(`input[name="opKind"][value="${want}"]`);
+      if (radio && (!radio.checked || S.kind !== want)) { radio.checked = true; onKind(radio); }
+    }
     async function takeHandoff() {
       const id = new URLSearchParams(location.search).get('fix') || '';
       if (!/^[a-f0-9]{24}$/.test(id)) return;
@@ -609,14 +784,21 @@
       const note = document.createElement('div');
       note.className = h ? 'bp-card' : 'bp-card warn';
       note.setAttribute('role', 'status');
+      if (h && !Array.isArray(h.zpa)) h.zpa = [];
       if (!h || !Array.isArray(h.urls)) { note.innerHTML = '<div class="t">The list from the Path analyzer is no longer kept</div><div>Pick the rows again on the Path analyzer\'s Test a list view, then Fix selected.</div>'; $('opH1').after(note); return; }
-      S.handoff = h;
-      const radio = document.querySelector('input[name="opKind"][value="url_categories"]');
-      if (radio) { radio.checked = true; S.kind = 'url_categories'; }
-      note.innerHTML = `<div class="t">${E(h.urls.length)} destination(s) from the Path analyzer's Test a list view</div><div>${E(h.note)}${(h.excluded || []).length ? ` ${E(h.excluded.length)} could not go into a URL category and were left out.` : ''}${h.over_limit ? ` ${E(h.over_limit)} more were over the limit of one operation.` : ''} Click Read from the tenant, pick the category in To, then preview.</div>`;
+      S.handoff = h; S.handoffId = id;
+      const fixes = h.fixes || [], nf = fixes.reduce((a, f) => a + (f.destinations || []).length, 0);
+      const parts = [];
+      if (fixes.length) parts.push(`${nf} for ${fixes.map(f => `${f.area_label} (${f.purpose === 'block' ? 'to block' : 'to allow'})`).join(', ')}: Fix rows from Test a list is picked`);
+      const urlFix = fixes.some(f => f.area === 'url');
+      if (h.urls.length && !urlFix) parts.push(`${h.urls.length} for a custom URL category: ${fixes.length ? 'pick URL category change after this one' : 'URL category change is picked; pick the category in To'}`);
+      if (h.urls.length && urlFix) parts.push(`the URL filtering rows can also go into a custom URL category alone with URL category change, but alone that changes nothing unless a rule uses the category`);
+      if (h.zpa.length) parts.push(`${h.zpa.reduce((a, z) => a + (z.domains || []).length, 0)} carried by ZPA (${h.zpa.map(z => `${z.segment}, ${z.purpose === 'block' ? 'to block' : 'to allow'}`).join('; ')}): ${fixes.length || h.urls.length ? 'pick ZPA segment domains (to block) or ZPA policy rules (to allow) after this one' : `${zpaKindFor(zpaSec()) === 'zpa_policies' ? 'ZPA policy rules' : 'ZPA segment domains'} is picked for ${zpaSec().segment}${h.zpa.length > 1 ? '; pick the other segments in the form' : ''}`}`);
+      note.innerHTML = `<div class="t">Rows from the Path analyzer's Test a list view</div><div>${E(parts.join('; '))}. ${E(h.note)}${(h.excluded || []).length ? ` ${E(h.excluded.length)} row(s) were left out (each with the reason in the Path analyzer's recommendation).` : ''}${h.over_limit ? ` ${E(h.over_limit)} more URLs were over the limit of one operation.` : ''} Click Read from the tenant, then preview.</div>`;
       $('opH1').after(note);
+      pickHandoffKind();
       renderObjects();
-      say(`${h.urls.length} destinations from the Path analyzer are ready to add to a URL category. Read from the tenant, pick the category, then preview.`);
+      say(`Rows from the Path analyzer are ready: ${parts.join('; ')}. Read from the tenant, then preview.`);
     }
 
     tenantChoices(); refreshWrite(); renderObjects(); loadHistory(); takeHandoff();

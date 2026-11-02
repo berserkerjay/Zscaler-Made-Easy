@@ -18,6 +18,14 @@ Where the facts come from
   (user rule 1): ZIA `/subscriptions` and the API role
   (`/adminRoles/{id}`), Client Connector company info and admin roles, ZPA
   roles, one ZDX and one Z-Insights call to see whether they answer.
+* Two tenant checks, with plain steps to fix each (tenant_health): ZIA
+  changes saved but not activated (`zia.activate.status()`, GET
+  /zia/api/v1/status, for any ZIA scope) and the SSL inspection rule
+  order (`zia.ssl_inspection_rules.list_rules()`, only when DLP or ZIA
+  platform is ticked and the channel declaration does not leave SSL/TLS
+  Inspection off Zscaler): a broad Do Not Inspect rule above Inspect rules, a
+  broad Inspect rule above the exemptions, and nothing inspecting what
+  reaches the Default rule. Only the verdict is returned.
 * The permission catalogue of scope_permissions.py (labels, minimum read
   permissions, licence text) and permissions.WRITE_PERMISSIONS (what a
   change needs). This module adds the machine-readable needs on top: the
@@ -31,8 +39,9 @@ keys (zia/admin_roles.py docstring), `/zia/api/v1/adminRoles/{id}`
 list_roles), `/zdx/v1/administration/departments` (zdx.admin.
 list_departments), Z-Insights WEB_TRAFFIC (zins.web_traffic.
 get_no_grouping) and the token on `ZscalerClient._auth_token`.
-Assumed (not in the SDK): the ZIA `/subscriptions` endpoint and its row
-shape, the token's `service-info` claim (`prd`, `ext.rnm`, `ext.rid`), the
+The ZIA `/subscriptions` endpoint is organization_information.get_subscriptions
+in zscaler-sdk-python 1.11.3. Assumed (not in the SDK): its row shape (the
+SDK models one object; the API answers a list), the token's `service-info` claim (`prd`, `ext.rnm`, `ext.rid`), the
 product codes in it, the subscription ids that unlock a feature and the
 Client Connector role field names.
 """
@@ -58,7 +67,7 @@ MAX_SERVICES = 32
 MAX_SCOPES = 100
 MAX_SUBSCRIPTIONS = 300
 ENDING_SOON_DAYS = 21
-SUBSCRIPTIONS_PATH = "/zia/api/v1/subscriptions"   # assumed: not in the SDK
+SUBSCRIPTIONS_PATH = "/zia/api/v1/subscriptions"   # organization_information.get_subscriptions (SDK 1.11.3); the row shape is assumed
 
 # ── Products ───────────────────────────────────────────────────────────
 # key -> label, the Scope page keys that let readiness read it, and the
@@ -68,11 +77,17 @@ PRODUCTS: "OrderedDict[str, Dict[str, Any]]" = OrderedDict([
              "portal": "the ZIA Admin Portal"}),
     ("ZPA", {"label": "ZPA (Private Access)", "scopes": ("zpa",), "codes": ("ZPA",), "portal": "the ZPA Admin Portal"}),
     ("ZCC", {"label": "Client Connector", "scopes": ("zcc",), "codes": ("ZCC",), "portal": "the Client Connector Portal"}),
-    ("ZDX", {"label": "ZDX (Digital Experience)", "scopes": ("zdx",), "codes": ("ZDX",), "portal": "the ZDX Admin Portal"}),
+    ("ZDX", {"label": "ZDX (digital experience)", "scopes": ("zdx",), "codes": ("ZDX",), "portal": "the ZDX Admin Portal"}),
     ("ZINSIGHTS", {"label": "Z-Insights (traffic data)", "scopes": ("insights",), "codes": ("ZINSIGHTS",), "portal": "ZIdentity"}),
     ("ZGUARD", {"label": "AI Guard", "scopes": ("aiguard", "ai_guard"), "codes": ("ZGUARD", "AIGUARD"), "portal": "the AI Guard console"}),
     ("ZIDENTITY", {"label": "ZIdentity", "scopes": ("zidentity",), "codes": ("ZIAM", "ZIDENTITY"), "portal": "ZIdentity"}),
     ("ZTW", {"label": "Cloud & Branch Connector", "scopes": ("ztw",), "codes": ("ZTW",), "portal": "the Cloud & Branch Connector Admin Portal"}),
+    # The other products (other_products.py); token only, codes assumed like the rest.
+    ("ZTB", {"label": "Zero Trust Branch", "scopes": ("ztb",), "codes": ("ZTB",), "portal": "the Zero Trust Branch admin portal"}),
+    ("ZEASM", {"label": "External attack surface (EASM)", "scopes": ("easm",), "codes": ("ZEASM", "EASM"), "portal": "the EASM admin portal"}),
+    ("ZBI", {"label": "Business Insights", "scopes": ("zbi",), "codes": ("ZBI", "BI"), "portal": "Business Insights"}),
+    ("ZCELL", {"label": "Zero Trust Cellular", "scopes": ("zcell",), "codes": ("ZCELL",), "portal": "the Zero Trust Cellular admin portal"}),
+    ("ZMS", {"label": "Microsegmentation", "scopes": ("zms",), "codes": ("ZMS",), "portal": "the Microsegmentation admin portal"}),
 ])
 _CODE_TO_PRODUCT = {code: key for key, p in PRODUCTS.items() for code in p["codes"]}
 PROBED = ("ZIA", "ZPA", "ZCC", "ZDX", "ZINSIGHTS", "ZGUARD")   # ZIdentity, Cloud & Branch Connector: token only
@@ -177,6 +192,11 @@ SCOPE_FEATURES: "OrderedDict[str, F]" = OrderedDict([
     ("insights", {"product": "ZINSIGHTS", "oneapi_only": True}),
     ("aiguard", {"product": "ZGUARD", "oneapi_only": True}),
     ("ztw", {"product": "ZTW", "oneapi_only": True}),
+    ("ztb", {"product": "ZTB", "oneapi_only": True}),
+    ("easm", {"product": "ZEASM", "oneapi_only": True}),
+    ("zbi", {"product": "ZBI", "oneapi_only": True}),
+    ("zcell", {"product": "ZCELL", "oneapi_only": True}),
+    ("zms", {"product": "ZMS", "oneapi_only": True, "customer_id": True}),
 ])
 SCOPE_LABELS = {"rbac": "RBAC", "zidentity": "ZIdentity"}
 
@@ -550,7 +570,7 @@ def in_scope_products(scopes: Iterable[str]) -> List[str]:
 
 
 def read(client: Any, scopes: Iterable[str], *, auth_method: str = "oneapi", customer_id: str = "",
-         log: Optional[Callable[[str], None]] = None, cancel: Any = None, now: Optional[float] = None) -> Dict[str, Any]:
+         log: Optional[Callable[[str], None]] = None, cancel: Any = None, now: Optional[float] = None, channels: Any = None) -> Dict[str, Any]:
     """Every readiness read for the products in scope, one at a time.
     Returns {claims, probes: {product: {...}}, in_scope: [...]} with no
     token and no error text from the tenant. Stop raises Stopped."""
@@ -561,6 +581,7 @@ def read(client: Any, scopes: Iterable[str], *, auth_method: str = "oneapi", cus
     probes: Dict[str, Dict[str, Any]] = {}
     roles = {p["product"]: p for p in claims.get("products") or []}
 
+    sc = {str(s) for s in scopes or []}
     if "ZIA" in wanted:
         _stop(cancel)
         say("ZIA: reading the licences (subscriptions)…")
@@ -597,6 +618,19 @@ def read(client: Any, scopes: Iterable[str], *, auth_method: str = "oneapi", cus
             if res["state"] == "ok":
                 zia["responds"] = True
             say(f"ZIA role: {'read' if zia['role'] else _state_words(res)}.")
+        # Two tenant checks before anything runs (tenant_health): changes
+        # saved but not activated, and the SSL inspection rule order (read
+        # only when DLP or ZIA platform, which read SSL inspection, is ticked).
+        _stop(cancel)
+        say("ZIA: reading the activation status (changes saved but not activated)…")
+        zia["activation"] = _ask(lambda: client.zia.activate.status())
+        say(f"ZIA activation status: {'read' if zia['activation']['state'] == 'ok' else _state_words(zia['activation'])}.")
+        import tenant_health
+        if sc & {"dlp", "zia_extras"} and tenant_health.ssl_channel_ok(channels):
+            _stop(cancel)
+            say("ZIA: reading the SSL inspection rules (their order only)…")
+            zia["ssl_rules"] = _ask(lambda: client.zia.ssl_inspection_rules.list_rules())
+            say(f"ZIA SSL inspection rules: {'read' if zia['ssl_rules']['state'] == 'ok' else _state_words(zia['ssl_rules'])}.")
         probes["ZIA"] = zia
 
     if "ZCC" in wanted:
@@ -964,13 +998,26 @@ def evaluate(facts: Dict[str, Any]) -> Dict[str, Any]:
                 "zcc_flags": ((facts.get("probes") or {}).get("ZCC") or {}).get("flags") or {}}
     claims = facts.get("claims") or {}
     blocked = [f for f in scopes + writes if f["status"] in ("blocked", "not_licensed")]
-    return {"products": list(products.values()), "licences": licences, "scopes": scopes, "writes": writes,
+    checks = tenant_checks(facts)   # only the verdict is returned: the bodies read for it are not
+    return {"products": list(products.values()), "licences": licences, "scopes": scopes, "writes": writes, "checks": checks,
+            "attention_count": sum(1 for c in checks if c["status"] == "attention"),
             "write_kinds": list(kinds.values()), "in_scope": list(facts.get("in_scope") or []),
             "token": {"ok": claims.get("ok", False), "why": claims.get("why", ""), "source": claims.get("source", ""),
                       "scopes": claims.get("scopes", []), "expires_at": claims.get("expires_at"), "products_listed": claims.get("products_listed", False),
                       "verified": False},
-            "summary": summary_line(list(products.values()), blocked),
+            "summary": summary_line(list(products.values()), blocked)
+            + "".join(f" {c['label']}: needs attention." for c in checks if c["status"] == "attention"),
             "blocked_count": len(blocked)}
+
+
+def tenant_checks(facts: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """ZIA pending activation and the SSL inspection rule order
+    (tenant_health.readiness_checks), from the reads above."""
+    import tenant_health
+    zia = (facts.get("probes") or {}).get("ZIA")
+    if not isinstance(zia, dict) or "activation" not in zia:
+        return []
+    return tenant_health.readiness_checks(zia.get("activation"), zia.get("ssl_rules"), zia=True, ssl="ssl_rules" in zia)
 
 
 def summary_line(products: List[Dict[str, Any]], blocked: List[Dict[str, Any]]) -> str:
@@ -983,12 +1030,13 @@ def summary_line(products: List[Dict[str, Any]], blocked: List[Dict[str, Any]]) 
 
 
 def run(client: Any, scopes: Iterable[str], *, auth_method: str = "oneapi", customer_id: str = "",
-        log: Optional[Callable[[str], None]] = None, cancel: Any = None, label: str = "", now: Optional[float] = None) -> Dict[str, Any]:
+        log: Optional[Callable[[str], None]] = None, cancel: Any = None, label: str = "", now: Optional[float] = None,
+        channels: Any = None) -> Dict[str, Any]:
     """The readiness job: the reads, then the verdict. Stop ends it as
     stopped with no partial result."""
     say = log or (lambda m: None)
     try:
-        facts = read(client, scopes, auth_method=auth_method, customer_id=customer_id, log=say, cancel=cancel, now=now)
+        facts = read(client, scopes, auth_method=auth_method, customer_id=customer_id, log=say, cancel=cancel, now=now, channels=channels)
         _stop(cancel)
     except Stopped:
         say("STOPPED — you clicked Stop; nothing more is read and no partial result is kept.")
@@ -1025,7 +1073,8 @@ def catalog() -> Dict[str, Any]:
 
 # ── Required API access (/permissions): the live part ──────────────────
 STATUS_WORDS = {"ok": "Will work", "partial": "Works in part", "read_only": "Can read, cannot change", "blocked": "Will not work",
-                "not_licensed": "Not licensed", "unknown": "Not checked", "not_in_scope": "Not in scope", "info": "For information"}
+                "not_licensed": "Not licensed", "unknown": "Not checked", "not_in_scope": "Not in scope", "info": "For information",
+                "attention": "Needs attention"}
 ACCESS_WORDS = {"write": "Can read and change", "read": "Can read", "none": "No access", "unknown": "Not checked", "not_in_scope": "Not in scope"}
 _PROBLEM = ("blocked", "not_licensed", "read_only", "partial")
 
@@ -1107,6 +1156,14 @@ def _one_result(r: Dict[str, Any], i: int) -> str:
     flags = lic.get("zcc_flags") or {}
     if flags:
         lic_html += '<p class="rd-flags">Client Connector says: ' + "; ".join(f"{_e(k)}: {'yes' if v else 'no'}" for k, v in flags.items()) + ".</p>"
+    checks = r.get("checks") or []
+    chk_html = ""
+    if checks:
+        chk_html = '<h4>Tenant checks</h4><ul class="rd-gaps">' + "".join(
+            f'<li><strong>{_e(c.get("label"))}</strong> <span class="rd-chip {_e(c.get("severity") or c.get("status"))}">'
+            f'{_e(STATUS_WORDS.get(c.get("status"), c.get("status")))}</span><div>{_e(c.get("why"))}</div>'
+            + "".join(f'<div class="rd-note">{_e(n)}</div>' for n in c.get("notes") or [])
+            + f'{_steps_html(c.get("steps"))}</li>' for c in checks) + "</ul>"
     feats = (r.get("scopes") or []) + (r.get("writes") or [])
     gaps = [f for f in feats if f.get("status") in _PROBLEM]
     good = [f for f in feats if f.get("status") == "ok"]
@@ -1126,4 +1183,4 @@ def _one_result(r: Dict[str, Any], i: int) -> str:
     tnote = "" if tok.get("ok") else f'<p class="rd-flags">{_e(tok.get("why"))}</p>'
     return (f'<article class="rd-card" aria-labelledby="{tid}"><h3 id="{tid}">{_e(r.get("tenant_label") or "Tenant")} '
             f'<span class="service">· checked {_e((r.get("checked_at") or "").replace("T", " ").replace("Z", " UTC"))}</span></h3>'
-            f'<p>{_e(r.get("summary"))}</p>{tnote}{prod}{lic_html}{gaps_block}{tail}</article>')
+            f'<p>{_e(r.get("summary"))}</p>{tnote}{prod}{lic_html}{chk_html}{gaps_block}{tail}</article>')

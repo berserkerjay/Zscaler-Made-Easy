@@ -349,14 +349,19 @@ def test_deploy_and_removal_run_as_jobs_the_browser_can_follow(monkeypatch, tmp_
     assert c.post(f"/api/dlp-packs/jobs/{r.json()['job_id']}/cancel").json()["cancelled"] is False, "finished jobs cannot be cancelled"
     assert c.get("/api/dlp-packs/jobs/nope").status_code == 404
     # The removal of that deployment, the same way.
-    rm = c.post("/api/dlp-packs/removal/apply/start", json=dict(creds, deployment_id=snap["result"]["deployment_id"], confirm=True))
+    undo_plan = c.post("/api/dlp-packs/removal/preflight", json=dict(creds, deployment_id=snap["result"]["deployment_id"])).json()
+    assert c.post("/api/dlp-packs/removal/apply/start", json=dict(creds, deployment_id=snap["result"]["deployment_id"], confirm=True)).status_code == 400, \
+        "a removal needs the typed phrase"
+    rm = c.post("/api/dlp-packs/removal/apply/start", json=dict(creds, deployment_id=snap["result"]["deployment_id"], confirm=True,
+                                                                confirm_phrase=undo_plan["confirm_phrase"]))
     assert rm.status_code == 200 and rm.json()["kind"] == "removal", rm.text
     done = _wait_job(c, rm.json()["job_id"])
     assert done["status"] == "done" and done["result"]["status"] == "removed" and done["result"]["verification"]["clean"], done.get("error")
     assert done["result"]["deployment"]["remaining"] == 0 and done["result"]["stopped"] is None
     assert client.zia.dlp_web_rules.items == [] and client.zia.dlp_engine.items == []
     # A stale plan is a result, not an exception, so the page can show it.
-    stale = c.post("/api/dlp-packs/removal/apply/start", json=dict(creds, pack_ids=["zbp_enterprise_baseline"], plan_hash="stale", confirm=True))
+    stale = c.post("/api/dlp-packs/removal/apply/start", json=dict(creds, pack_ids=["zbp_enterprise_baseline"], plan_hash="stale", confirm=True,
+                                                                   confirm_phrase="DELETE 1 OBJECTS"))
     assert _wait_job(c, stale.json()["job_id"])["result"]["status"] in ("stale", "nothing")
 
 

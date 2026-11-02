@@ -31,15 +31,35 @@ record, the audit log and Undo (`inverse`). Writes go through
 pack_ops.create / update / delete (kinds zdx_app, zdx_probe,
 zdx_collection), which pace, retry, stop and audit them.
 
+Tiers
+-----
+A setup can follow a tier (`tier`: strict, balanced, permissive or
+healthcare, the same names as the ZIA security baseline; balanced when the
+form names none): Strict monitors the most apps (the Microsoft 365 set,
+Zoom, Webex, Okta, Salesforce, ServiceNow and Box) every 5 minutes with a
+CloudPath probe on each; Balanced the Microsoft 365 core (sign-in, Outlook,
+Teams) every 10 minutes with CloudPath; Permissive Microsoft 365 sign-in
+every 15 minutes, Web probes only; Healthcare the Microsoft 365 core and
+Zoom (telehealth) every 5 minutes with CloudPath. The interval applies to
+the custom apps' probes (a predefined app keeps the probes ZDX makes for
+it). A choice looser than the tier (a longer interval, a CloudPath probe
+left out) is a warning in the preview, never a block. These defaults are
+this app's recommendation, not a Zscaler setting.
+
 What is verified and what is assumed
 ------------------------------------
-The installed zscaler-sdk-python (1.11.3) has no ZDX *configuration*
-service: zscaler/zdx/ covers only the read-only analytics API under
-/zdx/v1 (apps, devices, alerts, inventory, troubleshooting, users, admin).
-These calls go through the SDK's request executor instead (verified: it
-signs with the OneAPI token, routes "/zdx" paths to the OneAPI gateway as
-zscaler/zdx/* does, and sends ZDX bodies as given, without the camelCase
-conversion of other products: request_executor._prepare_body).
+VERIFIED against the installed zscaler-sdk-python 1.11.3 (tests/
+test_ops_zdx.py and tests/test_health_diag.py read the SDK):
+
+  * the ZDX API prefix /zdx/v1 (zscaler/zdx/*.py, `_zdx_base_endpoint`);
+  * the SDK's request executor signs "/zdx" paths with the OneAPI token,
+    routes them to the OneAPI gateway as ZDX requests (get_service_type)
+    and sends ZDX bodies as given, without the camelCase conversion of
+    other products (request_executor._prepare_body);
+  * the SDK has no ZDX *configuration* service: zscaler/zdx/ covers only
+    the read-only analytics API (apps, devices with their web-probes and
+    cloudpath-probes, alerts, inventory, troubleshooting, users, admin),
+    so nothing below can be checked against it.
 
 ASSUMED (not in the SDK, and not checked against a live tenant from here):
 
@@ -75,9 +95,11 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote, urlsplit
 
 import admin_ops as ao
+import editions
 import pack_ops as ops
 
-CONFIG = "/zdx/v1/config"          # ASSUMED: not in zscaler-sdk-python 1.11.3
+ZDX_BASE = "/zdx/v1"                # verified: zscaler-sdk-python 1.11.3 zdx/*.py _zdx_base_endpoint
+CONFIG = ZDX_BASE + "/config"      # ASSUMED: the /config part (no configuration service in the SDK)
 FAMILY = "zdx_apps"
 T_SETUP, T_STATE, T_DELETE = "zdx_probes", "zdx_probe_state", "zdx_probe_delete"
 INTERVALS_MIN = (5, 10, 15, 30)    # ASSUMED: the probe intervals ZDX offers between 5 and 30 minutes
@@ -138,12 +160,60 @@ TEMPLATES: Dict[str, Dict[str, Any]] = {
                        for p in ("MICROSOFT_LOGIN", "OUTLOOK", "MICROSOFT_TEAMS", "SHAREPOINT", "ONEDRIVE")],
         "custom": [], "interval_minutes": 5, "protocol": "ADAPTIVE",
     },
+    # Federal POVs (pov_build.PRESET_DEFAULTS["federal"]): the Microsoft 365 core plus the federal sites staff sign in to,
+    # as custom apps. The hosts are templates to review: Login.gov's sign-in host, USAJOBS and SAM.gov are public
+    # sites; a GCC or GCC High Microsoft 365 tenant signs in at other hosts than the predefined Microsoft apps probe
+    # (assumed), and agencies add their own portals.
+    "federal": {
+        "id": "federal", "name": "Federal",
+        "about": ("Microsoft 365 sign-in, Outlook and Teams, plus Login.gov, USAJOBS and SAM.gov as custom apps, each with Web and "
+                  "CloudPath probes, for all users. The hosts are templates to review with the agency (a GCC or GCC High Microsoft 365 "
+                  "tenant may sign in elsewhere)."),
+        "predefined": [{"provider": p, "web": True, "cloudpath": True} for p in ("MICROSOFT_LOGIN", "OUTLOOK", "MICROSOFT_TEAMS")],
+        "custom": [{"name": "Login.gov", "url": "https://secure.login.gov/", "cloudpath": True},
+                   {"name": "USAJOBS", "url": "https://www.usajobs.gov/", "cloudpath": True},
+                   {"name": "SAM.gov", "url": "https://sam.gov/", "cloudpath": True}],
+        "keep_custom": True, "review": "The custom app hosts are templates: confirm them with the agency before the POV.",
+        "interval_minutes": 5, "protocol": "ADAPTIVE",
+    },
     "empty": {
         "id": "empty", "name": "Start empty",
         "about": "Nothing picked: choose predefined apps and add custom apps (for example an internal portal) yourself.",
         "predefined": [], "custom": [], "interval_minutes": 5, "protocol": "ADAPTIVE",
     },
 }
+
+# The tiers (this app's recommendation, see the module docstring). Keys
+# are the ZIA security baseline's tiers, so one choice fits both builders.
+TIERS: Dict[str, Dict[str, Any]] = {
+    "strict": {"key": "strict", "label": "Strict", "interval_minutes": 5, "cloudpath": True, "protocol": "ADAPTIVE",
+               "predefined": ["MICROSOFT_LOGIN", "OUTLOOK", "MICROSOFT_TEAMS", "SHAREPOINT", "ONEDRIVE", "ZOOM", "WEBEX", "OKTA",
+                              "SALESFORCE_CLASSIC", "SERVICENOW", "BOX"],
+               "what": ("The most apps (Microsoft 365, Zoom, Webex, Okta, Salesforce, ServiceNow, Box), every 5 minutes, each with a "
+                        "CloudPath probe: problems show within minutes.")},
+    "balanced": {"key": "balanced", "label": "Balanced", "interval_minutes": 10, "cloudpath": True, "protocol": "ADAPTIVE",
+                 "predefined": ["MICROSOFT_LOGIN", "OUTLOOK", "MICROSOFT_TEAMS"],
+                 "what": "The Microsoft 365 core (sign-in, Outlook, Teams) every 10 minutes, with CloudPath probes."},
+    "permissive": {"key": "permissive", "label": "Permissive", "interval_minutes": 15, "cloudpath": False, "protocol": "ADAPTIVE",
+                   "predefined": ["MICROSOFT_LOGIN"],
+                   "what": "Microsoft 365 sign-in every 15 minutes, Web probes only: the lightest load on devices."},
+    "healthcare": {"key": "healthcare", "label": "Healthcare", "interval_minutes": 5, "cloudpath": True, "protocol": "ADAPTIVE",
+                   "predefined": ["MICROSOFT_LOGIN", "OUTLOOK", "MICROSOFT_TEAMS", "ZOOM"],
+                   "what": ("The Microsoft 365 core and Zoom for telehealth, every 5 minutes with CloudPath probes; add the EHR "
+                            "portal as a custom app.")},
+}
+DEFAULT_TIER = "balanced"
+
+
+def tier_template(tier: str) -> Dict[str, Any]:
+    """The apps, interval and protocol a tier starts from (the form's
+    "start from the tier"): its predefined apps with Web probes and, when
+    the tier has them, CloudPath probes; no custom app."""
+    t = TIERS[tier]
+    return {"id": f"tier_{t['key']}", "name": f"{t['label']} tier", "about": t["what"], "tier": t["key"],
+            "predefined": [{"provider": p, "web": True, "cloudpath": t["cloudpath"]} for p in t["predefined"]],
+            "custom": [], "interval_minutes": t["interval_minutes"], "protocol": t["protocol"]}
+
 
 ASSUMED_NOTE = ("The ZDX configuration API is not in the Zscaler SDK this app uses: its paths, bodies and step order are "
                 "assumed from Zscaler's public descriptions, not verified against your tenant. Check the result in the ZDX portal.")
@@ -467,6 +537,7 @@ def read_objects(client: Any, scope: Dict[str, Any], say: Callable[[str], None],
     templates and the choices. Read-only."""
     say("Reading ZDX applications and probes. Nothing is written.")
     state = read_state(api_for(client), say=say, cancel=cancel)
+    eds = editions.read(client, scope, say)
     apps = sorted(state["apps"], key=lambda a: (a["type"] != "PREDEFINED", a["name"].lower()))
     for a in apps:
         a["deletable"] = a["type"] != "PREDEFINED"
@@ -477,6 +548,13 @@ def read_objects(client: Any, scope: Dict[str, Any], say: Callable[[str], None],
                     "counts": {"apps": len(apps), "apps_on": sum(1 for a in apps if a["active"]), "probes": len(state["probes"]),
                                "probes_on": sum(1 for p in state["probes"] if p["active"])},
                     "templates": [dict(t) for t in TEMPLATES.values()], "intervals": list(INTERVALS_MIN), "protocols": list(PROTOCOLS),
+                    "tiers": [dict(tier_template(k), label=t["label"], interval_minutes=t["interval_minutes"], cloudpath=t["cloudpath"])
+                              for k, t in TIERS.items()],
+                    "default_tier": DEFAULT_TIER,
+                    "edition": {"zdx": eds["zdx"], "label": editions.label("zdx", eds["zdx"]), "notes": editions.notes(eds, ["zdx"]),
+                                "limits": {pv: editions.zdx_limit(eds["zdx"], provider=pv) for pv in PREDEFINED
+                                           if editions.zdx_limit(eds["zdx"], provider=pv)},
+                                "custom_limit": editions.zdx_limit(eds["zdx"], custom=True)},
                     "assumed": ASSUMED_NOTE},
             "errors": {f"zdx_{k}": v for k, v in state["errors"].items()}}
 
@@ -586,8 +664,11 @@ def _clean_setup(spec: Dict[str, Any]) -> Dict[str, Any]:
         raise ao.OperationError(f"At most {MAX_PREDEFINED} predefined and {MAX_CUSTOM} custom apps in one setup.")
     if not pre and not cus:
         raise ao.OperationError("Pick at least one predefined app or add a custom app.")
+    tier = _str(spec.get("tier"), 20).lower()
+    if tier and tier not in TIERS:
+        raise ao.OperationError(f"Unknown tier: pick one of {', '.join(t['label'] for t in TIERS.values())}.")
     try:
-        interval = int(spec.get("interval_minutes", 5))
+        interval = int(spec.get("interval_minutes", TIERS[tier]["interval_minutes"] if tier else 5))
     except (TypeError, ValueError):
         raise ao.OperationError("The interval must be a number of minutes.")
     if interval not in INTERVALS_MIN:
@@ -615,7 +696,10 @@ def _clean_setup(spec: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(c, dict):
             raise ao.OperationError("Each custom app must be an object.")
         out_cus.append({"name": _str(c.get("name"), 200), "url": _str(c.get("url"), URL_MAX + 10), "cloudpath": _bool(c.get("cloudpath"), True)})
-    return {"type": T_SETUP, "template": tid, "predefined": out_pre, "custom": out_cus, "interval_minutes": interval, "protocol": proto}
+    out = {"type": T_SETUP, "template": tid, "predefined": out_pre, "custom": out_cus, "interval_minutes": interval, "protocol": proto}
+    if tier:
+        out["tier"] = tier
+    return out
 
 
 def _clean_targets(raw: Any, *, with_to: bool, with_name: bool, allow_empty: bool = False) -> List[Dict[str, Any]]:
@@ -748,6 +832,14 @@ def plan_setup(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, ca
     P = _Plan()
     state = _read_or_block(client, P, say, cancel, catalogue=bool(spec["predefined"]))
     interval, proto = spec["interval_minutes"], spec["protocol"]
+    _tier_notes(P, spec)
+    # The licensed ZDX edition (editions.py, from the ZIA licence list when a ZIA scope is ticked): apps the
+    # edition does not allow are left out with the reason; an unknown edition leaves every app.
+    eds = editions.read(client, scope, say)
+    zed = eds["zdx"]
+    P.notes.extend(editions.notes(eds, ["zdx"]))
+    if zed == "lite":
+        P.warnings.append("ZDX Lite has no configurable probes (assumed): nothing in this setup is created.")
     supported = {s["provider"]: s for s in state["supported"]}
     cols = {"custom": _collection(state["collections"], "custom"), "predefined": _collection(state["collections"], "predefined")}
     col_items: Dict[str, str] = {}
@@ -768,6 +860,11 @@ def plan_setup(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, ca
         prov = p["provider"]
         sup = supported.get(prov)
         label = PREDEFINED.get(prov, {}).get("label") or (sup or {}).get("name") or prov
+        why_ed = editions.zdx_limit(zed, provider=prov)
+        if why_ed:
+            P.item(None, "zdx_app", _obj(label, "predefined"), "exists", None, True, status="excluded",
+                   reason=f"left out: {why_ed} (assumed, from the licensed edition)")
+            continue
         if sup is None:
             if "supported" not in state["errors"] and not P.blockers:
                 P.item(None, "zdx_app", _obj(label, "predefined"), "exists", None, True, status="excluded",
@@ -819,6 +916,11 @@ def plan_setup(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, ca
             P.blockers.append(f"Custom app '{name}' is listed twice.")
             continue
         seen.add(name.lower())
+        why_ed = editions.zdx_limit(zed, custom=True)
+        if why_ed:
+            P.item(None, "zdx_app", _obj(name, "custom", url=c["url"]), "exists", None, True, status="excluded",
+                   reason=f"left out: {why_ed} (assumed, from the licensed edition)")
+            continue
         url, why = clean_url(c["url"])
         if why:
             P.blockers.append(f"Custom app '{name}': {why}")
@@ -850,8 +952,32 @@ def plan_setup(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, ca
             P.item(g, "zdx_probe", _obj(target["cloudpath_body"]["name"], "cloudpath", target=host), "exists", False, True, depends_on=[k],
                    reason=f"to {host}, {PROTOCOL_LABELS[proto]}, following the Web probe")
         P.item(g, "zdx_app_state", obj, "state", "off", "on", depends_on=[k])
-    title = f"ZDX probe setup ({TEMPLATES[spec['template']]['name'] if spec['template'] else 'custom'})"
+    what = TEMPLATES[spec['template']]['name'] if spec['template'] else 'custom'
+    if spec.get("tier"):
+        what = f"{TIERS[spec['tier']]['label']} tier, {what}"
+    title = f"ZDX probe setup ({what})"
     return _finish(T_SETUP, title, spec, P)
+
+
+def _tier_notes(P: _Plan, spec: Dict[str, Any]) -> None:
+    """What the tier asks for, and each choice looser than it (a warning, never a block)."""
+    tier = spec.get("tier")
+    if not tier:
+        return
+    t = TIERS[tier]
+    P.notes.append(f"Tier: {t['label']}. {t['what']}")
+    if spec["interval_minutes"] > t["interval_minutes"]:
+        P.warnings.append(f"Weaker than the {t['label']} tier: the custom apps' probes run every {spec['interval_minutes']} minutes; "
+                          f"the tier runs them every {t['interval_minutes']} minutes.")
+    if t["cloudpath"]:
+        off = [PREDEFINED.get(p["provider"], {}).get("label") or p["provider"] for p in spec["predefined"] if not p["cloudpath"]]
+        off += [c["name"] or c["url"] for c in spec["custom"] if not c["cloudpath"]]
+        if off:
+            P.warnings.append(f"Weaker than the {t['label']} tier: no CloudPath probe for {', '.join(off[:6])}"
+                              f"{' and more' if len(off) > 6 else ''}; the tier traces the network path to every app.")
+    missing = [PREDEFINED.get(p, {}).get("label") or p for p in t["predefined"] if p not in {x["provider"] for x in spec["predefined"]}]
+    if missing:
+        P.notes.append(f"The {t['label']} tier also monitors: {', '.join(missing)} (not picked in this setup).")
 
 
 def _turn_on_existing(P: _Plan, app: Dict[str, Any], label: str, want_web: bool, want_path: bool) -> None:

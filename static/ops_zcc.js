@@ -10,9 +10,25 @@
   function st(S) {
     if (!S.zcc) {
       S.zcc = { platform: 'windows', fwdTpl: 'best_practice', fwdName: '', fwdId: '', appTpl: 'best_practice', appName: '',
-        fwdOn: null, appOn: null, enable: false, del: '' };
+        fwdOn: null, appOn: null, enable: false, del: '', pw: {}, salt: '' };
     }
     return S.zcc;
+  }
+  // Tamper passwords: kept in this object only while the page is open (never
+  // in the browser's storage), sent beside the operation, never in it.
+  function newSalt() {
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    return Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+  }
+  function typedPasswords(z) {
+    const out = {};
+    Object.entries(z.pw || {}).forEach(([k, v]) => { if (v) out[`${k}_password`] = v; });
+    return out;
+  }
+  function forgetPasswords(z) {
+    z.pw = {}; z.salt = '';
+    document.querySelectorAll('input[data-zpw]').forEach(el => { el.value = ''; });
   }
   function errs(H, res) {
     const rows = Object.entries((res && res.errors) || {});
@@ -63,8 +79,13 @@
         : settingsTable(H, cat.forwarding.settings || [], z.fwdOn, 'fwd', 'Forwarding profile settings')}
       ${settingsTable(H, cat.app[z.platform].settings || [], z.appOn, 'app', 'App profile settings')}
       <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zcEnable"${z.enable ? ' checked' : ''}><span>Turn the profiles on when they are created (off by default: review them in the Client Connector Portal first)</span></label></div>
+      <h3 class="op-h" id="zcPwH">5. Tamper protection passwords (optional)</h3>
+      <p class="df-hint" id="zcPwHint">Leave a box empty to set no password. A password you type is sent once, when the app profile is created, and never kept: not in the plan, the record, the audit log or this browser. The preview shows it as "set (hidden)", and you type it again to apply.</p>
+      <div class="op-row zc-pw" role="group" aria-labelledby="zcPwH">${((cat.tamper || {}).fields || []).map(f =>
+        `<label class="df-ctl"><span class="lbl">${E(f.label)}</span><input type="password" id="zcPw_${E(f.key)}" data-zpw="${E(f.key)}" maxlength="${E((cat.tamper || {}).max || 128)}" autocomplete="new-password" spellcheck="false" aria-describedby="zcPwHint"></label>`).join('')}</div>
+      <ul class="op-checks">${((cat.tamper || {}).notes || []).map(n => `<li class="df-hint">${E(n)}</li>`).join('')}</ul>
       <ul class="op-checks">${(cat.not_set_here || []).map(n => `<li class="df-hint">${E(n)}</li>`).join('')}</ul>
-      <div class="df-hint">5. Review and 6. preview: click Preview the change below. 7. Apply needs write mode, your permission to change the tenant, the assessor's name and the typed confirmation.</div>`;
+      <div class="df-hint">6. Review and 7. preview: click Preview the change below. 8. Apply needs write mode, your permission to change the tenant, the assessor's name, the typed confirmation and any password typed again.</div>`;
     const again = id => { renderBuild(res, where, S, H); const el = document.getElementById(id) || where.querySelector(`input[name="${id}"]:checked`); if (el) el.focus(); };
     where.querySelectorAll('input[name="zcPlat"]').forEach(r => r.addEventListener('change', () => { z.platform = r.value; z.appOn = null; again('zcPlat'); }));
     where.querySelectorAll('input[name="zcFwdTpl"]').forEach(r => r.addEventListener('change', () => { z.fwdTpl = r.value; z.fwdOn = null; again('zcFwdTpl'); }));
@@ -73,6 +94,11 @@
     bind('zcFwdName', 'fwdName'); bind('zcAppName', 'appName');
     const sel = document.getElementById('zcFwdId'); if (sel) sel.addEventListener('change', e => { z.fwdId = e.target.value; });
     document.getElementById('zcEnable').addEventListener('change', e => { z.enable = e.target.checked; });
+    // Set as properties, never written into the page's HTML.
+    where.querySelectorAll('input[data-zpw]').forEach(el => {
+      el.value = (z.pw || {})[el.dataset.zpw] || '';
+      el.addEventListener('input', () => { z.pw[el.dataset.zpw] = el.value; });
+    });
     where.querySelectorAll('input[data-zk]').forEach(cb => cb.addEventListener('change', () => {
       const [kind, key] = cb.dataset.zk.split(':'); const set = kind === 'fwd' ? z.fwdOn : z.appOn;
       if (cb.checked) set.add(key); else set.delete(key);
@@ -89,8 +115,13 @@
       if (!z.fwdName.trim()) throw new Error('Give the forwarding profile a name.');
       fwd.name = z.fwdName.trim(); fwd.settings = [...(z.fwdOn || [])];
     }
-    return { type: 'zcc_profile_build', platform: z.platform, forwarding: fwd,
-      app: { template: z.appTpl, name: z.appName.trim(), settings: [...(z.appOn || [])] }, enable: !!z.enable };
+    const app = { template: z.appTpl, name: z.appName.trim(), settings: [...(z.appOn || [])] };
+    const set = Object.keys(z.pw || {}).filter(k => z.pw[k]);
+    if (set.length) {
+      if (!z.salt) z.salt = newSalt();
+      app.tamper = { set, salt: z.salt };   // which passwords and a salt: never a password
+    }
+    return { type: 'zcc_profile_build', platform: z.platform, forwarding: fwd, app, enable: !!z.enable };
   }
 
   // ── Delete ──
@@ -121,6 +152,10 @@
     return { type: 'zcc_profile_delete', targets: [t] };
   }
 
-  window.OPS_PLUGINS.register({ type: 'zcc_profile_build', render: renderBuild, spec: S => specBuild(S) });
+  window.OPS_PLUGINS.register({ type: 'zcc_profile_build', render: renderBuild, spec: S => specBuild(S),
+    // Sent beside the operation for its preview and its apply, never inside it.
+    secrets: S => ({ tamper_passwords: typedPasswords(st(S)) }),
+    // Applied (or not): the typed passwords are dropped from the page either way.
+    result: () => { const S = window.OPS_PLUGINS.state; if (S) forgetPasswords(st(S)); } });
   window.OPS_PLUGINS.register({ type: 'zcc_profile_delete', render: renderDelete, spec: S => specDelete(S) });
 })();

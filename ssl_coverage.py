@@ -786,10 +786,15 @@ def history_path() -> str:
     return os.path.join(os.path.dirname(_cache_path()), "ssl_coverage_history.json")
 
 
-def _load_all(path: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+def _load_all(path: Optional[str] = None, strict: bool = False) -> Dict[str, List[Dict[str, Any]]]:
+    import store_crypto
     try:
         with open(path or history_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = json.loads(store_crypto.open_text(f.read()))   # a sealed file (store encryption) is opened first
+    except store_crypto.StoreLocked:
+        if strict:
+            raise   # a writer never replaces a history it could not open
+        return {}
     except (OSError, ValueError):
         return {}
     t = data.get("tenants") if isinstance(data, dict) else None
@@ -830,7 +835,7 @@ def record(tenant: str, rep: Mapping[str, Any], path: Optional[str] = None) -> L
     key = tenant_auth.scrub_classic_login(str(tenant or "tenant"))[:120]
     p = path or history_path()
     with _HISTORY_LOCK:
-        data = _load_all(p)
+        data = _load_all(p, strict=True)
         hist = (data.pop(key, []) + [history_entry(rep)])[-HISTORY_KEEP:]
         data[key] = hist
         while len(data) > HISTORY_TENANTS:
@@ -839,8 +844,9 @@ def record(tenant: str, rep: Mapping[str, Any], path: Optional[str] = None) -> L
         # A unique owner-only (0600) temporary file: the history names tenants.
         fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(p) + ".", suffix=".tmp", dir=os.path.dirname(os.path.abspath(p)))
         try:
+            import store_crypto
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump({"version": 1, "tenants": data}, f, indent=1)
+                f.write(store_crypto.seal_text(json.dumps({"version": 1, "tenants": data}, indent=1)))   # sealed when store encryption is on
             for attempt in range(20):
                 try:
                     os.replace(tmp, p)

@@ -1,5 +1,7 @@
 # Software bill of materials
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 `docs/sbom.cdx.json` is a CycloneDX 1.6 JSON SBOM of Zscaler Made Easy's own
 dependencies, the Python packages and the Terraform provider:
 
@@ -11,8 +13,8 @@ dependencies, the Python packages and the Terraform provider:
   it pulls in (`pywin32-ctypes`, the `jaraco` packages, `more-itertools`);
 - the Terraform provider the policy packs use (`zscaler/zia`, pinned in
   `terraform/*/.terraform.lock.hcl`), with its licence (MPL-2.0);
-- Zscaler Made Easy itself as the root component (`LicenseRef-Zscaler-Made-Easy-Internal`,
-  the terms in `LICENSE`).
+- Zscaler Made Easy itself as the root component (`Apache-2.0`, the text in
+  `LICENSE`).
 
 It holds the dependency graph too. The root depends on the packages
 `requirements.txt` asks for and on the Terraform provider, and each package

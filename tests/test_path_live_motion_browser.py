@@ -157,9 +157,9 @@ def page(tmp_path_factory):
 
 
 def test_the_reference_path_renders_and_animates_before_any_result(page):
-    """WCAG 2.2 SC 2.2.2 · SC 1.1.1: the idle reference path is an SVG whose frame counter advances, with its 15 steps in words."""
+    """WCAG 2.2 SC 2.2.2 · SC 1.1.1: the idle reference path is an SVG whose frame counter advances, with its 16 steps in words."""
     r = page["reference"]
-    assert r["boxes"] == 15 and r["steps"] == 15 and r["role"] == "group"
+    assert r["boxes"] == 16 and r["steps"] == 16 and r["role"] == "group"
     assert r["f1"] > r["f0"] >= 0 and r["btn"] == "Pause motion"
 
 
@@ -173,7 +173,7 @@ def test_the_result_animates_under_the_verdict_and_stops_at_the_firewall(page):
     """WCAG 2.2 SC 2.2.2 · SC 1.3.1: after Analyze the path sits right under the verdict, animates, and ends with a block marker at the Cloud Firewall."""
     r = page["result"]
     assert r["underVerdict"] and r["f1"] > r["f0"]
-    assert r["tag"] == ["■ blocked"] and r["boxes"] == r["steps"] == r["buttons"] == 15
+    assert r["tag"] == ["■ blocked"] and r["boxes"] == r["steps"] == r["buttons"] == 16
     assert "UDP/443" in r["chips"] and "chat.openai.com" in r["chips"]
 
 
@@ -197,7 +197,7 @@ def test_the_live_path_never_scrolls_the_page_sideways_on_a_phone(page, width):
 def test_reduced_motion_requests_no_frame_and_play_starts_it(page):
     """WCAG 2.2 SC 2.3.3 · SC 2.2.2: with reduced motion the picture is still, says so in words and offers Play motion, which works."""
     r = page["reduced"]
-    assert r["frames"] is None and r["btn"] == "Play motion" and r["steps"] == 15
+    assert r["frames"] is None and r["btn"] == "Play motion" and r["steps"] == 16
     assert r["note"].startswith("Motion is off because your system asks for reduced motion")
     assert r["after"] > 0 and r["overflow"] == 0
 

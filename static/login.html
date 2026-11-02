@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .lg-wrap { max-width: 26rem; margin: 6vh auto 2rem; padding: 0 16px; }
+  .lg-card { padding: 1.4rem 1.4rem 1.2rem; }
+  .lg-card label { display: block; font-size: 0.85rem; color: var(--dim); margin: 0.9rem 0 0.3rem; }
+  .lg-card input { width: 100%; box-sizing: border-box; min-height: 2.5rem; font: inherit; background: var(--well); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.4rem 0.7rem; }
+  .lg-card input:focus-visible, .lg-card button:focus-visible, .lg-card a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .lg-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 1.1rem; }
+  .lg-msg { min-height: 1.3em; margin-top: 0.8rem; font-size: 0.88rem; }
+  .lg-msg.bad { color: var(--fail); }
+  .lg-or { margin: 1.1rem 0 0.4rem; font-size: 0.82rem; color: var(--dim); }
+  .lg-foot { font-size: 0.8rem; color: var(--dim); margin-top: 1rem; }
+  .lg-change-title { font-size: 1.05rem; margin: 0 0 0.2rem; }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page lg-page">
+  <div class="lg-wrap">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Sign</span> in</h1>
+      <p>This is a team server: each person signs in with their own account, and sees and changes only the tenants they have access to.</p>
+    </header>
+    <main class="rp-card lg-card" id="main-content">
+      <form id="lgForm" novalidate>
+        <label for="lgUser">User name</label>
+        <input id="lgUser" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="200" required>
+        <label for="lgPass">Password</label>
+        <input id="lgPass" name="password" type="password" autocomplete="current-password" maxlength="1024" required>
+        <div class="lg-actions">
+          <button type="submit" class="rp-btn primary" id="lgGo">Sign in</button>
+        </div>
+        <div class="lg-msg" id="lgMsg" role="alert" aria-live="assertive"></div>
+      </form>
+      <form id="lgChange" novalidate hidden aria-labelledby="lgChangeTitle">
+        <h2 id="lgChangeTitle" class="lg-change-title">Choose your own password</h2>
+        <p class="lg-foot">An administrator set the password you signed in with, so choose your own before you go on. Then sign in again with it.</p>
+        <label for="lgCur">Password you signed in with</label>
+        <input id="lgCur" type="password" autocomplete="current-password" maxlength="1024" required>
+        <label for="lgNew">New password</label>
+        <input id="lgNew" type="password" autocomplete="new-password" maxlength="1024" required aria-describedby="lgNewHint">
+        <p class="lg-foot" id="lgNewHint">At least <span id="lgMin">12</span> characters, not your user name, and not the one you signed in with.</p>
+        <label for="lgNew2">New password again</label>
+        <input id="lgNew2" type="password" autocomplete="new-password" maxlength="1024" required>
+        <div class="lg-actions">
+          <button type="submit" class="rp-btn primary" id="lgChangeGo">Save the new password</button>
+        </div>
+        <div class="lg-msg" id="lgChangeMsg" role="alert" aria-live="assertive"></div>
+      </form>
+      <div id="lgStep2" hidden>
+        <p id="lgStep2Text">Your password is right. Now use your passkey: your device asks for its PIN, fingerprint or face.</p>
+        <div class="lg-actions">
+          <button type="button" class="rp-btn primary" id="lgPkGo">Use my passkey</button>
+        </div>
+      </div>
+      <div id="lgPasskey" hidden>
+        <p class="lg-or">Or sign in with a passkey you added on the Team server page:</p>
+        <button type="button" class="rp-btn" id="lgPasskeyBtn">Sign in with a passkey</button>
+      </div>
+      <div id="lgSso" hidden>
+        <p class="lg-or">Or sign in through your organisation's identity provider:</p>
+        <div class="lg-actions">
+          <a class="rp-btn" id="lgSsoBtn" href="/api/auth/sso/login" hidden>Sign in with SSO</a>
+          <a class="rp-btn" id="lgSamlBtn" href="/api/auth/saml/login" hidden>Sign in with SAML</a>
+        </div>
+      </div>
+      <p class="lg-foot">Too many wrong passwords lock the account for a while. A session ends after a quiet spell, and always at the end of the working day; you are warned first.</p>
+    </main>
+  </div>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script>
+  (function () {
+    const $ = id => document.getElementById(id);
+    const msg = (t, bad) => { $('lgMsg').textContent = t || ''; $('lgMsg').className = 'lg-msg' + (bad ? ' bad' : ''); };
+    const cmsg = (t, bad) => { $('lgChangeMsg').textContent = t || ''; $('lgChangeMsg').className = 'lg-msg' + (bad ? ' bad' : ''); };
+    // A password an administrator set must be replaced before anything else
+    // (the server refuses every other call until then).
+    const askForNewPassword = () => { ['lgForm', 'lgSso', 'lgPasskey', 'lgStep2'].forEach(id => { $(id).hidden = true; }); $('lgChange').hidden = false; $('lgCur').focus(); };
+    // A passkey sign-in can also land on an account whose password an
+    // administrator set: ask the server before leaving the page.
+    const signedIn = () => fetch('/api/auth/status', { credentials: 'same-origin', cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
+      .then(s => { if (s && s.unlocked && s.password_change_required) { msg(''); askForNewPassword(); } else window.location.replace('/'); });
+    fetch('/api/auth/status', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).then(s => {
+      if (!s) return;
+      if (!s.team) { msg('This server is not a team server, so there is no account to sign in to here. Open the app instead.', true); $('lgGo').disabled = true; return; }
+      if (s.unlocked && s.password_change_required) { askForNewPassword(); return; }
+      if (s.unlocked) { window.location.replace('/'); return; }
+      if (s.oidc) { $('lgSso').hidden = false; $('lgSsoBtn').hidden = false; }
+      if (s.saml) { $('lgSso').hidden = false; $('lgSamlBtn').hidden = false; }
+      if (s.passkeys && window.PublicKeyCredential && navigator.credentials) $('lgPasskey').hidden = false;
+    }).catch(() => {});
+    // Passkeys: the server's options carry base64url strings; the browser's
+    // WebAuthn API wants bytes, and the answer goes back as base64url again.
+    const fromB64u = s => { const b = atob(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+    const toB64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const post = (url, body) => fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const assertion = cred => ({ id: cred.id, rawId: toB64u(cred.rawId), type: cred.type, clientExtensionResults: {},
+      response: { clientDataJSON: toB64u(cred.response.clientDataJSON), authenticatorData: toB64u(cred.response.authenticatorData), signature: toB64u(cred.response.signature),
+                  userHandle: cred.response.userHandle ? toB64u(cred.response.userHandle) : undefined } });
+    // After a right password: the account's passkey answers (step "passkey"), or,
+    // when this server requires passkeys and the account has none, one is added
+    // (step "enroll_passkey"). Either way there is no session until it is done.
+    let step = null;
+    function showStep(j) {
+      step = j;
+      $('lgForm').hidden = true; $('lgPasskey').hidden = true; $('lgSso').hidden = true; $('lgStep2').hidden = false;
+      $('lgStep2Text').textContent = j.next === 'passkey'
+        ? 'Your password is right. Now use your passkey: your device asks for its PIN, fingerprint or face.'
+        : 'Your password is right. This server also asks for a passkey, and your account has none yet. Add one now on this device (its PIN, fingerprint or face); next time you use it after your password.';
+      $('lgPkGo').textContent = j.next === 'passkey' ? 'Use my passkey' : 'Add a passkey and sign in';
+      msg(''); $('lgPkGo').focus();
+    }
+    $('lgPkGo').addEventListener('click', async () => {
+      if (!step || !(window.PublicKeyCredential && navigator.credentials)) { msg('This browser cannot use passkeys. Try another browser.', true); return; }
+      $('lgPkGo').disabled = true; msg('Waiting for your passkey…');
+      try {
+        const o = step.options; let r;
+        if (step.next === 'passkey') {
+          const cred = await navigator.credentials.get({ publicKey: { challenge: fromB64u(o.challenge), rpId: o.rpId, timeout: o.timeout,
+            userVerification: o.userVerification, allowCredentials: (o.allowCredentials || []).map(c => ({ type: c.type, id: fromB64u(c.id) })) } });
+          if (!cred) { msg('No passkey was chosen.', true); return; }
+          r = await post('/api/auth/team/passkey/login', { ceremony: step.ceremony, credential: assertion(cred) });
+        } else {
+          const cred = await navigator.credentials.create({ publicKey: { challenge: fromB64u(o.challenge), rp: o.rp, timeout: o.timeout, attestation: o.attestation,
+            user: { id: fromB64u(o.user.id), name: o.user.name, displayName: o.user.displayName }, pubKeyCredParams: o.pubKeyCredParams,
+            authenticatorSelection: o.authenticatorSelection, excludeCredentials: [] } });
+          if (!cred) { msg('No passkey was made.', true); return; }
+          r = await post('/api/auth/team/passkey/enroll', { ceremony: step.ceremony, name: 'Passkey', credential: { id: cred.id, rawId: toB64u(cred.rawId), type: cred.type,
+            clientExtensionResults: {}, response: { clientDataJSON: toB64u(cred.response.clientDataJSON), attestationObject: toB64u(cred.response.attestationObject),
+            transports: cred.response.getTransports ? cred.response.getTransports() : [] } } });
+        }
+        let j = {}; try { j = await r.json(); } catch (err) { /* not json */ }
+        if (r.ok) { msg('Signed in.'); step = null; await signedIn(); return; }
+        msg((typeof j.detail === 'string' ? j.detail : 'Sign-in failed.') + ' Sign in with your password again.', true);
+        step = null; $('lgStep2').hidden = true; $('lgForm').hidden = false;
+      } catch (err) { msg(err && err.name === 'NotAllowedError' ? 'The passkey request was cancelled or timed out. Try again.' : 'The passkey could not be used here.', true); }
+      finally { $('lgPkGo').disabled = false; }
+    });
+    $('lgPasskeyBtn').addEventListener('click', async () => {
+      $('lgPasskeyBtn').disabled = true; msg('Waiting for your passkey…');
+      try {
+        let r = await post('/api/auth/team/passkey/options');
+        let j = {}; try { j = await r.json(); } catch (err) { /* not json */ }
+        if (!r.ok) { msg(typeof j.detail === 'string' ? j.detail : 'Passkey sign-in is not available.', true); return; }
+        const o = j.options;
+        const cred = await navigator.credentials.get({ publicKey: { challenge: fromB64u(o.challenge), rpId: o.rpId, timeout: o.timeout,
+          userVerification: o.userVerification, allowCredentials: (o.allowCredentials || []).map(c => ({ type: c.type, id: fromB64u(c.id) })) } });
+        if (!cred) { msg('No passkey was chosen.', true); return; }
+        r = await post('/api/auth/team/passkey/login', { ceremony: j.ceremony, credential: assertion(cred) });
+        j = {}; try { j = await r.json(); } catch (err) { /* not json */ }
+        if (r.ok) { msg('Signed in.'); step = null; await signedIn(); return; }
+        msg(typeof j.detail === 'string' ? j.detail : 'Sign-in failed.', true);
+      } catch (err) { msg(err && err.name === 'NotAllowedError' ? 'The passkey request was cancelled or timed out.' : 'The passkey could not be used here.', true); }
+      finally { $('lgPasskeyBtn').disabled = false; }
+    });
+    $('lgForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const username = $('lgUser').value.trim(), password = $('lgPass').value;
+      if (!username || !password) { msg('Type your user name and password.', true); return; }
+      $('lgGo').disabled = true; msg('Signing in…');
+      try {
+        const r = await fetch('/api/auth/team/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }) });
+        let body = {}; try { body = await r.json(); } catch (err) { /* not json */ }
+        if (r.ok && body.must_change_password) { msg(''); $('lgCur').value = password; askForNewPassword(); $('lgNew').focus(); return; }
+        if (r.ok && body.next && body.ceremony) { $('lgPass').value = ''; showStep(body); return; }
+        if (r.ok) { $('lgPass').value = ''; msg('Signed in.'); window.location.replace('/'); return; }
+        msg(typeof body.detail === 'string' ? body.detail : 'Sign-in failed.', true);
+      } catch (err) { msg('The server did not answer. Is it running?', true); }
+      finally { $('lgGo').disabled = false; $('lgPass').value = ''; if (!step && !$('lgForm').hidden) $('lgPass').focus(); }
+    });
+    $('lgChange').addEventListener('submit', async e => {
+      e.preventDefault();
+      const current = $('lgCur').value, next = $('lgNew').value;
+      if (!current || !next) { cmsg('Fill in both passwords.', true); return; }
+      if (next !== $('lgNew2').value) { cmsg('The two new passwords differ.', true); $('lgNew2').focus(); return; }
+      $('lgChangeGo').disabled = true; cmsg('Saving…');
+      try {
+        const r = await fetch('/api/team/me/password', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ current, new: next }) });
+        let body = {}; try { body = await r.json(); } catch (err) { /* not json */ }
+        if (r.ok) {
+          ['lgCur', 'lgNew', 'lgNew2'].forEach(id => { $(id).value = ''; });
+          $('lgChange').hidden = true; $('lgForm').hidden = false;
+          msg('Your new password is saved. Sign in with it now.'); $('lgUser').focus(); return;
+        }
+        cmsg(typeof body.detail === 'string' ? body.detail : 'The password could not be changed.', true);
+      } catch (err) { cmsg('The server did not answer. Is it running?', true); }
+      finally { $('lgChangeGo').disabled = false; }
+    });
+  })();
+  </script>
+</body>
+</html>

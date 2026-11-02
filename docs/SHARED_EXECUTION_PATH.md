@@ -1,5 +1,7 @@
 # The shared execution path
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 Every policy pack, whatever it is called or which industry it serves, gets
 into a Zscaler tenant and out of it through **one** path. This page says
 what that path is, what it promises, and what someone adding a pack or a

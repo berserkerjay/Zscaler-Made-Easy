@@ -1,0 +1,137 @@
+{
+ "area": "Builders: the fix flow (ops_list_fix.py url area, bulk_test.fix_handoff URL and ZPA sections, admin_ops zpa_domains add/remove, ops_zpa access rule position, the Bulk changes page)",
+ "title": "Fix selected writes the change that changes the answer: a custom URL category with the URL filtering rule that uses it, a warning when a category alone changes nothing, ZPA rows routed to the ZPA segment change, typed ZPA domains and the access rule's position",
+ "standards": [
+  "ASVS V1.4.1",
+  "ASVS V4.1.1",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V7.2.1",
+  "ASVS V11.1.1",
+  "ASVS V11.1.3",
+  "CWE-20",
+  "CWE-272",
+  "CWE-367",
+  "CWE-670",
+  "CWE-770",
+  "CWE-841",
+  "CWE-1059",
+  "CWE-1188",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 2.1.1",
+  "WCAG 2.2 SC 4.1.2"
+ ],
+ "checks": [
+  {
+   "id": "W9-PF-C01",
+   "what": "A blocked URL that should be allowed: the plan adds it to a custom URL category and the category to an existing Allow rule above the deciding rule, or to a new rule created DISABLED at the deciding rule's order; the Path analyzer's evaluator (data_flow.trace) run again on the tenant as applied changes its verdict (for a new rule, once it is enabled)",
+   "standard": "ASVS V1.4.1 · CWE-670 · CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "W9-PF-C02",
+   "what": "A category-only change is warned when no enabled rule with the purpose's action names the category, or every such rule is below the deciding rule; the verdict indeed does not change",
+   "standard": "ASVS V1.4.1 · CWE-1059",
+   "result": "pass"
+  },
+  {
+   "id": "W9-PF-C03",
+   "what": "Undo of a URL fix restores the categories and the rules (URLs off, category off an existing rule, created rule and category deleted); end to end on the sample tenant through the SDK's own services (wire fields configuredName, urls, urlCategories, state DISABLED)",
+   "standard": "ASVS V7.2.1 · CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "W9-PF-C04",
+   "what": "zpa_domains add: typed domains (at most 500, validated) into an existing segment; one already in another segment on overlapping ports is excluded with where it is; the segment is sent back whole, read back and the Undo takes the domain out; remove never empties a segment",
+   "standard": "ASVS V5.1.3 · CWE-20 · CWE-770 · CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "W9-PF-C05",
+   "what": "zpa_policies access_above: the access rule lands just above the picked rule with one policies.bulk_reorder_rules write (Default rule left out); the order is read again before the write and a change since the preview is a conflict with nothing moved; Undo deletes a created rule or moves an existing one back",
+   "standard": "ASVS V11.1.3 · CWE-367 · CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "W9-PF-C06",
+   "what": "Fix selected: rows ZPA carries become a ZPA section (scope-checked; excluded with the Scope page's reason when ZPA is not ticked) and open ZPA segment domains, not a ZIA operation; URL filtering rows open Fix rows from Test a list with the category and a rule above the deciding rule (browser test)",
+   "standard": "ASVS V4.1.1 · ASVS V4.1.3 · CWE-272 · CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "W9-PF-C07",
+   "what": "Every new control (custom URL category picker and name, Add typed domains, Place it above) has a name, takes focus, has a help entry and a * mark; no sideways scroll at 320px",
+   "standard": "WCAG 2.2 SC 2.1.1 · SC 4.1.2 · SC 1.4.10",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W9-PF-01",
+   "title": "Fix selected for URL filtering rows only edited a custom URL category: when no rule with the needed action named it above the deciding rule, the change altered nothing and the preview did not say so",
+   "severity": "medium",
+   "cwe": "CWE-1059",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "ops_list_fix.py url area (category plus rule sub-spec, _warn_no_rule), bulk_test.fix_handoff url section, static/ops_list_fix.js",
+   "test": "tests/test_ops_list_fix.py",
+   "commit": ""
+  },
+  {
+   "id": "W9-PF-02",
+   "title": "Test a list rows ZPA carries were excluded from Fix selected, so a private application handled wrongly could only be fixed by hand",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "bulk_test.fix_handoff zpa sections, the hand-off route's ZPA scope, report_operations.html picks ZPA segment domains; admin_ops zpa_domains add/remove; ops_zpa access_above",
+   "test": "tests/test_fix_flow_browser.py",
+   "commit": ""
+  },
+  {
+   "id": "W9-PF-03",
+   "title": "A new URL filtering rule sent with every request method listed is read by the Path analyzer as conditional on the method, so the fix it proposed would not show as deciding",
+   "severity": "low",
+   "cwe": "CWE-670",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "ops_list_fix sends no request_methods for a new URL rule (the SDK documents: if not specified, every method)",
+   "test": "tests/test_ops_list_fix.py::test_a_url_fix_creates_a_disabled_rule_above_the_deciding_rule_that_changes_the_verdict_once_enabled",
+   "commit": ""
+  },
+  {
+   "id": "W9-PF-04",
+   "title": "The five vendor endpoint routes had no team-mode access rule, so on a team server they were a 403 for everyone (fail-closed) and the route coverage test failed",
+   "severity": "low",
+   "cwe": "CWE-285",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "team_routes.ROUTE_RULES: GET /api/vendor-endpoints for any session, settings, refresh, import and delete for admins (as the Microsoft 365 routes)",
+   "test": "tests/test_team_server.py",
+   "commit": ""
+  },
+  {
+   "id": "W9-PF-05",
+   "title": "SECURITY.md said the assets.zoom.us fetch is turned on in Advanced settings, and the Path analyzer pointed to Manual inputs, but neither control existed",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.6",
+   "status": "fixed",
+   "fix": "Advanced settings card for other providers' lists (Zoom fetch off by default) and the Path analyzer's Manual inputs (what-if) panel, with help entries and release marks (browser tests in tests/test_vendor_app_services.py and tests/test_path_manual.py)",
+   "test": "tests/test_vendor_app_services.py",
+   "commit": ""
+  },
+  {
+   "id": "W9-PF-06",
+   "title": "A Test a list row ZPA denies opened Add typed domains, which cannot help a domain already in its segment; a multi-segment hand-off filled only the first segment",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "ops_zpa zpa_policies access_segments (an access rule for an existing segment, above the deciding rule, typed phrase, Undo); report_operations.html picks it and offers every hand-off segment (browser test in tests/test_fix_flow_browser.py)",
+   "test": "tests/test_ops_zpa.py",
+   "commit": ""
+  }
+ ],
+ "tests_added": 29
+}

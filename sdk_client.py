@@ -28,6 +28,13 @@ from typing import Any, Dict, Optional, Tuple
 
 from zscaler import ZscalerClient
 
+import api_calls
+
+# Every SDK call this client makes is listed in the API calls log
+# (api_calls: method, path template, status, duration, retries; never a
+# body, header or secret). Wrapping only observes: the call is unchanged.
+api_calls.install_sdk_hooks()
+
 logger = logging.getLogger("dlp_assessment.sdk_client")
 
 SDK_REQUEST_TIMEOUT = 90   # seconds per tenant request, as dlp_api_server.SDK_REQUEST_TIMEOUT
@@ -207,6 +214,13 @@ class SdkClient:
             # --- ZIA: NSS ---
             "/zia/nssFeeds":                lambda: _sdk_call(zs.zia.cloud_nss.list_nss_feed),
             "/zia/nssServers":              lambda: _sdk_call(zs.zia.nss_servers.list_nss_servers),
+            "/zia/nssCollectors":           lambda: _sdk_call(zs.zia.nss_collectors.list_collectors),
+
+            # --- ZIA: Governance (configAudit and subscriptions stay on the raw
+            # GET below: the SDK reshapes their bodies) ---
+            "/zia/alertSubscriptions":      lambda: _sdk_call(zs.zia.alert_subscriptions.list_alert_subscriptions),
+            "/zia/remoteAssistance":        lambda: _sdk_call(zs.zia.remote_assistance.get_remote_assistance),
+            "/zia/passwordExpiry/settings": lambda: _sdk_call(zs.zia.admin_roles.get_password_expiry_settings),
 
             # --- ZIA: ICAP / Incident Receivers ---
             "/zia/icapServers":              lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_icap_servers),
@@ -345,6 +359,11 @@ class SdkClient:
 
             if isinstance(body, list):
                 body = _to_dicts(body)
+
+            # A list whose objects carry a key (AI Guard provider credentials,
+            # ZIA partner integrations) keeps only its metadata, before it is cached.
+            from dlp_assessment_full_auto import metadata_only
+            body = metadata_only(endpoint, body)
 
             return body, status if status else 200
 

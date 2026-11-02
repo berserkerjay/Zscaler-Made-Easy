@@ -1,0 +1,207 @@
+{
+ "area": "Bulk changes, Build new: the rule editor (create, edit, duplicate, delete one ZIA rule of ten types), DNS Control and IPS in Enable or disable rules, ZPA segment edits, cloud app instances and tenancy restriction profiles, proxy chaining (rule_editor.py, ops_rule_editor.py, ops_zia_objects.py)",
+ "title": "A free-form rule editor on the Bulk changes engine: forms from the SDK 1.11.3 models, validation, rank-aware placement, plain-language preview, conflict guard, read-back, stronger delete confirmation and exact Undo",
+ "files": [
+  "rule_editor.py",
+  "ops_rule_editor.py",
+  "ops_zia_objects.py",
+  "admin_ops.py",
+  "pack_ops.py",
+  "offline_tenant.py",
+  "sample_tenant.py",
+  "static/ops_rule_editor.js",
+  "static/report_operations.html",
+  "static/help_catalog.js",
+  "static/whats_new.js"
+ ],
+ "standards": [
+  "ASVS V1.4.4",
+  "ASVS V2.8.1",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.3.3",
+  "ASVS V7.1.3",
+  "ASVS V7.2.1",
+  "ASVS V11.1.1",
+  "ASVS V11.1.6",
+  "CWE-20",
+  "CWE-79",
+  "CWE-284",
+  "CWE-285",
+  "CWE-306",
+  "CWE-362",
+  "CWE-367",
+  "CWE-639",
+  "CWE-694",
+  "CWE-778",
+  "CWE-840",
+  "CWE-841",
+  "CWE-1188",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 4.1.2",
+  "WCAG 2.2 SC 1.4.10"
+ ],
+ "checks": [
+  {
+   "id": "RE-C01",
+   "what": "Payload oracle: for each of the ten rule types a payload with every form field, built into the SDK 1.11.3 model, keeps every field; references go out as id objects the SDK's id transform keeps",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C02",
+   "what": "Validation: unknown fields, values outside the SDK enumerations, bad IPs, ranges and CIDR blocks, country codes, Cloud App Control actions, non-numeric ids, lists over 1000, names over ZIA's limit, control characters and angle brackets are refused with the field named; whole-rule rules (proxy chaining needs a gateway) refuse the plan",
+   "standard": "CWE-20",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C03",
+   "what": "A picked object that is not in the tenant (stale or forged id) blocks the plan",
+   "standard": "CWE-639",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C04",
+   "what": "Placement: with Admin Ranking on a new rule takes the rank of the rule it sits above (going last, of the rule just above); off, unknown or out of scope rank 7; clamped above the Default rule; a read-only neighbour is flagged; the setting is read only with ZIA platform ticked",
+   "standard": "CWE-840",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C05",
+   "what": "Create: disabled by default at the order and rank the preview said, read back; created enabled needs the typed phrase; Undo deletes exactly that rule and leaves one someone changed since",
+   "standard": "ASVS V11.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C06",
+   "what": "Edit: the rule is sent back as read with only the changed fields (fields the form does not show are kept); the re-read before the write turns someone else's change into a conflict and nothing is written; any change to the rule after the preview changes the plan hash; Undo restores the rule exactly",
+   "standard": "CWE-367",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C07",
+   "what": "Duplicate: right below its source, at its rank, disabled, every setting kept; a taken name blocks",
+   "standard": "CWE-840",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C08",
+   "what": "Delete: the typed confirmation is DELETE and the rule's name; the usual phrase or a near miss is refused and nothing is written; a rule changed since the preview is not deleted; Undo re-creates it with the same fields, order, rank and state",
+   "standard": "CWE-306",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C09",
+   "what": "Each rule type writes through its own SDK service (URL, firewall, SSL, forwarding, Web DLP, DNS, IPS, File Type Control, Sandbox, Cloud App Control with its type) and is undone",
+   "standard": "ASVS V1.4.4",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C10",
+   "what": "Scope: a rule type, family or Undo step not ticked on the Scope page is refused before any read; the routes answer 400 before sign-in and 409 for an Undo form without its record",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C11",
+   "what": "DNS Control and IPS rules in Enable or disable rules, with Undo; the Default IPS rule is never changed; in scope only with ZIA platform",
+   "standard": "CWE-285",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C12",
+   "what": "ZPA segment edit keeps domains, servers and group, needs the typed phrase for an enabled segment, refuses a segment with no port and is undone exactly; cloud app instances, tenancy profiles and proxies are created and edited through the SDK, Undo deletes what was created; the gateway is reported as portal steps",
+   "standard": "ASVS V11.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C13",
+   "what": "The audit entry of an applied edit names the actor; a timed-out create of a new kind (cloud app instance, tenancy profile, IPS rule) is never resent blind",
+   "standard": "ASVS V7.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "RE-C14",
+   "what": "Every new control has a help entry and mark or a recorded reason (browser tour on the sample tenant); new features carry the * mark; no sideways scroll at 320px; tenant text escaped in the page script",
+   "standard": "WCAG 2.2 SC 3.3.2",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "RE-1",
+   "title": "An edit's plan hash covered only the changed fields, so a change to another field of the same rule after the preview did not stop the apply (the preview sentence could describe a rule that no longer was)",
+   "severity": "low",
+   "status": "fixed",
+   "cwe": "CWE-367",
+   "asvs": "V11.1.6",
+   "fix": "ops_rule_editor: the update group carries the whole rule as previewed, so any change to it moves the plan hash and nothing is written",
+   "test": "tests/test_rule_editor.py::test_a_tenant_change_after_the_preview_changes_the_plan_hash"
+  },
+  {
+   "id": "RE-2",
+   "title": "The Bulk changes rule picker stopped reading every policy when one rule type's SDK service was missing on the sign-in",
+   "severity": "low",
+   "status": "fixed",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "fix": "admin_ops.read_objects: a missing service is that policy's read error; the others are still read",
+   "test": "tests/test_c6_admin_ops.py"
+  },
+  {
+   "id": "RE-3",
+   "title": "SDK 1.11.3: proxies.list_proxy_gateways returns None instead of a (result, response, error) tuple on an error",
+   "severity": "info",
+   "status": "fixed",
+   "cwe": "CWE-252",
+   "fix": "ops_zia_objects.read_gateways: None is the read error 'the proxy gateways could not be read'"
+  },
+  {
+   "id": "RE-4",
+   "title": "SDK 1.11.3: the DLPWebRules model has no time_windows although the add_rule docstring lists it; the SSL and firewall models differ on labels",
+   "severity": "info",
+   "status": "fixed",
+   "cwe": "CWE-20",
+   "fix": "rule_editor: each form offers only fields its model keeps; the payload oracle test fails on any field a model drops",
+   "test": "tests/test_rule_editor.py::test_every_form_field_is_a_field_of_the_sdk_model"
+  },
+  {
+   "id": "RE-5",
+   "title": "The sample tenant could not find a cloud app instance by its instanceId, and a created one had none",
+   "severity": "info",
+   "status": "fixed",
+   "cwe": "CWE-20",
+   "fix": "offline_tenant: an item is also found by instanceId and a created cloud app instance gets one"
+  },
+  {
+   "id": "RE-6",
+   "title": "The SDK cannot create or change a proxy gateway, a root certificate, or read an API client's own admin rank",
+   "severity": "info",
+   "status": "accepted",
+   "cwe": "CWE-1059",
+   "reason": "Proxy chaining reports the gateway and certificate as portal steps; the placement warns when the neighbour rule is read-only (its rank may be above the client's)"
+  },
+  {
+   "id": "RE-7",
+   "title": "Some enumerations and limits are assumed, not in an SDK source: URL, DNS, File Type Control and Web DLP protocol names, Web DLP severity names, the 31-character name limit for forwarding and IPS rules, Caution for downloads only",
+   "severity": "info",
+   "status": "accepted",
+   "cwe": "CWE-1059",
+   "reason": "Marked assumed in rule_editor.py; the tenant refuses what it does not take and the apply reports ZIA's answer"
+  },
+  {
+   "id": "RE-8",
+   "title": "Web DLP URL categories are not offered: the SDK sends them as id objects and whether ZIA takes category names there is not documented",
+   "severity": "info",
+   "status": "accepted",
+   "cwe": "CWE-1059",
+   "reason": "An edit keeps them as the tenant has them; the form can add them once the id type is confirmed"
+  }
+ ],
+ "notes": [
+  "Screenshots of the editor on the sample tenant: create form, preview sentence and fields, applied result, edit preview, delete with the DELETE <name> phrase, the DNS form, proxy chaining with the portal steps, a ZPA segment disable, cloud app instances, and the 320px view (no sideways scroll).",
+  "Placement follows the rank inheritance approach (anchor rule's rank) through admin_rank; when rank_inherit.py lands, rule_editor.place can call it instead."
+ ],
+ "tests_added": 89
+}

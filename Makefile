@@ -3,16 +3,17 @@
 #   make run        start the web app locally
 #   make test       the test suite
 #   make check      compile, lint (pyflakes), pack conventions, Terraform freshness: what CI runs
+#   make sast       offline static analysis of the app's Python (bandit); fails on a medium+ finding
 #   make docker     build the container image
 #   make docker-run start the container (loopback publish, read-only, non-root)
 PY ?= .venv/bin/python
 
-.PHONY: install dev run stop test check docker docker-run lock lock-dev lock-ci ci-tools sbom upstream
+.PHONY: install dev run stop test check sast docker docker-run lock lock-dev lock-ci ci-tools sbom upstream
 
 install:
 	./install.sh
 
-# Test and lint tools into the same environment (pytest, pyflakes, httpx),
+# Test and lint tools into the same environment (pytest, pyflakes, httpx, bandit),
 # hash-pinned from requirements-dev.lock, as CI installs them.
 dev: install
 	$(PY) -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r requirements-dev.lock
@@ -31,8 +32,17 @@ check:
 	$(PY) -m pyflakes $$(git ls-files '*.py' | grep -v '^tests/') || true
 	$(PY) tools/fan_out_channels.py --check
 	$(PY) pack_terraform.py --out terraform && git diff --exit-code -- terraform && test -z "$$(git status --porcelain -- terraform)"
-	@if command -v terraform >/dev/null 2>&1; then $(PY) tools/terraform_samples.py /tmp/dlp_check_tf_samples && terraform fmt -check -recursive terraform /tmp/dlp_check_tf_samples/vendor_hcl /tmp/dlp_check_tf_samples/containment /tmp/dlp_check_tf_samples/endpoint; else echo "terraform not installed: fmt check skipped here (CI runs it)"; fi
+	@if command -v terraform >/dev/null 2>&1; then $(PY) tools/terraform_samples.py /tmp/dlp_check_tf_samples && terraform fmt -check -recursive terraform /tmp/dlp_check_tf_samples/vendor_hcl /tmp/dlp_check_tf_samples/containment /tmp/dlp_check_tf_samples/endpoint /tmp/dlp_check_tf_samples/tenant; else echo "terraform not installed: fmt check skipped here (CI runs it)"; fi
 	$(PY) upstream_check.py --offline --quiet
+
+# Static analysis (SAST) of the app's Python, offline: bandit with the
+# configuration in pyproject.toml [tool.bandit] (every check, tests/
+# excluded), failing on any finding of medium severity or higher.
+# tests/test_sast.py runs the same gate in every test run; CodeQL
+# (.github/workflows/codeql.yml) adds Python and JavaScript data-flow
+# queries on pull requests and weekly. Needs `make dev` first.
+sast:
+	$(PY) -m bandit -c pyproject.toml -r . --severity-level medium --confidence-level low -q
 
 # The daily upstream check (also .github/workflows/upstream_check.yml): the
 # installed SDK against PyPI's latest release and the 2.x prerelease's ZIA

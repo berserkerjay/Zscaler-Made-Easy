@@ -90,7 +90,7 @@ CHANNEL_CHECKS: Dict[str, Dict[str, Sequence[str]]] = {
     "ssl_inspection": {"sections": ("4 — SSL Policy", "7 — SSL Alignment", "GenAI — SSL Inspection"), "ids": ("5.5", "CA.3", "E.2")},
     "cloud_app_control": {"sections": ("ZIA — Cloud Apps",), "ids": ("E.3",)},
     "device_control": {"sections": (), "ids": ("8.1",)},
-    "workflow_automation": {"sections": (), "ids": ("12.4", "12.5", "12.7")},
+    "workflow_automation": {"sections": ("DLP — Workflow Automation incidents",), "ids": ("12.4", "12.5", "12.7")},
 }
 
 
@@ -211,13 +211,23 @@ ENDPOINT_CHANNELS: Dict[str, Tuple[str, ...]] = {
     "/zia/webDlpRules": ("web_dlp",),
     "/zia/webDlpGlobalOptions": ("web_dlp", "endpoint_dlp", "email_dlp"),
     "/zia/endPointDlpRules": ("endpoint_dlp", "device_control"),
+    # The printers, drives, shares and storage Endpoint DLP rules are scoped to (B.17).
+    "/zia/endPointDlpResourceGroups": ("endpoint_dlp", "device_control"),
+    "/zia/dlpEndpointResource": ("endpoint_dlp", "device_control"),
     "/zia/emailDlpRules": ("email_dlp",),
     "/zia/casbDlpRules": ("saas_casb",),
     "/zia/casbTenant": ("saas_casb", "email_dlp"),
+    # SaaS Security malware scanning and its quarantine tombstones (data at rest).
+    "/zia/casbMalwareRules": ("saas_casb",),
+    "/zia/quarantineTombstoneTemplate": ("saas_casb",),
     "/zia/sslInspectionRules": ("ssl_inspection",),
     "/zia/cloudApplicationRules": ("cloud_app_control",),
     "/zia/tenancyRestrictionProfile": ("cloud_app_control",),
+    "/zwa": ("workflow_automation",),
 }
+# Reads the API asks for with a POST that changes nothing (ScopedClient.post_read):
+# zscaler/zwa/dlp_incidents.py dlp_incident_search, zscaler/zwa/audit_logs.py audit_logs.
+READ_POSTS = ("/zwa/dlp/v1/incidents/search", "/zwa/dlp/v1/customer/audit")
 
 # Which checks read each of those endpoints. tests/test_no_implicit_reads.py
 # runs every check against a recording client (list-, dict- and
@@ -230,15 +240,20 @@ CHANNEL_READS: Dict[str, Sequence[str]] = {
                          "AI.18", "AUTO-TF-01", "AUTO-TF-02", "AUTO-TF-03", "AUTO-TF-04", "AUTO-TF-05"),
     "/zia/webDlpGlobalOptions": ("5.17", "5.19", "5.20", "8.12", "A.9", "B.10", "D.9"),
     "/zia/endPointDlpRules": ("MC.2", "8.1", "8.2", "8.3", "8.4", "8.6", "12.1", "12.3", "12.12", "A.14", "B.5", "B.6", "B.7",
-                              "B.8", "B.9", "B.11", "B.16"),
+                              "B.8", "B.9", "B.11", "B.16", "B.17"),
+    "/zia/endPointDlpResourceGroups": ("B.17",),
+    "/zia/dlpEndpointResource": ("B.17",),
     "/zia/emailDlpRules": ("MC.4", "8.9", "D.2", "D.3", "D.4", "D.5", "D.6", "D.7", "D.8", "D.9"),
     "/zia/casbDlpRules": ("MC.3", "8.10", "C.2", "C.3", "C.4", "C.5", "C.6", "C.7", "C.8"),
-    "/zia/casbTenant": ("C.1", "C.3", "D.1", "D.6"),
+    "/zia/casbTenant": ("C.1", "C.3", "D.1", "D.6", "SAAS.1", "SAAS.3"),
+    "/zia/casbMalwareRules": ("SAAS.1", "SAAS.2"),
+    "/zia/quarantineTombstoneTemplate": ("SAAS.2",),
     "/zia/sslInspectionRules": ("4.1", "4.3", "4.4", "4.5", "4.6", "4.10", "4.11", "4.13", "4.14", "5.5", "MC.12", "6.4", "6.5",
                                 "7.2", "7.3", "9.2", "9.3", "A.2", "E.2", "CA.3", "AI.1", "AI.5", "AI.6", "AUTO-TF-01"),
     "/zia/cloudApplicationRules": ("3.7", "4.7", "5.18", "MC.5", "A.6", "A.7", "A.17", "E.1", "E.3", "E.8", "E.9", "E.13", "CA.1",
-                                   "CA.2", "CA.3", "CA.4", "CA.5", "AI.3", "AI.8", "AI.14", "AI.15", "AI.20"),
+                                   "CA.2", "CA.3", "CA.4", "CA.5", "AI.3", "AI.8", "AI.14", "AI.15", "AI.20", "THR.10"),
     "/zia/tenancyRestrictionProfile": ("5.18", "A.7", "CA.2", "AI.14"),
+    "/zwa": ("ZWA.1", "ZWA.2", "ZWA.3", "ZWA.4"),
 }
 
 
@@ -439,6 +454,31 @@ class ScopedClient:
         rec = getattr(self._tl, "unanswered", None)
         if rec is not None and code in self.UNANSWERED:
             rec.append((str(ep), int(code)))
+        return res
+
+    def post_read(self, ep, body=None):
+        """A read the API asks for with a POST that changes nothing (the
+        Workflow Automation incident and audit-log searches), refused like a
+        GET when its channel is not on Zscaler. Only paths in READ_POSTS."""
+        path = str(ep or "").split("?", 1)[0]
+        if not any(path == p for p in READ_POSTS):
+            return ({"error": "not a read", "message": "Only the listed read searches may be sent this way."}, 0)
+        chans = endpoint_channels(path)
+        if self._declared and chans and not group_in_scope(chans, self._scope):
+            self.refused.append(path)
+            return ({"error": "not in scope",
+                     "message": "This configuration is excluded by the Scope page declaration or an unmet prerequisite; the tenant was not read."}, 0)
+        if not self._declared:
+            # With no declaration nothing is refused for configuration, but incidents are activity: read only when declared.
+            return ({"error": "not in scope", "message": "Workflow Automation incidents are read only when the Scope page marks it Zscaler."}, 0)
+        res = self._client.post(ep, body)
+        try:
+            code = res[1]
+        except Exception:  # noqa: BLE001
+            code = None
+        rec = getattr(self._tl, "unanswered", None)
+        if rec is not None and code in self.UNANSWERED:
+            rec.append((path, int(code)))
         return res
 
     def __getattr__(self, name):

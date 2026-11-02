@@ -8,8 +8,11 @@
 // and the Scope page's selection; the job is followed and its summary
 // drawn: counts, the deciding rules and categories, the rows that need a
 // look, what the file expected, the downloads and a list per area.
-// "Fix selected" opens Bulk changes with a URL category change filled in:
-// it never writes on its own.
+// "Fix selected" opens Bulk changes with the picked rows filled in, each for
+// what it was expected to do: a URL category change for the URL filtering
+// rows, and "Fix rows from Test a list" (IP destination groups with a Cloud
+// Firewall or DNS Control rule, the ATP lists) for the others. It never
+// writes on its own; after the change, Prove it there tests the rows again.
 (function () {
   'use strict';
   // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
@@ -22,7 +25,7 @@
     allowed_but_blockable: 'Allowed but blockable', unverified: 'Unverified', not_tested: 'Not tested' };
   const RESULT_CLS = { blocked: '', allowed: 'mute', bypassed: 'bad', isolated: 'warn', caution: 'warn', allowed_but_blockable: 'warn', unverified: 'warn', not_tested: 'mute' };
   const AREA_KEY = { 'ATP': 'atp', 'Firewall': 'firewall', 'URL': 'url', 'DNS': 'dns', 'Client Connector': 'client_connector', 'Cloud App': 'cloud_app', 'ZPA': 'zpa' };
-  const FIX_AREAS = ['URL', 'DNS', 'Cloud App'];
+  const FIX_AREAS = ['URL', 'Cloud App', 'Firewall', 'DNS', 'ATP'];
   // A list file as text: UTF-16 when it starts with a UTF-16 byte order
   // mark (Excel's "Unicode Text" saves lists that way), UTF-8 otherwise; the
   // mark itself is dropped. Blob.text() reads every file as UTF-8, which
@@ -47,8 +50,10 @@
       const p = $(x.getAttribute('aria-controls')); if (p) p.hidden = !on;
     });
     if (focus) t.focus();
-    try { history.replaceState(null, '', location.pathname + location.search + (t.id === 'tab-list' ? '#list' : '')); } catch (e) { /* ignore */ }
+    try { history.replaceState(null, '', location.pathname + location.search + (t.id === 'tab-list' ? '#list' : t.id === 'tab-cat' ? '#categories' : '')); } catch (e) { /* ignore */ }
   }
+  // The Category lookup view (static/category_lookup.js) opens its tab through this.
+  window.PathSelectTab = (id, focus) => { const t = $(id); if (t) selectTab(t, !!focus); };
   tabs.forEach((t, i) => {
     t.addEventListener('click', () => selectTab(t, false));
     t.addEventListener('keydown', e => {
@@ -62,7 +67,7 @@
   });
   // The bar's Analyze and HAR import show their result in the first view.
   ['paRun', 'paHarBtn'].forEach(id => { const b = $(id); if (b) b.addEventListener('click', () => selectTab($('tab-one'), false)); });
-  if (location.hash === '#list') selectTab($('tab-list'), false);
+  if (location.hash === '#list') selectTab($('tab-list'), false);   // #categories[=…] is static/category_lookup.js's (it reads the query first)
 
   // ── credentials and scope, as the rest of the page sends them ───────
   function credBody() {
@@ -95,6 +100,8 @@
     if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
     return { scopes: scopes.map(String), channels, from_page: true };
   }
+  // The Category lookup view sends the same credentials and scope.
+  window.PathRequest = { credBody: () => credBody(), scopeSelection: () => scopeSelection(), newStartToken: () => newStartToken(), errText };
   function newStartToken() {
     try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
     let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
@@ -251,11 +258,18 @@
     const cls = { ok: 'st-ok', bad: 'st-fail', warn: 'st-warn', mute: '' }[RESULT_CLS[k] || 'mute'];
     return `<span class="df-chip ${cls}">${E(RESULT_LABEL[k] || r.result)}</span>`;
   }
+  // A row's destination opens in the Category lookup view (a host, URL or
+  // one IP address; a CIDR block or a range has no single category).
+  function catLink(target) {
+    const t = String(target || '');
+    if (!t || /\s/.test(t) || (/\//.test(t) && !/^https?:\/\//i.test(t)) || /^[0-9.]+-[0-9.]+$/.test(t) || !$('tab-cat')) return '';
+    return ` <button type="button" class="pl-cat" data-catq="${E(t)}" aria-label="Categories and rules for ${E(t)}">Categories</button>`;
+  }
   function previewHtml(res) {
     const rows = res.preview || [];
     const head = ['Pick', 'Row', 'Destination', 'Result', 'Deciding rule', 'Category', 'Expected', 'Recommended area', 'Recommendation'];
     const body = rows.map(r => `<tr><td><input type="checkbox" class="pl-pick" data-row="${E(r.row)}" aria-label="Pick row ${E(r.row)}, ${E(r.target)}"></td>
-      <td class="num">${E(r.row)}</td><td>${E(r.target)}${r.label ? ` <span class="df-by">${E(r.label)}</span>` : ''}</td><td>${resultChip(r)}${r.blockable_by ? `<div class="df-by">could be blocked by ${E(r.blockable_by)}</div>` : ''}</td>
+      <td class="num">${E(r.row)}</td><td>${E(r.target)}${r.label ? ` <span class="df-by">${E(r.label)}</span>` : ''}${catLink(r.target)}</td><td>${resultChip(r)}${r.blockable_by ? `<div class="df-by">could be blocked by ${E(r.blockable_by)}</div>` : ''}</td>
       <td>${E(r.rule)}${r.area ? ` <span class="df-by">${E(r.area)}</span>` : ''}${r.segment ? ` <span class="df-by">segment ${E(r.segment)}</span>` : ''}</td><td>${E(r.category || '–')}</td><td>${E(r.expected ? String(r.expected).toLowerCase() : '–')}${r.meets ? ` <span class="df-by">${r.meets === 'yes' ? 'met' : 'not met'}</span>` : ''}</td>
       <td>${E(r.recommended_area)}</td><td>${E(r.recommendation || r.notes)}</td></tr>`);
     const why = res.rows ? 'Every row is allowed with no scoped rule that would block it, and none misses what your file expected, so there is nothing to look at here.' : 'No row was tested.';
@@ -263,7 +277,7 @@
       <div class="df-hint">Rows that miss what your file expected come first, then rows that are blocked, bypassed, isolated, cautioned, unverified or blockable. The first ${n(rows.length)} are shown; the downloads have every row.</div>
       ${table('Rows to look at', head, body, why)}
       ${rows.length ? `<div class="pl-row"><label class="df-ctl"><span class="lbl">The picked destinations should be</span><select id="plPurpose" aria-label="What the picked destinations should be"><option value="block">Blocked</option><option value="allow">Allowed</option></select></label>
-        <button type="button" class="rp-btn" id="plFix">Fix selected in Bulk changes</button><span class="df-hint" id="plFixInfo" role="status" aria-live="polite">Opens Bulk changes with a URL category change filled in. Nothing is written until you preview it and apply it there in write mode.</span></div>` : ''}`;
+        <button type="button" class="rp-btn" id="plFix">Fix selected in Bulk changes</button><span class="df-hint" id="plFixInfo" role="status" aria-live="polite">Opens Bulk changes with the rows filled in, each for what it was expected to do: URL categories, IP destination groups with a Cloud Firewall or DNS Control rule, or the ATP lists. Nothing is written until you preview it and apply it there in write mode.</span></div>` : ''}`;
   }
   function expectationsHtml(res) {
     const ex = res.expectations;
@@ -328,6 +342,9 @@
       if (show) { ta.focus(); ta.select(); }
     }));
     body.querySelectorAll('button[data-fixarea]').forEach(b => b.addEventListener('click', () => fix(runId, { area: b.dataset.fixarea, purpose: b.dataset.purpose }, b)));
+    body.querySelectorAll('button[data-catq]').forEach(b => b.addEventListener('click', () => {
+      if (window.CategoryLookup) window.CategoryLookup.open(b.dataset.catq, true);
+    }));
     const fb = $('plFix');
     if (fb) fb.addEventListener('click', () => {
       const rows = Array.from(body.querySelectorAll('.pl-pick:checked')).map(c => Number(c.dataset.row));
@@ -348,11 +365,12 @@
       if (!r.ok) throw new Error(errText(d, r.status));
       const open = `/report/operations?fix=${encodeURIComponent(String(d.fix_id || ''))}`;
       const w = window.open(open, '_blank');
-      const left = (d.excluded || []).length ? ` ${d.excluded.length} could not go into a URL category and were left out.` : '';
+      const left = (d.excluded || []).length ? ` ${d.excluded.length} row(s) were left out: already as expected, not tested, or changed elsewhere (ZPA, Client Connector).` : '';
+      const n = (d.rows != null ? d.rows : d.urls);
       if (!w) {
-        if (info) info.innerHTML = `${E(d.urls)} destination(s) are ready. Your browser blocked the new tab: <a href="/report/operations?fix=${encodeURIComponent(String(d.fix_id || ''))}" target="_blank" rel="noopener">open Bulk changes</a>.${E(left)}`;
-        say(`${d.urls} destinations are ready; the new tab was blocked.`);
-      } else tell(`Bulk changes opened with ${d.urls} destination(s) filled in. Nothing is written until you preview and apply there.${left}`);
+        if (info) info.innerHTML = `${E(n)} row(s) are ready. Your browser blocked the new tab: <a href="/report/operations?fix=${encodeURIComponent(String(d.fix_id || ''))}" target="_blank" rel="noopener">open Bulk changes</a>.${E(left)}`;
+        say(`${n} rows are ready; the new tab was blocked.`);
+      } else tell(`Bulk changes opened with ${n} row(s) filled in. Nothing is written until you preview and apply there; then Prove it tests them again.${left}`);
     } catch (e) { tell(`Fix selected could not start: ${e.message}`); }
     finally { btn.disabled = false; }
   }

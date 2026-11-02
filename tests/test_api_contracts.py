@@ -153,8 +153,15 @@ def test_the_walk_covers_every_route():
 
 
 # A GET without a path id answers 200 on a fresh install, except these, by design:
-# SSO is off (404) and the notes and proposals need to be told which tenant (400).
-NEEDS_CONTEXT = {"/api/auth/sso/login": 404, "/api/auth/sso/callback": 404, "/api/proposals": 400, "/api/workspace/notes": 400}
+# SSO is off (404), the notes and proposals need to be told which tenant (400), and the fleet history compare
+# needs two saved snapshots (400: a fresh install has none).
+# The team server's routes, its SAML sign-in and SCIM exist only with ZSCALER_TEAM_MODE (404 on a fresh install).
+NEEDS_CONTEXT = {"/api/auth/sso/login": 404, "/api/auth/sso/callback": 404, "/api/proposals": 400, "/api/workspace/notes": 400,
+                 "/api/zcc/fleet/history/compare": 400,
+                 "/api/team/me": 404, "/api/team/overview": 404, "/api/team/share": 404,
+                 "/api/scim/v2/ServiceProviderConfig": 404, "/api/scim/v2/ResourceTypes": 404, "/api/scim/v2/Schemas": 404,
+                 "/api/scim/v2/Users": 404, "/api/scim/v2/Groups": 404,
+                 "/api/auth/saml/login": 404, "/api/auth/saml/finish": 404, "/api/auth/saml/metadata": 404}
 
 
 @pytest.mark.parametrize("route", **_table(lambda r: r.methods == {"GET"} and not r.dependant.path_params))

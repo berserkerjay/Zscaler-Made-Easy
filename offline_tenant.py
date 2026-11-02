@@ -62,7 +62,11 @@ MAX_LIST_PAGES = 20                       # pages read per paginated list when s
 
 COOKIE = "zme_tenant_source"
 SAMPLE = "sample"
-SOURCE_RE = re.compile(r"\A(sample|snap-[0-9a-f]{16}|file-[0-9a-f]{16})\Z")   # \Z: "$" would also take a trailing newline
+SIMULATION = "simulation"
+SOURCE_RE = re.compile(r"\A(sample|snap-[0-9a-f]{16}|file-[0-9a-f]{16}|sim-[0-9a-f]{16})\Z")   # \Z: "$" would also take a trailing newline
+MAX_SIMULATIONS = 4                       # simulations held in memory at once (the oldest goes)
+SIMULATION_NOTE = ("Simulation: applied to an in-memory copy only. Nothing was written to a tenant, to the sample tenant or to a "
+                   "saved snapshot. The Path analyzer, Test a list and every page now read this copy until you leave it.")
 CLIENT_ID_PREFIX = "offline-"
 OFFLINE_DOMAIN = ".offline.invalid"       # RFC 6761: .invalid never resolves (defence in depth)
 OFFLINE_SECRET = "offline-no-secret"      # a fixed marker so the creds are "complete"; not a credential
@@ -73,9 +77,20 @@ READ_ONLY = ("This is an offline snapshot: it is read-only, and nothing is sent 
 GONE = ("The offline tenant this page was using is no longer open (the server restarted or it was closed). "
         "Open the sample or the snapshot again, or choose Leave to use the live tenant.")
 
-KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights")
-_PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
-_CUSTOMER_SEG = re.compile(r"(/zpa/mgmtconfig/v[0-9]+/admin/customers/)[^/]+")
+KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard", "ztw",
+                "ztb", "easm", "zbi", "zcell", "zms")
+_PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw|aiguard|ztb|easm|bi|zcell|zms)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
+# ZPA's user configuration service (SCIM groups: zpa/scim_groups.py) has no /admin segment: /zpa/userconfig/v1/customers/{id}/...
+_CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/|/zpa/userconfig/v[0-9]+/customers/|/zpa/cbiconfig/cbi/api/customers/)[^/]+")
+# The ZCell customer id in a Zero Trust Cellular path (zscaler/zcell/*.py:
+# /zcell/config/api/v1/customers/{id}/...) is keyed as {zcellCustomerId},
+# as the ZPA customer id is, so a snapshot opens with any id.
+_ZCELL_SEG = re.compile(r"(/zcell/config/api/v1/customers/)[^/]+")
+ZCELL_CUSTOMER_ID = "zc-72000001"          # the ZCell customer id the offline reads use when none is given
+# A Microsegmentation read is a GraphQL query (POST /zms/graphql); offline it
+# is answered from /zms/graphql/<operationName> (other_products.ZMS_OPERATIONS).
+_ZMS_GRAPHQL = "/zms/graphql"
+_ZMS_OP = re.compile(r"\A[A-Za-z]{1,60}\Z")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 # Names of fields that hold a secret (a ZCC exit/uninstall password, a VPN
@@ -91,6 +106,9 @@ _PASS_SUFFIX = re.compile(r"(?:^pass|(?<![A-Za-z])pass|[a-z0-9_]Pass)$")
 # zscaler/zpa/models/provisioning_keys.py). Only text is masked, so a
 # switch such as sendDefaultPolicyForInvalidPolicyToken (true/false) stays.
 _TOKEN_KEY = re.compile(r"token|provision(ing)?_?key|enrollment_?key|config_?key", re.I)
+# A token's lifetime in seconds is not a secret: a ZPA API key's
+# tokenExpiryTimeInSec (zpa/models/api_keys.py) is kept when it is a number.
+_TOKEN_LIFETIME = re.compile(r"(expiry|expiration|lifetime|validity)(_?time)?(_?in)?_?(sec|secs|seconds)$", re.I)
 # One-time passwords and stored credentials under camelCase names: a Client
 # Connector device's deviceOtpArray (zscaler/zcc/models/devices.py), the OTPs
 # to exit, uninstall or turn off a service (exitOtp, uninstallOtp, zpaDisableOtp,
@@ -99,8 +117,29 @@ _TOKEN_KEY = re.compile(r"token|provision(ing)?_?key|enrollment_?key|config_?key
 # (zid/models/api_client.py), an LLM provider's apiCredentials
 # (aiguard/models/llm_provider_credentials.py), an encrypted session key
 # (zpa/models/enrollment_certificates.py). Any value type is masked.
-_OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$|api_?credentials|session_?key", re.I)
+# A Cloud & Branch Connector provisioning URL (it enrols a connector; its
+# provUrlData block is configuration, kept for the Terraform export) and an
+# admin's mobile app tokens (zscaler/ztw/models/provisioning_url.py,
+# admin_users.py execMobileAppTokens) are masked the same way.
+_OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$|api_?credentials|session_?key|"
+                      r"prov(isioning)?_?url$|mobile_?app_?tokens$", re.I)
+# Settings whose names say "password" but hold no secret: the admin password
+# expiry switch and its number of days (zia/models/admin_roles.py
+# PasswordExpiry). Kept only as a true/false or a whole number; any text
+# under these names is masked like every other secret-named field.
+_NOT_SECRET = frozenset({"passwordexpirationenabled", "password_expiration_enabled", "passwordexpirydays", "password_expiry_days"})
+# Reads the APIs ask for with a POST that changes nothing (zscaler/zwa:
+# dlp_incident_search POST /zwa/dlp/v1/incidents/search, audit_logs POST
+# /zwa/dlp/v1/customer/audit): offline they are answered from the saved list
+# (its first page), on the sample and on a snapshot alike.
+ZWA_BASE = "/zwa/dlp/v1"
+READ_POSTS = {f"{ZWA_BASE}/incidents/search": f"{ZWA_BASE}/incidents", f"{ZWA_BASE}/customer/audit": f"{ZWA_BASE}/customer/audit"}
+_ZWA_WRITE = re.compile(r"\A/zwa/dlp/v1/incidents/([A-Za-z0-9][A-Za-z0-9_.:-]{0,79})/(close|labels|notes)\Z")
 _VOLATILE = re.compile(r"(modified|lastseen|last_seen|lastsync|updated|creation|created)(time|at|date|_time|_at)?$|^(modifiedBy|lastModifiedBy)$", re.I)
+
+
+# Settings objects the sample replaces whole on a PUT (anything else not modelled is refused).
+_SETTINGS_PUT = frozenset({"/zia/api/v1/behavioralAnalysisAdvancedSettings"})
 
 
 class OfflineError(Exception):
@@ -141,6 +180,7 @@ def normalize_path(url: str) -> str:
     u = re.sub(r"/{2,}", "/", u)
     if len(u) > 1:
         u = u.rstrip("/")
+    u = _ZCELL_SEG.sub(r"\1{zcellCustomerId}", u)
     return _CUSTOMER_SEG.sub(r"\1{customerId}", u)
 
 
@@ -156,7 +196,7 @@ def _items(body: Any) -> Optional[List[Any]]:
     if isinstance(body, list):
         return body
     if isinstance(body, dict):
-        for key in ("list", "records", "devices", "trustedNetworkContracts", "items", "policies"):
+        for key in ("list", "records", "devices", "trustedNetworkContracts", "items", "policies", "alerts", "appIdentities", "customAppContracts"):
             if isinstance(body.get(key), list):
                 return body[key]
     return None
@@ -167,7 +207,7 @@ def _empty_page(body: Any) -> Any:
         return []
     if isinstance(body, dict):
         out = dict(body)
-        for key in ("list", "records", "devices", "trustedNetworkContracts", "items", "policies"):
+        for key in ("list", "records", "devices", "trustedNetworkContracts", "items", "policies", "alerts", "appIdentities", "customAppContracts"):
             if isinstance(out.get(key), list):
                 out[key] = []
         return out
@@ -183,8 +223,13 @@ def scrub(value: Any, depth: int = 0) -> Any:
         out = {}
         for k, v in value.items():
             key = str(k)
-            if (_SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or _OTP_KEY.search(key)
-                    or (isinstance(v, str) and _TOKEN_KEY.search(key))):
+            lifetime = _TOKEN_LIFETIME.search(key) and isinstance(v, (str, int)) and not isinstance(v, bool) and str(v).isdigit()
+            if key.lower() in _NOT_SECRET and isinstance(v, (bool, int)):
+                out[key] = v
+            elif (_SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or _OTP_KEY.search(key)
+                    or (isinstance(v, str) and _TOKEN_KEY.search(key) and not lifetime)
+                    # A private key pasted into any text field (an isolation certificate's pem, say).
+                    or (isinstance(v, str) and "PRIVATE KEY-----" in v)):
                 out[key] = "(set)" if v not in (None, "", [], {}, False) else "(not set)"
             else:
                 out[key] = scrub(v, depth + 1)
@@ -219,9 +264,14 @@ class OfflineStore:
         return {"mode": self.kind, "source": self.id, "tenant_label": self.label, "company": m.get("company") or "",
                 "saved_at": m.get("saved_at") or "", "profile_name": m.get("profile_name") or "",
                 "scopes": list(m.get("scopes") or []), "answers": len(self.responses), "writable": self.writable,
-                "changes": self.writes}
+                "changes": self.writes,
+                **({"simulation": {"base_source": m.get("base_source") or "", "base_kind": m.get("base_kind") or "",
+                                   "base_label": m.get("base_label") or "", "applied": list(m.get("applied") or [])[-20:],
+                                   "note": SIMULATION_NOTE}} if self.kind == SIMULATION else {})}
 
     def _missing(self, path: str) -> str:
+        if self.kind == SIMULATION:
+            return f"The simulation has no data for {path} (its {self.meta.get('base_kind') or 'offline tenant'} had none)."
         if self.kind == SAMPLE:
             return f"The sample tenant has no data for {path}."
         return f"Not in this snapshot: {path} (it was not in scope, or not readable, when the snapshot was saved)."
@@ -237,6 +287,19 @@ class OfflineStore:
             return self.responses[path[:-5]]
         return None
 
+    def _zpa_max_id(self) -> int:
+        """The largest numeric id anywhere in the ZPA config (floor 90000): ZPA
+        ids are one space across object types, so a created object gets one past
+        it and never collides with another ZPA collection's new id."""
+        hi = 90000
+        for key, entry in self.responses.items():
+            if not key.startswith("/zpa/"):
+                continue
+            for x in _items(entry.get("body")) or []:
+                if isinstance(x, dict) and str(x.get("id", "")).isdigit():
+                    hi = max(hi, int(x["id"]))
+        return hi
+
     def _item(self, path: str) -> Tuple[Optional[Dict[str, Any]], Optional[List[Any]], int]:
         """(the object, its list, its index) for a '<collection>/<id>' path."""
         if "/" not in path:
@@ -247,7 +310,7 @@ class OfflineStore:
         if items is None:
             return None, None, -1
         for i, x in enumerate(items):
-            if isinstance(x, dict) and str(x.get("id", x.get("tenantId", ""))) == last:
+            if isinstance(x, dict) and str(x.get("id", x.get("instanceId", x.get("tenantId", "")))) == last:   # instanceId: cloud app instances
                 return x, items, i
         return None, items, -1
 
@@ -267,23 +330,131 @@ class OfflineStore:
                     page = 1
                 if page > 1:
                     return status, _empty_page(body)
+                if path.endswith("/cloudApplications/policy") and (params.get("app_class") or params.get("appClass")):
+                    # The catalogue for one application class (ssl_flow, pack_channels): only rows that
+                    # carry their class can answer it; otherwise there is no answer for one class.
+                    cls = str(params.get("app_class") or params.get("appClass"))
+                    rows = [x for x in (_items(body) or []) if isinstance(x, dict) and ("appClass" in x or "app_class" in x)]
+                    if not rows:
+                        return 404, {"code": "NOT_FOUND", "message": self._missing(f"{path}?app_class={cls[:40]}")}
+                    return status, [x for x in rows if str(x.get("appClass", x.get("app_class"))) == cls]
+                if path.endswith("/getDeviceDetails") and isinstance(body, list):
+                    # One device per udid (zscaler/zcc/devices.py get_device_details): the sample keeps them as a list.
+                    want = str(params.get("udid") or "")
+                    hit = next((x for x in body if isinstance(x, dict) and want and str(x.get("udid")) == want), None)
+                    return (200, hit) if hit is not None else (404, {"code": "NOT_FOUND", "message": self._missing(f"{path}?udid")})
                 dt = params.get("deviceType")
                 items = _items(body)
                 # The platform is device_type on an app profile (zscaler/zcc/models/webpolicy.py), deviceType on older answers.
                 field = next((f for f in ("device_type", "deviceType") if items and all(isinstance(x, dict) and f in x for x in items)), None)
-                if dt not in (None, "") and isinstance(body, list) and field:
-                    body = [x for x in items if str(x.get(field)) == str(dt)]
+                if dt not in (None, "") and items is not None and field:
+                    kept = [x for x in items if str(x.get(field)) == str(dt)]
+                    if isinstance(body, list):
+                        body = kept
+                    else:   # an envelope ({"policies": [...]}) keeps its shape around the platform's rows
+                        items[:] = kept
+                        if "totalCount" in body:
+                            body["totalCount"] = len(kept)
                 return status, body
             item, _, _ = self._item(path)
             if item is not None:
                 return 200, copy.deepcopy(item)
         return 404, {"code": "NOT_FOUND", "message": self._missing(path)}
 
-    def answer_write(self, method: str, url: str, body: Any = None) -> Tuple[int, Any]:
+    def _answer_graphql(self, body: Any) -> Tuple[int, Any]:
+        """A Microsegmentation GraphQL read (a query, never a mutation),
+        answered from /zms/graphql/<operationName>; read-only on the sample
+        and on a snapshot alike."""
+        import other_products
+        op = body.get("operationName") if isinstance(body, dict) else None
+        query = str(body.get("query") or "") if isinstance(body, dict) else ""
+        if not isinstance(op, str) or not _ZMS_OP.match(op) or op not in other_products.ZMS_OPERATIONS \
+                or not query.lstrip().startswith("query "):
+            return 403, {"code": "READ_ONLY", "message": READ_ONLY}
+        with self._lock:
+            entry = self.responses.get(f"{_ZMS_GRAPHQL}/{op}")
+            if entry is not None:
+                return int(entry.get("status") or 200), copy.deepcopy(entry.get("body"))
+        return 404, {"code": "NOT_FOUND", "message": self._missing(f"{_ZMS_GRAPHQL}/{op}")}
+
+    def answer_read_post(self, path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[int, Any]:
+        """(status, body) of a read the API asks for with a POST (READ_POSTS):
+        the saved list as the search answers it, its first page only."""
+        key = READ_POSTS[path]
+        params = params or {}
+        try:
+            page = int(params.get("page") or 1)
+        except (TypeError, ValueError):
+            page = 1
+        with self._lock:
+            entry = self._lookup(key)
+            if entry is None:
+                return 404, {"code": "NOT_FOUND", "message": self._missing(key)}
+            body = copy.deepcopy(entry.get("body"))
+        if key.endswith("/incidents"):
+            rows = body if isinstance(body, list) and page == 1 else []
+            return 200, {"cursor": {"currentPageNumber": page, "totalPages": 1, "totalElements": len(rows)},
+                         "incidents": [{"incidents": rows}] if rows else []}
+        if page > 1:
+            return 200, _empty_page(body) if not isinstance(body, dict) else dict(body, logs=[])
+        return 200, body
+
+    def _zwa_write(self, m: "re.Match", body: Any) -> Tuple[int, Any]:
+        """The sample's in-memory answer to a Workflow Automation incident
+        close, label or note (zscaler/zwa/dlp_incidents.py incident_close,
+        assign_labels, incident_notes): the incident changes, nothing else."""
+        iid, what = m.group(1), m.group(2)
+        entry = self._lookup(f"{ZWA_BASE}/incidents")
+        items = _items(entry["body"]) if entry else None
+        inc = next((x for x in items or [] if isinstance(x, dict) and str(x.get("id")) == iid), None)
+        if inc is None:
+            return 404, {"code": "NOT_FOUND", "message": self._missing(f"{ZWA_BASE}/incidents/{iid}")}
+        b = body if isinstance(body, dict) else {}
+        hist = self.responses.setdefault(f"{ZWA_BASE}/incidents/{iid}/change-history", {"status": 200, "body": {"changeHistory": []}})
+        log = hist["body"].setdefault("changeHistory", []) if isinstance(hist.get("body"), dict) else []
+        if what == "close":
+            inc["status"] = "CLOSED"
+            inc["resolution"] = inc["closedCode"] = str(b.get("resolutionCode") or "FALSE_POSITIVE")[:40]
+            lab = b.get("resolutionLabel")
+            if isinstance(lab, dict) and lab.get("key"):
+                inc.setdefault("labels", []).append({"key": str(lab["key"])[:60], "value": str(lab.get("value") or "")[:120]})
+            if b.get("notes"):
+                inc.setdefault("notes", []).append({"body": str(b["notes"])[:1000], "createdBy": "api"})
+            log.append(f"Status changed to CLOSED ({inc['resolution']}) through the API")
+        elif what == "labels":
+            for lab in b.get("labels") or []:
+                if isinstance(lab, dict) and lab.get("key"):
+                    inc.setdefault("labels", []).append({"key": str(lab["key"])[:60], "value": str(lab.get("value") or "")[:120]})
+            log.append("Labels added through the API")
+        else:
+            inc.setdefault("notes", []).append({"body": str(b.get("notes") or "")[:1000], "createdBy": "api"})
+            log.append("Note added through the API")
+        self.writes += 1
+        return 200, copy.deepcopy(inc)
+
+    def answer_write(self, method: str, url: str, body: Any = None, params: Optional[Dict[str, Any]] = None) -> Tuple[int, Any]:
         """(status, body) of a POST / PUT / PATCH / DELETE: refused on a
-        snapshot; on the sample, applied to its in-memory copy."""
+        snapshot; on the sample, applied to its in-memory copy. A read the
+        API asks for with a POST (READ_POSTS) is answered on both."""
         method = str(method or "").upper()
+        if params is None:   # the query, when it came on the URL
+            from urllib.parse import parse_qsl, urlsplit
+            params = dict(parse_qsl(urlsplit(str(url)).query))
         path = normalize_path(url)
+        if method == "POST" and path == _ZMS_GRAPHQL:
+            return self._answer_graphql(body)
+        if method == "POST" and path == "/zins/graphql":
+            # Z-Insights asks every question with a POST: the sample and a snapshot
+            # keep one answer per GraphQL operation (offline the window is not applied).
+            with self._lock:
+                answer = self._zins_answer(body)
+            if answer is not None:
+                return answer
+        if method == "PUT" and path.endswith("/cloudApplications/bulkUpdate") and self.writable:
+            with self._lock:
+                return self._sanction(body)
+        if method == "POST" and path in READ_POSTS:
+            return self.answer_read_post(path, params)
         lookup = path.endswith(("/urlLookup", "/auditlogEntryReport")) or path.startswith("/zins/")
         if lookup and not (self.writable and path.endswith("/urlLookup")):
             # A read the API asks for with a POST (URL lookup, Insights, audit log report): offline it has no answer.
@@ -299,18 +470,96 @@ class OfflineStore:
                 return 200, {"status": "ACTIVE"}
             if method == "POST" and path.endswith("/dlpEngines/validateDlpExpr"):
                 return 200, {"status": "VALID"}
+            if method == "POST" and path.endswith("/pacFiles/validate"):
+                # ZIA's PAC validator, as the sample answers it: text only, never run.
+                ok = isinstance(body, str) and "FindProxyForURL" in body
+                return 200, {"success": ok, "message": "" if ok else "FindProxyForURL is missing", "errorCount": 0 if ok else 1,
+                             "warningCount": 0, "messages": [] if ok else [{"line": 1, "column": 1, "severity": "ERROR",
+                                                                            "message": "FindProxyForURL is missing", "fatal": True}]}
+            # The security policy lists (zia/security_policy_settings.py): the
+            # denylist changes by ADD_TO_LIST / REMOVE_FROM_LIST, the allowlist
+            # is replaced whole (PUT /security).
+            if method == "POST" and path.endswith("/security/advanced/blacklistUrls"):
+                entry = self._lookup(path[: -len("/blacklistUrls")])
+                from urllib.parse import parse_qs, urlsplit
+                action = str((params or {}).get("action") or (parse_qs(urlsplit(str(url)).query).get("action") or [""])[0])
+                urls = [str(u) for u in ((body or {}).get("blacklistUrls") or []) if isinstance(u, (str, int))] if isinstance(body, dict) else []
+                if entry is None or not isinstance(entry.get("body"), dict) or action not in ("ADD_TO_LIST", "REMOVE_FROM_LIST"):
+                    return 400, {"code": "NOT_MODELLED", "message": "The sample tenant takes ADD_TO_LIST or REMOVE_FROM_LIST here."}
+                cur = [str(u) for u in entry["body"].get("blacklistUrls") or []]
+                entry["body"]["blacklistUrls"] = ([u for u in cur if u not in urls] if action == "REMOVE_FROM_LIST"
+                                                  else cur + [u for u in urls if u not in cur])
+                self.writes += 1
+                return 204, {}
+            if method == "PUT" and (path.endswith("/security") or path.endswith("/security/advanced")) and isinstance(body, dict):
+                entry = self._lookup(path)
+                key = "whitelistUrls" if path.endswith("/security") else "blacklistUrls"
+                if entry is None or not isinstance(entry.get("body"), dict) or not isinstance(body.get(key), list):
+                    return 400, {"code": "NOT_MODELLED", "message": f"The sample tenant takes {key} here."}
+                entry["body"][key] = [str(u) for u in body[key] if isinstance(u, (str, int))]
+                self.writes += 1
+                return 200, copy.deepcopy(entry["body"])
+            zm = _ZWA_WRITE.match(path) if method == "POST" else None
+            if zm:
+                return self._zwa_write(zm, body)
+            if method == "PUT" and path.endswith("/web/policy/activate") and isinstance(body, dict):
+                # Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live).
+                lst = self._lookup(path.rsplit("/", 1)[0] + "/listByCompany")
+                rows = _items(lst["body"]) if lst else None
+                hit = next((x for x in rows or [] if isinstance(x, dict) and str(x.get("id")) == str(body.get("policyId"))), None)
+                if hit is None:
+                    return 404, {"code": "NOT_FOUND", "message": "No such app profile in the sample tenant."}
+                on = str(hit.get("active")).strip().lower() in ("1", "true")
+                hit["active"] = (0 if on else 1) if isinstance(hit.get("active"), int) else ("0" if on else "1")
+                self.writes += 1
+                return 200, {"success": "true"}
+            if method == "PATCH" and "/application-profiles/" in path and isinstance(body, dict):
+                # update_application_profile: the allowlisted fields live in policyExtension (zscaler/zcc/models/application_profiles.py).
+                item, _coll, _idx = self._item(path)
+                if item is None:
+                    return 404, {"code": "NOT_FOUND", "message": "No such app profile in the sample tenant."}
+                pe = item.setdefault("policyExtension", {})
+                for k, v in body.items():
+                    if k != "policyId" and not re.search(r"password|passcode|secret|token", k, re.I):
+                        pe[k] = copy.deepcopy(v)
+                self.writes += 1
+                return 200, copy.deepcopy(item)
             entry = self._lookup(path)
             items = _items(entry["body"]) if entry else None
             if method == "POST" and items is not None:
                 # A deep copy: the caller's payload must never alias the in-memory tenant.
                 obj = copy.deepcopy(body) if isinstance(body, dict) else {}
-                ids = [int(x.get("id")) for x in items if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
-                new_id = max(ids + [90000]) + 1
-                obj["id"] = str(new_id) if path.startswith("/zpa/") else new_id
+                if path.startswith("/zpa/"):
+                    # ZPA ids are one space across every object type, not per collection: a
+                    # connector group and a provisioning key never share an id. Allocate past
+                    # the largest id anywhere in the ZPA config so a POV build's later parts
+                    # can resolve the distinct ids its earlier parts created.
+                    obj["id"] = str(self._zpa_max_id() + 1)
+                else:
+                    ids = [int(x.get("id")) for x in items if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
+                    new_id = max(ids + [90000]) + 1
+                    obj["id"] = new_id
+                    if path.endswith("/cloudApplicationInstances"):
+                        obj["instanceId"] = new_id      # a cloud app instance's id is instanceId (zia/models/cloud_app_instances.py)
                 items.append(obj)
                 self.writes += 1
                 return 200, copy.deepcopy(obj)
+            if method == "PUT" and path in _SETTINGS_PUT and entry is not None and isinstance(body, dict):
+                # A settings object replaced whole (the Cloud Sandbox hash list: sandbox.add_hash_to_custom_list).
+                entry["body"] = copy.deepcopy(body)
+                count = self._lookup(path + "/fileHashCount")
+                if count is not None and isinstance(count.get("body"), dict) and isinstance(body.get("md5HashValueList"), list):
+                    used = len(body["md5HashValueList"])
+                    total = int(count["body"].get("blockedFileHashesCount") or 0) + int(count["body"].get("remainingFileHashes") or 0)
+                    count["body"] = {"blockedFileHashesCount": used, "remainingFileHashes": max(0, total - used)}
+                self.writes += 1
+                return 200, copy.deepcopy(body)
             item, coll, idx = self._item(path)
+            if method == "POST" and item is None and coll is not None and path.startswith("/ziam/") and "/groups/" in path:
+                # ZIdentity adds a member by POST /groups/{id}/users/{userId} (zscaler/zid/groups.py add_user_to_group).
+                coll.append({"id": path.rsplit("/", 1)[1]})
+                self.writes += 1
+                return 200, {"id": path.split("/groups/", 1)[1].split("/", 1)[0]}
             if method in ("PUT", "PATCH") and item is not None:
                 new = dict(item)
                 new.update(copy.deepcopy(body) if isinstance(body, dict) else {})
@@ -324,6 +573,55 @@ class OfflineStore:
                 return 204, {}
         return 400, {"code": "NOT_MODELLED",
                      "message": f"The sample tenant does not model this change ({method} {path}); nothing was sent to a tenant."}
+
+
+    def _zins_answer(self, body: Any) -> Optional[Tuple[int, Any]]:
+        """(status, body) kept for a Z-Insights operation, or None. Shadow IT
+        apps honour the application name filter (`in` / `eq`) as Insights does."""
+        op = body.get("operationName") if isinstance(body, dict) else None
+        if not isinstance(op, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,63}", op):
+            return None
+        entry = self.responses.get(f"/zins/graphql/{op}")
+        if entry is None:
+            return None
+        out = copy.deepcopy(entry.get("body"))
+        filt = ((body.get("variables") or {}).get("filterBy") or {}) if isinstance(body.get("variables"), dict) else {}
+        app = filt.get("application") if isinstance(filt, dict) else None
+        if op == "ShadowITApps" and isinstance(app, dict):
+            names = app.get("in") if isinstance(app.get("in"), list) else [app.get("eq")] if app.get("eq") is not None else None
+            try:
+                ents = out["data"]["SHADOW_IT"]["apps"]["entries"]
+            except (KeyError, TypeError):
+                ents = None
+            if names is not None and isinstance(ents, list):
+                want = {str(n) for n in names}
+                out["data"]["SHADOW_IT"]["apps"]["entries"] = [e for e in ents if isinstance(e, dict) and str(e.get("application")) in want]
+        return int(entry.get("status") or 200), out
+
+    def _sanction(self, body: Any) -> Tuple[int, Any]:
+        """The sample's cloud application bulk update (PUT /cloudApplications/bulkUpdate):
+        the named apps take the new state in the sample's Shadow IT answer."""
+        body = body if isinstance(body, dict) else {}
+        state = {"SANCTIONED": "Sanctioned", "UN_SANCTIONED": "Unsanctioned"}.get(str(body.get("sanctionedState") or "").upper())
+        ids = body.get("applicationIds") if isinstance(body.get("applicationIds"), list) else None
+        if state is None or not ids:
+            return 400, {"code": "INVALID_INPUT", "message": "sanctionedState must be SANCTIONED or UN_SANCTIONED and applicationIds a list."}
+        apps = _items((self._lookup(normalize_path("/zia/api/v1/cloudApplications/lite")) or {}).get("body")) or []
+        names = {str(a.get("id")): str(a.get("name")) for a in apps if isinstance(a, dict)}
+        unknown = [str(i) for i in ids if str(i) not in names]
+        if unknown:
+            return 400, {"code": "INVALID_INPUT", "message": f"No cloud application with id {unknown[0]}."}
+        entry = self.responses.get("/zins/graphql/ShadowITApps")
+        try:
+            ents = entry["body"]["data"]["SHADOW_IT"]["apps"]["entries"] if entry else []
+        except (KeyError, TypeError):
+            ents = []
+        want = {names[str(i)] for i in ids}
+        for e in ents:
+            if isinstance(e, dict) and str(e.get("application")) in want:
+                e["sanctioned_state"] = state
+        self.writes += 1
+        return 204, {}
 
 
 # ── the raw-HTTP client's interface ────────────────────────────────────
@@ -454,7 +752,7 @@ class OfflineExecutor:
     @staticmethod
     def get_service_type(url: str) -> str:
         u = str(url or "")
-        for marker, kind in (("/ziam/admin/api/v1", "ziam"), ("/zia", "zia"), ("/ztw", "ztw"), ("/zcc", "zcc"), ("/zdx", "zdx"),
+        for marker, kind in (("/aiguard/", "aiguard"), ("/ziam/admin/api/v1", "ziam"), ("/zia", "zia"), ("/ztw", "ztw"), ("/zcc", "zcc"), ("/zdx", "zdx"),
                              ("/zwa", "zwa"), ("/zpa", "zpa"), ("/mgmtconfig", "zpa"), ("/zins", "zins")):
             if marker in u:
                 return kind
@@ -483,7 +781,13 @@ class OfflineExecutor:
             status, body = self._store.answer_get(request.get("url", ""), request.get("params") or {})
         else:
             payload = request.get("json") if request.get("json") is not None else request.get("data")
-            status, body = self._store.answer_write(method, request.get("url", ""), payload)
+            url = request.get("url", "")
+            params = request.get("params") or {}
+            if params:   # a write's query (the denylist's ?action=) rides on the URL: answer_write reads it from there
+                from urllib.parse import urlencode
+                url = f"{url}{'&' if '?' in url else '?'}{urlencode(params)}"
+            # The query rides on the URL (a store a test replaces may take no params); answer_write reads it back from there.
+            status, body = self._store.answer_write(method, url, payload)
         answer = _Answer(status, body)
         if status >= 400:
             msg = body.get("message") if isinstance(body, dict) else str(body)
@@ -525,7 +829,7 @@ class OfflineExecutor:
 
 class OfflineSdkClient:
     """The zscaler-sdk-python client's interface (.zia, .zpa, .zcc, .zdx,
-    .zid / .zidentity, .zins, .zwa, .ztw) over an OfflineStore: the SDK's
+    .zid / .zidentity, .zins, .zwa, .ztw, .aiguard) over an OfflineStore: the SDK's
     service and model classes with OfflineExecutor as their executor."""
 
     offline = True
@@ -540,6 +844,17 @@ class OfflineSdkClient:
         self._zia_rate_key = f"offline:{store.id}"
         self._zia_rate_label = store.label
         self._zia_rate_labels = (store.label,)
+
+    @property
+    def simulation(self) -> bool:
+        """True over a simulation's in-memory copy: pack_ops.audited_run marks
+        every audit entry of the run with simulation=true."""
+        return self._store.kind == SIMULATION
+
+    def get_request_executor(self) -> "OfflineExecutor":
+        """As the SDK's OneAPI client (oneapi_client.Client.get_request_executor):
+        the fleet's service-status CSV is asked through it."""
+        return self._request_executor
 
     def _svc(self, name: str, build: Callable[[], Any]) -> Any:
         if name not in self._services:
@@ -584,9 +899,20 @@ class OfflineSdkClient:
         return self._svc("zwa", lambda: ZWAService(self))
 
     @property
+    def aiguard(self):
+        from zscaler.aiguard.aiguard_service import AIGuardService
+        return self._svc("aiguard", lambda: AIGuardService(self._request_executor))
+
+    @property
     def ztw(self):
         from zscaler.ztw.ztw_service import ZTWService
         return self._svc("ztw", lambda: ZTWService(self._request_executor))
+
+    @property
+    def aiguard(self):
+        # AI Guard's OneAPI configuration services (zscaler/aiguard/aiguard_service.py), as ZscalerClient.aiguard.
+        from zscaler.aiguard.aiguard_service import AIGuardService
+        return self._svc("aiguard", lambda: AIGuardService(self._request_executor))
 
     def authenticate(self) -> None:
         return None
@@ -625,10 +951,33 @@ def register(store: OfflineStore) -> OfflineStore:
     with _LOCK:
         _OPEN[store.id] = store
         _OPEN.move_to_end(store.id)
-        snaps = [k for k in _OPEN if k != SAMPLE]
+        snaps = [k for k in _OPEN if k != SAMPLE and not k.startswith("sim-")]
         while len(snaps) > MAX_OPEN:
             _OPEN.pop(snaps.pop(0), None)
         return store
+
+
+def simulate(base: "OfflineStore") -> "OfflineStore":
+    """The in-memory copy a rehearsed plan is applied to: a deep copy of the
+    sample tenant or of an opened snapshot (never the copy that is kept, and
+    never a live tenant: only an OfflineStore is accepted), writable, under a
+    fresh random id. A simulation given again is returned as it is, so a
+    second rehearsed change builds on the first."""
+    if not isinstance(base, OfflineStore):
+        raise OfflineError("Only the sample tenant or an opened snapshot can be simulated: nothing was written.", 409)
+    if base.kind == SIMULATION:
+        return base
+    with base._lock:
+        responses = copy.deepcopy(base.responses)
+    meta = dict(copy.deepcopy(base.meta), tenant_label=f"Simulation of {base.label}", base_source=base.id, base_kind=base.kind,
+                base_label=base.label, applied=[])
+    sim = OfflineStore(f"sim-{secrets.token_hex(8)}", SIMULATION, responses, meta, writable=True)
+    with _LOCK:
+        _OPEN[sim.id] = sim
+        sims = [k for k in _OPEN if k.startswith("sim-")]
+        while len(sims) > MAX_SIMULATIONS:
+            _OPEN.pop(sims.pop(0), None)
+    return sim
 
 
 def forget(source_id: str) -> None:
@@ -952,6 +1301,9 @@ def open_saved(snapshot_id: str) -> OfflineStore:
 _DLP = ("dlp", "genai")
 _ZIA = ("zia_extras",)
 _WEB_POLICY = ("dlp", "zia_extras", "genai")
+PER_OBJECT_ZDX = "/zdx/:per-application-and-alert"
+PER_OBJECT_ZID = "/zid/:per-admin-and-group"
+PER_OBJECT_SCIM = "/zpa/:per-identity-provider"     # SCIM attributes and groups, read once per identity provider
 CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     [(_DLP, f"/zia/{x}") for x in ("dlpDictionaries", "dlpEngines", "dlpNotificationTemplates", "incidentReceiverServers", "icapServers",
                                    "webDlpRules", "endPointDlpRules", "emailDlpRules", "casbDlpRules/all", "casbTenant/lite")]
@@ -961,20 +1313,116 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                      "ipSourceGroups", "locations", "advancedSettings", "authSettings", "departments", "groups", "ruleLabels",
                                      "nssFeeds", "browserIsolation/profiles", "sandboxRules", "bandwidthClasses", "bandwidthControlRules",
                                      "tenancyRestrictionProfile", "cyberThreatProtection/advancedThreatSettings",
-                                     "cyberThreatProtection/malwareSettings")]
+                                     "cyberThreatProtection/malwareSettings",
+                                     # governance and audit (zscaler_full_checks GOV.*)
+                                     "configAudit", "alertSubscriptions", "nssServers", "nssCollectors", "subscriptions",
+                                     # threat protection and SaaS Security hygiene (zscaler_full_checks THR / UF / SAAS);
+                                     # the SaaS Security ones pass the channel guard only when SaaS Security is on Zscaler
+                                     "behavioralAnalysisAdvancedSettings", "behavioralAnalysisAdvancedSettings/fileHashCount",
+                                     "ipsSignatureRules", "mobileAdvanceThreatSettings", "ftpSettings", "eun",
+                                     "alertRuleConfiguration/uebaRules", "alertDefinitions", "customFileTypes", "riskProfiles/lite",
+                                     "adaptiveAccessProfiles", "advancedUrlFilterAndCloudAppSettings", "browserControlSettings",
+                                     "casbMalwareRules/all", "quarantineTombstoneTemplate/lite", "casbTenant/scanInfo",
+                                     "cloudToCloudIR/lite")]
+    # Forwarding and traffic path (zia_forwarding; the FWD.* checks and the
+    # Path analyzer's Forwarding control step).
+    + [(_ZIA, f"/zia/{x}") for x in ("forwardingRules", "proxyGateways", "zpaGateways", "datacenters", "dcExclusions", "greTunnels", "vips",
+                                     "ipv6config", "ipv6config/nat64prefix", "dedicatedIPGateways/lite", "dnatRules", "virtualZenClusters",
+                                     "virtualZenNodes", "dnsGateways")]
     + [(("zia_extras", "rbac"), f"/zia/{x}") for x in ("adminRoles", "adminUsers")]
+    + [(("rbac",), f"/zia/{x}") for x in ("passwordExpiry/settings", "remoteAssistance")]
     + [(("zcc",), f"/zcc/{x}") for x in ("forwardingProfiles", "trustedNetworks", "devices", "failOpenPolicy", "companyInfo", "pacFiles",
-                                         "webAppService", "appBypass", "zpaEntitlements", "zdxEntitlements", "deviceGroups")]
+                                         "webAppService", "appBypass", "zpaEntitlements", "zdxEntitlements", "deviceGroups",
+                                         "customIpBasedApps", "predefinedIpBasedApps", "process-based-apps", "custom-ip-based-apps")]
     + [(("zpa",), f"/zpa/{x}") for x in ("application", "segmentGroup", "serverGroup", "appConnectorGroup", "connector", "serviceEdgeGroup",
                                          "serviceEdge", "idp", "samlAttribute", "postureProfile", "trustedNetwork", "machineGroup",
                                          "policySet/rules/ACCESS_POLICY", "policySet/rules/TIMEOUT_POLICY",
                                          "policySet/rules/policyType/CLIENT_FORWARDING_POLICY", "policySet/rules/policyType/INSPECTION_POLICY",
-                                         "policySet/rules/policyType/ISOLATION_POLICY")]
+                                         "policySet/rules/policyType/ISOLATION_POLICY",
+                                         # ZPA policy completeness: the other policy types, AppProtection and the
+                                         # infrastructure behind the ZPA diagnostics (zpa_reader.COLLECTIONS).
+                                         "policySet/rules/policyType/REDIRECTION_POLICY", "policySet/rules/policyType/CREDENTIAL_POLICY",
+                                         "policySet/rules/policyType/CAPABILITIES_POLICY",
+                                         "policySet/rules/policyType/CLIENTLESS_SESSION_PROTECTION_POLICY",
+                                         "inspectionProfile", "inspectionControls/custom", "server", "businessContinuitySettings",
+                                         "privateCloud", "privateCloudControllerGroup", "privateCloudController",
+                                         "branchConnectorGroup", "branchConnector", "cloudConnectorGroup", "cloudConnector")]
+    # ZPA administration, for the RBAC checks: read only with RBAC ticked (and
+    # ZPA, which the service guard requires). Saved scrubbed: no password,
+    # client secret, token or provisioning-key value is ever in the file.
+    + [(("rbac",), f"/zpa/{x}") for x in ("administrators", "roles", "ssoLoginOptions", "apiKeys", "emergencyAccess/users", "microtenants",
+                                          "associationType/CONNECTOR_GRP/provisioningKey", "associationType/SERVICE_EDGE_GRP/provisioningKey",
+                                          "credential", "credential-pool", "approval")]
     + [(("zdx",), f"/zdx/{x}") for x in ("administration/apps", "troubleshooting/devices", "administration/departments",
                                          "administration/locations")]
     + [(("zidentity",), f"/zid/{x}") for x in ("users", "groups", "resourceServers")]
+    # What the builders (Build new, the POV build) plan against, so a snapshot can rehearse them offline:
+    # the ZIA catalogues and certificates, proxy chaining, ZPA's enrollment certificates, keys and
+    # inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists.
+    + [(_ZIA, f"/zia/{x}") for x in ("urlCategories/lite", "networkApplications", "cloudApplications/policy", "dnsGateways",
+                                     "intermediateCaCertificate/readyToUse", "rootCertificates", "proxies", "proxyGateways",
+                                     "forwardingRules", "advancedUrlFilterAndCloudAppSettings", "subscriptions")]
+    + [(("zpa",), f"/zpa/{x}") for x in ("enrollmentCert", "associationType/CONNECTOR_GRP/provisioningKey", "inspectionProfile",
+                                         "inspectionControls/predefined", "inspectionControls/predefined/versions", "praConsole",
+                                         "praPortal", "clientlessCertificate/issued", "isolation/profiles")]
+    + [(("zdx",), f"raw:/zdx/v1/config/{x}") for x in ("applications", "applications/supported", "monitors", "collections")]
+    + [(("aiguard",), f"raw:/aiguard/v1/{x}") for x in ("detections/policies", "detections/policy-match-rules", "llm-providers")]
+    # ZIA Insights: the licences (the Insights checks' N/A) and the cloud application
+    # list (the sanction change); the Insights answers themselves are POSTs, kept by
+    # insights.capture under /zins/graphql/<operation>.
+    + [(("insights",), "/zia/subscriptions"), (("insights",), "/zia/cloudApplications/lite")]
+    # Cloud & Branch Connector: ztw_overview.PATHS (the SDK's paths, read as they are)
+    + [(("ztw",), f"/ztw/api/v1/{x}") for x in ("ecgroup", "ecRules/ecRdr", "workloadGroups", "ipSourceGroups", "ipDestinationGroups",
+                                                 "gateways", "location", "locationTemplate", "ecAdminActivateStatus", "adminRoles",
+                                                 "adminUsers", "apiKeys", "publicCloudAccountDetails", "publicCloudInfo")]
+    + [(_DLP, f"/zia/{x}") for x in ("dlpExactDataMatchSchemas", "idmprofile")]
+    # AI Guard (zscaler/aiguard: list_policies, list_rules, list_providers, list_applications, list_credentials)
+    + [(("aiguard",), f"/aiguard/v1/{x}") for x in ("detections/policies", "detections/policy-match-rules", "llm-providers",
+                                                     "llm-applications", "llm-application-credentials")]
+    # Workflow Automation: read through ZWA_CAPTURE (a POST search, then each incident's GETs), DLP ticked and
+    # Workflow Automation marked Zscaler on the Scope page.
+    + [(_DLP, "/zwa/incidents")]
+    # Reads per object (2026-10-31): the ZDX alert history and per-alert affected devices
+    # (ids only), each application's week of score and metrics, every admin's
+    # entitlements and every group's member ids. See _capture_per_object.
+    + [(("zdx",), "/zdx/alerts/historical"), (("zdx",), PER_OBJECT_ZDX), (("zidentity",), PER_OBJECT_ZID)]
+    # Configuration backups (config_backup.TYPES, 2026-11-01): ZIA traffic capture rules and workload groups,
+    # ZPA user portals and SCIM attributes and groups per identity provider, Client Connector admin users
+    # (a backup of a snapshot keeps them by id, without the user name).
+    + [(_ZIA, f"/zia/{x}") for x in ("trafficCaptureRules", "workloadGroups")]
+    # (PRA credentials stay with RBAC above: a snapshot reads them only with RBAC ticked.)
+    + [(("zpa",), "/zpa/userPortal"), (("zpa",), PER_OBJECT_SCIM), (("zcc",), "/zcc/adminUsers")]
+    # Coverage checks (2026-11-01; zscaler_full_checks B.17, THR.12, GOV.9, FW.10, ZPA.22-24,
+    # HLT.5-6, zscaler_genai_checks AIG.7). The Endpoint DLP lists pass the channel
+    # guard only with Endpoint DLP on Zscaler; partner integrations and provider
+    # credentials are read as metadata only (dlp_assessment_full_auto.metadata_only).
+    # (trafficCaptureRules, workloadGroups and userPortal: captured once, above, with the backups.)
+    + [(("dlp",), f"/zia/{x}/{ch}") for x in ("endPointDlpResourceGroups", "dlpEndpointResource")
+       for ch in ("PRINTING", "REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "PERSONAL_CLOUD_STORAGE")]
+    + [(_ZIA, f"/zia/{x}") for x in ("integrationPartners", "timeIntervals")]
+    + [(("zpa",), f"/zpa/{x}") for x in ("connectorSchedule", "serviceEdgeSchedule", "visible/versionProfiles",
+                                         "config/isZiaCloudConfigAvailable", "userportal/aup", "userPortalLink")]
+    + [(("aiguard",), "/aiguard/v1/llm-provider-credentials")]
+    # Objects read until now only by backup and Terraform, now scored (FW.11, FW.12, CA.6,
+    # ZPA.25, ZPA.26, ZTW.9): DNS application groups, workload groups, HTTP header
+    # profiles, client-to-client IP ranges, isolation certificates, connector IP groups.
+    + [(_ZIA, f"/zia/{x}") for x in ("dnsApplicationGroups", "httpHeaderProfile", "httpHeaderActionProfile")]
+    + [(("zpa",), f"/zpa/{x}") for x in ("ipRanges", "cbiconfig/certificates")]
+    + [(("ztw",), "/ztw/api/v1/ipGroups")]
 )
-_ZIA_PAGED = {"/zia/users", "/zia/groups", "/zia/departments"}
+# Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
+_UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}
+_PARAMS = {"raw:/zdx/v1/config/applications/supported": {"type": "PREDEFINED"},
+           "/zia/rootCertificates": {"certTypes": "PROXY_CHAINING"}}   # ai_guard.CERT_TYPE: the certificates proxy chaining uses
+_ZIA_PAGED = {"/zia/users", "/zia/groups", "/zia/departments", "/zia/cloudApplications/policy"}
+# ZPA reads that are one answer, not a paged list: a settings object, and the
+# emergency access list, which pages by page id (zpa/emergency_access.py).
+_ZPA_SINGLE = {"/zpa/ssoLoginOptions", "/zpa/emergencyAccess/users",
+               # settings objects and a yes/no answer (zpa/app_connector_schedule.py, service_edge_schedule.py,
+               # zia_customer_config.py check_zia_cloud_config)
+               "/zpa/connectorSchedule", "/zpa/serviceEdgeSchedule", "/zpa/config/isZiaCloudConfigAvailable"}
+ZWA_CAPTURE_DAYS = 30
+ZWA_CAPTURE_INCIDENTS = 25                # incidents whose triggers, history and tickets are saved (metadata only; never evidence)
 _UNANSWERED = (0, 429, 502, 503, 504)
 
 
@@ -984,7 +1432,13 @@ def capture_plan(scopes: Iterable[str]) -> List[str]:
     out = [ep for tags, ep in CAPTURE if sc & set(tags)]
     if "zcc" in sc:
         out.append("/zcc/webPolicies")
-    return out
+    # The other products (other_products.py): one marker each, read by
+    # other_products.snapshot_answers with the SDK's own requests.
+    import other_products
+    out.extend(f"other:{k}" for k in other_products.SCOPE_KEYS if k in sc)
+    # An endpoint two parts need (the ZPA builders' catalogue and the RBAC
+    # checks, say) is read once.
+    return list(dict.fromkeys(out))
 
 
 def _paths_for(ep: str) -> List[str]:
@@ -1018,6 +1472,25 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
         if stopped():
             log("Stopped: nothing more is read, and no snapshot is saved.")
             return {"responses": responses, "counts": counts, "unread": unread, "stopped": True}
+        if ep.startswith("other:"):
+            import other_products
+            got, miss = other_products.snapshot_answers(guard, ep[6:], other_products.ids_for(client), cancel)
+            for path, body in got.items():
+                responses[normalize_path(path)] = {"status": 200, "body": scrub(body)}
+                items = _items(body)
+                counts["objects"] += len(items) if items is not None else 1
+            counts["answers"] += len(got)
+            counts["not_read"] += len(miss)
+            unread.extend(_text(m, 160) for m in miss[:8])
+        if ep == "/zwa/incidents":
+            got = _capture_zwa(client, guard, responses, log, stopped)
+            if got is None:
+                counts["out_of_scope"] += 1
+            else:
+                counts["answers"] += got[0]
+                counts["objects"] += got[1]
+                unread.extend(got[2][:4])
+            continue
         if ep == "/zcc/webPolicies":
             import zcc_profiles
             items, errors, _st = zcc_profiles.read_app_profiles(guard.get)
@@ -1027,7 +1500,18 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
             for e in errors[:4]:
                 unread.append(_text(e, 160))
             continue
-        if ep.startswith("/zpa/"):
+        if ep in (PER_OBJECT_ZDX, PER_OBJECT_ZID):
+            _capture_per_object(guard, ep, keep, counts, unread, stopped)
+            continue
+        if ep == PER_OBJECT_SCIM:
+            _capture_scim(guard, str(getattr(client, "customer_id", "") or ""), keep, counts, unread, stopped)
+            continue
+        if ep == "/zdx/alerts/historical":
+            import zscaler_zdx_checks
+            body, code = guard.get(ep, zscaler_zdx_checks.window(336))
+        elif ep in _PARAMS or ep in _UNPAGED or ep in _ZPA_SINGLE:
+            body, code = guard.get(ep, dict(_PARAMS[ep])) if ep in _PARAMS else guard.get(ep)
+        elif ep.startswith("/zpa/"):
             body, code = _read_zpa(guard, ep)
         elif ep in _ZIA_PAGED:
             body, code = _read_zia_pages(guard, ep)
@@ -1053,11 +1537,197 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
             unread.append(f"{ep}: HTTP {code}")
             if code in _UNANSWERED:
                 log(f"Saving a snapshot: {ep} was not answered (HTTP {code}).")
+    if "insights" in scopes and not stopped():
+        import insights
+        kept = insights.capture(guard, log, cancel)
+        responses.update(kept)
+        counts["answers"] += len(kept)
+        counts["objects"] += len(kept)
+        if stopped():
+            log("Stopped: nothing more is read, and no snapshot is saved.")
+            return {"responses": responses, "counts": counts, "unread": unread, "stopped": True}
     log(f"Saving a snapshot: read {counts['answers']} lists ({counts['objects']} objects); {counts['not_read']} could not be read.")
     return {"responses": responses, "counts": counts, "unread": unread, "stopped": False}
 
 
+# ZPA lists read in one call: the SDK's list method takes no paging parameters.
+# (Not _ZPA_SINGLE above: those are kept as answered, not turned into a list.)
+_ZPA_ONE_CALL = {"/zpa/businessContinuitySettings"}
+
+
+# What a snapshot keeps of an incident: its metadata. The user, the file name,
+# the client IP, the metadata file link, note text and ticket links are
+# personal or point at content: never saved (counted where it matters).
+_ZWA_KEEP = ("id", "internalId", "transactionId", "integrationType", "sourceType", "sourceSubType", "sourceActions", "severity", "priority",
+             "matchCount", "createdAt", "lastUpdatedAt", "sourceFirstObservedAt", "sourceLastObservedAt", "status", "resolution", "closedCode",
+             "assignedAdmin", "labels", "matchingPolicies", "incidentGroupIds")
+
+
+def _zwa_minimal(r: Dict[str, Any]) -> Dict[str, Any]:
+    out = {k: r[k] for k in _ZWA_KEEP if k in r}
+    out.setdefault("id", r.get("internalId"))
+    app = r.get("applicationInfo") if isinstance(r.get("applicationInfo"), dict) else {}
+    out["applicationInfo"] = {k: app[k] for k in ("url", "name", "hostnameOrApplication", "category") if k in app}
+    content = r.get("contentInfo") if isinstance(r.get("contentInfo"), dict) else {}
+    out["contentInfo"] = {k: content[k] for k in ("fileType",) if k in content}
+    user = r.get("userInfo") if isinstance(r.get("userInfo"), dict) else {}
+    out["userInfo"] = {k: user[k] for k in ("department",) if k in user}
+    out["notes"] = [{} for _ in (r.get("notes") or [])][:50]
+    out["dlpIncidentTickets"] = [dict({k: t[k] for k in ("ticketType", "ticketingSystemName", "projectName") if k in t},
+                                      ticketInfo={k: v for k, v in (t.get("ticketInfo") or {}).items() if k in ("ticketId", "state")})
+                                 for t in (r.get("dlpIncidentTickets") or []) if isinstance(t, dict)][:20]
+    return out
+
+
+def _zwa_part(part: str, body: Any) -> Any:
+    """An incident's triggers, history or tickets as a snapshot keeps them:
+    names with counts, masked history lines, tickets without links."""
+    import zwa_incidents as zi
+    if part == "triggers":
+        return {"matches": [{"name": t["name"], "matchCount": t["matches"]} for t in zi.summarize_triggers(body)]}
+    if part == "change-history":
+        return {"changeHistory": zi.summarize_history(body)}
+    return {"tickets": [{"ticketingSystemName": t["system"], "projectName": t["project"], "ticketInfo": {"ticketId": t["ticket"], "state": t["state"]}}
+                        for t in zi.summarize_tickets(body)]}
+
+
+def _capture_zwa(client: Any, guard: Any, responses: Dict[str, Dict[str, Any]], log: Callable[[str], None],
+                 stopped: Callable[[], bool]) -> Optional[Tuple[int, int, List[str]]]:
+    """Workflow Automation for a snapshot: the incident list of the last
+    ZWA_CAPTURE_DAYS, the triggers, change history and tickets of the newest
+    ZWA_CAPTURE_INCIDENTS, and a week of the audit log. None when Workflow
+    Automation is not marked Zscaler (nothing is read). Read-only: the two
+    searches are POSTs that change nothing; the evidence is never read."""
+    import channel_scope
+    if not channel_scope.group_in_scope(("workflow_automation",), getattr(guard, "_scope", {}) or {}):
+        return None
+    post = getattr(guard, "post_read", None)
+    if not callable(post):
+        return 0, 0, ["Workflow Automation: this client cannot read the incident search."]
+    from datetime import datetime, timedelta, timezone
+    end = datetime.now(timezone.utc)
+    tr = {"startTime": (end - timedelta(days=ZWA_CAPTURE_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.000Z"), "endTime": end.strftime("%Y-%m-%dT%H:%M:%S.000Z")}
+    body, code = post(f"{ZWA_BASE}/incidents/search?page=1&pageSize=100", {"fields": [], "timeRange": tr})
+    if code not in (200, 204):
+        return 0, 0, [f"Workflow Automation incidents: HTTP {code}"]
+    rows: List[Dict[str, Any]] = []
+    for group in (body or {}).get("incidents") or [] if isinstance(body, dict) else []:
+        inner = group.get("incidents") if isinstance(group, dict) else None
+        rows.extend(x for x in (inner if isinstance(inner, list) else [group]) if isinstance(x, dict))
+    rows = [_zwa_minimal(r) for r in rows]
+    responses[f"{ZWA_BASE}/incidents"] = {"status": 200, "body": rows}
+    answers, objects, unread = 1, len(rows), []
+    for r in rows[:ZWA_CAPTURE_INCIDENTS]:
+        iid = str(r.get("id") or "")
+        if stopped() or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}", iid):
+            continue
+        for part in ("triggers", "change-history", "tickets"):
+            b, c = guard.get(f"{ZWA_BASE}/incidents/{iid}/{part}")
+            if c in (200, 204):
+                responses[f"{ZWA_BASE}/incidents/{iid}/{part}"] = {"status": 200, "body": _zwa_part(part, b if c == 200 else {})}
+                answers += 1
+    body, code = post(f"{ZWA_BASE}/customer/audit?page=1&pageSize=100",
+                      {"fields": [], "timeRange": {"startTime": (end - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z"), "endTime": tr["endTime"]}})
+    if code in (200, 204):
+        responses[f"{ZWA_BASE}/customer/audit"] = {"status": 200, "body": body if code == 200 else {"logs": []}}
+        answers += 1
+    else:
+        unread.append(f"Workflow Automation audit log: HTTP {code}")
+    log(f"Saving a snapshot: {len(rows)} Workflow Automation incident(s), metadata only.")
+    return answers, objects, unread
+
+
+MAX_PER_OBJECT = 50   # objects read one by one per list (applications, alerts, admins, groups)
+
+
+def _capture_per_object(guard: Any, ep: str, keep: Callable[[str, Any], None], counts: Dict[str, int], unread: List[str],
+                        stopped: Callable[[], bool]) -> None:
+    """The reads a snapshot makes per object, so the ZDX score, metrics and
+    alert checks and the ZIdentity entitlement checks and group picker work
+    offline. Personal data is not kept: affected devices and group members
+    are stored as ids only."""
+    import zscaler_zdx_checks as zx
+
+    def one(path: str, params: Any = None, shape: Optional[Callable[[Any], Any]] = None) -> None:
+        if stopped():
+            return
+        body, code = guard.get(path, params) if params is not None else guard.get(path)
+        if code in (200, 204):
+            keep(path, shape(body) if shape else body)
+            counts["answers"] += 1
+        else:
+            counts["not_read"] += 1
+            unread.append(f"{path}: HTTP {code}")
+
+    def ids_only(key: str) -> Callable[[Any], Any]:
+        def f(body: Any) -> Any:
+            rows = _items(body) or []
+            return {key: [{"id": x.get("id")} for x in rows if isinstance(x, dict) and x.get("id") not in (None, "")], "next_offset": None}
+        return f
+
+    def ok_id(v: Any) -> bool:
+        t = str(v or "")
+        return bool(t) and len(t) <= 64 and bool(re.fullmatch(r"[A-Za-z0-9_.\-]+", t))
+
+    if ep == PER_OBJECT_ZDX:
+        apps, code = guard.get("/zdx/administration/apps", zx.window(168))
+        for a in ([x for x in _items(apps) or [] if isinstance(x, dict)] if code in (200, 204) else [])[:MAX_PER_OBJECT]:
+            if ok_id(a.get("id")):
+                one(f"/zdx/apps/{a['id']}/score", zx.window(168))
+                one(f"/zdx/apps/{a['id']}/metrics", zx.window(168))
+        hist, code = guard.get("/zdx/alerts/historical", zx.window(336))
+        for al in ([x for x in _items(hist) or [] if isinstance(x, dict)] if code in (200, 204) else [])[:MAX_PER_OBJECT]:
+            if ok_id(al.get("id")):
+                one(f"/zdx/alerts/{al['id']}/affected_devices", zx.window(336), ids_only("devices"))
+        return
+    users, code = guard.get("/zid/users")
+    for u in ([x for x in _items(users) or [] if isinstance(x, dict)] if code in (200, 204) else []):
+        if u.get("adminEntitlementEnabled") is True and ok_id(u.get("id")):
+            one(f"/zid/users/{u['id']}/admin-entitlements")
+    groups, code = guard.get("/zid/groups")
+    for g in ([x for x in _items(groups) or [] if isinstance(x, dict)] if code in (200, 204) else [])[:MAX_PER_OBJECT]:
+        if ok_id(g.get("id")):
+            one(f"/zid/groups/{g['id']}/users", None, lambda b: {"records": [{"id": x.get("id")} for x in (_items(b) or [])
+                                                                          if isinstance(x, dict) and x.get("id") not in (None, "")]})
+
+
+def _capture_scim(guard: Any, customer_id: str, keep: Callable[[str, Any], None], counts: Dict[str, int], unread: List[str],
+                  stopped: Callable[[], bool]) -> None:
+    """SCIM attributes and SCIM groups, once per identity provider (the SDK
+    lists them per IdP: zpa/scim_attributes.list_scim_attributes,
+    zpa/scim_groups.list_scim_groups). Attribute and group definitions only:
+    no user is read. SCIM groups are served by ZPA's user configuration
+    service, so their path is sent as it is, with the customer id."""
+    idps, code = _read_zpa(guard, "/zpa/idp")
+    rows = [x for x in _items(idps) or [] if isinstance(x, dict)] if code in (200, 204) else []
+    if code not in (200, 204):
+        counts["not_read"] += 1
+        unread.append(f"/zpa/idp: HTTP {code}")
+    cid_ok = bool(re.fullmatch(r"[0-9]{1,24}", customer_id))
+    for idp in rows[:MAX_PER_OBJECT]:
+        iid = str(idp.get("id") or "")
+        if stopped() or not re.fullmatch(r"[0-9]{1,24}", iid):
+            continue
+        eps = [f"/zpa/idp/{iid}/scimattribute"]
+        if cid_ok:
+            eps.append(f"raw:/zpa/userconfig/v1/customers/{customer_id}/scimgroup/idpId/{iid}")
+        for ep in eps:
+            body, code = _read_zpa(guard, ep)
+            if code in (200, 204):
+                keep(ep, body if code == 200 else [])
+                counts["answers"] += 1
+            else:
+                counts["not_read"] += 1
+                unread.append(f"{ep.removeprefix('raw:')}: HTTP {code}")
+
+
 def _read_zpa(guard: Any, ep: str) -> Tuple[Any, int]:
+    if ep in _ZPA_ONE_CALL:
+        body, code = guard.get(ep)
+        if code not in (200, 204):
+            return body, code
+        rows = _items(body) or []
+        return {"list": rows, "totalPages": "1", "totalCount": str(len(rows))}, 200
     rows: List[Any] = []
     for page in range(1, MAX_LIST_PAGES + 1):
         body, code = guard.get(ep, {"page": page, "pagesize": 500})
@@ -1095,7 +1765,12 @@ _NAMES = {"webDlpRules": "Inline Web DLP rules", "endPointDlpRules": "Endpoint D
           "firewallFilteringRules": "Cloud Firewall rules", "fileTypeRules": "File Type Control rules", "urlCategories": "URL categories",
           "application": "ZPA application segments", "policyType/ACCESS_POLICY": "ZPA access policy", "connector": "App Connectors",
           "webForwardingProfile/listByCompany": "Client Connector forwarding profiles", "application-profiles": "Client Connector app profiles",
-          "apps": "ZDX applications", "locations": "Locations", "pacFiles": "PAC files"}
+          "apps": "ZDX applications", "locations": "Locations", "pacFiles": "PAC files",
+          "administrators": "ZPA administrators", "roles": "ZPA roles", "ssoLoginOptions": "ZPA admin SSO login options",
+          "apiKeys": "ZPA API keys", "emergencyAccess/users": "ZPA emergency access accounts", "microtenants": "ZPA microtenants",
+          "CONNECTOR_GRP/provisioningKey": "ZPA App Connector provisioning keys",
+          "SERVICE_EDGE_GRP/provisioningKey": "ZPA Service Edge provisioning keys", "credential": "PRA credentials",
+          "credential-pool": "PRA credential pools", "approval": "PRA approvals"}
 
 
 def friendly(path: str) -> str:

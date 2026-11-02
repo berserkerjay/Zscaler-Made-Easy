@@ -1,0 +1,35 @@
+{
+ "area": "Wave 7: firewall migration from Palo Alto Networks, a terminal UI, local plugins and update notifications",
+ "title": "PAN-OS export to a Bulk changes plan (Cloud Firewall and ZPA), the curses TUI over the same API and gates, hash-allow-listed local plugins with a narrow API, update notices once per version",
+ "standards": ["ASVS V1.4.1", "ASVS V4.1.3", "ASVS V4.1.5", "ASVS V5.1.3", "ASVS V5.1.4", "ASVS V5.3.1", "ASVS V5.5.2", "ASVS V8.3.4",
+               "ASVS V9.1.1", "ASVS V10.3.2", "ASVS V11.1.1", "ASVS V14.1.1", "ASVS V14.2.4",
+               "CWE-20", "CWE-59", "CWE-150", "CWE-200", "CWE-250", "CWE-269", "CWE-284", "CWE-319", "CWE-345", "CWE-367", "CWE-400",
+               "CWE-494", "CWE-611", "CWE-776", "CWE-799", "CWE-829", "CWE-862", "CWE-1188", "WSTG-INPV-07", "WSTG-ATHZ-02"],
+ "checks": [
+  {"id": "W7-MTP-C01", "what": "PAN-OS XML parsed with defusedxml (hash-pinned in requirements.lock): DTD, entity (internal, external, UTF-16 disguised) and external references refused; size, depth and element caps", "standard": "ASVS V5.5.2 · CWE-611 · CWE-776", "result": "pass"},
+  {"id": "W7-MTP-C02", "what": "A rule with any part that cannot be carried exactly is listed with the reason, never trimmed or widened; catch-alls not duplicated", "standard": "ASVS V1.4.1 · CWE-863", "result": "pass"},
+  {"id": "W7-MTP-C03", "what": "Firewall import: Scope rule before any read, preview with plan hash, typed phrase always, re-read before each create, rules DISABLED, read-back, Undo deletes rules first", "standard": "ASVS V4.1.5 · CWE-1188", "result": "pass"},
+  {"id": "W7-MTP-C04", "what": "The plan is untrusted: names, prefix ownership, references, addresses, ports, actions and network applications checked again on the server", "standard": "ASVS V5.1.3 · CWE-20", "result": "pass"},
+  {"id": "W7-MTP-C05", "what": "TUI: a client of the server's own API; writes need the typed phrase locally and every gate on the server; token never shown; escape sequences stripped; plain http only to loopback", "standard": "ASVS V9.1.1 · CWE-150 · CWE-319", "result": "pass"},
+  {"id": "W7-MTP-C06", "what": "Local plugins off by default; an unlisted or modified plugin (hash mismatch, extra file, link) is refused and its code never runs; hashed bytes are the ones run", "standard": "ASVS V10.3.2 · CWE-494 · CWE-829", "result": "pass"},
+  {"id": "W7-MTP-C07", "what": "Plugin operations go through the engine's gates; the planner's client is read-only; writes only inside an apply; per-user enablement", "standard": "ASVS V4.1.3 · CWE-250 · CWE-862", "result": "pass"},
+  {"id": "W7-MTP-C08", "what": "Update notices: off by default, once per version, only on the digests' channel, no path or secret in the message", "standard": "ASVS V8.3.4 · CWE-799", "result": "pass"}
+ ],
+ "findings": [
+  {"id": "W7-MTP-01", "title": "Gap: no firewall or private-access migration from Palo Alto Networks (only DLP vendors were migrated)", "severity": "info", "status": "fixed",
+   "fix": "panos_migrate.py builds a plan from a PAN-OS export; ops_fw_import.py applies its ZIA part on Bulk changes; the ZPA part feeds the existing ZPA builders", "test": "tests/test_panos_migrate.py::test_preview_then_apply_creates_disabled_rules_after_their_objects_and_undo_deletes_them"},
+  {"id": "W7-MTP-02", "title": "No hardened XML parser in the runtime lock: an XML upload relied on a hand-written DTD refusal", "severity": "low", "cwe": "CWE-611", "asvs": "V5.5.2", "status": "fixed",
+   "fix": "defusedxml 0.7.1 added to requirements.txt and requirements.lock with hashes (SBOM and notices regenerated); the PAN-OS reader uses it with forbid_dtd, forbid_entities and forbid_external", "test": "tests/test_panos_migrate.py::test_dtds_entities_and_external_references_are_refused"},
+  {"id": "W7-MTP-03", "title": "Gap: Bulk changes had no way to create IP source groups or network services (pack_ops kinds)", "severity": "info", "status": "fixed",
+   "fix": "pack_ops create/update/delete take ip_source_group and network_service (SDK cloud_firewall add_/update_/delete_ip_source_group and _network_service)", "test": "tests/test_panos_migrate.py::test_preview_then_apply_creates_disabled_rules_after_their_objects_and_undo_deletes_them"},
+  {"id": "W7-MTP-04", "title": "Gap: no terminal UI for SSH sessions", "severity": "info", "status": "fixed",
+   "fix": "tui.py and the `tui` subcommand of zscaler-made-easy and dlp-check", "test": "tests/test_tui.py::test_preview_then_apply_goes_through_the_servers_gates"},
+  {"id": "W7-MTP-05", "title": "Gap: no opt-in extension point outside the app's own modules; a Bulk changes type without a page script would show an endless 'Loading the form'", "severity": "info", "status": "fixed",
+   "fix": "local_plugins.py (hash allow-list, narrow API) and a generic JSON form on Bulk changes for a type that ships no script", "test": "tests/test_local_plugins.py::test_a_plugin_modified_after_approval_is_refused"},
+  {"id": "W7-MTP-06", "title": "Gap: a newer app version was announced only on the page; no notice on the digest channel", "severity": "info", "status": "fixed",
+   "fix": "update_notify.py, called from the update check, once per version, off by default", "test": "tests/test_update_notify.py::test_once_per_version"},
+  {"id": "W7-MTP-07", "title": "The sample tenant has no network applications list, so a firewall import previewed on it excludes the rules that name an application", "severity": "info", "status": "accepted",
+   "reason": "sample_tenant.py is shared by every page's answers; the import is exercised with fakes that carry the list, and the preview on the sample says why those rules are excluded"}
+ ],
+ "tests_added": 63
+}

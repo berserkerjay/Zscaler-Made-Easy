@@ -1,5 +1,7 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+# setuptools 77 is the first to read an SPDX `license` expression and
+# `license-files` (PEP 639); the build installs the locked 84.x.
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,7 +12,8 @@ version = "2026.9.13"
 description = "Zscaler DLP assessment and policy-pack deployment: 300+ automated checks, guided deploy / verify / remove of policy packs, reports and continuous evaluation."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {file = "LICENSE"}
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 # The runtime dependencies. Installs pin every wheel by hash from
 # requirements.lock (install.sh, INSTALL_Zscaler_Made_Easy.bat and the
 # Dockerfile all install from that file); this list is the source it is
@@ -25,6 +28,9 @@ dependencies = [
     "mcp[cli]>=1.2.0",
     "python-docx>=1.0.0",
     "pyjwt[crypto]>=2.15.0",
+    "defusedxml>=0.7.1",
+    "signxml>=5.1.0",
+    "webauthn>=3.0.1",
     "msgpack>=1.2.3",
     "setuptools>=78.1.1",
     'pywin32>=311; sys_platform == "win32"',
@@ -37,7 +43,7 @@ dependencies = [
 [project.optional-dependencies]
 # Same pins as requirements-dev.lock (make lock-dev), which CI and make dev
 # install hash-verified.
-dev = ["pytest==9.1.1", "pyflakes==4.0.1", "httpx==0.28.1"]
+dev = ["pytest==9.1.1", "pyflakes==4.0.1", "httpx==0.28.1", "bandit==1.9.4"]
 
 # The app runs from its own folder (the web UI, the policy packs and the
 # Terraform workspaces live next to the modules), so it is installed
@@ -54,17 +60,29 @@ dlp-check-evaluate = "continuous_eval:main"
 
 [tool.setuptools]
 py-modules = [
-    "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "change_queue", "channel_scope", "compliance_mapping", "console_index", "csv_safe", "md_safe", "xlsx_writer", "policy_exports", "url_tools", "config_exports", "engine_explain", "audit_timeline", "admin_ops", "ops_zcc", "ops_zdx", "ops_zpa", "workspace_notes", "ai_guard", "ops_aiguard", "pov", "bulk_test", "ops_zia_baseline",
-    "continuous_eval", "corpus_engines", "safe_files", "posture_plus", "data_flow", "ssl_coverage", "deployments", "detection_health", "discover_endpoints", "readiness", "zia_path_modules",
+    "open_source", "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "change_queue", "channel_scope", "compliance_mapping", "console_index", "csv_safe", "md_safe", "xlsx_writer", "xlsx_reader", "syslog_listener", "traffic_log_watch", "policy_exports", "url_tools", "config_exports", "engine_explain", "audit_timeline", "admin_ops", "ops_zcc", "ops_zdx", "ops_zpa", "workspace_notes", "ai_guard", "ops_aiguard", "pov", "bulk_test", "ops_zia_baseline", "rule_editor", "ops_rule_editor", "ops_zia_objects", "config_backup", "ops_config_restore", "ops_rule_csv", "rule_csv", "sync_jobs", "ops_fw_import", "panos_migrate", "local_plugins", "update_notify", "tui", "ops_list_fix", "ops_zia_sandbox", "ops_sanction",
+    "continuous_eval", "corpus_engines", "safe_files", "posture_plus", "data_flow", "ssl_coverage", "deployments", "detection_health", "discover_endpoints", "readiness", "zia_path_modules", "rule_fields", "category_lookup", "ucaas_oneclick", "zia_forwarding",
     "dlp_analysis", "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance", "insights", "device_posture", "offline_tenant", "sample_tenant",
     "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_export", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops", "path_analyzer", "tenant_auth", "tenant_fingerprint", "pac_eval", "path_whatif",
     "pack_removal", "pack_terraform", "permissions", "plain_english", "proposal_apply", "proposals", "remediation",
     "pdf_writer", "report_docx", "report_exports", "rule_migrator", "saas_email_checks", "saas_matrix", "scope_permissions", "sdk_client", "secure_by_design", "security", "self_heal",
     "scenario_flow", "shadow_rules", "sso", "ssl_flow", "tenant_profiles", "upstream_check", "vendor_migrate", "vertical", "zcc_evaluation", "zia_rate", "zscaler_automation_checks", "zscaler_best_practices",
-    "zcc_profiles", "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check", "zcc_fleet",
-    "zscaler_zdx_checks", "zscaler_zidentity_checks", "zpa_analysis", "zpa_overview", "zpa_reader", "browser_security", "standalone_main", "zpa_path", "workload_path",
-    "admin_rank",
+    "zcc_profiles", "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check", "zcc_fleet", "zcc_bypass", "zcc_otp",
+    "zscaler_zdx_checks", "zscaler_zidentity_checks", "zpa_analysis", "zpa_overview", "zpa_reader", "browser_security", "standalone_main", "zpa_path", "workload_path", "ztw_overview", "other_products", "zscaler_other_products_checks",
+    "admin_rank", "app_services", "m365_endpoints", "rank_inherit", "compliance_profiles", "compliance_pack", "editions", "path_manual", "vendor_endpoints", "mcp_tools", "dns_forward_zones", "ops_zcc_admin", "ops_zdx_trace", "ops_zia_directory", "ops_zia_pac", "ops_zid", "ops_zpa_admin", "path_compare", "path_device", "path_probe", "zpa_identity", "zscaler_ip_ranges", "server_acme", "server_tls", "docker_healthcheck", "store_crypto", "team_api", "team_routes", "team_server", "sso_saml", "team_passkeys", "tenant_terraform", "tenant_terraform_schema", "zcc_fleet_history", "zcc_fleet_import", "siem_queries", "traffic_logs", "api_calls", "tenant_health", "pov_build", "ops_zpa_fields", "ops_zwa", "zwa_incidents", "ops_zcc_live", "ops_zid_groups", "sdk_read", "zcc_devices", "zdx_insights", "ops_zia_activation", "ops_url_category_admin", "ops_ip_groups", "ops_dlp_objects", "ops_zid_user",
 ]
+
+# The offline Python static analyser (SAST): make sast, and
+# tests/test_sast.py in every test run (CI included). Every check runs (no
+# `skips`, no `tests` allow-list); the gate is medium severity and up at any
+# confidence. A finding is fixed at the root, or, when bandit misreads the
+# code, suppressed on its own line as `# nosec <id> # <why>` (the second `#`
+# keeps bandit from reading the reason as check names); the reviewed list
+# of those is tests/test_sast.py's REVIEWED_SUPPRESSIONS. Bandit matches an
+# excluded path as a substring of "./<path>", so these only work with the
+# target `.` from the repository root, as make sast and the test run it.
+[tool.bandit]
+exclude_dirs = ["./tests/", "./.venv/", "./venv/", "./build/", "./dist/", "./node_modules/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

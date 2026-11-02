@@ -55,6 +55,8 @@ COMPAT = {
     "static/sidebar_order.js": {"'dlpcheck_sidebar_order_v1'"},                          # browser storage keys
     "static/update_beacon.js": {"'dlpcheck_update_dismissed'", "'dlpcheck_upstream_dismissed'"},
     "tenant_profiles.py": {'KEYRING_SERVICE = "dlp-check"'},                            # where remembered secrets are stored
+    "store_crypto.py": {'KEYRING_SERVICE = "dlp-check"'},                              # the same keyring service (the store key)
+    "server_acme.py": {'KEYRING_SERVICE = "dlp-check"'},                               # the same keyring service (the ACME DNS token)
     # ── The extension's internal ids (menu ids, script id, DOM marker) ─
     "browser_extension/background.js": {"'dlpcheck-link'", "'dlpcheck-selection'", "'dlpcheck-page'"},
     "browser_extension/common.js": {"'dlpcheck-console-badges'"},

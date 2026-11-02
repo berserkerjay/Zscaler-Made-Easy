@@ -1,0 +1,122 @@
+{
+ "area": "Traffic analysis: ZIA app services and app service groups (the Office 365 One Click rule's OFFICE365) matched with Microsoft's published Microsoft 365 endpoint list in the Path analyzer, its what-if, DNS Control, workload forwarding, Test a list and Shadowed rules (app_services.py, m365_endpoints.py), and the optional, off-by-default fetch of that list (Advanced settings)",
+ "title": "Microsoft 365 app service groups matched by host name and address, with the list treated as untrusted and every gap left unknown",
+ "standards": [
+  "ASVS V1.4.4",
+  "ASVS V5.1.3",
+  "ASVS V12.1.1",
+  "ASVS V12.6.1",
+  "ASVS V9.2.1",
+  "ASVS V8.3.4",
+  "ASVS V7.2.1",
+  "ASVS V14.1.1",
+  "CWE-20",
+  "CWE-176",
+  "CWE-345",
+  "CWE-400",
+  "CWE-561",
+  "CWE-672",
+  "CWE-697",
+  "CWE-754",
+  "CWE-918",
+  "WSTG-INPV-19",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 4.1.2"
+ ],
+ "checks": [
+  {
+   "id": "W7-O365-C01",
+   "what": "Membership source in the tenant: zscaler-sdk-python 1.11.3 models an app service and an app service group as id, name and isNameL10nTag only (zia/models/cloud_firewall_app_services.py) and has no endpoint that lists their members; Client Connector's IP-based apps (zcc/predefined_ip_based_apps.py, zcc/web_app_service.py) are a different object with no documented link to a ZIA app service, so they are not used",
+   "standard": "ASVS V1.4.4",
+   "result": "pass"
+  },
+  {
+   "id": "W7-O365-C02",
+   "what": "Oracle of 30 destinations against the OFFICE365 group: exact hosts, case and trailing dot, '*.domain' (one or more labels, never the apex or a look-alike), '*' inside a label and Microsoft's tenant placeholder (one label part), an IDN in punycode, IPv4, IPv6, bracketed and IPv4-mapped addresses, ports Microsoft publishes or not",
+   "standard": "CWE-697",
+   "result": "pass"
+  },
+  {
+   "id": "W7-O365-C03",
+   "what": "Unknown stays the fallback: no list, a stale list (30 days, settable 1-365), a host name not in the list (its address is not resolved), a port outside the set's ports, an app service that is not Microsoft 365, a damaged kept file",
+   "standard": "CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W7-O365-C04",
+   "what": "The list as untrusted input: 23 malformed shapes refused whole with a reason (not a list, not JSON, NaN, deep nesting, a missing or repeated id, a bad host pattern or placeholder, an address, a port), a 2 MB cap before parsing, at most 2000 sets and 50,000 entries, and a refused list never replaces the one kept",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W7-O365-C05",
+   "what": "The fetch: off by default (no request leaves the machine, Fetch now is a 409), then GET only to https://endpoints.office.com (other schemes, hosts, ports and credentials refused before a request), no redirect followed, a 10-second timeout, TLS verified, a random clientrequestid and nothing about the tenant, the version first and the list only when it changed, a failure recorded and not retried within the hour",
+   "standard": "ASVS V12.6.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-O365-C06",
+   "what": "Path analyzer, what-if, DNS Control and Cloud & Branch Connector forwarding rules: the One Click rule decides a Microsoft 365 host definitely, an address outside the ranges falls to the next rule definitely, and without the list it is never a match",
+   "standard": "ASVS V1.4.4",
+   "result": "pass"
+  },
+  {
+   "id": "W7-O365-C07",
+   "what": "Test a list: rows that share a trace never mix a Microsoft 365 address with another; QUIC and Teams media to Microsoft 365 are allowed by the One Click rule and the same ports elsewhere blocked",
+   "standard": "CWE-697",
+   "result": "pass"
+  },
+  {
+   "id": "W7-O365-C08",
+   "what": "Shadowed rules: a later firewall rule is reported hidden by the One Click rule only when every host name, CIDR and range it names is a published Microsoft 365 endpoint on every port its network services allow, by a current list; 12 near misses (an outside address, an unlisted host, a wider block, a range past the block, no or another port, unread services, an IP group, another group, a stale list) report nothing",
+   "standard": "CWE-561",
+   "result": "pass"
+  },
+  {
+   "id": "W7-O365-C09",
+   "what": "Advanced settings: the section starts off, every control is labelled, keyboard reachable and has help, the status is set from escaped text, and switching, importing and removing are audited; the destination is listed with the other outbound calls in SECURITY.md",
+   "standard": "WCAG 2.2 SC 4.1.2",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-O365-01",
+   "title": "The Office 365 One Click rule's app service group (OFFICE365) was always 'unknown': the Path analyzer, its what-if, DNS Control, workload forwarding and Test a list reported Microsoft 365 traffic the rule allows as conditional, and Shadowed rules could not compare it",
+   "severity": "medium",
+   "cwe": "CWE-754",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "app_services.criterion matches it by host name and address against Microsoft's published Microsoft 365 endpoint list (m365_endpoints), with unknown kept for everything the list cannot settle; shadow_rules compares it with a later rule's destinations and ports",
+   "test": "tests/test_m365_app_services.py::test_the_one_click_rule_decides_a_microsoft_365_host_in_the_path_analyzer"
+  },
+  {
+   "id": "W7-O365-02",
+   "title": "Found while building, never released: Test a list shared one trace between destinations its host index saw alike, so an address outside Microsoft 365 took a Microsoft 365 address's One Click allow",
+   "severity": "medium",
+   "cwe": "CWE-697",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "bulk_test.PathEvaluator's fingerprint includes the Microsoft 365 endpoint sets that hold the destination whenever a firewall or DNS rule names an app service",
+   "test": "tests/test_m365_app_services.py::test_test_a_list_decides_microsoft_365_rows_with_the_one_click_rule"
+  },
+  {
+   "id": "W7-O365-03",
+   "title": "Test a list counted a rule unknown only on its app service group as 'blocks in some contexts' (a user, a time), although it is the destination that is not known",
+   "severity": "low",
+   "cwe": "CWE-697",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "bulk_test._context_only leaves app service criteria out of the context labels",
+   "test": "tests/test_m365_app_services.py::test_an_app_service_unknown_is_about_the_destination_not_the_context"
+  }
+ ],
+ "notes": [
+  "Assumed (not in the SDK or the API reference): Zscaler's OFFICE365 group holds Microsoft's published endpoints.",
+  "Assumed: the app service names that mean Microsoft 365 (app_services.M365_NAMES).",
+  "Assumed: the app services and groups a rule names are alternatives (any one is enough).",
+  "A host name not in the list is unknown, because its address is not resolved.",
+  "Microsoft's wildcard and Microsoft's tenant placeholder semantics are read strictly: fewer matches, never more."
+ ],
+ "tests_added": 115
+}

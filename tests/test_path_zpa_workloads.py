@@ -683,8 +683,11 @@ def test_a_profile_only_request_uses_the_profiles_cloud(api, monkeypatch):
 def _cloud_default_models():
     import dlp_api_server as srv
     from pydantic import BaseModel
+    # The model families whose unnamed cloud resolves to production (their
+    # field default is blank so it never replaces a profile's cloud).
+    families = (srv.AssessRequest, srv.MigrateRequest, srv.RemediationPlanRequest, srv.RemediationExecuteRequest)
     return sorted((c for c in vars(srv).values() if isinstance(c, type) and issubclass(c, BaseModel) and "profile_id" in c.model_fields
-                   and "cloud" in c.model_fields and c.model_fields["cloud"].default == "production"), key=lambda c: c.__name__)
+                   and "cloud" in c.model_fields and issubclass(c, families)), key=lambda c: c.__name__)
 
 
 @pytest.mark.parametrize("model", _cloud_default_models(), ids=lambda c: c.__name__)

@@ -42,7 +42,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Traffic</span> insights</h1>
-      <p>What the tenant's traffic actually did over a time window, from ZIA Insights: web traffic allowed and blocked, by location, the cloud applications in use, SaaS security and firewall actions, and the users with the most security incidents. Read-only, and only when ZIA Insights is ticked on the Scope page.</p>
+      <p>What the tenant's traffic actually did over a time window, from ZIA Insights: web traffic allowed and blocked, by location, the web threats by class and super-category, the cloud applications in use, SaaS security, firewall traffic by action, location and network service, security incidents by location, IoT and unmanaged device counts, and the users with the most security incidents. Read-only, and only when ZIA Insights is ticked on the Scope page.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -72,14 +72,14 @@
     <main class="rp-card">
       <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
       <div class="ti-coverage" id="tiCoverage">
-        <strong>What this does and does not cover.</strong> Aggregated numbers from ZIA Insights (the Z-Insights API): web traffic by action and by location, cloud applications (Shadow IT), SaaS security (CASB) by application, firewall traffic by action, and the users with the most security incidents. Insights cannot break traffic down by URL category, by user, by policy rule or by one host, so this page does not show those, and never guesses them. User names are shown on this screen only: they are not logged, kept or exported. Nothing is written to the tenant.
+        <strong>What this does and does not cover.</strong> Aggregated numbers from ZIA Insights (the Z-Insights API): web traffic by action and by location, web threats by class and super-category, cloud applications (Shadow IT), SaaS security (CASB) by application, firewall traffic by action, location and network service, security incidents by location, IoT and unmanaged device counts (now, not for the window), and the users with the most security incidents. Insights cannot break traffic down by URL category, by user, by policy rule or by one host, so this page does not show those, and never guesses them; for those, upload the NSS logs to <a href="/report/traffic-logs" id="tiLogsLink">Traffic and session logs</a>. User names are shown on this screen only: they are not logged, kept or exported. Nothing is written to the tenant.
       </div>
       <div id="tiBody">
         <div class="pa-intro" id="tiHow">
           <div class="pa-intro-t">How it works</div>
           <ol class="pa-steps">
             <li><strong>Pick a time window</strong> (up to 92 days, within the last 180) and the unit for web traffic: transactions or bytes.</li>
-            <li><strong>Read Insights.</strong> About nine questions go to ZIA Insights, one at a time, shown live; Stop ends the read at once with nothing more asked.</li>
+            <li><strong>Read Insights.</strong> About fifteen questions go to ZIA Insights, one at a time, shown live; Stop ends the read at once with nothing more asked.</li>
             <li><strong>Sort and export.</strong> Click a column heading to sort. CSV and JSON exports carry every table except the per-user one.</li>
           </ol>
         </div>
@@ -178,6 +178,12 @@
       if (key === 'web_action') return [['name', 'Action', 'text'], ['total', unit === 'BYTES' ? 'Bytes' : 'Transactions', tot]];
       if (key === 'web_location') return [['name', 'Location', 'text'], ['total', unit === 'BYTES' ? 'Bytes' : 'Transactions', tot]];
       if (key === 'fw_action') return [['name', 'Action', 'text'], ['total', 'Sessions', 'num']];
+      if (key === 'fw_location') return [['name', 'Location', 'text'], ['total', 'Sessions', 'num']];
+      if (key === 'fw_service') return [['name', 'Network service', 'text'], ['total', 'Sessions', 'num']];
+      if (key === 'threat_class') return [['name', 'Threat class', 'text'], ['total', unit === 'BYTES' ? 'Bytes' : 'Transactions', unit === 'BYTES' ? 'bytes' : 'num']];
+      if (key === 'threat_super') return [['name', 'Threat super-category', 'text'], ['total', unit === 'BYTES' ? 'Bytes' : 'Transactions', unit === 'BYTES' ? 'bytes' : 'num']];
+      if (key === 'incident_location') return [['name', 'Location', 'text'], ['total', 'Incidents', 'num']];
+      if (key === 'iot:classes') return [['name', 'Device class', 'text'], ['category', 'Category', 'text'], ['total', 'Devices', 'num']];
       if (/bytes/.test(key)) return [['name', 'Name', 'text'], ['total', 'Bytes', 'bytes']];
       return [['name', 'Name', 'text'], ['total', 'Total', 'num']];
     }
@@ -204,7 +210,12 @@
     }
     function summaryHtml(sec) {
       const sm = sec.summary || {}, t = sm.totals || {};
-      const totals = `<div class="ti-totals">
+      const totals = sec.key === 'iot' ? `<div class="ti-totals">
+          <span><span class="k">All devices</span>${count(t.devices_count)}</span>
+          <span><span class="k">IoT</span>${count(t.iot_devices_count)}</span>
+          <span><span class="k">Unmanaged user devices</span>${count(t.user_devices_count)}</span>
+          <span><span class="k">Servers</span>${count(t.server_devices_count)}</span>
+          <span><span class="k">Not classified</span>${count(t.un_classified_devices_count)}</span></div>` : `<div class="ti-totals">
           <span><span class="k">Applications</span>${count(t.total_apps)}</span>
           <span><span class="k">Total</span>${bytes(t.total_bytes)}</span>
           <span><span class="k">Uploaded</span>${bytes(t.total_upload_bytes)}</span>
@@ -356,6 +367,19 @@
     document.getElementById('tiWindow').addEventListener('change', e => { document.getElementById('tiCustom').hidden = e.target.value !== 'custom'; });
     document.getElementById('tiRun').addEventListener('click', run);
     tenantChoices();
+    // A link from Traffic and session logs fills in the custom window
+    // (?from=&to=, epoch milliseconds) and never starts the read.
+    (function prefillWindow() {
+      const q = new URLSearchParams(location.search);
+      const f = Number(q.get('from')), t = Number(q.get('to'));
+      if (!/^\d{10,14}$/.test(q.get('from') || '') || !/^\d{10,14}$/.test(q.get('to') || '') || !(t > f)) return;
+      const local = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+      document.getElementById('tiWindow').value = 'custom';
+      document.getElementById('tiCustom').hidden = false;
+      document.getElementById('tiFrom').value = local(f);
+      document.getElementById('tiTo').value = local(t);
+      say('The time window is filled in from the uploaded logs. Click Read Insights to read the tenant.');
+    })();
   })();
   </script>
 </body>

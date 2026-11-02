@@ -24,9 +24,20 @@ from typing import Any, Dict, List, Tuple
 # against the check's section and id prefix; the first hit wins, so the
 # more specific entries come first.
 OUTCOMES: List[Tuple[Tuple[str, ...], str]] = [
+    (("ai guard", "aig."), "Prompts and answers to GenAI applications are inspected and risky ones blocked, with every application's credentials kept safe."),
+    (("edm and idm", "dlp.idx"), "The exact data and document fingerprints DLP matches against stay current, so leaks of your own records are caught."),
+    (("tenant health", "hlt."), "Saved changes are activated and certificates are renewed before they expire, so the policy that runs is the policy you configured."),
+    (("insights", "ins."), "Every cloud application in use has an owner's decision, risky ones are stopped, and sanctioned ones holding company data are scanned."),
+    (("cloud & branch connector", "ztw."), "Workload traffic from clouds and branches reaches Zscaler through healthy, redundant connectors and is inspected, never sent around it."),
     (("ch.c", "c.", "saas security"), "Sensitive files stored and shared in SaaS applications are found, and exposure is removed before it becomes a breach."),
     (("ch.d", "d.", "email dlp"), "Sensitive data cannot leave by email without being seen, and the right mail is stopped before it reaches the wrong recipient."),
     (("incident mgmt", "12."), "Every incident reaches an analyst with the evidence, in time to act, and an auditor can see it was handled."),
+    # The other products first: their sections name no channel word, but keep them apart from the rest.
+    (("zero trust branch", "ztb."), "Branch offices reach the internet and each other only through Zscaler, and a compromised device cannot spread across the site."),
+    (("external attack surface", "easm."), "What the organization exposes on the internet is known and fixed before an attacker finds it."),
+    (("business insights", "zbi."), "The business sees which applications it pays for and uses, so licences and risk are decided on facts."),
+    (("zero trust cellular", "zcell."), "SIM-connected devices are inspected like any other device, and a SIM that wanders is noticed."),
+    (("microsegmentation", "zms."), "A compromised server cannot reach the rest of the data centre: only the connections a rule names are allowed."),
     (("pilot tests", "8."), "The controls are proven to work on real traffic before the customer relies on them."),
     (("troubleshooting", "9."), "Problems are found and fixed before users notice them."),
     (("rollback", "11."), "A change can be undone quickly, so the team can act without fear of breaking the business."),
@@ -44,7 +55,9 @@ OUTCOMES: List[Tuple[Tuple[str, ...], str]] = [
     (("url filtering", "cloud apps"), "Risky destinations and applications are controlled before content inspection is even needed."),
     (("security",), "Threats are stopped at the cloud edge, before they reach a user or a device."),
     (("bandwidth",), "Business applications get the capacity they need and recreational traffic does not starve them."),
+    (("zia — forwarding", "fwd."), "Traffic always takes the path the policy expects, with a working fallback, so an outage or a forgotten exception never lets it out uninspected."),
     (("locations",), "Every office and every user is sent to the cloud the same way, with the same policy."),
+    (("governance", "gov."), "Problems are reported to people who act on them, logs leave the console for the SIEM, and Zscaler's own audit of the tenant comes back clean."),
     (("users & admin", "rbac", "zidentity", "zid.", "rbac."), "Only the right people can change the security policy, and every change is traceable to a person."),
     (("zpa",), "Private applications are reachable only by the right user on a trusted device, never by the network."),
     (("zdx",), "The user experience is measured, so a slow application is located and fixed instead of blamed on Zscaler."),

@@ -11,7 +11,7 @@
   const ST = { pass: ['ready', 'st-ok'], warn: ['check', 'st-warn'], fail: ['needed', 'st-fail'], info: ['note', ''], not_read: ['not read', ''] };
   const F = {
     aiguard_routing: { apps: null, certMode: '', certId: '', pem: '', pemName: '', block_quic: true, ssl_inspect: true, prompt_capture: true, allow_in_zia: true, prefix: '' },
-    aiguard_detection_policy: { apps: null, profile: 'HIPAA', mode: 'monitor', prefix: '' }
+    aiguard_detection_policy: { apps: null, profile: 'HIPAA', mode: 'monitor', prefix: '', picked: false, fromCompliance: '', cpAsked: false }
   };
   const MAX_PEM = 16384;
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -115,11 +115,26 @@
   function renderPolicy(res, where, S, H) {
     const st = F.aiguard_detection_policy, cat = res.catalog || { apps: [], profiles: [], assumed: [] }, rd = res.readiness || {};
     const pols = res.policies || [];
+    // The one compliance choice (picked in the ZIA baseline builder, remembered per tenant profile) names the AI Guard profile.
+    const C = window.ZMECompliance;
+    const fromChoice = key => {
+      const p = C && C.profile(key);
+      if (!p || st.picked || !cat.profiles.some(x => x.id === p.aiguard)) return;
+      st.profile = p.aiguard; st.fromCompliance = p.label;
+    };
+    if (C && !st.cpAsked) {
+      st.cpAsked = true;
+      Promise.all([C.catalog().catch(() => null), C.current ? Promise.resolve(C.current) : C.remembered()]).then(([, key]) => {
+        if (key) { fromChoice(key); renderPolicy(res, where, S, H); }
+      });
+      C.onChange(key => { fromChoice(key); });
+    }
     where.innerHTML = `${errorsHtml(res)}
       <div class="df-hint">This turns a compliance profile into an AI Guard detection policy and a match rule for the GenAI apps you pick. Monitor detects and logs only; Block stops prompts with the profile's identifiers and prompt attacks.</div>
       ${checksHtml(H, rd, ['aiguard.api', 'aiguard.policy'])}
       <div class="op-row"><label class="df-ctl"><span class="lbl">Compliance profile</span><select id="aigProfile" aria-label="Compliance profile">${cat.profiles.map(p => `<option value="${E(p.id)}"${p.id === st.profile ? ' selected' : ''}>${E(p.name)}</option>`).join('')}</select></label>
-        <span class="df-hint" id="aigWhy">${E((cat.profiles.find(p => p.id === st.profile) || {}).why || '')}</span></div>
+        <span class="df-hint" id="aigWhy">${E((cat.profiles.find(p => p.id === st.profile) || {}).why || '')}</span>
+        ${st.fromCompliance && !st.picked ? `<span class="df-chip" id="aigFromCp">From the compliance profile: ${E(st.fromCompliance)}</span>` : ''}</div>
       <fieldset class="op-inline"><legend>Mode</legend>
         <label class="df-ctl"><input type="radio" name="aigMode" value="monitor"${st.mode === 'monitor' ? ' checked' : ''}><span>Monitor (detect only, recommended first)</span></label>
         <label class="df-ctl"><input type="radio" name="aigMode" value="block"${st.mode === 'block' ? ' checked' : ''}><span>Block</span></label></fieldset>
@@ -129,7 +144,11 @@
       ${assumedHtml(H, cat)}`;
     bindCommon(where, st);
     const prof = where.querySelector('#aigProfile');
-    prof.addEventListener('change', () => { st.profile = prof.value; where.querySelector('#aigWhy').textContent = (cat.profiles.find(p => p.id === st.profile) || {}).why || ''; });
+    prof.addEventListener('change', () => {
+      st.profile = prof.value; st.picked = true;
+      where.querySelector('#aigWhy').textContent = (cat.profiles.find(p => p.id === st.profile) || {}).why || '';
+      const chip = where.querySelector('#aigFromCp'); if (chip) chip.remove();
+    });
     where.querySelectorAll('input[name="aigMode"]').forEach(r => r.addEventListener('change', () => { st.mode = r.value; }));
   }
   function specPolicy() {

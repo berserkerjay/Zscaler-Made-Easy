@@ -3,8 +3,9 @@
 The Path analyzer page's "Test a list" view sends a CSV of destinations
 (IP addresses, host names, URLs, CIDR blocks and ranges, with optional
 port, protocol, source IP, location, destination country, category,
-user, group, department, label and the expected result, block or
-allow). This module:
+user, group, department, a ZPA identity (IdP, SCIM user name, attribute
+values: zpa_identity), label and the expected result, block or allow).
+This module:
 
 1. parses it defensively (`parse`): the file is untrusted, so it has a
    size cap, a line and cell length cap, no formula is ever evaluated and
@@ -29,7 +30,10 @@ allow). This module:
    row's protocol and port (Client Connector, the PAC file evaluated by
    pac_eval, and every ZIA module in order: zia_path_modules), for the
    row's identity when it names a user, group, department or location
-   (path_whatif). Nothing is re-implemented here and no reader is added:
+   (path_whatif) and, for ZPA, the row's ZPA identity (zpa_identity: the
+   SCIM groups of each distinct user are looked up once per run, at most
+   zpa_identity.MAX_LOOKUPS users, and kept only for the run). Nothing is
+   re-implemented here and no reader is added:
    the reads are path_analyzer.analyze's (ZIA, each module only when in
    scope) and zpa_path.read's. More evaluators plug in with `register`,
    and `combine` lets the one that decides first win;
@@ -43,10 +47,16 @@ allow). This module:
    area to paste: an IP destination group for the Cloud Firewall, a
    custom URL category for URL filtering, the segment to change for ZPA.
 
-"Fix selected" (`fix_handoff`) only prepares the chosen destinations for
-the Bulk changes page's URL category operation (admin_ops), which
-previews and applies them behind its own four write gates. Nothing in
-this module writes to a tenant.
+"Fix selected" (`fix_handoff`) only prepares the chosen rows for the Bulk
+changes page: a URL category operation (admin_ops) for the URL filtering
+and Cloud App Control rows, the "Fix rows from Test a list" operation
+(ops_list_fix) for the Cloud Firewall, DNS Control and ATP rows and for
+the URL filtering rows again (a custom URL category with the URL
+filtering rule that uses it), and the ZPA segment domains operation
+(admin_ops zpa_domains) for the rows ZPA carries. Bulk changes previews
+and applies them behind its own four write gates;
+`prove` tests the same rows again afterwards. Nothing in this module
+writes to a tenant.
 """
 from __future__ import annotations
 
@@ -129,6 +139,9 @@ ASSUMPTIONS = [
     "A row with a user, group, department or location is evaluated for that identity: rules scoped to it apply and rules scoped to others are "
     "skipped. Without one the row is for any user. A scoped rule that could still block it (or a rule that depends on a time window, device "
     "trust or anything else not given) makes the row 'allowed but blockable'.",
+    "A row with a ZPA identity (an IdP, a SCIM user name and attribute values) is evaluated against ZPA's access policy for that identity: "
+    "the user's SCIM groups are looked up once per run (read-only, kept only for the run) and attribute values are matched by name. "
+    "Without one, ZPA's identity conditions stay unknown.",
     "A row's source IP is matched against the Cloud Firewall's source IP conditions, taken as the address ZIA sees for the device. Destination "
     "country is carried into the results but not evaluated: this tool does not geolocate.",
     "ICMP rows are not traced (the Path analyzer evaluates TCP and UDP); a row with the protocol 'any' is traced as TCP.",
@@ -159,11 +172,18 @@ ALIASES: Dict[str, Tuple[str, ...]] = {
     "user": ("user", "username", "email", "upn"),
     "group": ("group", "groups", "usergroup", "usergroups"),
     "department": ("department", "departments", "dept"),
+    # ZPA identity (zpa_identity): the IdP (name or id), the SCIM user name
+    # to look the user's SCIM groups up with, and attribute values typed
+    # as Name=value, separated by ';'.
+    "idp": ("idp", "zpaidp", "identityprovider"),
+    "zpa_user": ("zpauser", "scimuser", "scimusername"),
+    "attributes": ("saml", "samlattributes", "zpaattributes", "attributes"),
     "label": ("label", "name", "note", "notes", "comment", "description", "tag"),
     "expected": ("expected", "expect", "expectation", "should", "desired", "intent", "expectedaction", "expectedresult"),
 }
 _HEADER = {alias: key for key, names in ALIASES.items() for alias in names}
-FIELDS = ("line", "input", "port", "protocol", "source_ip", "location", "dest_country", "category", "user", "group", "department", "label", "expected",
+FIELDS = ("line", "input", "port", "protocol", "source_ip", "location", "dest_country", "category", "user", "group", "department", "zpa_identity",
+          "label", "expected",
           "notes")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _CATEGORY_ID = re.compile(r"^[A-Z0-9_]{2,64}$")
@@ -249,6 +269,15 @@ def _entry(cells: Sequence[str], columns: Optional[List[Optional[str]]], line_no
     for key in ("location", "dest_country", "user", "group", "department", "label"):
         if raw.get(key):
             e[key] = raw[key][:128]
+    if raw.get("idp") or raw.get("zpa_user") or raw.get("attributes"):
+        import zpa_identity
+        try:
+            z = zpa_identity.parse({"idp": raw.get("idp", "")[:128], "user": raw.get("zpa_user", "")[:128], "attributes": raw.get("attributes", "")})
+        except ValueError as ex:
+            notes.append(f"ZPA identity ignored: {str(ex)[:120]}")
+        else:
+            if z:   # a tuple, so rows with the same identity share their answer
+                e["zpa_identity"] = (z["idp"], z["user"], tuple(z["attributes"]))
     if raw.get("category"):
         cats = []
         for c in re.split(r"[;|,\s]+", raw["category"].upper()):
@@ -668,7 +697,8 @@ def _context_only(o: Dict[str, Any]) -> bool:
     some contexts. A rule unknown on the destination itself (no category
     known, a host name against address ranges) is not counted."""
     from zia_path_modules import UNEVALUATED
-    ctx = {label for _, label, _ in UNEVALUATED} | {"Source IP"}
+    # App services name destinations (app_services), not a context.
+    ctx = ({label for _, label, _ in UNEVALUATED} | {"Source IP"}) - {"App services", "App service groups", "App services and groups"}
     unknown = [c for c in o.get("criteria") or [] if c.get("state") == "unknown"]
     return bool(unknown) and all(c.get("name") in ctx for c in unknown)
 
@@ -897,6 +927,7 @@ class PathEvaluator:
     def __init__(self, *, client, scope: Dict[str, Any], network: str = "off", platform: str = "windows",
                  snapshot: Optional[Dict[str, Any]] = None, packs: Optional[List[Dict[str, Any]]] = None, log: LogFn = None,
                  cancel: Any = None, zpa: Optional[Dict[str, Any]] = None, **_: Any) -> None:
+        import zpa_identity
         self.client, self.scope, self.network, self.platform = client, scope, network, platform
         self.snapshot = snapshot
         self.fresh: Optional[Dict[str, Any]] = None
@@ -913,6 +944,9 @@ class PathEvaluator:
         self.zpa_note: Optional[str] = None
         self.zpa_state = "not_in_scope" if not zpa else "not_read"
         self._zpa_cache: Dict[Tuple[Any, ...], Tuple[str, Dict[str, Any]]] = {}
+        # The rows' ZPA identities, resolved once each; SCIM lookups only for this run.
+        self._zid_lookups = zpa_identity.Lookups((zpa or {}).get("client"), cancel)
+        self._zid_cache: Dict[Tuple[Any, ...], Optional[Dict[str, Any]]] = {}
         self._zidx: Optional[_HostIndex] = None
         self._shared: Dict[Tuple[Any, ...], Tuple[str, Dict[str, Any]]] = {}
         self._index: Optional[Tuple[_HostIndex, Optional[_HostIndex], set, List[str]]] = None
@@ -988,6 +1022,14 @@ class PathEvaluator:
             dest += list(((p or {}).get("bypass") or {}).get("domains") or []) + list(((p or {}).get("bypass") or {}).get("ips") or [])
             tl = (p or {}).get("tunnel") or {}
             dest += list(tl.get("exclude") or []) + list(tl.get("include") or [])
+            # VPN gateways and Z-Tunnel 2.0's domain lists (zcc_bypass.profile_lists).
+            lists = (p or {}).get("lists") or {}
+            dest += list(((p or {}).get("bypass") or {}).get("vpn_gateways") or []) + list(lists.get("dns_exclude") or []) + list(lists.get("dns_include") or [])
+        # The addresses and host names of the IP-based applications the profiles name.
+        for defs in (((zcc.get("ip_apps") or {}).get("apps")) or {}).values():
+            for app in (defs or {}).values():
+                for e in (app or {}).get("entries") or []:
+                    dest += list(e.get("ips") or []) + list(e.get("fqdns") or [])
         pacs: List[str] = []
         for f in zcc.get("pac_files") or []:
             dest += list((f or {}).get("direct_hosts") or [])
@@ -1056,7 +1098,30 @@ class PathEvaluator:
             ev = pac_eval.evaluate(src, url, host, dns="none" if pac_eval._is_ipv4(host) else "assume_public")
             pac.append((ev.get("status"), ev.get("error"), tuple((o.get("kind"), o.get("result"), o.get("fallback_direct")) for o in ev.get("outcomes") or []),
                         tuple(ev.get("depends_on") or ()), tuple(ev.get("assumptions") or ())))
-        return (dest.match(host, ip), host if named else None, tuple(pac))
+        return (dest.match(host, ip), host if named else None, tuple(pac), self._app_service_fp(host, ip))
+
+    def _app_service_fp(self, host: str, ip: Any) -> Any:
+        """Which Microsoft 365 endpoint sets hold the destination, when a
+        Cloud Firewall or DNS Control rule names an app service and a list is
+        in use (app_services): two destinations in different sets, or one in
+        a set and one in none, are traced apart."""
+        if not hasattr(self, "_m365"):
+            import app_services
+            from zia_path_modules import _f
+            mods = (((self.snapshot or {}).get("snapshot") or {}).get("zia") or {}).get("modules") or {}
+            rules = [r for sec in ("firewall", "dns") for r in ((((mods.get(sec) or {}).get("parts") or {}).get("rules") or {}).get("data") or [])
+                     if isinstance(r, dict)]
+            named = any(app_services.named(r) for r in rules) or any(_f(r, "appServiceGroups") or _f(r, "appServices") for r in rules)
+            self._m365 = app_services.current(self.client) if named else None
+            # Other UCaaS providers' kept lists (vendor_endpoints): a row in
+            # Zoom's ranges and one outside them are traced apart too.
+            import vendor_endpoints
+            self._vendors = vendor_endpoints.current() if named else {}
+        vend = tuple(sorted((pid, vl.lookup_ip(ip) if ip is not None else vl.lookup_host(host)) for pid, vl in (self._vendors or {}).items()))
+        if self._m365 is None:
+            return vend or None
+        hits = self._m365.lookup_ip(ip) if ip is not None else self._m365.lookup_host(host)
+        return (tuple(sorted({(s["id"], e) for s, e in hits})), vend) if vend else tuple(sorted({(s["id"], e) for s, e in hits}))
 
     def _source_fp(self, src: Optional[str]) -> Any:
         if not src:
@@ -1104,20 +1169,38 @@ class PathEvaluator:
         sm = zpa_analysis.match_segment(self.zsnap, d)
         if not sm["match"]:
             return None, None
-        key = (sm["match"]["id"], d["protocol"], d["port"], bool(d.get("port_assumed")))
+        zt = row.get("zpa_identity")
+        ident = self._identity(zt) if zt else None
+        key = (sm["match"]["id"], d["protocol"], d["port"], bool(d.get("port_assumed")), zt)
         hit = self._zpa_cache.get(key)
         if hit is None:
-            st = zpa_path.stage(self.zsnap, d, network=self.network, platform=self.platform, profiles=self.zprofiles)
+            st = zpa_path.stage(self.zsnap, d, network=self.network, platform=self.platform, profiles=self.zprofiles, identity=ident)
             hit = (host, st)
             self._zpa_cache[key] = hit
         rep, st = hit
         out = summarize_zpa(st, rep, host)
         if out is not None:
+            why = (st.get("identity") or {}).get("sentence")
+            if why:
+                out = dict(out, notes=list(out.get("notes") or []) + [why])
             return out, None
         head = str(st.get("headline") or "").replace(rep, host)
         if st.get("outcome") == "zpa_conditional":
             return None, "ZPA may carry it (" + head.rstrip(".") + "); when it does not, ZIA applies as shown."
         return None, head
+
+    def _identity(self, zt: Tuple[Any, ...]) -> Optional[Dict[str, Any]]:
+        """A row's ZPA identity resolved against the ZPA read, once per
+        distinct identity in the run."""
+        import zpa_identity
+        import zpa_reader
+        if zt not in self._zid_cache:
+            p = {"idp": zt[0], "user": zt[1], "attributes": list(zt[2])}
+            try:
+                self._zid_cache[zt] = zpa_identity.resolve(p, self.zsnap or {}, self._zid_lookups if zpa_identity.needs_lookup(p) else None)
+            except zpa_reader.Stopped:
+                raise Stopped(STOPPED_REASON)
+        return self._zid_cache[zt]
 
     def _zia(self, row: Dict[str, Any], p: Optional[str], port: Optional[int]) -> Dict[str, Any]:
         import path_analyzer
@@ -1304,7 +1387,7 @@ def category_advice(expected: str, cat: str, kind: str) -> str:
 COLUMNS: Tuple[Tuple[str, str], ...] = (
     ("row", "Row"), ("line", "Input line"), ("input", "Input"), ("target", "Destination"), ("port", "Port"), ("protocol", "Protocol"),
     ("source_ip", "Source IP"), ("location", "Location"), ("dest_country", "Destination country"), ("user", "User"), ("group", "Group"),
-    ("department", "Department"), ("label", "Label"),
+    ("department", "Department"), ("zpa_identity", "ZPA identity"), ("label", "Label"),
     ("category", "Category"), ("security_alert", "Security alert"), ("application", "Cloud app"), ("category_source", "Category source"),
     ("result", "Result"), ("blockable_by", "Allowed but blockable by"), ("area", "Deciding area"), ("rule", "Deciding rule"),
     ("action", "Action"), ("stops_at", "Stops at"), ("segment", "ZPA segment"), ("inspection", "Inspection"), ("expected", "Expected"),
@@ -1351,7 +1434,7 @@ class Run:
                              "private": bool(p.is_ip[i]) and path_analyzer._is_private(ipaddress.ip_address(target)),
                              "port": e.get("port", ""), "protocol": e.get("protocol", ""), "source_ip": e.get("source_ip", ""),
                              "location": e.get("location", ""), "dest_country": e.get("dest_country", ""), "user": e.get("user", ""),
-                             "group": e.get("group", ""), "department": e.get("department", ""),
+                             "group": e.get("group", ""), "department": e.get("department", ""), "zpa_identity": _zid_text(e.get("zpa_identity")),
                              "label": e.get("label", ""), "expected": e.get("expected", ""), "category_source": source}
         if ev is None:
             r.update(result="not tested", category="; ".join(override or ()), security_alert="", application="", blockable_by="", area="",
@@ -1374,6 +1457,14 @@ class Run:
                 yield self.row(i)
 
 
+def _zid_text(zt: Any) -> str:
+    """A row's ZPA identity as the results show it."""
+    if not zt:
+        return ""
+    import zpa_identity
+    return zpa_identity.describe({"idp": zt[0], "user": zt[1], "attributes": list(zt[2])})
+
+
 def _row_context(p: ParsedList, i: int, lk: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     import path_analyzer
     e = p.entries[p.entry_of[i]]
@@ -1381,14 +1472,15 @@ def _row_context(p: ParsedList, i: int, lk: Optional[Dict[str, Any]]) -> Dict[st
     ip = bool(p.is_ip[i])
     return {"target": host, "host": host, "is_ip": ip, "private": ip and path_analyzer._is_private(ipaddress.ip_address(host)),
             "port": e.get("port"), "protocol": e.get("protocol"), "source_ip": e.get("source_ip"), "location": e.get("location"),
-            "dest_country": e.get("dest_country"), "user": e.get("user"), "group": e.get("group"), "department": e.get("department"), "lookup": lk}
+            "dest_country": e.get("dest_country"), "user": e.get("user"), "group": e.get("group"), "department": e.get("department"),
+            "zpa_identity": e.get("zpa_identity"), "lookup": lk}
 
 
 def _row_key(host: str, e: Dict[str, Any]) -> Tuple[Any, ...]:
     """Rows with the same key get the same answer: the destination and every
     column the evaluation uses."""
     return (host, e.get("category"), e.get("port"), e.get("protocol"), e.get("source_ip"), e.get("user"), e.get("group"), e.get("department"),
-            e.get("location"))
+            e.get("location"), e.get("zpa_identity"))
 
 
 # Where each row was decided, for the page's live flow (static/flow_anim.js
@@ -1726,18 +1818,83 @@ _FIXES: Dict[str, Dict[str, Any]] = {}
 _FIX_LOCK = threading.Lock()
 FIX_KEEP_SECONDS = 3600
 FIX_MAX = 20
-# The areas whose fix is a custom URL category the Bulk changes page can change.
-FIX_AREAS = ("URL", "DNS", "Cloud App")
+# The areas whose fix is a custom URL category (the Bulk changes URL
+# category operation) and the areas the "Fix rows from Test a list"
+# operation (ops_list_fix) changes: IP destination groups with Cloud
+# Firewall or DNS Control rules, and the ATP allow and deny lists.
+FIX_AREAS = ("URL", "Cloud App")
+OP_FIX_AREAS = {"Firewall": "firewall", "DNS": "dns", "ATP": "atp"}
+FIX_ORDER = ("firewall", "dns", "atp", "url")   # the sections of "Fix rows from Test a list", in the page's order
+MAX_ZPA_SECTIONS = 20
 _FIX_ID = re.compile(r"^[a-f0-9]{24}$")
+RETEST_COLUMNS = ("destination", "port", "protocol", "source_ip", "location", "dest_country", "category", "user", "group", "department",
+                  "label", "expected")
 
 
-def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: str = "block", now: Optional[float] = None) -> Dict[str, Any]:
-    """The chosen destinations, as the Bulk changes page's URL category
-    operation takes them (admin_ops.normalize_url), kept for an hour under
-    a random id. `rows` are 1-based row numbers; without them, every row
-    of `area` that is not as expected for `purpose`. Writes nothing:
-    Bulk changes previews the change and applies it only behind its four
-    write gates (write mode, a writer, the assessor's name, the typed
+def _fix_indexes(rn: Run, rows: Sequence[int], area: str, purpose: str) -> List[int]:
+    """0-based rows: the picked row numbers, or every row of `area` that is
+    not as expected for `purpose` (at most MAX_FIX_ROWS)."""
+    if rows:
+        n = len(rn.p)
+        out = []
+        for x in rows:
+            if not isinstance(x, int) or isinstance(x, bool) or not 1 <= x <= n:
+                raise ListError(f"Row {str(x)[:20]} is not a row of this run (1 to {n:,}).")
+            if x - 1 not in out:
+                out.append(x - 1)
+        return out
+    if not area:
+        raise ListError("Pick rows, or an area.")
+    a = AREA_KEYS.get(area, area)
+    if a not in AREAS:
+        raise ListError(f"Unknown area '{area[:40]}'. Use one of: {', '.join(AREA_KEYS)}.")
+    if a not in FIX_AREAS and a not in OP_FIX_AREAS and a != "ZPA":
+        raise ListError(f"{AREA_LABELS[a]} is not changed from here: copy its list and paste it into {AREA_PASTE[a]}.")
+    want = "BLOCK" if purpose == "block" else "ALLOW"
+    out = []
+    for i in range(len(rn.p)):
+        if rn.flags[i] & 2:
+            r = rn.row(i)
+            if r["recommended_area"] == a and r["expected"] == want:
+                out.append(i)
+                if len(out) >= MAX_FIX_ROWS:
+                    break
+    return out
+
+
+def _retest_line(rn: Run, i: int, expected: str) -> List[str]:
+    """Row i as one line of a list to test again: the input as written when
+    it was one row (a URL keeps its path), else the expanded address."""
+    p = rn.p
+    idx = p.entry_of[i]
+    e = p.entries[idx]
+    alone = (i == 0 or p.entry_of[i - 1] != idx) and (i + 1 >= len(p) or p.entry_of[i + 1] != idx)
+    vals = {"destination": e["input"] if alone else p.targets[i], "port": e.get("port", ""), "protocol": e.get("protocol", ""),
+            "source_ip": e.get("source_ip", ""), "location": e.get("location", ""), "dest_country": e.get("dest_country", ""),
+            "category": ";".join(e.get("category") or ()), "user": e.get("user", ""), "group": e.get("group", ""),
+            "department": e.get("department", ""), "label": e.get("label", ""), "expected": expected.lower()}
+    return [str(vals[k]) for k in RETEST_COLUMNS]
+
+
+def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: str = "block", now: Optional[float] = None,
+                in_scope: Optional[Dict[str, Optional[str]]] = None) -> Dict[str, Any]:
+    """The chosen rows, as Bulk changes takes them, kept for an hour under a
+    random id: `urls` for the URL category operation (admin_ops.normalize_url),
+    `fixes` for the "Fix rows from Test a list" operation (ops_list_fix):
+    one section per area (Cloud Firewall, DNS Control, ATP, URL filtering)
+    and purpose, with each destination's row numbers and the rules that
+    decided them, and `zpa` for the ZPA segment domains operation: one
+    section per application segment and purpose (block: take the domains
+    out of the segment, so ZIA's policy applies; allow: add them to the
+    segment that publishes the application). Each row is fixed for what the
+    file expected of it (`purpose` only for a row with no expectation), in
+    the area its recommendation names; a row already as expected, not
+    tested, or in an area changed elsewhere (Client Connector) is excluded
+    with the reason. `in_scope` ({url, firewall, dns, atp, zpa: None or why not})
+    excludes what the Scope page does not put in scope. `retest_text` is the
+    rows as a list to test again after the change (prove()). Writes
+    nothing: Bulk changes previews the change and applies it only behind its
+    four write gates (write mode, a writer, the assessor's name, the typed
     confirmation)."""
     import admin_ops
     now = time.time() if now is None else now
@@ -1745,42 +1902,130 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
         raise ListError("purpose must be block or allow.")
     if len(rows) > MAX_FIX_ROWS:
         raise ListError(f"Pick at most {MAX_FIX_ROWS:,} rows.")
-    picked: List[str] = []
-    if rows:
-        n = len(rn.p)
-        for x in rows:
-            if not isinstance(x, int) or isinstance(x, bool) or not 1 <= x <= n:
-                raise ListError(f"Row {str(x)[:20]} is not a row of this run (1 to {n:,}).")
-            picked.append(rn.p.targets[x - 1])
-    elif area:
-        a = AREA_KEYS.get(area, area)
-        if a not in AREAS:
-            raise ListError(f"Unknown area '{area[:40]}'. Use one of: {', '.join(AREA_KEYS)}.")
-        if a not in FIX_AREAS:
-            raise ListError(f"{AREA_LABELS[a]} is not changed through a custom URL category here: copy its list and paste it into "
-                            f"{AREA_PASTE[a]}.")
-        picked = area_list(rn, a, purpose)
-    else:
-        raise ListError("Pick rows, or an area.")
+    scope_why = in_scope or {}
+    picked = _fix_indexes(rn, rows, area, purpose)
     urls: List[str] = []
     seen = set()
-    excluded: List[Dict[str, str]] = []
-    for t in picked:
-        u, why = admin_ops.normalize_url(t)
-        if why:
-            excluded.append({"destination": t[:200], "why": why})
-        elif u.lower() not in seen:
-            seen.add(u.lower())
-            urls.append(u)
+    excluded: List[Dict[str, Any]] = []
+    sections: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    zpa: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    before: Dict[str, Dict[str, Any]] = {}
+    retest: List[List[str]] = []
+    retest_rows: List[int] = []
+    pick_exp = "BLOCK" if purpose == "block" else "ALLOW"
+
+    def drop(r: Dict[str, Any], why: str) -> None:
+        if len(excluded) < 200:
+            excluded.append({"row": r["row"], "destination": str(r["target"])[:200], "why": why})
+
+    for i in picked:
+        r = rn.row(i)
+        exp = r["expected"] or pick_exp
+        if r["expected"]:
+            meets, rec_area, rec = r["meets"], r["recommended_area"], r["recommendation"]
+        else:
+            meets, rec_area, rec = recommend(dict(r, expected=exp))
+        if meets == "yes":
+            drop(r, f"already {r['result']}, as expected")
+            continue
+        if not meets:
+            drop(r, f"not decided ({r['result']}): test it again, then fix it")
+            continue
+        how = "block" if exp == "BLOCK" else "allow"
+        if rec_area in FIX_AREAS:
+            if scope_why.get("url"):
+                drop(r, scope_why["url"])
+                continue
+            if exp != pick_exp and rec_area != "URL":
+                drop(r, f"expected to {how}: a URL category change takes one purpose, so pick it again with '{'Blocked' if how == 'block' else 'Allowed'}'")
+                continue
+            u, why = admin_ops.normalize_url(r["target"])
+            if why:
+                drop(r, f"cannot go into a custom URL category: it {why}")
+                continue
+            if rec_area == "URL":
+                # Also a URL filtering section of "Fix rows from Test a list":
+                # the category with the rule that uses it, so the fix changes
+                # the answer and not just a list.
+                sec = sections.setdefault(("url", how), {"area": "url", "area_label": AREA_LABELS["URL"], "purpose": how, "destinations": {},
+                                                         "rows": [], "decided_by": {}, "recommendation": rec})
+                sec["destinations"].setdefault(u, []).append(r["row"])
+                sec["rows"].append(r["row"])
+                if r["rule"] and r["area"] == "URL":
+                    sec["decided_by"][r["rule"]] = sec["decided_by"].get(r["rule"], 0) + 1
+            if exp == pick_exp and u.lower() not in seen:
+                seen.add(u.lower())
+                urls.append(u)
+        elif rec_area in OP_FIX_AREAS:
+            key = OP_FIX_AREAS[rec_area]
+            if scope_why.get(key):
+                drop(r, scope_why[key])
+                continue
+            sec = sections.setdefault((key, how), {"area": key, "area_label": AREA_LABELS[rec_area], "purpose": how, "destinations": {},
+                                                   "rows": [], "decided_by": {}, "recommendation": rec})
+            sec["destinations"].setdefault(str(r["target"]), []).append(r["row"])
+            sec["rows"].append(r["row"])
+            if r["rule"] and r["area"] == rec_area:
+                sec["decided_by"][r["rule"]] = sec["decided_by"].get(r["rule"], 0) + 1
+        elif rec_area == "ZPA":
+            if scope_why.get("zpa"):
+                drop(r, scope_why["zpa"])
+                continue
+            seg = str(r.get("segment") or "")
+            if not seg:
+                drop(r, "ZPA carries it, but the application segment is not known: test it again with ZPA in scope")
+                continue
+            if (seg, how) not in zpa and len(zpa) >= MAX_ZPA_SECTIONS:
+                drop(r, f"more than {MAX_ZPA_SECTIONS} ZPA segments in one hand-off: pick fewer rows")
+                continue
+            zs = zpa.setdefault((seg, how), {"segment": seg[:200], "purpose": how, "domains": [], "rows": [], "decided_by": {}, "recommendation": rec})
+            host = str(r["target"]).strip().lower()[:253]
+            if host not in zs["domains"]:
+                zs["domains"].append(host)
+            zs["rows"].append(r["row"])
+            if r["rule"]:
+                zs["decided_by"][r["rule"]] = zs["decided_by"].get(r["rule"], 0) + 1
+        else:
+            drop(r, f"changed in {AREA_LABELS.get(rec_area, rec_area or 'another place')}, not from here: "
+                    + (AREA_PASTE.get(rec_area) or "see the row's recommendation"))
+            continue
+        before[str(r["row"])] = {"target": str(r["target"])[:200], "expected": exp, "result": r["result"], "rule": r["rule"], "area": r["area"],
+                                 "recommended_area": rec_area}
+        retest.append(_retest_line(rn, i, exp))
+        retest_rows.append(r["row"])
     over = max(0, len(urls) - admin_ops.MAX_URLS)
     urls = urls[:admin_ops.MAX_URLS]
-    if not urls:
-        raise ListError("None of the picked destinations can go into a custom URL category.")
+    fixes = []
+    for (_k, _p), sec in sorted(sections.items(), key=lambda kv: (FIX_ORDER.index(kv[0][0]), kv[0][1])):
+        fixes.append({"area": sec["area"], "area_label": sec["area_label"], "purpose": sec["purpose"], "rows": sec["rows"][:MAX_FIX_ROWS],
+                      "destinations": [{"value": v, "rows": rs[:50]} for v, rs in sec["destinations"].items()],
+                      "decided_by": [n for n, _c in sorted(sec["decided_by"].items(), key=lambda kv: -kv[1])[:5]],
+                      "recommendation": sec["recommendation"]})
+    zpa_out = [{"segment": z["segment"], "purpose": z["purpose"], "domains": z["domains"][:admin_ops.MAX_DOMAINS],
+                "rows": z["rows"][:MAX_FIX_ROWS], "decided_by": [n for n, _c in sorted(z["decided_by"].items(), key=lambda kv: -kv[1])[:5]],
+                "recommendation": z["recommendation"]} for z in zpa.values()]
+    if not urls and not fixes and not zpa_out:
+        why = "; ".join(sorted({e["why"] for e in excluded})[:3])
+        raise ListError("None of the picked rows can be fixed from here" + (f": {why}." if why else "."))
+    import csv_safe
+    buf = io.StringIO()
+    w = csv_safe.writer(buf, lineterminator="\n")   # the rows to test again: formula-neutralised like every CSV the app writes
+    w.writerow(RETEST_COLUMNS)
+    w.writerows(retest)
     fid = secrets.token_hex(12)
     rec = {"id": fid, "urls": urls, "excluded": excluded[:100], "over_limit": over, "purpose": purpose, "created": now,
-           "tenant_label": rn.tenant_label,
-           "note": ("From the Path analyzer's Test a list view: add these to the custom URL category a " + ("Block" if purpose == "block" else "Allow")
-                    + " rule uses, or to a new one, then preview. Nothing is written until you apply in write mode and confirm.")}
+           "tenant_label": rn.tenant_label, "fixes": fixes, "zpa": zpa_out, "rows_before": before, "retest_text": buf.getvalue(), "retest_rows": retest_rows,
+           "network": rn.network, "platform": rn.platform,
+           "note": ("From the Path analyzer's Test a list view: " +
+                    (f"{len(urls)} destination(s) for the custom URL category a " + ("Block" if purpose == "block" else "Allow")
+                     + " rule uses, or a new one. " if urls else "")
+                    + (f"{sum(len(f['destinations']) for f in fixes)} destination(s) for "
+                       + ", ".join(f"{f['area_label']} ({'to block' if f['purpose'] == 'block' else 'to allow'})" for f in fixes) + ". "
+                       if fixes else "")
+                    + (f"{sum(len(z['domains']) for z in zpa_out)} destination(s) for the ZPA segment domains change ("
+                       + ", ".join(f"{z['segment']}, {'to block' if z['purpose'] == 'block' else 'to allow'}" for z in zpa_out) + "). "
+                       if zpa_out else "")
+                    + "Nothing is written until you preview and apply in write mode and confirm.")}
     with _FIX_LOCK:
         for k in [k for k, v in _FIXES.items() if now - v["created"] > FIX_KEEP_SECONDS]:
             del _FIXES[k]
@@ -1788,6 +2033,32 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
         while len(_FIXES) > FIX_MAX:
             _FIXES.pop(next(iter(_FIXES)))
     return dict(rec)
+
+
+def prove(rn: Run, rec: Dict[str, Any]) -> Dict[str, Any]:
+    """The rows of a hand-off, tested again after the change (`rn` is the run
+    of rec["retest_text"]): per row, the result before and now and whether it
+    now does what was expected. Read-only."""
+    order = rec.get("retest_rows") or []
+    before = rec.get("rows_before") or {}
+    by_line: Dict[int, int] = {}
+    for j in range(len(rn.p)):
+        line = rn.p.entries[rn.p.entry_of[j]]["line"]
+        by_line.setdefault(line, j)
+    out_rows = []
+    counts = {"fixed": 0, "still": 0, "not_tested": 0}
+    for k, orig in enumerate(order):
+        b = before.get(str(orig)) or {}
+        j = by_line.get(k + 2)    # line 1 is the header
+        r = rn.row(j) if j is not None else None
+        meets = (r or {}).get("meets") or ""
+        state = "fixed" if meets == "yes" else "still" if meets == "no" else "not_tested"
+        counts[state] += 1
+        out_rows.append({"row": orig, "target": b.get("target") or (r or {}).get("target"), "expected": b.get("expected"),
+                         "before": b.get("result"), "before_rule": b.get("rule"), "now": (r or {}).get("result") or "not tested",
+                         "now_rule": (r or {}).get("rule") or "", "now_area": (r or {}).get("area") or "", "state": state,
+                         "recommendation": (r or {}).get("recommendation") or ""})
+    return {"rows": out_rows, "counts": counts, "total": len(order)}
 
 
 def get_fix(fid: str, now: Optional[float] = None) -> Optional[Dict[str, Any]]:

@@ -277,6 +277,165 @@ def test_rules_follow_new_segments_on_a_rerun():
     assert [u["field"] for u in p["items"] if u["status"] == "change"] == ["apps"]
 
 
+def _with_access_policy(c: Client) -> dict:
+    """Two access rules that exist before the build (a Deny above an Allow) and the Default rule."""
+    t = c.tenant
+    deny = t.add("rule:access", {"name": "Deny contractors", "action": "DENY", "ruleOrder": "1"})
+    allow = t.add("rule:access", {"name": "Allow staff", "action": "ALLOW", "ruleOrder": "2"})
+    t.add("rule:access", {"name": "Default_Rule", "action": "DENY", "ruleOrder": "3", "defaultRule": True})
+    return {"deny": deny["id"], "allow": allow["id"]}
+
+
+def _access_order(c: Client) -> list:
+    rows = [r for r in c.tenant.rows["rule:access"].values() if not r.get("defaultRule")]
+    return [r["name"] for r in sorted(rows, key=lambda r: int(r["ruleOrder"]))]
+
+
+def _prefixed(c: Client) -> Client:
+    _apply(c, {"type": "zpa_connector_group", "prefix": "pov1"})
+    _apply(c, {"type": "zpa_app_segments", "prefix": "pov1", "wildcard": {"domain": "corp.example.com", "tcp": "443"}})
+    return c
+
+
+def test_a_new_access_rule_with_a_position_lands_above_the_rule_picked_and_undo_restores_the_order():
+    """ASVS V1.4.1 · V11.1.1 · CWE-841 · CWE-670: an access rule built with 'Place it above' is created, then moved just above the picked rule with one bulk_reorder_rules write (the Default rule left out); the Undo deletes it and the other rules keep their order."""
+    c = _prefixed(Client())
+    ids = _with_access_policy(c)
+    spec = {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False, "access_above": ids["deny"]}
+    p, r = _apply(c, spec)
+    move = next(u for u in p["items"] if u["field"] == "position")
+    assert move["status"] == "change" and "above 'Deny contractors'" in move["after"] and move["depends_on"], move
+    assert r["status"] == "applied" and r["verification"]["mismatched"] == [], r
+    assert _access_order(c) == ["pov1-access", "Deny contractors", "Allow staff"]
+    assert [w[0] for w in c.tenant.writes if w[0] == "reorder"] == ["reorder"]
+    _u, undone = _apply(c, r["inverse"])
+    assert undone["status"] == "applied", undone
+    assert _access_order(c) == ["Deny contractors", "Allow staff"]
+
+
+def test_moving_an_existing_access_rule_is_undone_to_where_it_was():
+    """ASVS V7.2.1 · CWE-1188: a rebuild that only moves the existing access rule records where it sat; the Undo puts it back exactly."""
+    c = _prefixed(Client())
+    ids = _with_access_policy(c)
+    _apply(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False})
+    before = _access_order(c)
+    assert before == ["Deny contractors", "Allow staff", "pov1-access"]
+    _p, r = _apply(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False, "access_above": ids["allow"]})
+    assert r["status"] == "applied" and _access_order(c) == ["Deny contractors", "pov1-access", "Allow staff"]
+    assert r["inverse"]["move_back"][0]["above"] is None
+    _u, undone = _apply(c, r["inverse"])
+    assert undone["status"] == "applied" and _access_order(c) == before
+    assert c.tenant.by_name("rule:access", "pov1-access"), "an access rule that existed before is moved back, not deleted"
+
+
+def test_an_access_policy_reordered_after_the_preview_is_a_conflict_and_nothing_moves(monkeypatch):
+    """ASVS V11.1.3 · CWE-367: the order is read again right before the write; a change since the preview is a conflict and the order is left as it is."""
+    c = _prefixed(Client())
+    ids = _with_access_policy(c)
+    _apply(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False})
+    orig = ops_zpa.HANDLERS["zpa_b_order"]
+
+    def someone_reorders_first(run, g, units):
+        rows = c.tenant.rows["rule:access"]
+        rows[ids["deny"]]["ruleOrder"], rows[ids["allow"]]["ruleOrder"] = rows[ids["allow"]]["ruleOrder"], rows[ids["deny"]]["ruleOrder"]
+        return orig(run, g, units)
+
+    monkeypatch.setitem(ao.PLUGIN_HANDLERS, "zpa_b_order", someone_reorders_first)
+    c.tenant.writes.clear()
+    _p, r = _apply(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "timeout": False, "access_above": ids["deny"]})
+    assert [u["status"] for u in r["items"] if u["field"] == "position"] == ["conflict"]
+    assert not [w for w in c.tenant.writes if w[0] == "reorder"]
+    assert _access_order(c) == ["Allow staff", "Deny contractors", "pov1-access"]
+
+
+@pytest.mark.parametrize("above, why", [("72058304859999999", "not in ZPA now"), ("default", "always last")])
+def test_a_position_that_cannot_be_used_blocks_the_plan(above, why):
+    """ASVS V5.1.3 · CWE-20: a rule to place it above that is gone, or the Default rule, blocks the plan with the reason; a position without the access rule is refused."""
+    c = _prefixed(Client())
+    _with_access_policy(c)
+    if above == "default":
+        above = next(r["id"] for r in c.tenant.rows["rule:access"].values() if r.get("defaultRule"))
+    p = ao.plan(c, {"type": "zpa_policies", "prefix": "pov1", "access": True, "access_above": above}, scope=ZPA)
+    assert any(why in b for b in p["blockers"]), p["blockers"]
+    with pytest.raises(ao.OperationError, match="Access"):
+        ao.plan(c, {"type": "zpa_policies", "prefix": "pov1", "access": False, "timeout": True, "access_above": above}, scope=ZPA)
+
+
+def test_the_picker_lists_the_access_policy_in_order_without_the_default_rule():
+    """ASVS V4.1.3 · CWE-272: the builder's 'Place it above' list is the access policy top first; the Default rule is never offered."""
+    c = _prefixed(Client())
+    _with_access_policy(c)
+    out = ao.read_objects(c, ops_zpa.FAMILY, ZPA)
+    assert [r["name"] for r in out["access_rules"]] == ["Deny contractors", "Allow staff"]
+
+
+def _published(c: Client) -> dict:
+    """A segment that is already in ZPA (not built with a prefix) and publishes the domain a Test a list row expects to reach."""
+    return c.tenant.add("segment", {"name": "HR access", "enabled": True, "domainNames": ["hr.corp.example"], "tcpPortRanges": ["443", "443"]})
+
+
+def _rule_of(c: Client, name: str) -> dict:
+    return c.tenant.by_name("rule:access", name) or {}
+
+
+def test_an_access_rule_for_an_existing_segment_lands_above_the_deny_and_undo_deletes_only_the_rule():
+    """ASVS V1.4.1 · V7.2.1 · CWE-841 · CWE-1188: a row ZPA denies is fixed with an access rule that names the segment already holding the domain (never changing the segment), placed above the deciding Deny; the phrase is always typed, and Undo deletes only the rule."""
+    c = Client()
+    seg = _published(c)
+    ids = _with_access_policy(c)
+    spec = {"type": "zpa_policies", "prefix": "fix", "access": True, "timeout": False, "access_segments": [seg["id"]], "access_above": ids["deny"]}
+    p, r = _apply(c, spec)
+    assert p["blockers"] == [] and p["confirm_phrase"] == "ALLOW ACCESS NOW", p
+    assert p["spec"]["access_segments"] == [seg["id"]] and "HR access" in p["title"]
+    assert any("cannot be created disabled" in w for w in p["warnings"]) and any("every user" in w for w in p["warnings"])
+    assert r["status"] == "applied" and r["verification"]["mismatched"] == [], r
+    rule = _rule_of(c, "fix-allow-hr-access-rule")
+    assert rule["action"] == "ALLOW" and ops_zpa.rule_apps(rule) == [seg["id"]]
+    assert _access_order(c) == ["fix-allow-hr-access-rule", "Deny contractors", "Allow staff"]
+    assert [w for w in c.tenant.writes if w[1] == "segment"] == [], "the segment is only named by the rule, never changed"
+    _u, undone = _apply(c, r["inverse"])
+    assert undone["status"] == "applied", undone
+    assert _access_order(c) == ["Deny contractors", "Allow staff"]
+    assert c.tenant.rows["segment"][seg["id"]]["domainNames"] == ["hr.corp.example"]
+
+
+def test_an_access_rule_for_an_existing_segment_conflicts_when_one_with_its_name_appeared_after_the_preview(monkeypatch):
+    """ASVS V11.1.3 · CWE-367: a rule with the same name made between the preview and the write is a conflict; nothing is created or moved."""
+    c = Client()
+    seg = _published(c)
+    ids = _with_access_policy(c)
+    spec = {"type": "zpa_policies", "prefix": "fix", "access": True, "timeout": False, "access_segments": [seg["id"]], "access_above": ids["deny"]}
+    orig = ops_zpa.HANDLERS["zpa_b_create"]
+
+    def someone_creates_it_first(run, g, units):
+        c.tenant.add("rule:access", {"name": g["target"]["name"], "action": "ALLOW", "ruleOrder": "9"})
+        return orig(run, g, units)
+
+    monkeypatch.setitem(ao.PLUGIN_HANDLERS, "zpa_b_create", someone_creates_it_first)
+    c.tenant.writes.clear()
+    _p, r = _apply(c, spec)
+    assert [u["status"] for u in r["items"] if u["field"] == "exists"] == ["conflict"]
+    assert not [w for w in c.tenant.writes if w[0] in ("create", "reorder")]
+
+
+def test_existing_segments_are_checked_and_build_the_access_rule_alone():
+    """ASVS V5.1.3 · CWE-20: existing segments must be ids read from ZPA (at most 20), still in ZPA, and take the access rule only."""
+    c = Client()
+    seg = _published(c)
+    base = {"type": "zpa_policies", "prefix": "fix", "access": True, "timeout": False}
+    for bad, why in ((["hr"], "pick it from the list"), ("1", "list of ids"), ([str(i) for i in range(1, 22)], "At most 20")):
+        with pytest.raises(ao.OperationError, match=why):
+            ao.plan(c, dict(base, access_segments=bad), scope=ZPA)
+    with pytest.raises(ao.OperationError, match="untick Timeout"):
+        ao.plan(c, dict(base, timeout=True, access_segments=[seg["id"]]), scope=ZPA)
+    with pytest.raises(ao.OperationError, match="tick Access"):
+        ao.plan(c, dict(base, access=False, timeout=True, access_segments=[seg["id"]]), scope=ZPA)
+    p = ao.plan(c, dict(base, access_segments=["72058304859999999"]), scope=ZPA)
+    assert any("not in ZPA now" in b for b in p["blockers"]), p["blockers"]
+    assert ops_zpa.access_rule_name("fix", "Payroll access") == "fix-allow-payroll-access-rule"
+    assert len(ops_zpa.access_rule_name("p" * 20, "x" * 200)) <= ops_zpa.ACCESS_NAME_MAX
+
+
 # ── delete by prefix ────────────────────────────────────────────────────
 
 ORDER = ["rule:access", "rule:timeout", "rule:inspection", "rule:isolation", "inspection_profile", "segment", "server_group", "segment_group",

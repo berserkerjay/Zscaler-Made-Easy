@@ -33,8 +33,18 @@ destination), so it is treated as a read: it is the only POST this module
 sends, and it never runs in write mode only. Calls are paced (`pace`
 seconds apart), a 429 is retried with a growing wait (at most RETRIES
 times), Stop is checked before every request and during every wait, and
-the number of URLs looked up is capped (MAX_LOOKUP_URLS) with a visible
-note.
+the number of URLs looked up in one run is capped (MAX_LOOKUP_URLS,
+200 requests, under the assumed 400 an hour) with a visible note.
+
+Large categories: a run that does not reach every URL (the per-run cap, a
+rate limit ZIA keeps answering after the retries, or Stop) keeps what it
+looked up in a checkpoint (CHECKPOINTS: in memory only, bound to the
+person, the tenant and the categories picked, at most CHECKPOINT_MAX of
+them and CHECKPOINT_URLS entries in all, gone after CHECKPOINT_TTL). The
+page's Continue starts the next run from it: the categories are read
+again, only the URLs not looked up yet are sent, and the workbook covers
+everything so far. One analysis covers at most MAX_TOTAL_URLS distinct
+URLs; the rest are named as over that bound.
 
 Verdicts per URL:
   redundant      Zscaler already puts it in a category of the same super
@@ -67,7 +77,9 @@ CATEGORIES_FULL = "/zia/urlCategories"
 BATCH = 100                 # the SDK's lookup chunk size
 PACE_SECONDS = 1.0          # the SDK's pause between lookup requests
 RETRIES = 3                 # 429 retries per batch, waits PACE * 2, 4, 8 s
-MAX_LOOKUP_URLS = 2000      # 20 lookup requests at most per run
+MAX_LOOKUP_URLS = 20000     # per run: 200 lookup requests, about four minutes at the SDK's pace
+MAX_TOTAL_URLS = 100000     # distinct URLs one analysis covers, over all its Continue runs (memory bound)
+HOURLY_REQUESTS = 400       # assumed: ZIA's documented POST limit (1/s, 400/h; zia_rate) applies to /urlLookup
 UNKNOWN_CATS = {"MISCELLANEOUS_OR_UNKNOWN", "NONE", "OTHER_MISCELLANEOUS", ""}
 NO_SUPER = {"", "USER_DEFINED", "NONE", "ANY"}
 
@@ -452,27 +464,37 @@ def urls_export(client, sources: Dict[str, Any], *, tenant_label: str = "", log:
 
 # ── Custom URL category analyzer ─────────────────────────────────────
 def lookup_batches(client, urls: Sequence[str], *, pace: Optional[float] = None, retries: int = RETRIES, log: LookupLog = None,
-                   cancel: Any = None, sleep: Callable[[float], None] = time.sleep) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, str], Dict[str, int]]:
+                   cancel: Any = None, sleep: Callable[[float], None] = time.sleep, found: Optional[Dict[str, Dict[str, Any]]] = None,
+                   stop_on_rate_limit: bool = False) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, str], Dict[str, int]]:
     """POST /zia/urlLookup, BATCH URLs per request, `pace` seconds between
     requests, a 429 retried after pace * 2**attempt seconds. Returns
     ({url: {categories, security_alerts}}, {url: why not looked up},
-    stats). Raises Stopped on Stop."""
+    stats). Raises Stopped on Stop; `found`, when given, is filled as the
+    answers come, so what was looked up before a Stop is kept. With
+    `stop_on_rate_limit`, a batch ZIA still refuses for its rate limit after
+    the retries ends the run: the URLs not sent are left out of both maps
+    (stats["unsent"] counts them) for a later Continue."""
     say = log or (lambda m: None)
     pace = PACE_SECONDS if pace is None else pace
     post = getattr(client, "post", None)
-    found: Dict[str, Dict[str, Any]] = {}
+    found = {} if found is None else found
     missed: Dict[str, str] = {}
     stats = {"requests": 0, "retries": 0}
+    if stop_on_rate_limit:
+        stats.update(unsent=0, rate_limited=0)
     if not callable(post):
         return found, {u: "this client cannot run a URL lookup" for u in urls}, stats
     batches = [list(urls[i:i + BATCH]) for i in range(0, len(urls), BATCH)]
+    total = len(urls)
     for n, batch in enumerate(batches, 1):
         if n > 1:
             _wait(pace, cancel, sleep)
         attempt = 0
+        done = (n - 1) * BATCH
         while True:
             _stop_point(cancel)
-            say(f"Looking up {len(batch)} URL{'s' if len(batch) != 1 else ''} (request {n} of {len(batches)})…")
+            say(f"Looking up {len(batch)} URL{'s' if len(batch) != 1 else ''} (request {n} of {len(batches)}; {done:,} of {total:,} URLs done, "
+                f"{100 * done // max(1, total)}%)…")
             stats["requests"] += 1
             try:
                 data, code = post(LOOKUP_ENDPOINT, [_lookup_form(u) for u in batch])
@@ -492,6 +514,13 @@ def lookup_batches(client, urls: Sequence[str], *, pace: Optional[float] = None,
             for u in batch:
                 missed[u] = why
             say(f"Request {n}: {why}; those URLs are marked not looked up.")
+            if code == 429 and stop_on_rate_limit:
+                stats["rate_limited"] += len(batch)
+                if n < len(batches):
+                    stats["unsent"] = total - n * BATCH if n * BATCH < total else 0
+                    say(f"ZIA keeps refusing for its rate limit, so the remaining {stats['unsent']:,} URLs are not sent now: "
+                        "Continue looks them up later.")
+                    break
             continue
         by_url = {}
         for e in data:
@@ -566,10 +595,18 @@ VERDICT_LABELS = {"redundant": "Redundant", "different": "Categorised differentl
 
 
 def analyze_categories(client, *, picked: Optional[Sequence[str]] = None, max_urls: int = MAX_LOOKUP_URLS, pace: Optional[float] = None,
-                       log: LookupLog = None, cancel: Any = None, sleep: Callable[[float], None] = time.sleep) -> Dict[str, Any]:
+                       log: LookupLog = None, cancel: Any = None, sleep: Callable[[float], None] = time.sleep,
+                       prior: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """List the custom categories (GET /urlCategories/lite), read each
     picked one (GET /urlCategories/{id}), look its URLs up (POST
-    /urlLookup, paced, capped) and classify every URL. Raises Stopped."""
+    /urlLookup, paced, capped per run) and classify every URL.
+
+    `prior` is a checkpoint of an earlier run of the same analysis
+    ({"found": {key: entry}, "failed": {key: why}}): those URLs are not
+    sent again. The result carries the new checkpoint (`checkpoint`, for
+    the caller to keep, never to show) and, when URLs are left, `resume`
+    ({remaining, next}). Raises Stopped; the exception's `checkpoint` holds
+    what was looked up before the Stop."""
     import data_flow
     import dlp_efficacy
     from urllib.parse import quote
@@ -577,6 +614,18 @@ def analyze_categories(client, *, picked: Optional[Sequence[str]] = None, max_ur
     pace = PACE_SECONDS if pace is None else pace
     max_urls = max(1, min(int(max_urls or MAX_LOOKUP_URLS), MAX_LOOKUP_URLS))
     notes: List[str] = [LOOKUP_NOTE]
+    prior = prior if isinstance(prior, dict) else {}
+    known: Dict[str, Dict[str, Any]] = dict(prior.get("found") or {})       # key -> entry, every run so far
+    failed: Dict[str, str] = dict(prior.get("failed") or {})               # key -> why (not a rate limit: not sent again)
+    fresh: Dict[str, Dict[str, Any]] = {}
+    todo: List[str] = []
+    stats = {"requests": 0, "retries": 0, "unsent": 0, "rate_limited": 0}
+    missed: Dict[str, str] = {}
+
+    def checkpoint() -> Dict[str, Any]:
+        k = dict(known)
+        k.update({norm(_lookup_form(u)): e for u, e in fresh.items()})
+        return {"found": k, "failed": dict(failed)}
     try:
         with data_flow.stop_on(client, cancel):
             say("Reading the URL categories (lite list)…")
@@ -616,45 +665,85 @@ def analyze_categories(client, *, picked: Optional[Sequence[str]] = None, max_ur
                 details.append(dict(c, **data))
             # Every (category, list, url), in order; the lookup is asked once per distinct URL.
             items: List[Tuple[Dict[str, Any], str, str]] = []
+            over_bound = 0
+            distinct: List[str] = []
+            seen = set()
             for c in details:
                 for field, lst in (("urls", "URLs"), ("dbCategorizedUrls", "URLs retaining parent category")):
                     for u in _list(c.get(field) or c.get(_SNAKE.get(field, field))):
-                        if str(u).strip():
-                            items.append((c, lst, str(u).strip()))
-            distinct: List[str] = []
-            seen = set()
-            for _, _, u in items:
-                k = norm(_lookup_form(u))
-                if k not in seen:
-                    seen.add(k)
-                    distinct.append(u)
-            capped = distinct[max_urls:]
-            todo = distinct[:max_urls]
+                        u = str(u).strip()
+                        if not u:
+                            continue
+                        k = norm(_lookup_form(u))
+                        if k not in seen:
+                            if len(distinct) >= MAX_TOTAL_URLS:
+                                over_bound += 1      # counted, never held: memory stays bounded
+                                continue
+                            seen.add(k)
+                            distinct.append(u)
+                        items.append((c, lst, u))
+                c.pop("urls", None)
+                c.pop("dbCategorizedUrls", None)
+            if over_bound:
+                notes.append(f"One analysis covers at most {MAX_TOTAL_URLS:,} distinct URLs: {over_bound:,} more are not analysed. "
+                             "Pick fewer categories to analyse them.")
+                say(notes[-1])
+            pending = [u for u in distinct if norm(_lookup_form(u)) not in known and norm(_lookup_form(u)) not in failed]
+            if known or failed:
+                say(f"Continuing: {len(known) + len(failed):,} URLs were looked up before, {len(pending):,} are left.")
+            todo = pending[:max_urls]
+            capped = pending[max_urls:]
             if capped:
                 notes.append(f"Capped at {max_urls} URLs: {len(capped)} more were not looked up (shown as not looked up). "
-                             "Pick fewer categories to look the rest up.")
+                             "Click Continue to look the rest up, or pick fewer categories.")
                 say(notes[-1])
             say(f"Looking up {len(todo)} URL{'s' if len(todo) != 1 else ''} in {(len(todo) + BATCH - 1) // BATCH} request(s), "
                 f"{pace:g} s apart. {LOOKUP_NOTE}")
-            found, missed, stats = lookup_batches(client, todo, pace=pace, log=say, cancel=cancel, sleep=sleep)
+            try:
+                _f, missed, stats = lookup_batches(client, todo, pace=pace, log=say, cancel=cancel, sleep=sleep, found=fresh,
+                                                   stop_on_rate_limit=True)
+            except Stopped as e:
+                e.checkpoint = checkpoint()          # type: ignore[attr-defined]
+                raise
+            for u, why in missed.items():
+                if not why.startswith("rate limited"):
+                    failed[norm(_lookup_form(u))] = why
             _stop_point(cancel)
+    except Stopped as e:
+        if not hasattr(e, "checkpoint"):
+            e.checkpoint = checkpoint()              # type: ignore[attr-defined]
+        raise
     except (data_flow.ReadStopped, dlp_efficacy.CorpusReadStopped) as e:
-        raise Stopped(STOPPED_REASON) from e
+        err = Stopped(STOPPED_REASON)
+        err.checkpoint = checkpoint()                # type: ignore[attr-defined]
+        raise err from e
     except Exception as e:  # noqa: BLE001
         import zia_rate
         if isinstance(e, zia_rate.Cancelled):
-            raise Stopped(STOPPED_REASON) from e
+            err = Stopped(STOPPED_REASON)
+            err.checkpoint = checkpoint()            # type: ignore[attr-defined]
+            raise err from e
         raise
-    by_norm = {norm(_lookup_form(u)): u for u in todo}
+    cp = checkpoint()
+    found_all, failed_all = cp["found"], cp["failed"]
+    unsent = {norm(_lookup_form(u)) for u in todo if u not in fresh and u not in missed}
+    rate_missed = {norm(_lookup_form(u)) for u, why in missed.items() if why.startswith("rate limited")}
     rows: List[Dict[str, Any]] = []
     per: Dict[str, Dict[str, Any]] = {}
     for c, lst, u in items:
-        key = by_norm.get(norm(_lookup_form(u)))
-        entry = found.get(key) if key else None
+        key = norm(_lookup_form(u))
+        entry = found_all.get(key)
         verdict, cats = classify(entry, c, supers)
         why = VERDICTS[verdict]
         if verdict == "not_looked_up":
-            why = "Not looked up: " + (missed.get(key) if key and key in missed else "over the cap") + "."
+            if key in failed_all:
+                why = f"Not looked up: {failed_all[key]}."
+            elif key in rate_missed:
+                why = "Not looked up: rate limited (HTTP 429) after retries."
+            elif key in unsent:
+                why = "Not looked up yet: ZIA's rate limit stopped the run; Continue looks it up."
+            else:
+                why = "Not looked up: over the cap."
         elif lst.startswith("URLs retaining") and verdict in ("different", "categorised", "redundant"):
             why += " It is listed to retain its parent category, so Zscaler's category still applies alongside the custom one."
         name = _cat_name(c)
@@ -670,12 +759,18 @@ def analyze_categories(client, *, picked: Optional[Sequence[str]] = None, max_ur
             per.setdefault(_cat_name(c), {"category": _cat_name(c), "id": c.get("id"), "super_category": c.get("superCategory") or "",
                                           "urls": 0, "error": c["_error"], **{v: 0 for v in VERDICTS}})
     totals = {v: sum(1 for r in rows if r["verdict"] == v) for v in VERDICTS}
+    remaining = sum(1 for u in distinct if norm(_lookup_form(u)) not in found_all and norm(_lookup_form(u)) not in failed_all)
     say(f"Done: {len(rows)} URL{'s' if len(rows) != 1 else ''} in {len(per)} categor{'ies' if len(per) != 1 else 'y'}: "
         f"{totals['redundant']} redundant, {totals['different']} categorised differently, {totals['uncategorised']} not categorised, "
-        f"{totals['not_looked_up']} not looked up.")
-    return {"status": "ready", "rows": rows, "per_category": list(per.values()), "totals": totals, "notes": notes,
-            "lookup": {"requests": stats["requests"], "retries": stats["retries"], "looked_up": len(found), "cap": max_urls,
-                       "over_cap": len(capped), "batch": BATCH, "pace_seconds": pace}}
+        f"{totals['not_looked_up']} not looked up." + (f" {remaining:,} distinct URLs are left for Continue." if remaining else ""))
+    out = {"status": "ready", "rows": rows, "per_category": list(per.values()), "totals": totals, "notes": notes,
+           "lookup": {"requests": stats["requests"], "retries": stats["retries"], "looked_up": len(fresh), "cap": max_urls,
+                      "over_cap": len(capped), "batch": BATCH, "pace_seconds": pace, "distinct": len(distinct),
+                      "looked_up_total": len(found_all), "remaining": remaining, "over_bound": over_bound},
+           "checkpoint": cp}
+    if remaining:
+        out["resume"] = {"remaining": remaining, "next": min(remaining, max_urls)}
+    return out
 
 
 def analyzer_workbook(res: Dict[str, Any], *, tenant_label: str = "") -> bytes:
@@ -687,7 +782,9 @@ def analyzer_workbook(res: Dict[str, Any], *, tenant_label: str = "") -> bytes:
     s.extend([["Tenant", tenant_label or "Not named"], ["Analysed", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
               ["Custom categories", len(res.get("per_category") or [])], ["URLs", len(res.get("rows") or [])]]
              + [[VERDICT_LABELS[v], t.get(v, 0)] for v in VERDICTS]
-             + [["Lookup requests", lk.get("requests", 0)], ["Retries after HTTP 429", lk.get("retries", 0)], ["Cap (URLs looked up per run)", lk.get("cap", "")]]
+             + [["Lookup requests", lk.get("requests", 0)], ["Retries after HTTP 429", lk.get("retries", 0)], ["Cap (URLs looked up per run)", lk.get("cap", "")],
+                ["Distinct URLs looked up so far (every run)", lk.get("looked_up_total", lk.get("looked_up", 0))],
+                ["Distinct URLs left for Continue", lk.get("remaining", 0)]]
              + [["Note", n] for n in res.get("notes") or []]
              + [["What the verdicts mean", "; ".join(f"{VERDICT_LABELS[k]}: {v}" for k, v in VERDICTS.items() if k != "not_looked_up")]])
     wb.add_sheet("Per category", columns=["Category", "ID", "Super category", "URLs"] + [VERDICT_LABELS[v] for v in VERDICTS] + ["Could not be read"],
@@ -697,3 +794,66 @@ def analyzer_workbook(res: Dict[str, Any], *, tenant_label: str = "") -> bytes:
                  rows=[[r["category"], r["list"], r["url"], r["zscaler_categories"], r["security_alerts"], r["verdict_label"], r["why"]]
                        for r in res.get("rows") or []])
     return wb.to_bytes()
+
+
+# ── Checkpoints: what a run looked up, for the next run (Continue) ─────
+CHECKPOINT_MAX = 4               # analyses kept at once (the oldest goes)
+CHECKPOINT_URLS = 200000         # looked-up URLs kept over all of them (memory bound)
+CHECKPOINT_TTL = 6 * 3600.0      # seconds a checkpoint is kept
+_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
+
+
+class Checkpoints:
+    """In-memory only: never written to disk, never in a job result. Each
+    is bound to who started the analysis, the tenant and the categories
+    picked; anyone else, another tenant or other categories get nothing."""
+
+    def __init__(self) -> None:
+        import threading
+        from collections import OrderedDict
+        self._lock = threading.Lock()
+        self._rows: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+
+    @staticmethod
+    def _bind(actor: Any, tenant: Any, picked: Optional[Sequence[str]]) -> Tuple[str, str, Tuple[str, ...]]:
+        return (str(actor or ""), str(tenant or ""), tuple(sorted({str(p).strip().lower() for p in picked or [] if str(p).strip()})))
+
+    def _prune(self, now: float) -> None:
+        for k in [k for k, v in self._rows.items() if v["expires"] <= now]:
+            del self._rows[k]
+        while len(self._rows) > CHECKPOINT_MAX or (self._rows and sum(v["size"] for v in self._rows.values()) > CHECKPOINT_URLS):
+            self._rows.popitem(last=False)
+
+    def put(self, data: Dict[str, Any], *, actor: Any, tenant: Any, picked: Optional[Sequence[str]], token: str = "",
+            now: Optional[float] = None) -> str:
+        import secrets
+        now = time.time() if now is None else now
+        found = dict((data or {}).get("found") or {})
+        failed = {k: str(v)[:200] for k, v in ((data or {}).get("failed") or {}).items()}
+        tok = token if token and _TOKEN_RE.match(token) else secrets.token_urlsafe(24)
+        with self._lock:
+            self._rows.pop(tok, None)
+            self._rows[tok] = {"bind": self._bind(actor, tenant, picked), "found": found, "failed": failed,
+                               "size": len(found) + len(failed), "expires": now + CHECKPOINT_TTL}
+            self._prune(now)
+        return tok
+
+    def get(self, token: Any, *, actor: Any, tenant: Any, picked: Optional[Sequence[str]], now: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        if not isinstance(token, str) or not _TOKEN_RE.match(token):
+            return None
+        now = time.time() if now is None else now
+        with self._lock:
+            self._prune(now)
+            row = self._rows.get(token)
+            if row is None or row["bind"] != self._bind(actor, tenant, picked):
+                return None
+            return {"found": dict(row["found"]), "failed": dict(row["failed"])}
+
+    def drop(self, token: Any) -> None:
+        with self._lock:
+            self._rows.pop(token, None)
+
+
+CHECKPOINTS = Checkpoints()
+CONTINUE_GONE = ("This analysis can no longer be continued: it expired, the server restarted, or it was started by someone else, "
+                 "on another tenant or for other categories. Run the analyzer again.")

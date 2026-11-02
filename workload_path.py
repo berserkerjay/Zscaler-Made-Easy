@@ -91,7 +91,7 @@ def _forward(method: str) -> Tuple[str, str]:
 UNEVALUATED = (("destCountries", "destination country"), ("destIpCategories", "destination IP category"),
                ("resCategories", "URL category"), ("nwServices", "network service"), ("nwServiceGroups", "network service group"),
                ("nwApplications", "network application"), ("nwApplicationGroups", "network application group"),
-               ("appServiceGroups", "app service group"), ("locations", "location"), ("locationGroups", "location group"),
+               ("locations", "location"), ("locationGroups", "location group"),
                ("timeWindows", "time window"), ("devices", "device"), ("deviceGroups", "device group"),
                ("departments", "department"), ("groups", "group"), ("users", "user"), ("destIpv6Groups", "destination IPv6 group"),
                ("srcIpv6Groups", "source IPv6 group"), ("destWorkloadGroups", "destination workload group"))
@@ -110,9 +110,13 @@ class Stopped(RuntimeError):
 
 # ── the read ────────────────────────────────────────────────────────────
 def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optional[threading.Event] = None,
-         pace: Optional[float] = None) -> Dict[str, Any]:
+         pace: Optional[float] = None, lists: Optional[Tuple[Tuple[str, ...], ...]] = None) -> Dict[str, Any]:
     """Read the connector lists once. {collections: {key: {label, read,
-    count, complete, error}}, <key>: [raw dicts] or None}. Raises Stopped."""
+    count, complete, error}}, <key>: [raw dicts] or None}. Raises Stopped.
+
+    `lists` (default LISTS) is (key, label, service, method[, "one"]); a
+    fifth element "one" marks a method that answers one object, not a page
+    (ztw_overview's activation status): it is kept as a one-item list."""
     _log = log or (lambda m: None)
     ztw = getattr(client, "ztw", None)
     if ztw is None:
@@ -132,7 +136,9 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
         last[0] = time.monotonic()
 
     snap: Dict[str, Any] = {"read_at": time.time(), "collections": {}}
-    for key, label, svc_name, method in LISTS:
+    for entry in (lists or LISTS):
+        key, label, svc_name, method = entry[:4]
+        one = len(entry) > 4 and entry[4] == "one"
         fn = getattr(getattr(ztw, svc_name, None), method, None)
         if not callable(fn):
             snap["collections"][key] = {"label": label, "read": False, "count": 0, "complete": False, "error": "not available in this SDK version"}
@@ -148,6 +154,14 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
                 result, resp, err = res
                 if err:
                     error = zpa_reader._err_text(err)
+                    break
+                if one:
+                    body = getattr(resp, "get_body", None)
+                    body = body() if callable(body) else None
+                    if isinstance(body, dict):
+                        items.append(dict(body))
+                    elif result is not None:
+                        items.append(zpa_reader._plain(result))
                     break
                 items.extend(zpa_reader.raw_items(result, resp))
                 more = getattr(resp, "has_next", None)
@@ -322,8 +336,11 @@ def _ip_in(ip: str, entries: List[str]) -> Optional[bool]:
 ZPA_POOL = ipaddress.ip_network("100.64.0.0/10")
 
 
+_ANY_V4 = "0.0.0.0"  # nosec B104 # an address-family probe for a rule entry; binds nothing
+
+
 def _is_address(e: str) -> bool:
-    return _ip_in("0.0.0.0", [e]) is not None or _ip_in("::", [e]) is not None
+    return _ip_in(_ANY_V4, [e]) is not None or _ip_in("::", [e]) is not None
 
 
 def _within(e: str, net: Any) -> bool:
@@ -364,6 +381,10 @@ def normalize_rule(r: Dict[str, Any], index: int) -> Dict[str, Any]:
            "proxy_gateway": as_str((get(r, "proxyGateway") or {}).get("name")) if isinstance(get(r, "proxyGateway"), dict) else "",
            "zpa_gateway": as_str((get(r, "zpaGateway") or {}).get("name")) if isinstance(get(r, "zpaGateway"), dict) else "",
            "wan_selection": as_str(get(r, "wanSelection")),
+           # App service groups (app_services): matched with Microsoft's
+           # published Microsoft 365 list when one is kept, else unknown.
+           "app_service_rule": {"appServiceGroups": _seq(get(r, "appServiceGroups"))} if get(r, "appServiceGroups") else None,
+           "app_service_groups": _refs(get(r, "appServiceGroups")),
            "unevaluated": [label for k, label in UNEVALUATED if get(r, k)]}
     return out
 
@@ -470,6 +491,20 @@ def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]]
             state = "match" if (every or _lc(zpa_seg["name"]) in names or _lc(zpa_seg["id"]) in names
                                 or _lc(zpa_seg.get("segment_group_name")) in gnames or _lc(zpa_seg.get("segment_group_id")) in gnames) else "nomatch"
         crit.append({"name": f"ZPA application segment {_names(r['zpa_segments'] + r['zpa_segment_groups'])}", "state": state})
+    if r.get("app_service_rule"):
+        import app_services
+        ip = None
+        if d.get("is_ip"):
+            try:
+                ip = ipaddress.ip_address(str(d["host"]))
+            except ValueError:
+                ip = None
+        c = app_services.criterion(r["app_service_rule"], str(d.get("host") or ""), ip,
+                                   {"protocol": d.get("protocol") or "tcp", "port": d.get("port")},
+                                   snap.get("_app_service_list") if "_app_service_list" in snap else app_services.current())
+        if c is not None:
+            crit.append({"name": f"App service group {_names(r['app_service_groups'])}",
+                         "state": {"no_match": "nomatch"}.get(c["state"], c["state"]), "detail": c["detail"]})
     for label in r["unevaluated"]:
         crit.append({"name": f"{label[0].upper() + label[1:]} (not evaluated)", "state": "unknown"})
     return crit

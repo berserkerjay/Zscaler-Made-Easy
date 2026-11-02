@@ -94,6 +94,28 @@ def _parse_detail_for_bp(detail: str):
 # check's section AND label, so a single entry covers many checks.
 _BP_FALLBACKS = [
     # (match-substring, best-practice text, help-center URL)
+    ("zia — forwarding",
+     "Forward traffic to ZIA by default; keep DIRECT, proxy chaining, ZPA and "
+     "dedicated IP forwarding for named destinations, each gateway with a "
+     "fallback in another data centre (secondary proxy, secondary VIP, "
+     "secondary resolver, two Virtual Service Edge nodes).",
+     "https://help.zscaler.com/zia/about-forwarding-control"),
+    ("shadow it",
+     "Review the Shadow IT report monthly: give every application with traffic a sanction decision, block or isolate the "
+     "unsanctioned ones with a high risk index in Cloud App Control, and connect the sanctioned SaaS applications that hold "
+     "company data to the SaaS Security API.",
+     "https://help.zscaler.com/zia/about-shadow-it-report"),
+    ("insights",
+     "Connect every sanctioned SaaS application that holds company data as a SaaS Security API tenant and add a SaaS "
+     "Security DLP rule for it, so files already stored there are scanned.",
+     "https://help.zscaler.com/zia/about-shadow-it-report"),
+    ("branch connector",
+     "Run at least two Cloud or Branch Connectors per group on one current "
+     "version, forward workload traffic to ZIA or ZPA (DIRECT only for named, "
+     "justified destinations), fail closed, keep the firewall and IPS on for "
+     "connector locations, activate changes promptly, and rotate provisioning "
+     "API keys.",
+     "https://help.zscaler.com/cloud-branch-connector"),
     ("ssl",
      "Decrypt and inspect TLS traffic for everything except a documented "
      "exempt list (banking, healthcare, certain government domains). "
@@ -205,6 +227,32 @@ def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
 # (label + section + check_id).
 _REMEDIATION_PATHS = [
     # (match-substring, admin-portal path, API hint or None)
+    # The ZPA RBAC section first: its labels say "admin", which would
+    # otherwise send a ZPA admin finding to the ZIdentity path.
+    ("rbac — zpa",
+     "ZPA Admin Portal → Administration → Administrators, Roles, API Keys, "
+     "Emergency Access, Admin SSO and Microtenants; Configuration → "
+     "Provisioning Keys; Privileged Remote Access → Credentials and Approvals; "
+     "Policy → Access Policy for group-bound rules",
+     None),
+    ("zia — forwarding",
+     "ZIA Admin → Policy → Forwarding Control (rules), and Administration → "
+     "Proxies and Gateways, ZPA Gateways, Dedicated IP, Data Center Exclusion, "
+     "GRE Tunnels, IPv6 Configuration, Virtual Service Edges, DNS Gateways",
+     "GET /zia/forwardingRules, /zia/proxyGateways, /zia/greTunnels (read-only here)"),
+    ("shadow it",
+     "ZIA Admin → Analytics → Shadow IT Report: set each application Sanctioned or Unsanctioned (or Zscaler Made Easy → "
+     "Bulk changes → Sanction or unsanction cloud apps); then Policy → Cloud App Control: Block or Isolate the unsanctioned ones.",
+     "PUT /zia/cloudApplications/bulkUpdate with {sanctionedState, applicationIds}"),
+    ("insights",
+     "ZIA Admin → Administration → SaaS Application Tenants → Add (the SaaS application), then Policy → Data Protection → "
+     "SaaS Security: add a DLP rule for the tenant.",
+     None),
+    ("branch connector",
+     "Cloud & Branch Connector Admin Portal → Administration (Cloud Connector "
+     "Groups, Location Templates, Admin Management, API Key Management) and "
+     "Forwarding Control (Forwarding rules, Gateways); activate after saving.",
+     "Read-only in this app: no Cloud & Branch Connector change is made through the API."),
     ("ssl",
      "ZIA Admin → Policy → SSL Inspection → Add Rule (or edit Default Rule). "
      "Set Action = Inspect, attach URL categories to inspect, add exempt URL list.",
@@ -325,12 +373,31 @@ def _resolve_remediation(label: str, section: str, check_id: str) -> tuple:
     )
 
 
+# Why it matters, per check, where the generic patterns below would say
+# something vaguer (the ZPA administration checks, RBAC.13 to RBAC.23).
+_WHY_BY_CHECK = {
+    "RBAC.13": "ZPA admins decide who reaches every private application. One admin is a lock-out waiting to happen; too many is a large, unreviewed group that can open apps to anyone.",
+    "RBAC.14": "A ZPA admin account protected by a password alone is the easiest way into every private application: one phished password changes access policy for the whole company.",
+    "RBAC.15": "When ZPA admins can sign in with a local password, a leaver's access does not end when the IdP account is disabled, and the IdP's MFA and sign-in policies do not apply.",
+    "RBAC.16": "Every full-access admin can change any application segment, connector or policy. Few people with full access keeps a mistake or a stolen account from reaching everything.",
+    "RBAC.17": "Without a read-only role, auditors, the SOC and reporting tools get change rights they never need, which auditors flag under least privilege (SOC 2 CC6.1, NIST AC-6).",
+    "RBAC.18": "An API key with full access and long-lived tokens is a standing admin credential in a script or pipeline: whoever copies it can change ZPA policy without MFA.",
+    "RBAC.19": "If the IdP is down, a tenant with only SSO admins cannot be administered; a break-glass account used day to day becomes an unmonitored shared admin.",
+    "RBAC.20": "A microtenant without its own admins is managed from the parent tenant, so a business unit's team needs parent-tenant rights that reach every other unit.",
+    "RBAC.21": "A provisioning key enrols App Connectors and Service Edges. A key with room for many more enrolments, or one left unused, lets whoever finds it place a rogue connector inside the network.",
+    "RBAC.22": "Privileged Remote Access hands stored server credentials to users. Credentials never rotated, and not pooled, stay valid long after the people who knew them have moved on.",
+    "RBAC.23": "A Privileged Remote Access approval that stays open for months is standing privileged access to servers, the opposite of just-in-time access auditors expect.",
+}
+
+
 def _generate_why_it_matters(check_id: str, label: str, as_is: str, best_practice: str, section: str = "") -> str:
     """
     Produce a business-impact 'why it matters' sentence. Explains the
     risk/cost of the current configuration in terms of security,
     compliance, and operational outcomes — not the remediation step.
     """
+    if check_id in _WHY_BY_CHECK:
+        return _WHY_BY_CHECK[check_id]
     low = (as_is or "").lower()
     lab = (label or "").lower()
     sec = (section or "").lower()

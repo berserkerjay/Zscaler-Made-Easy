@@ -1,0 +1,114 @@
+{
+ "area": "Untrusted input and traffic analysis: traffic and session log upload and analysis (traffic_logs.py, siem_queries.py, the /api/traffic-logs routes, static/report_traffic_logs.html and static/traffic_logs.js, with links into the Path analyzer and Traffic insights)",
+ "title": "Wave 7 gap from the tool comparison closed: ZPA LSS and ZIA NSS logs read locally as untrusted input, analysed in memory, exported counts-only by default, saved only on request, with SIEM query templates",
+ "standards": [
+  "ASVS V1.14.1",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.1.5",
+  "ASVS V5.3.3",
+  "ASVS V5.3.4",
+  "ASVS V8.3.4",
+  "ASVS V8.3.5",
+  "ASVS V11.1.4",
+  "ASVS V12.1.1",
+  "ASVS V12.3.1",
+  "CWE-20",
+  "CWE-22",
+  "CWE-79",
+  "CWE-226",
+  "CWE-276",
+  "CWE-359",
+  "CWE-400",
+  "CWE-409",
+  "CWE-502",
+  "CWE-532",
+  "CWE-601",
+  "CWE-682",
+  "CWE-754",
+  "CWE-770",
+  "CWE-943",
+  "CWE-1236",
+  "CWE-1333",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 2.4.4",
+  "WCAG 2.2 SC 4.1.2"
+ ],
+ "checks": [
+  {
+   "id": "TL-C01",
+   "what": "Parser per format: ZPA LSS User Activity, User Status, App Connector Status and Private Service Edge Status JSON (log types as the SDK 1.11.3 maps them in zscaler/zpa/lss.py: zpn_trans_log, zpn_auth_log, zpn_ast_auth_log, zpn_sys_auth_log); ZIA NSS web, firewall and DNS as JSON with NSS names, the Cloud NSS HTTP shape {sourcetype, event}, CSV/TSV with NSS or Insights headers, the default tab-separated order (assumed, read only when values fit), a pasted feed output format, JSON array feeds, a syslog prefix, .gz and .zip",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C02",
+   "what": "Malformed input never fatal: broken JSON, NaN, deep nesting, binary noise, wrong column counts and unknown JSON kinds are counted (first 10 examples with file, line and reason, never the line's content)",
+   "standard": "CWE-20",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C03",
+   "what": "Size caps: request body cap, the Log analyzer's archive caps (a gzip bomb is not inflated past the member cap), 64 KB per line read in bounded steps (a longer line is skipped without being held), 2,000,000 lines with a note, 50,000 distinct keys per counter, 200,000 sessions",
+   "standard": "CWE-400",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C04",
+   "what": "A pasted feed format becomes a matcher whose groups stop at the next separator: a hostile line cannot backtrack (proved by a mutation that makes the groups lazy: the test then fails on time)",
+   "standard": "CWE-1333",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C05",
+   "what": "Analysis oracles: connections and failures by ConnectionID (open and close of one failed connection count once), ZPA internal reasons classified (normal ends excluded) with plain words per code or per family, sessions with sign-in checks under 5 s dropped and session ID rotation within 60 s merged, health (down, failing, flapping, CPU and memory 85%, mixed versions), spikes (3x median and 10), many failures for one user (10 at half, or 25), new destinations (last day, needs 2 h), ZIA actions, DLP, threats (benign sandbox excluded), SSL, rules per module",
+   "standard": "CWE-682",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C06",
+   "what": "Every value escaped on output: the page builds nodes with createElement/textContent only (no HTML sink; checked statically and by the html sink scanner), a hostile <img onerror> log value stays text in Chrome; CSV formulas neutralised, Excel inline strings XML-escaped, PDF built by pdf_writer",
+   "standard": "ASVS V5.3.3",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C07",
+   "what": "SIEM templates (27 questions x Splunk SPL, Sentinel KQL, Elastic ES|QL): a user or destination is one escaped string literal (quote, backslash and line breaks cannot end it), index and table names checked against a strict pattern, hours 1 to 2208",
+   "standard": "CWE-943",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C08",
+   "what": "Nothing persisted unless saved: an analysis leaves no file in the app's data folders; the audit line keeps file name and size, never users, hosts or lines; the report lives in the in-memory report store until Forget",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C09",
+   "what": "Downloads and saved reports are counts only by default (users as user 1, user 2; sessions, addresses and devices dropped); Save writes a 0600 file named by the app's own pattern, audited without names; a damaged, foreign or path-like saved name is refused",
+   "standard": "CWE-359",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C10",
+   "what": "Links: a destination becomes a Path analyzer link only when it is a host or IP address, built from a fixed path and encodeURIComponent, and fills the form without starting it; Traffic insights takes ?from=&to= (epoch ms, validated) into its custom window without reading",
+   "standard": "CWE-601",
+   "result": "pass"
+  },
+  {
+   "id": "TL-C11",
+   "what": "Page: help marks for every control (help catalogue entries, extension copy identical), * marks for the 2026-10-31 release, no sideways scroll at 320 and 390 px, keyboard reachable, live region announcements, chart with a table view and text summary",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "pass"
+  }
+ ],
+ "findings": [],
+ "notes": [
+  "Verified against zscaler-sdk-python 1.11.3: the LSS log type names (zscaler/zpa/lss.py source_log_map) and the NSS feed model fields feedOutputFormat, nssLogType, nssFeedType, jsonArrayToggle (zscaler/zia/models/cloud_nss.py). The SDK carries no log field lists or default formats.",
+  "Field names are those of Zscaler's published LSS and NSS field lists (LogTimestamp, Username, SessionID, SessionStatus, ClientType, ConnectionID, ConnectionStatus, InternalReason, Host, Application, Connector, ClientZEN, Policy; time, login, url, host, action, urlcat, rulelabel, ruletype, urlfilterrulelabel, apprulelabel, dlpeng, dlpdict, trig_dlprulename, threatname, malwarecat, ssldecrypted, externalspr; csip, cdip, cdport, cdfqdn, nwsvc, nwapp, ipsrulelabel; reqaction, resaction, reqrulelabel, resrulelabel, req, domcat).",
+  "Assumed (marked in the code): the default tab-separated column orders of the web, firewall and DNS feeds (read only when time, action and address columns fit; otherwise the admin pastes the feed's format); the specific ZPA internal reason codes and their wording (an unknown code is explained by the family its words name); two client type names; the Splunk ZPA sourcetype and the Sentinel table and Elastic index placeholders.",
+  "No outbound fetch, no tenant read, no tenant write; the feature needs no Scope page key.",
+  "Session consolidation thresholds (5 s sign-in checks, 60 s rotation merge) follow the outside tool's documented lab finding; the code is our own."
+ ],
+ "tests_added": 84
+}

@@ -68,6 +68,14 @@ ANSWERS = {
     "FirewallByAction": lambda v: _entries("ZERO_TRUST_FIREWALL", "action", [{"name": "ALLOW", "total": 50}, {"name": "BLOCK", "total": 5}]),
     "CyberSecurityIncidents": lambda v: _entries("CYBER_SECURITY", "incidents", [
         {"name": USER, "total": 9, "entries": [{"name": "Phishing", "total": 9}]}]),
+    "WebThreatClass": lambda v: _entries("WEB_TRAFFIC", "threat_class", [{"name": "Advanced Threats", "total": 14}]),
+    "WebThreatSuperCategories": lambda v: _entries("WEB_TRAFFIC", "threat_super_categories", [{"name": "Phishing", "total": 9}]),
+    "FirewallByLocation": lambda v: _entries("ZERO_TRUST_FIREWALL", "location_firewall", [{"id": 1, "name": "HQ", "total": 40}]),
+    "FirewallNetworkServices": lambda v: _entries("ZERO_TRUST_FIREWALL", "network_service", [{"name": "DNS", "total": 30}]),
+    "CyberSecurityByLocation": lambda v: _entries("CYBER_SECURITY", "cyber_security_location", [{"id": 1, "name": "HQ", "total": 6}]),
+    "IoTDeviceStats": lambda v: {"data": {"IOT": {"device_stats": {
+        "devices_count": 120, "user_devices_count": 80, "iot_devices_count": 25, "server_devices_count": 10, "un_classified_devices_count": 5,
+        "entries": [{"classifications": "IP camera", "classification_uuid": "c-1", "category": "IoT", "total": 12}]}}}},
 }
 EMPTY = {
     "WebTrafficNoGrouping": lambda v: _entries("WEB_TRAFFIC", "no_grouping", []),
@@ -77,6 +85,12 @@ EMPTY = {
     "CasbAppReport": lambda v: _entries("SAAS_SECURITY", "casb_app", []),
     "FirewallByAction": lambda v: _entries("ZERO_TRUST_FIREWALL", "action", []),
     "CyberSecurityIncidents": lambda v: _entries("CYBER_SECURITY", "incidents", []),
+    "WebThreatClass": lambda v: _entries("WEB_TRAFFIC", "threat_class", []),
+    "WebThreatSuperCategories": lambda v: _entries("WEB_TRAFFIC", "threat_super_categories", []),
+    "FirewallByLocation": lambda v: _entries("ZERO_TRUST_FIREWALL", "location_firewall", []),
+    "FirewallNetworkServices": lambda v: _entries("ZERO_TRUST_FIREWALL", "network_service", []),
+    "CyberSecurityByLocation": lambda v: _entries("CYBER_SECURITY", "cyber_security_location", []),
+    "IoTDeviceStats": lambda v: {"data": {"IOT": {"device_stats": {"devices_count": 0, "entries": []}}}},
 }
 
 
@@ -145,7 +159,13 @@ def test_the_sdk_queries_ask_for_the_fields_the_page_reads():
                        "ShadowITSummary": ("shadow_it_summary",) + insights._SUMMARY_TOTALS + tuple(k for k, _ in insights._SUMMARY_GROUPS),
                        "CasbAppReport": ("casb_app", "name", "total"),
                        "FirewallByAction": ("ZERO_TRUST_FIREWALL", "action", "name", "total"),
-                       "CyberSecurityIncidents": ("incidents", "categorize_by", "name", "total")}.items():
+                       "CyberSecurityIncidents": ("incidents", "categorize_by", "name", "total"),
+                       "WebThreatClass": ("threat_class", "name", "total"),
+                       "WebThreatSuperCategories": ("threat_super_categories", "name", "total"),
+                       "FirewallByLocation": ("location_firewall", "name", "total"),
+                       "FirewallNetworkServices": ("network_service", "name", "total"),
+                       "CyberSecurityByLocation": ("cyber_security_location", "categorize_by", "name", "total"),
+                       "IoTDeviceStats": ("device_stats", "classifications", "category", "total") + insights._IOT_TOTALS}.items():
         for f in fields:
             assert f in q[op], (op, f)
     # Nothing in the SDK groups by URL category or rule, or filters by host.
@@ -157,9 +177,12 @@ def test_a_full_read_asks_each_query_once_with_the_window_and_unit():
     t = tenant()
     w = insights.window("24h")
     res = insights.read(t, w["start_ms"], w["end_ms"], traffic_unit="BYTES")
-    assert res["status"] == "ok" and res["queries"] == 9 and res["traffic_unit"] == "BYTES"
+    assert res["status"] == "ok" and res["queries"] == 15 and res["traffic_unit"] == "BYTES"
     assert t.executor.ops().count("WebTrafficNoGrouping") == 3
     for b in t.executor.sent:
+        if b["operationName"] == "IoTDeviceStats":   # device counts take no time window (SDK zins/iot.py)
+            assert "startTime" not in b["variables"]
+            continue
         assert b["variables"]["startTime"] == w["start_ms"] and b["variables"]["endTime"] == w["end_ms"]
     filters = [b["variables"].get("actionFilter") for b in t.executor.sent if b["operationName"] == "WebTrafficNoGrouping"]
     assert filters == [None, "ALLOW", "BLOCK"]
@@ -181,7 +204,7 @@ def test_top_users_off_is_never_asked():
     t = tenant()
     res = _read(t, include_users=False)
     assert "CyberSecurityIncidents" not in t.executor.ops() and res["sections"]["top_users"]["status"] == "skipped"
-    assert res["queries"] == 8
+    assert res["queries"] == 14
 
 
 # ── time windows ──────────────────────────────────────────────────────────
@@ -271,7 +294,7 @@ def test_stop_ends_the_read_between_queries_with_no_partial_result():
 def test_queries_are_paced_and_the_pause_ends_at_stop():
     slept = []
     _read(tenant(), pace=0.25, sleep=slept.append)
-    assert slept == [0.25] * 8
+    assert slept == [0.25] * 14
     cancel = threading.Event()
     threading.Timer(0.2, cancel.set).start()
     t0 = time.time()
