@@ -2401,6 +2401,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   ".rp-bar a[href=\"#about\"]": {
+    "what": "Jumps to About this app: it is open source under the Apache License 2.0, and what it is built from.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#hpFirst a": {
     "what": "Jumps to the help for this step on this page.",
     "input": "Nothing to type. Just click it.",
