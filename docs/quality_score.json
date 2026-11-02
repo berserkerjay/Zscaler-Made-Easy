@@ -2,13 +2,13 @@
   "schema_version": 1,
   "generated_by": "tools/quality_score.py",
   "run": {
-    "commit": "3f4bcc6",
-    "date": "2026-11-01T09:08:26",
-    "passed": 30061,
+    "commit": "844a30b",
+    "date": "2026-11-02T01:31:22",
+    "passed": 30123,
     "failed": 0,
     "errors": 0,
     "skipped": 17,
-    "duration_s": 3134.6
+    "duration_s": 3071.0
   },
   "overall": {
     "score": 100,
@@ -36,7 +36,7 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 30061,
+            "passed": 30123,
             "failed": 0,
             "skipped": 17,
             "files": null
@@ -129,7 +129,7 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 3587,
+            "passed": 3589,
             "failed": 0,
             "skipped": 0,
             "files": 23
@@ -233,10 +233,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 383,
+            "passed": 437,
             "failed": 0,
             "skipped": 1,
-            "files": 11
+            "files": 12
           },
           "findings": {
             "score": 100.0,
@@ -288,7 +288,7 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 5046,
+            "passed": 5048,
             "failed": 0,
             "skipped": 0,
             "files": 43
@@ -400,7 +400,7 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2925,
+            "passed": 2929,
             "failed": 0,
             "skipped": 6,
             "files": 22

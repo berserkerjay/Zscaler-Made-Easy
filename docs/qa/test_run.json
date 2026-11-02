@@ -1,14 +1,14 @@
 {
-  "passed": 30061,
+  "passed": 30123,
   "failed": 0,
   "skipped": 17,
   "errors": 0,
-  "duration_s": 3134.6,
-  "commit": "3f4bcc6",
-  "date": "2026-11-01T09:08:26",
+  "duration_s": 3071.0,
+  "commit": "844a30b",
+  "date": "2026-11-02T01:31:22",
   "files": {
     "tests/test_accessibility.py": {
-      "passed": 794,
+      "passed": 795,
       "failed": 0,
       "skipped": 0
     },
@@ -678,7 +678,7 @@
       "skipped": 0
     },
     "tests/test_new_marks.py": {
-      "passed": 267,
+      "passed": 270,
       "failed": 0,
       "skipped": 0
     },
@@ -699,6 +699,11 @@
     },
     "tests/test_old_repo_name.py": {
       "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_open_source_note.py": {
+      "passed": 54,
       "failed": 0,
       "skipped": 0
     },
@@ -783,7 +788,7 @@
       "skipped": 0
     },
     "tests/test_outbound_ssrf.py": {
-      "passed": 436,
+      "passed": 437,
       "failed": 0,
       "skipped": 0
     },
@@ -1028,7 +1033,7 @@
       "skipped": 0
     },
     "tests/test_quality_score.py": {
-      "passed": 393,
+      "passed": 394,
       "failed": 0,
       "skipped": 0
     },
@@ -1618,7 +1623,7 @@
       "skipped": 0
     },
     "tests/test_zia_forwarding.py": {
-      "passed": 42,
+      "passed": 44,
       "failed": 0,
       "skipped": 0
     },
