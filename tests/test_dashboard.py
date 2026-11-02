@@ -245,3 +245,42 @@ def test_report_details_are_part_of_the_tenant_configuration():
     assert "[org, who].forEach(el => { const f = el.closest('.field'); if (f) box.querySelector('#dbConnectReportBody').appendChild(f); });" in js
     assert "actions.insertAdjacentElement('beforebegin', box)" in js, "above Authenticate"
     assert ".db-connect-report" in _read("dashboard.css")
+
+
+# The 2.5 s refresh (static/dashboard.js refreshCurrent, static/guide.js
+# _gdRender) rewrote the Scope page's Run assessment label, the last-run note
+# (rebuilding its button) and the sign-in live region on every tick, unchanged.
+# A press that straddled a tick lost its click: CI's native-click acceptance
+# missed #dbScopeRun and the profile buttons that way. Ticks are counted by
+# wrapping setInterval before the page loads, so the wait is for two real
+# ticks of each timer, never a fixed delay.
+_IDLE_REFRESH_DRIVER = r"""
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const si = window.setInterval; window.__ticks = 0;
+  window.setInterval = function (fn, ms, ...a) { return si.call(window, ms === 2500 && typeof fn === 'function' ? function () { try { return fn.apply(this, a); } finally { window.__ticks++; } } : fn, ms, ...a); }; })()` });
+await send('Page.navigate', { url: base + '/' });
+await until(() => ev(`document.readyState === 'complete' && !!window.__dbReady && !!document.getElementById('dbLastRunGo') && !!document.getElementById('dbScopeRun') && typeof _gdIdent === 'function'`), 'the dashboard');
+// Signed in, as after Authenticate: the live region holds a sentence.
+await ev(`(() => { document.getElementById('vd').value = 'browser-fixture'; GD.conn = { ok: true, vd: _gdIdent(), label: 'Browser fixture' }; _gdRender(); return true; })()`);
+const settled = await until(() => ev(`window.__ticks >= 2 && window.__ticks`), 'the first refresh ticks');
+const out = await ev(`new Promise(resolve => {
+  const watch = { dbScopeRun: [], dbLastRun: [], authStatus: [] };
+  const run = document.getElementById('dbScopeRun'), go = document.getElementById('dbLastRunGo');
+  for (const id of Object.keys(watch)) new MutationObserver(ms => ms.forEach(m => watch[id].push(m.type + ' ' + (m.attributeName || '')))).observe(document.getElementById(id),
+    { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'disabled', 'aria-busy', 'hidden'] });
+  const start = window.__ticks;
+  const poll = () => window.__ticks >= start + 4 ? resolve({ watch, ticks: window.__ticks - start, sameRun: run === document.getElementById('dbScopeRun'),
+    sameGo: go === document.getElementById('dbLastRunGo'), status: document.getElementById('authStatus').textContent.slice(0, 40) }) : setTimeout(poll, 50);
+  poll();
+})`);
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+
+def test_the_idle_refresh_never_rebuilds_controls_or_repeats_the_live_status(tmp_path):
+    """WCAG 2.2 SC 4.1.3, 2.4.3 · CWE-1188: two refresh ticks of each 2.5 s timer leave Run assessment, the last-run note's button and the sign-in status untouched (they were rewritten every tick)."""
+    from test_findings_reflow import CDP_PRELUDE, run_in_browser
+    out = run_in_browser(tmp_path, CDP_PRELUDE + _IDLE_REFRESH_DRIVER, timeout=120)
+    assert out["ticks"] >= 4 and out["status"].startswith("Signed in to Browser fixture"), out
+    assert out["watch"] == {"dbScopeRun": [], "dbLastRun": [], "authStatus": []}, out
+    assert out["sameRun"] and out["sameGo"], out

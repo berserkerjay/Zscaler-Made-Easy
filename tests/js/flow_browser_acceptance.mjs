@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {waitForDebugger, waitForStablePoint, installNativeClickProbe, dispatchNativeClick} from './flow_browser_harness_helpers.mjs';
+import {waitForDebugger, waitForStablePoint, installNativeClickProbe, dispatchNativeClick, clickUntilReceived} from './flow_browser_harness_helpers.mjs';
 import {runRequiredDlpControlsAcceptance} from './required_dlp_controls_acceptance.mjs';
 
 const [chrome, base, profile, artifactDir] = process.argv.slice(2);
@@ -89,20 +89,24 @@ async function click(selector, frameId) {
     const inViewport=x>=0&&x<doc.defaultView.innerWidth&&y>=0&&y<doc.defaultView.innerHeight&&outerX>=0&&outerX<innerWidth&&outerY>=0&&outerY<innerHeight;
     const hit=doc.elementFromPoint(x,y),outer=frame?document.elementFromPoint(outerX,outerY):hit;
     const point={ready:!hidden&&!el.disabled&&sized&&inViewport&&(hit===el||el.contains(hit))&&(!frame||outer===frame),
-      x:outerX,y:outerY,targetId:window.__acceptanceInputProbe.identify(el),offscreen:sized&&!inViewport,hidden,disabled:!!el.disabled,hit:hit?.tagName,outer:outer?.tagName,selector:${JSON.stringify(selector)}};
+      x:outerX,y:outerY,w:r.width,h:r.height,targetId:window.__acceptanceInputProbe.identify(el),offscreen:sized&&!inViewport,hidden,disabled:!!el.disabled,hit:hit?.tagName,outer:outer?.tagName,selector:${JSON.stringify(selector)}};
     window.__acceptanceInputProbe.actions[${JSON.stringify(token)}].prepared={...point,connected:el.isConnected,activeTargetId:window.__acceptanceInputProbe.identify(doc.activeElement),activeId:doc.activeElement?.id||null,at:performance.now()};
     return point;
   })()`);
+  // The receipt window stays 1.5 s per attempt; a miss returns false so the
+  // probe's events can say whether pressing again is safe.
+  const awaitReceipt=()=>waitFor(`window.__acceptanceClickReceipts?.[${JSON.stringify(token)}]?.trusted === true`,1500,'trusted native click on '+selector)
+    .then(()=>true,error=>{if(error.message.startsWith('Timed out waiting for trusted native click'))return false;throw error;});
+  const evidence=()=>evaluate(`(()=>{const action=window.__acceptanceInputProbe?.actions?.[${JSON.stringify(token)}];return {received:window.__acceptanceClickReceipts?.[${JSON.stringify(token)}]?.trusted === true,events:action?action.events:[]}})()`);
   try {
-    let point=await waitForStablePoint(measure,{sleep,reveal});
-    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
     // Recheck both node identity and geometry after hover. Controls can be
     // replaced without changing their position during a profile refresh.
-    point=await waitForStablePoint(measure,{sleep,reveal});
-    harnessEvents.push({type:'click-dispatched',selector,frameId:frameId||null,...point,at_ms:Date.now()-started});
-    await dispatchNativeClick(send,point);
-    await waitFor(`window.__acceptanceClickReceipts?.[${JSON.stringify(token)}]?.trusted === true`,1500,'trusted native click on '+selector);
-    harnessEvents.push({type:'click',selector,frameId:frameId||null,x:point.x,y:point.y,at_ms:Date.now()-started});
+    const {point,attempt,missed}=await clickUntilReceived({label:selector,awaitReceipt,evidence,
+      stablePoint:()=>waitForStablePoint(measure,{sleep,reveal}),
+      hover:point=>send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y}),
+      dispatch:point=>dispatchNativeClick(send,point),
+      onAttempt:({attempt,point})=>harnessEvents.push({type:'click-dispatched',attempt,selector,frameId:frameId||null,...point,at_ms:Date.now()-started})});
+    harnessEvents.push({type:'click',selector,frameId:frameId||null,x:point.x,y:point.y,attempt,missed,at_ms:Date.now()-started});
   } finally {
     // Remove only this action's observers; retain its evidence on failure.
     await evaluate(`(()=>{window.__acceptanceProbeCleanup?.[${JSON.stringify(token)}]?.();if(window.__acceptanceProbeCleanup)delete window.__acceptanceProbeCleanup[${JSON.stringify(token)}];return true})()`).catch(()=>{});
