@@ -769,3 +769,15 @@ def test_faded_path_steps_keep_their_text_at_aa_contrast(faded_boxes, theme, ton
     """WCAG 2.2 SC 1.4.3 (Contrast, Minimum) · SC 1.4.11: a path step drawn as not reached, not in scope or pending fades its shape only; its title and line stay at 4.5:1 or better."""
     got = faded_boxes[theme][tone]
     assert got["fa-t"] >= 4.5 and got["fa-s"] >= 4.5, (theme, tone, got, faded_boxes[theme]["pass"])
+
+
+def test_the_focus_ring_appears_at_once_and_is_never_animated():
+    """WCAG 2.2 SC 2.4.7, 2.4.11 · CWE-1021: buttons do not transition outline or box-shadow (or `all`), so the focus ring is drawn the moment focus lands, not faded in."""
+    # Arrange
+    import re as _re
+    css = open(os.path.join(ROOT, "static", "reports.css"), encoding="utf-8").read()
+    # Act
+    rule = _re.search(r"^\.rp-btn \{[^}]*\}", css, _re.M).group(0)
+    transition = (_re.search(r"transition:\s*([^;]+)", rule) or [None, ""])[1]
+    # Assert
+    assert transition and not _re.search(r"\b(all|outline|box-shadow)\b", transition), transition

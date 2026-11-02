@@ -15,7 +15,7 @@
 .rp-bar { position: sticky; top: 0.5rem; z-index: 5; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.5rem 0.6rem; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); box-shadow: var(--shadow-sm); }
 .rp-bar .sep { flex: 1; }
 .rp-bar .lbl { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 0 0.3rem; }
-.rp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 38px; padding: 0.5rem 0.9rem; border-radius: var(--r-md); font-size: 0.8rem; font-weight: 600; font-family: inherit; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--dim); text-decoration: none; white-space: nowrap; transition: all 0.2s var(--ease, ease); }
+.rp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 38px; padding: 0.5rem 0.9rem; border-radius: var(--r-md); font-size: 0.8rem; font-weight: 600; font-family: inherit; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--dim); text-decoration: none; white-space: nowrap; transition: background-color 0.2s var(--ease, ease), border-color 0.2s var(--ease, ease), color 0.2s var(--ease, ease), opacity 0.2s var(--ease, ease), transform 0.2s var(--ease, ease); }
 .rp-btn:hover { color: var(--text); border-color: var(--border-strong); background: var(--well); }
 .rp-btn.primary { background: var(--btn, #2563eb); color: #fff; border-color: transparent; }
 .rp-btn.primary:hover { background: var(--btn-hover, var(--accent)); }   /* darker on hover: white text stays above 4.5:1 */
