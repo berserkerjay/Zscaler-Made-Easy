@@ -181,9 +181,9 @@ installing only puts the program on your computer.
       [work laptop box](#work-laptop-tls-inspection-or-a-proxy) before you
       start; it changes one step.
 - [ ] **Access to the GitHub repository** `github.com/berserkerjay/Zscaler-Made-Easy`.
-      The code is open source (Apache-2.0); whether the repository is public
-      or **private** is set by its owner. While it is private, someone on the
-      team must add your GitHub account first. If the page says "404" or asks
+      The code is open source (Apache-2.0); the repository's visibility
+      (public or **private**) is set by its owner. While it is private, someone
+      on the team must add your GitHub account first. If the page says "404" or asks
       you to sign in and then still refuses, that is the reason.
 - [ ] **A decision: ZIP or Git.** See
       [Two ways to get the files](#two-ways-to-get-the-files) below. Git is
