@@ -1,5 +1,7 @@
 # Healthcare PHI Policy Pack 3.1 — PHI / HIPAA DLP Build
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 Predefined-first dictionary and engine reference for Zscaler ZIA, six-engine architecture plus the Fed pack's US PII and US PHI engines. Built from the customer's build document; the pack configs carry the API fields only. Every rule ships DISABLED, monitor-only (ALLOW) at INFO severity and is mirrored one-for-one onto Endpoint DLP, SaaS Security API and Outbound Email DLP (11 × 4 rules).
 
 Engine names use only the characters ZIA accepts (letters, digits, underscore, hyphen, dot, parentheses and space): "Narrative - Low Volume", "Pharmacy - Claims - Billing", "Strong Signature and Clinical Document". The long engine descriptions in this pack are documentation; the deploy clamps what it sends to ZIA's 255-character limit.

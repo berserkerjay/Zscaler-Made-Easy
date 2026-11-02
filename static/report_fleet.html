@@ -45,6 +45,7 @@
   .zf-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0; }
   .zf-row label { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; font-size: 0.86rem; max-width: 100%; min-width: 0; }
   .zf-row input { max-width: 100%; min-width: 0; }
+  .zf-row label[hidden] { display: none; }
   .zf-row select, .zf-row input[type=search] { min-height: 34px; padding: 0.3rem 0.6rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; font-size: 0.84rem; max-width: 100%; }
   .zf-pre { font-family: var(--mono); font-size: 0.74rem; background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem; overflow: auto; max-height: 420px; white-space: pre; }
   .zf-pre .add { color: var(--pass); } .zf-pre .del { color: var(--fail); }
@@ -57,9 +58,41 @@
   .zf-export label { font-size: 0.8rem; display: inline-flex; gap: 0.3rem; align-items: center; }
   .zf-status { font-size: 0.88rem; color: var(--dim); min-height: 1.4em; margin-top: 0.4rem; }
   .zf-status.bad { color: var(--fail); }
+  .zf-dns-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 0.6rem 1rem; margin: 0.5rem 0; }
+  .zf-dns-cell { display: flex; align-items: flex-start; gap: 0.3rem; min-width: 0; padding-right: 4px; }
+  .zf-dns-cell > label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.86rem; min-width: 0; flex: 1 1 0; }
+  .zf-dns-cell > label input, .zf-dns-cell > label textarea { width: 100%; }
+  .zf-dns-grid fieldset { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.3rem; font-size: 0.86rem; min-width: 0; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.4rem 0.6rem; margin: 0; }
+  .zf-dns-grid fieldset legend { padding: 0 0.2rem; }
+  .zf-dns-grid fieldset label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-right: 0.4rem; min-width: 0; }
+  .zf-dns-grid input[type=text], .zf-dns-grid input[type=number], .zf-dns-grid textarea { min-height: 34px; padding: 0.3rem 0.6rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; font-size: 0.84rem; max-width: 100%; min-width: 0; box-sizing: border-box; }
+  .zf-dns-grid textarea { font-family: var(--mono); min-height: 4.2rem; resize: vertical; }
+  .zf-dns-out .tw { overflow-x: auto; max-width: 100%; }
+  .zf-dns-out td { overflow-wrap: anywhere; }
   .zf-legend { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0; font-size: 0.78rem; }
   .zf-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
   .zf-page .rp-bar .df-ctl select { max-width: min(320px, calc(100vw - 7rem)); }
+  .zf-otp-list { list-style: none; padding: 0; margin: 0.5rem 0; display: grid; gap: 0.4rem; }
+  .zf-otp-list li { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.45rem 0.6rem; background: var(--well); min-width: 0; }
+  .zf-otp-list .k { font-size: 0.82rem; color: var(--dim); min-width: 0; }
+  .zf-otp-list code { font-family: var(--mono); font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; min-width: 0; }
+  .zf-bar { display: block; height: 0.7rem; border-radius: var(--r-pill); background: var(--accent); min-width: 2px; }
+  .zf-bar.stale { background: var(--warn); } .zf-bar.never { background: var(--fail); }
+  .zf-barcell { width: 45%; min-width: 80px; }
+  .zf-below { font-weight: 700; color: var(--fail); white-space: nowrap; }
+  .zf-delta.up { color: var(--pass); } .zf-delta.down { color: var(--fail); }
+  .zf-chart { width: 100%; max-width: 760px; height: auto; display: block; margin: 0.4rem 0; }
+  .zf-chart text { fill: var(--dim); font-size: 11px; }
+  .zf-chart .grid { stroke: var(--border); stroke-width: 1; }
+  .zf-chart .s-zia, .zf-key .s-zia { stroke: var(--accent); } .zf-chart .s-zpa, .zf-key .s-zpa { stroke: var(--pass); stroke-dasharray: 6 4; }
+  .zf-chart .s-zdx, .zf-key .s-zdx { stroke: var(--warn); stroke-dasharray: 2 3; }
+  .zf-chart .ln, .zf-key .ln { fill: none; stroke-width: 2.5; }
+  .zf-chart .dot-zia { fill: var(--accent); } .zf-chart .dot-zpa { fill: var(--pass); } .zf-chart .dot-zdx { fill: var(--warn); }
+  .zf-key { display: inline-flex; align-items: center; gap: 0.3rem; margin-right: 0.8rem; font-size: 0.8rem; }
+  .zf-key svg { width: 28px; height: 8px; }
+  .zf-row textarea { min-height: 34px; max-width: 100%; min-width: 0; width: min(420px, 100%); padding: 0.3rem 0.6rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; font-size: 0.84rem; }
+  .zf-row input[type=number], .zf-row input[type=file] { min-height: 34px; max-width: 100%; font: inherit; font-size: 0.84rem; }
+  .zf-row input[type=number] { width: 5rem; padding: 0.3rem 0.5rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); }
   @media (prefers-reduced-motion: reduce) { .pa-live .spin { animation: none; } }
 </style>
 <link rel="stylesheet" href="/static/hover_help.css">
@@ -83,6 +116,7 @@
         <button type="button" class="rp-btn" id="zfExpDevices" disabled aria-disabled="true">Devices (CSV)</button>
         <button type="button" class="rp-btn" id="zfExpSummary" disabled aria-disabled="true">Summary (CSV)</button>
         <button type="button" class="rp-btn" id="zfExpXlsx" disabled aria-disabled="true" title="Summary, versions, operating systems, stale devices, devices, alerts and the plan in one workbook">Everything (Excel)</button>
+        <button type="button" class="rp-btn" id="zfExpPdf" disabled aria-disabled="true">Report (PDF)</button>
         <label><input type="checkbox" id="zfCounts"> Counts only (no user or device names)</label>
       </span>
     </nav>
@@ -94,13 +128,65 @@
           <ol class="pa-steps">
             <li><strong>Read the fleet.</strong> The app reads the Client Connector app and forwarding profiles and the hosted PAC files (the same paced reader the Path analyzer uses), then the enrolled devices and their per-device service status (ZIA, ZPA, ZDX). It takes a minute; Stop ends it at once.</li>
             <li><strong>Read the alerts.</strong> Blind spots, bypass risk, ghost devices, registration anomalies, multi-device users and version drift, each with its exact definition beside it.</li>
-            <li><strong>Fix in order.</strong> The remediation plan ranks every gap by its impact times the devices it affects, with the fix in plain words. Export it as CSV, or everything as one Excel workbook; tick counts only to leave every user and device name out.</li>
+            <li><strong>Fix in order.</strong> The remediation plan ranks every gap by its impact times the devices it affects, with the fix in plain words. Export it as CSV, everything as one Excel workbook, or the page as a PDF report; tick counts only to leave every user and device name out (the PDF never names them).</li>
+            <li><strong>Watch it over time.</strong> Save each read to the history (counts only, kept on this computer) and compare any two reads: which versions came and went, and whether ZIA, ZPA and ZDX got better.</li>
           </ol>
-          <p class="zf-dim">Device and user names are shown on this page because you need them to act; they are never written to a log. If the API client may not read devices, the page says so and shows the configuration only: never zeros as if the fleet were healthy.</p>
+          <p class="zf-dim">Device and user names are shown on this page because you need them to act; they are never written to a log, except that a one-time password request names its device (never the password) in the audit log. If the API client may not read devices, the page says so and shows the configuration only: never zeros as if the fleet were healthy.</p>
           <div class="zf-status" id="zfStatus" aria-live="polite"></div>
+        </section>
+        <section class="zf-sec" id="zfImport" aria-labelledby="zfImportH">
+          <h2 id="zfImportH">No device permission? Import the portal's exports</h2>
+          <p class="zf-dim">In the Client Connector Portal, open Enrolled Devices and use Export to save <strong>Device Details</strong> and <strong>Service Status</strong> as CSV files (export both at the same time). Import one or both here: the page shows the same figures as a read, without the profile checks. Nothing is sent to a tenant, and the files stay in this app's memory.</p>
+          <div class="zf-row">
+            <label>Device Details (CSV) <input type="file" id="zfImpDev" accept=".csv,text/csv"></label>
+            <label>Service Status (CSV) <input type="file" id="zfImpSvc" accept=".csv,text/csv"></label>
+          </div>
+          <div class="zf-row">
+            <label>Name in the history <input type="search" id="zfImpLabel" maxlength="80" autocomplete="off" placeholder="Customer or tenant name"></label>
+            <button type="button" class="rp-btn primary" id="zfImpGo">Import the files</button>
+          </div>
+          <div class="zf-status" id="zfImpStatus" role="status" aria-live="polite"></div>
         </section>
       </div>
       <div id="zfOut"></div>
+      <section class="zf-sec" id="zfDns" aria-labelledby="zfDnsH">
+        <h2 id="zfDnsH">DNS records for client hostnames</h2>
+        <p class="zf-dim">For ZPA client-to-client access: one DNS name per enrolled device (<code>&lt;hostname&gt;.&lt;domain&gt;</code>), sent to the client-to-client resolver you name. Built from the fleet read above, so read the fleet first. You get the text to download for Unbound, BIND (forward zones and a zone file), Windows DNS Server (PowerShell or dnscmd conditional forwarders) and a CSV of every name: the app sends nothing to any DNS server and applies nothing. Hostnames become valid DNS labels (letters, digits and '-'); renames, duplicates and collisions are listed.</p>
+        <div class="zf-dns-grid">
+          <div class="zf-dns-cell"><label for="zfDnsDomain">Domain <input type="text" id="zfDnsDomain" maxlength="240" autocomplete="off" spellcheck="false" placeholder="corp.example.com"></label></div>
+          <div class="zf-dns-cell"><label for="zfDnsResolvers">Resolver addresses <input type="text" id="zfDnsResolvers" maxlength="400" autocomplete="off" spellcheck="false" placeholder="10.0.0.12, 10.0.0.13"></label></div>
+          <fieldset id="zfDnsPlats"><legend>Platforms</legend>
+            <label><input type="checkbox" name="zfDnsPlat" value="Windows" checked> Windows</label>
+            <label><input type="checkbox" name="zfDnsPlat" value="macOS" checked> macOS</label>
+            <label><input type="checkbox" name="zfDnsPlat" value="Linux" checked> Linux</label>
+            <label><input type="checkbox" name="zfDnsPlat" value="iOS"> iOS</label>
+            <label><input type="checkbox" name="zfDnsPlat" value="Android"> Android</label>
+          </fieldset>
+          <fieldset id="zfDnsWhich"><legend>Devices</legend>
+            <label><input type="checkbox" id="zfDnsRegistered" checked> Registered only</label>
+            <label for="zfDnsSeen">Seen in the last <input type="number" id="zfDnsSeen" min="1" max="3650" step="1" inputmode="numeric" placeholder="any" aria-describedby="zfDnsSeenU"> <span id="zfDnsSeenU">days</span></label>
+          </fieldset>
+          <div class="zf-dns-cell"><label for="zfDnsMap">E-mail domain to DNS domain <small>(optional, one per line)</small><textarea id="zfDnsMap" rows="3" maxlength="4000" spellcheck="false" placeholder="subsidiary.com: subsidiary.corp.example"></textarea></label></div>
+          <fieldset id="zfDnsOpts"><legend>Output</legend>
+            <label><input type="checkbox" id="zfDnsLocalZone" checked> Unbound local-zone transparent</label>
+            <label><input type="checkbox" id="zfDnsInsecure" checked> Unbound domain-insecure</label>
+            <label for="zfDnsTtl">Zone file TTL <input type="number" id="zfDnsTtl" min="30" max="86400" step="1" value="300" inputmode="numeric"></label>
+          </fieldset>
+        </div>
+        <div class="zf-row">
+          <button type="button" class="rp-btn primary" id="zfDnsBuild" disabled aria-disabled="true">Build the records</button>
+          <span role="group" aria-label="DNS downloads">
+            <button type="button" class="rp-btn" id="zfDnsUnbound" disabled aria-disabled="true">Unbound</button>
+            <button type="button" class="rp-btn" id="zfDnsNamed" disabled aria-disabled="true">BIND named.conf</button>
+            <button type="button" class="rp-btn" id="zfDnsZone" disabled aria-disabled="true">BIND zone file</button>
+            <button type="button" class="rp-btn" id="zfDnsWinPs" disabled aria-disabled="true">Windows PowerShell</button>
+            <button type="button" class="rp-btn" id="zfDnsWinCmd" disabled aria-disabled="true">Windows dnscmd</button>
+            <button type="button" class="rp-btn" id="zfDnsCsv" disabled aria-disabled="true">CSV</button>
+          </span>
+        </div>
+        <div class="zf-status" id="zfDnsStatus" role="status" aria-live="polite">Read the fleet first: the records are built from its enrolled devices.</div>
+        <div class="zf-dns-out" id="zfDnsOut"></div>
+      </section>
       <section class="zf-sec" id="zfInstall" aria-labelledby="zfInstallH">
         <h2 id="zfInstallH">Install command builder</h2>
         <p class="zf-dim">Builds the Client Connector install command (MSI or EXE on Windows, the installer app on macOS) and a script to run next to the installer. Pick an app profile from the fleet read to fill in its policy token. Tokens and passwords show as ******** until you click Reveal; nothing is logged or saved.</p>
@@ -120,6 +206,39 @@
         <div class="zf-status" id="zfInstStatus" role="status" aria-live="polite"></div>
         <pre class="zf-pre" id="zfInstCmd" aria-label="Install command" tabindex="0" hidden></pre>
       </section>
+      <section class="zf-sec" id="zfOtp" aria-labelledby="zfOtpH">
+        <h2 id="zfOtpH">One-time passwords for a device</h2>
+        <p class="zf-dim">For the help desk: a device's Client Connector one-time passwords (to uninstall it, turn a service off or exit it, as the tenant provides them). Only someone allowed to change the tenant may ask, with write mode on (as for a change to the tenant), ZCC ticked on the Scope page, the assessor's name and the confirmation typed. They are shown here once for 60 seconds and never kept: not logged, saved or cached. The audit log records who asked, when and for which device, never a password.</p>
+        <div class="zf-row">
+          <label>Enrolled user <input type="search" id="zfOtpUser" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Enrolled user name" placeholder="jdoe@acme.example"></label>
+          <label>Device <input type="search" id="zfOtpDevice" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Device host name or UDID" placeholder="Host name or UDID"></label>
+          <label>Assessor's name <input type="search" id="zfOtpAssessor" maxlength="80" autocomplete="off" aria-label="Assessor's name" placeholder="Jane Doe"></label>
+        </div>
+        <div class="zf-row">
+          <label><span id="zfOtpPhraseLbl">Type SHOW OTP and the device to confirm</span> <input type="text" id="zfOtpPhrase" maxlength="220" autocomplete="off" spellcheck="false" aria-labelledby="zfOtpPhraseLbl"></label>
+          <button type="button" class="rp-btn primary" id="zfOtpShow" disabled aria-disabled="true" aria-describedby="zfOtpStatus">Show the one-time passwords</button>
+        </div>
+        <div class="zf-status" id="zfOtpStatus" role="status" aria-live="polite"></div>
+        <div id="zfOtpOut" hidden></div>
+      </section>
+      <section class="zf-sec" id="zfDevice" aria-labelledby="zfDeviceH">
+        <h2 id="zfDeviceH">One device's details</h2>
+        <p class="zf-dim">Type a device id (UDID) from the Client Connector Portal to see which services run on it and whether they are healthy, its versions, strict enforcement, anti-tampering and device trust. Identifiers are hidden and the device's one-time passwords are never read into the answer. Reads only; needs ZCC ticked on the Scope page.</p>
+        <div class="zf-row">
+          <label>Device id (UDID) <input type="search" id="zfDevUdid" maxlength="128" aria-label="Device id (UDID)" autocomplete="off" spellcheck="false"></label>
+          <button type="button" class="rp-btn primary" id="zfDevShow">Show the details</button>
+        </div>
+        <div class="zf-status" id="zfDevOut" role="status" aria-live="polite"></div>
+      </section>
+      <section class="zf-sec" id="zfDisable" aria-labelledby="zfDisableH">
+        <h2 id="zfDisableH">Why Client Connector was switched off</h2>
+        <p class="zf-dim">Counts from Client Connector's disable-reason report: per reason, device type and service, how many times it was switched off and by how many people. No user or device is listed. Reads only; needs ZCC ticked on the Scope page.</p>
+        <div class="zf-row">
+          <button type="button" class="rp-btn primary" id="zfDisShow">Show the counts</button>
+          <button type="button" class="rp-btn" id="zfDisCsv">Download the counts (CSV)</button>
+        </div>
+        <div class="zf-status" id="zfDisOut" role="status" aria-live="polite"></div>
+      </section>
     </main>
   </div>
   <script src="/static/icons.js"></script>
@@ -129,6 +248,8 @@
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
   <script src="/static/zcc_fleet.js"></script>
+  <script src="/static/fleet_dns.js"></script>
+  <script src="/static/zcc_device.js"></script><!-- one device's details and the disable-reason counts -->
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
 </body>

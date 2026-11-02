@@ -84,7 +84,7 @@ def _live_store():
     """A 'live tenant' for the save tests: the sample's answers plus a
     Client Connector profile whose exit password is a canary."""
     resp = {ot.normalize_path(p): {"status": 200, "body": b} for p, b in sample_tenant.responses().items()}
-    prof = resp["/zcc/papi/public/v1/application-profiles"]["body"]
+    prof = resp["/zcc/papi/public/v1/application-profiles"]["body"]["policies"]
     prof[0]["policyExtension"] = {"exitPass": CANARY_FIELD, "logoutPassword": CANARY_FIELD}
     prof[0]["uninstallPassword"] = CANARY_FIELD
     return ot.OfflineStore("snap-" + "0" * 16, "snapshot", resp, {"tenant_label": "acme (zscalerten)"})
@@ -183,6 +183,20 @@ def test_sample_writes_change_only_the_in_memory_copy():
     assert st.responses["/zia/api/v1/webDlpRules"]["body"][-1]["name"] == "Pack rule"   # stored as the API spells it
     assert len(sample_tenant.WEB_DLP_RULES) == before
     assert len(ot.sample_store(reset=True).responses["/zia/api/v1/webDlpRules"]["body"]) == before
+
+
+def test_zpa_new_object_ids_are_unique_across_collections():
+    """ASVS V1.4.1 · CWE-706: ZPA ids are one space across object types, as a real tenant allocates, so a new connector group and a new segment group never share an id; a POV build's later parts (an app segment on the group a step earlier created) resolve the distinct ids by name."""
+    # Arrange
+    st = ot.sample_store(reset=True)
+    base = "/zpa/mgmtconfig/v1/admin/customers/1"
+    # Act
+    s1, b1 = st.answer_write("POST", base + "/appConnectorGroup", {"name": "LKF-group"})
+    s2, b2 = st.answer_write("POST", base + "/segmentGroup", {"name": "LKF-seg-group"})
+    # Assert
+    assert s1 == 200 and s2 == 200
+    assert b1["id"] != b2["id"] and int(b2["id"]) > int(b1["id"])   # one space, ascending: no collision between collections
+    assert int(b1["id"]) > 90000 and isinstance(b1["id"], str)      # a ZPA id is a string, past every existing id
 
 
 def test_a_sample_change_it_does_not_model_is_refused_in_words():

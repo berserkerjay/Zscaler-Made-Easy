@@ -76,7 +76,9 @@ def pack_slug(name: str) -> str:
     slug = slugify(name)
     if slug or not (name or "").strip():
         return slug
-    return "pack_" + hashlib.sha1(name.strip().encode("utf-8")).hexdigest()[:10]
+    # An id, not a security use: usedforsecurity=False keeps it working on a
+    # FIPS-mode OpenSSL, which refuses a plain sha1().
+    return "pack_" + hashlib.sha1(name.strip().encode("utf-8"), usedforsecurity=False).hexdigest()[:10]
 
 
 # ---------------------------------------------------------------------------

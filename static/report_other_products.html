@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Other Zscaler products — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .op-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .op-page .rp-bar .df-ctl select, .op-page .rp-bar .df-ctl input { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .op-page .rp-bar .df-ctl input { width: 12rem; }
+  .op-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.6rem; margin: 0 0 1rem; }
+  .op-stat { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.55rem 0.75rem; }
+  .op-stat .n { font-size: var(--fs-headline, 1.2rem); font-weight: 700; }
+  .op-stat .k { font-size: 0.72rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+  .op-stat.sev-high .n { color: var(--fail); } .op-stat.sev-medium .n { color: var(--warn); }
+  .op-note { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.6rem 0.8rem; margin: 0 0 1rem; font-size: 0.88rem; max-width: 90ch; }
+  .op-gloss { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 0.3rem 0.9rem; margin: 0.4rem 0 0; font-size: 0.88rem; }
+  .op-gloss dt { font-weight: 600; } .op-gloss dd { margin: 0; color: var(--text); }
+  .op-page .df-tablewrap { max-width: 100%; }
+  .op-page .df-table th[scope="row"] { text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 600; min-width: 8rem; }
+  .op-page .df-table td { vertical-align: top; }
+  .op-dim { color: var(--dim); } .op-src { margin-top: 0.25rem; color: var(--dim); font-size: 0.8rem; }
+  .op-sec { margin-top: 1.4rem; }
+  .op-page :is(.pa-impact, .op-note, .df-hint) { min-width: 0; overflow-wrap: anywhere; }
+  .op-filter button:focus-visible, .op-page summary:focus-visible, .op-page input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 600px) { .op-gloss { grid-template-columns: 1fr; } .op-gloss dd { margin-bottom: 0.4rem; } }
+  @media (max-width: 760px) { .op-page .rp-bar .df-ctl { flex-wrap: wrap; } .op-page .rp-bar .df-ctl input { width: 100%; } }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page op-page sh-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Other</span> Zscaler products</h1>
+      <p>This page reads the Zscaler products beyond ZIA, ZPA and Client Connector: Zero Trust Branch, External attack surface (EASM), Business Insights, Zero Trust Cellular and Microsegmentation. For each one you ticked on the Scope page it lists what the tenant has, explains it in plain words and checks it against best practice. Click <strong>Read</strong>, then fix the high findings first. Nothing is changed in your Zscaler.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="opTenantWrap" hidden><span class="lbl">Tenant</span><select id="opTenant" aria-label="Tenant to read"></select></label>
+      <label class="df-ctl"><span class="lbl">ZCell customer ID</span><input id="opZcell" type="text" maxlength="64" autocomplete="off" spellcheck="false" inputmode="text" aria-label="ZCell customer ID (optional)"></label>
+      <label class="df-ctl"><span class="lbl">Microsegmentation customer ID</span><input id="opZms" type="text" maxlength="64" autocomplete="off" spellcheck="false" aria-label="Microsegmentation customer ID (optional)"></label>
+      <button type="button" class="rp-btn primary" id="opRun">Read</button>
+      <a class="rp-btn" id="expXlsx" hidden>Excel</a>
+      <a class="rp-btn" id="expJson" hidden>JSON</a>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div id="opBody">
+        <div class="pa-intro" id="opHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Tick what to read on the Scope page.</strong> Each product has its own box, off by default: Zero Trust Branch, External attack surface (EASM), Business Insights, Zero Trust Cellular and Microsegmentation. Nothing else is read. They need a OneAPI API client; Zero Trust Cellular also needs its customer ID (above), and Microsegmentation uses the ZPA customer ID unless you give another.</li>
+            <li><strong>Read.</strong> The page reads once, shown live as it reads. Stop ends the read at once. A product the tenant does not own says "not licensed" and is not judged.</li>
+            <li><strong>Fix the findings</strong>, high first: each says what is wrong, why it matters, what to change and where the advice comes from. Export them as Excel or JSON for the change request.</li>
+          </ol>
+          <div class="df-hint">Never shown: API keys, provisioning keys, secrets or tokens, the people a report or an alert goes to, and any device or SIM (they are counted).</div>
+        </div>
+        <section class="op-sec" aria-labelledby="opGlossH">
+          <h2 class="df-h" id="opGlossH">Words on this page</h2>
+          <dl class="op-gloss" id="opGloss"></dl>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/glossary.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const errText = (d, status) => { const x = d && d.detail; if (typeof x === 'string' && x) return x; if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+      return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
+    const $ = id => document.getElementById(id);
+    const body = $('opBody'), meta = $('rpMeta'), live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const SEVS = ['high', 'medium', 'low', 'info'];
+    const SEV_CLS = { high: 'st-fail', medium: 'st-warn', low: 'st-block', info: '' };
+    const ID_RE = /^[A-Za-z0-9_-]{0,64}$/;
+    // What each product's lists hold, as table columns [field, heading].
+    const TABLES = {
+      ztb: [['sites', 'Sites', [['name', 'Site'], ['status', 'Status'], ['gateway_type', 'Gateway'], ['template', 'Template'], ['gateways', 'Gateways']]],
+            ['templates', 'Site templates', [['name', 'Template'], ['deployment', 'Deployment'], ['platform', 'Platform'], ['default', 'Default'], ['sites', 'Sites']]],
+            ['alarms', 'Alarms', [['site', 'Site'], ['severity', 'Severity'], ['status', 'Status'], ['description', 'What happened'], ['recommended', 'Recommended action']]],
+            ['automation_access', 'API keys (names and ages only)', [['name', 'Key name'], ['age_days', 'Age in days']]],
+            ['hubs', 'Cloud gateway hubs', [['location', 'Location'], ['region', 'Region'], ['sites', 'Sites'], ['gateways', 'Gateways']]],
+            ['groups', 'Groups', [['name', 'Group'], ['type', 'Type'], ['members', 'Members'], ['policies', 'Policies']]],
+            ['operating_systems', 'Device operating systems (counts)', [['os', 'Operating system'], ['devices', 'Devices'], ['versions', 'Versions']]],
+            ['ransomware', 'Ransomware kill switch', [['state', 'State']]]],
+      easm: [['organizations', 'Organizations', [['name', 'Organization']]],
+             ['findings', 'Findings', [['name', 'Finding'], ['risk', 'Risk'], ['asset', 'Asset'], ['status', 'Status'], ['age_days', 'Days open'], ['exploited', 'Likely exploited']]],
+             ['lookalikes', 'Lookalike domains', [['domain', 'Domain'], ['imitates', 'Imitates'], ['registered', 'Registered'], ['risk', 'Risk'], ['method', 'Method'], ['status', 'Status']]]],
+      zbi: [['custom_apps', 'Custom applications', [['name', 'Application'], ['category', 'Category'], ['signatures', 'Signatures']]],
+            ['report_configs', 'Scheduled reports', [['name', 'Report'], ['type', 'Type'], ['enabled', 'Enabled'], ['frequency', 'Frequency'], ['recipients', 'Recipients (count)']]],
+            ['reports', 'Generated reports', [['name', 'File'], ['type', 'Type']]]],
+      zcell: [['customer', 'Account', [['name', 'Account'], ['activated', 'Activated'], ['zia_linked', 'Linked to ZIA'], ['zpa_linked', 'Linked to ZPA']]],
+              ['sim_summary', 'SIMs (counts)', [['total', 'Total'], ['active', 'Active'], ['inactive', 'Inactive'], ['used', 'Used']]],
+              ['regions', 'Regions', [['region', 'Region'], ['configured', 'Configured']]],
+              ['location_groups', 'SIM location groups', [['name', 'Group'], ['tracked_sims', 'SIMs tracked (count)']]],
+              ['anomaly_policies', 'Anomaly policies (last 30 days)', [['name', 'Policy'], ['type', 'Type'], ['enabled', 'Enabled'], ['violations', 'Violations'], ['recipients', 'Recipients (count)']]]],
+      zms: [['protection', 'Resource protection', [['protected_pct', 'Protected %'], ['protected', 'Protected'], ['unprotected', 'Unprotected'], ['total', 'Total']]],
+            ['agents', 'Agents', [['name', 'Agent'], ['status', 'Connection'], ['os', 'Operating system'], ['version', 'Version'], ['group', 'Agent group']]],
+            ['agent_groups', 'Agent groups', [['name', 'Group'], ['agents', 'Agents'], ['tamper_protection', 'Tamper protection'], ['auto_upgrade', 'Auto upgrade'], ['policy', 'Policy']]],
+            ['nonces', 'Provisioning keys (names and usage only)', [['name', 'Key name'], ['group', 'Agent group'], ['max_usage', 'Usage limit'], ['used', 'Used']]],
+            ['policy_rules', 'Policy rules', [['name', 'Rule'], ['action', 'Action'], ['priority', 'Priority'], ['source', 'From'], ['destination', 'To'], ['last_hit', 'Last hit']]],
+            ['default_rules', 'Default rules', [['name', 'Rule'], ['action', 'Action'], ['direction', 'Direction']]],
+            ['app_zones', 'App zones', [['name', 'App zone'], ['members', 'Members']]],
+            ['resource_groups', 'Resource groups', [['name', 'Group'], ['type', 'Type'], ['members', 'Members']]]]
+    };
+    const GLOSS_KEYS = ['zero trust branch', 'easm', 'business insights', 'zero trust cellular', 'microsegmentation'];
+    let running = false, job = null, startToken = null, stopAsked = false, sevFilter = '', last = null, lastLogs = [];
+
+    function glossaryHtml(extra) {
+      const G = window.SIMPLE_GLOSSARY || {};
+      const rows = (extra || []).map(x => [x.term, x.meaning]);
+      const seen = new Set(rows.map(r => String(r[0]).toLowerCase()));
+      GLOSS_KEYS.filter(k => G[k] && !seen.has(k)).forEach(k => rows.push([G[k].term, G[k].def]));
+      return rows.map(([t, d]) => `<dt>${E(t)}</dt><dd>${E(d)}</dd>`).join('');
+    }
+    $('opGloss').innerHTML = glossaryHtml();
+
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+    async function tenantChoices() {
+      const wrap = $('opTenantWrap'), sel = $('opTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = $('opTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function scopeSelection() {
+      let scopes = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      return { scopes: scopes.map(String), channels: {}, from_page: true };
+    }
+
+    function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    function phase(logs) {
+      for (let i = logs.length - 1; i >= 0; i--) if (/(Reading|Done|reading)/.test(logs[i])) return logs[i].replace(/…$/, '').trim();
+      return logs.length ? 'Working…' : 'Connecting to the tenant…';
+    }
+    function liveHtml() {
+      return `<div class="pa-live">
+        <div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>Reading the other products</strong><span class="df-by" id="opPhase">Connecting to the tenant…</span><span class="sep"></span><span class="pa-elapsed" id="opElapsed">0:00</span><button type="button" class="rp-btn" id="opStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="opLog" role="log" aria-live="polite" aria-label="What the read is doing">Connecting to the tenant…</div>
+      </div>`;
+    }
+    function liveUpdate(snap) {
+      const log = $('opLog'); if (log) { log.textContent = (snap.logs || []).join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+      const ph = $('opPhase'); if (ph) ph.textContent = phase(snap.logs || []);
+      const el = $('opElapsed'); if (el && snap.elapsed_seconds != null) el.textContent = mmss(snap.elapsed_seconds);
+      const st = $('opStop'); if (st && snap.cancel_requested) { st.disabled = true; st.textContent = 'Stopping…'; }
+    }
+    async function follow(jobId) {
+      let next = 0, misses = 0; const logs = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 700));
+        let snap;
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          snap = await r.json(); misses = 0;
+        } catch (e) {
+          if (++misses >= 20) throw new Error(`Lost contact with the app while the read continued (${e.message}).`);
+          continue;
+        }
+        logs.push(...(snap.logs || [])); next = snap.next;
+        liveUpdate(Object.assign({}, snap, { logs }));
+        if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+      }
+    }
+    async function stop() {
+      if (!running || stopAsked) return;
+      stopAsked = true;
+      const b = $('opStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!job) {
+        try { await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: startToken }) }); } catch (e) { /* cancelled by id */ }
+        return;
+      }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+    }
+    async function run() {
+      if (running) return;
+      const zc = $('opZcell').value.trim(), zm = $('opZms').value.trim();
+      if (!ID_RE.test(zc) || !ID_RE.test(zm)) { fail('Check the customer IDs', 'A customer ID may hold only letters, digits, - and _ (at most 64). Nothing was read.'); return; }
+      const btn = $('opRun');
+      running = true; stopAsked = false; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Reading…';
+      ['expXlsx', 'expJson'].forEach(id => { $(id).hidden = true; });
+      body.innerHTML = liveHtml();
+      $('opStop').addEventListener('click', stop);
+      say('Reading the other products.');
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = $('opElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const payload = Object.assign({}, credBody(), scopeSelection(), { zcell_customer_id: zc, zms_customer_id: zm });
+        const r = await fetch('/api/other-products/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(errText(d, r.status));
+        job = d.job_id;
+        if (stopAsked) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* stopped */ } }
+        const snap = await follow(job);
+        if (snap.status !== 'done' || !snap.result || snap.result.status !== 'done') {
+          throw new Error((snap.result && snap.result.stopped) || snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the read finished.' : 'The read did not finish.'));
+        }
+        last = snap.result; lastLogs = snap.logs || [];
+        render();
+        const n = (last.findings || []).length;
+        say(`${n} finding${n === 1 ? '' : 's'}.`);
+      } catch (e) {
+        fail('The read could not run', e.message);
+        say(`The read could not run: ${e.message}`);
+      } finally {
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; btn.disabled = false; btn.textContent = 'Read';
+      }
+    }
+    function fail(title, msg) {
+      if (/You clicked Stop/.test(msg)) { title = 'Stopped'; msg = msg.replace(/^Stopped:\s*/, ''); }
+      const hint = /credential|sign in|token|401|403|Sign in|profile/i.test(msg) ? ' Sign in on the assessment page first and open this page from there, or choose a saved tenant profile in the bar above.' : '';
+      body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+
+    function cell(v) {
+      if (v === true) return 'Yes'; if (v === false) return 'No';
+      if (v == null || v === '') return '<span class="op-dim">—</span>';
+      return E(v);
+    }
+    function table(caption, cols, rows) {
+      return `<div class="df-tablewrap"><table class="df-table"><caption class="sr-only">${E(caption)}</caption>
+        <thead><tr>${cols.map(c => `<th scope="col">${E(c[1])}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r => `<tr><th scope="row">${cell(r[cols[0][0]])}</th>${cols.slice(1).map(c => `<td>${cell(r[c[0]])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    }
+    function sevChip(s) { return `<span class="df-chip ${SEV_CLS[s] || ''}">${E(s)}</span>`; }
+    function findingHtml(f) {
+      return `<li class="pa-impact sev-${E(f.severity)}">
+        <div class="df-hop-h">${sevChip(f.severity)}<strong>${E(f.id)} ${E(f.title)}</strong><span class="df-by">${E(f.product)}</span></div>
+        <div class="df-hop-d">${E(f.detail)}</div>
+        ${f.why ? `<div class="df-hop-d"><strong>Why it matters:</strong> ${E(f.why)}</div>` : ''}
+        ${f.fix ? `<div class="df-hop-d pa-fix"><strong>What to do:</strong> ${E(f.fix)}</div>` : ''}
+        ${f.source ? `<div class="op-src">Source: ${E(f.source)}</div>` : ''}
+      </li>`;
+    }
+    function statsHtml(c) {
+      return `<div class="op-stats">${[['total', 'Findings']].concat(SEVS.map(s => [s, s[0].toUpperCase() + s.slice(1)])).map(([k, l]) =>
+        `<div class="op-stat sev-${k}"><div class="n">${E(c[k] || 0)}</div><div class="k">${E(l)}</div></div>`).join('')}</div>`;
+    }
+    function filterHtml(findings) {
+      const n = s => findings.filter(f => !s || f.severity === s).length;
+      return `<div class="sh-filter op-filter" role="group" aria-label="Show findings by severity">${[''].concat(SEVS).map(s =>
+        `<button type="button" class="rp-btn${sevFilter === s ? ' primary' : ''}" data-sev="${s}" aria-pressed="${sevFilter === s}">${E(s ? s[0].toUpperCase() + s.slice(1) : 'All')} (${n(s)})</button>`).join('')}</div>`;
+    }
+    function findingsHtml(res) {
+      const findings = res.findings || [];
+      if (!findings.length) return '<div class="df-hop-d pa-none">No finding in what was read. Check each product below: one that was not read or not licensed was not judged.</div>';
+      const shown = findings.filter(f => !sevFilter || f.severity === sevFilter);
+      return filterHtml(findings) + (shown.length ? `<ol class="pa-impacts">${shown.map(findingHtml).join('')}</ol>` : '<div class="df-hop-d pa-none">Nothing at this severity.</div>');
+    }
+    const STATUS_WORD = { read: 'Read', not_licensed: 'Not licensed (N/A)', needs: 'Not read', not_permitted: 'Not permitted', error: 'Could not be read' };
+    function productHtml(key, p) {
+      const inv = p.inventory || {};
+      const tables = (TABLES[key] || []).map(([k, title, cols]) => {
+        const rows = inv[k] || [];
+        return `<h4 class="df-h">${E(title)} (${rows.length})</h4>` + (rows.length ? table(title, cols, rows) : '<div class="df-hop-d pa-none">None in what was read.</div>');
+      }).join('');
+      const checks = (p.checks || []).map(c => `<li><strong>${E(c.id)} ${E(c.title)}</strong>: ${E(c.status === 'REVIEW' ? 'needs review' : c.status === 'INFO' ? 'for information' : c.status.toLowerCase())} — ${E(c.detail)}</li>`).join('');
+      const errs = (p.lists || []).filter(l => !l.read && l.error).map(l => `<li>${E(l.label)}: ${E(l.error)}</li>`).join('');
+      return `<section class="op-sec" aria-labelledby="opP-${E(key)}">
+        <h2 class="df-h" id="opP-${E(key)}">${E(p.label)} <span class="df-chip">${E(STATUS_WORD[p.status] || p.status)}</span></h2>
+        <div class="op-note">${E(p.what)}</div>
+        ${p.note ? `<div class="df-hint">${E(p.note)}</div>` : ''}
+        ${p.status === 'read' ? tables : ''}
+        <h3 class="df-h">Checks</h3><ul class="op-checks">${checks}</ul>
+        ${errs ? `<h3 class="df-h">Could not be read</h3><ul>${errs}</ul>` : ''}
+      </section>`;
+    }
+    function render() {
+      const res = last, c = res.counts || {};
+      meta.textContent = `${res.tenant_label || ''} · read ${new Date().toLocaleTimeString()} · ${c.total || 0} finding${c.total === 1 ? '' : 's'}`;
+      const nis = Object.values(res.not_in_scope || {});
+      body.innerHTML = `
+        ${statsHtml(c)}
+        <h2 class="df-h">Findings</h2>
+        ${findingsHtml(res)}
+        ${Object.entries(res.products || {}).map(([k, p]) => productHtml(k, p)).join('')}
+        ${nis.length ? `<h2 class="df-h">Not in scope</h2><ul>${nis.map(t => `<li>${E(t)}</li>`).join('')}</ul>` : ''}
+        <section class="op-sec" aria-labelledby="opGlossH2"><h2 class="df-h" id="opGlossH2">Words on this page</h2><dl class="op-gloss">${glossaryHtml(res.glossary)}</dl></section>
+        <details class="pa-details"><summary>Assumptions (${(res.assumptions || []).length})</summary><ul>${(res.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul></details>
+        <details class="pa-details"><summary>What was read (${lastLogs.length} line${lastLogs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(lastLogs.join('\n'))}</div></details>`;
+      body.querySelectorAll('.op-filter button').forEach(b => b.addEventListener('click', () => {
+        sevFilter = b.dataset.sev; render();
+        const again = body.querySelector(`.op-filter button[data-sev="${sevFilter}"]`); if (again) again.focus();
+        say(`Showing ${sevFilter || 'all'} findings.`);
+      }));
+      const x = $('expXlsx'), j = $('expJson');
+      x.href = `/api/other-products/report/${encodeURIComponent(res.report_id)}/export?format=xlsx`;
+      j.href = `/api/other-products/report/${encodeURIComponent(res.report_id)}/export?format=json`;
+      x.hidden = j.hidden = false;
+    }
+
+    $('opRun').addEventListener('click', run);
+    tenantChoices();
+  })();
+  </script>
+</body>
+</html>

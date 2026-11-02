@@ -1,0 +1,12 @@
+[
+  {
+    "name": "FTI Markings",
+    "description": "Documents labelled as federal tax information (the IRC 6103 citation or the words Federal Tax Information).",
+    "expression": "((D:FTI-Markings > 0))"
+  },
+  {
+    "name": "FTI Return Data",
+    "description": "A tax form or transcript name with a Social Security or taxpayer identification number within 500 characters.",
+    "expression": "((D:FTI-Tax-Forms > 0) AND ((D:FTI-Social Security Numbers (US) - Prox 500 > 0) OR (D:FTI-Tax Identification Number (US) - Prox 500 > 0)))"
+  }
+]

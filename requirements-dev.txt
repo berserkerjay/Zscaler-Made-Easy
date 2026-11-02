@@ -4,3 +4,6 @@
 pytest>=8
 pyflakes>=3
 httpx
+# The offline Python static analyser (make sast, tests/test_sast.py); its
+# configuration and reviewed suppressions are in pyproject.toml [tool.bandit].
+bandit>=1.9

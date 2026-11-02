@@ -48,11 +48,19 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The recording fake tenant client (deny by default)
 # ---------------------------------------------------------------------------
 
-READ_NAME = re.compile(r"^(list|get|search|lookup)(_|$)|_search$")
+# zscaler/zwa reads named otherwise: audit_logs (the audit search), change_history (an incident's history).
+READ_NAME = re.compile(r"^(list|get|search|lookup)(_|$)|_search$|^(audit_logs|change_history)$")
 # POSTs ZIA answers without changing configuration (a URL lookup, preparing
 # the admin audit log report); every other raw POST/PUT/DELETE is a write.
-READ_ONLY_POSTS = {"/zia/urlLookup", "/zia/auditlogEntryReport"}
+# The Workflow Automation incident and audit-log searches are POSTs that change
+# nothing too (zscaler/zwa/dlp_incidents.py dlp_incident_search, zwa/audit_logs.py
+# audit_logs), sent through channel_scope.ScopedClient.post_read with their paging
+# in the query string.
+READ_ONLY_POSTS = {"/zia/urlLookup", "/zia/auditlogEntryReport", "/zwa/dlp/v1/incidents/search", "/zwa/dlp/v1/customer/audit"}
 NOT_A_CALL = {"auth", "close", "stop", "stop_check", "_ensure_token"}
+# SDK reads whose names are not list/get (verified against zscaler-sdk-python
+# 1.11.3): zia/activate.py status() is GET /status (activate() is the write).
+READ_CALLS = {("zia", "activate", "status")}
 
 
 class Recorder:
@@ -86,9 +94,9 @@ class Recorder:
             method = str(args[0] if args else kwargs.get("method", "")).upper()
             if method == "GET":
                 return (None, {"message": "recording fake: no HTTP"})
-        if self._p == ("post",) and args and args[0] in READ_ONLY_POSTS:
+        if self._p == ("post",) and args and str(args[0]).split("?", 1)[0] in READ_ONLY_POSTS:
             return ([], 200)
-        if READ_NAME.search(name):
+        if READ_NAME.search(name) or tuple(self._p[-3:]) in READ_CALLS:
             return ([], None, None)
         self._w.append(".".join(self._p))
         return (None, None, {"message": "recording fake: writes are refused"})
@@ -112,6 +120,7 @@ SCOPE = {"scopes": ["dlp", "zia_extras", "zpa"],
 ASSESSOR = "Jane Doe"
 PACK = "cjis_policy_pack"
 HASH = "a" * 64
+DELETE_PHRASE = "DELETE 1 OBJECTS"   # the typed phrase of a removal (its number is checked against the re-made plan, a stubbed sink here)
 WRITER = {"sub": "w-1", "email": "writer@example.com", "groups": ["dlp-writers"]}
 WRITER_2 = {"sub": "w-2", "email": "second@example.com", "groups": ["dlp-writers"]}
 READER = {"sub": "r-1", "email": "reader@example.com", "groups": ["dlp-readers"]}
@@ -121,10 +130,11 @@ SINKS = [
     ("pack_deploy", "apply", None), ("pack_deploy", "undo", None),
     ("pack_removal", "remove", None), ("pack_removal", "remove_selected", None), ("pack_removal", "remove_deployment", None),
     ("proposal_apply", "apply", None), ("proposal_apply", "rollback", None),
-    ("admin_ops", "execute", None),
+    ("admin_ops", "execute", None), ("pov_build", "execute", None),
     ("remediation", "execute", 3),
     ("rule_migrator", "enable_evaluate_all_rules", 1), ("rule_migrator", "delete_all_rules", 1),
     ("rule_migrator", "post_new_rule_order", 2),
+    ("zdx_insights", "start_analysis", None), ("zdx_insights", "stop_analysis", None),
 ]
 
 
@@ -264,6 +274,36 @@ def _proposal_tenant(world: World) -> str:
     return proposals.tenant_key(tenant_fingerprint.proposal_key(world.creds(), ""))
 
 
+def _pov_with_build(world: World) -> Tuple[str, str]:
+    """A tenant profile for CREDS' tenant with a POV, and on it a build whose
+    one part is a recorded bulk change with an Undo: (profile id, build id)."""
+    import deployments
+    import pov
+    import tenant_profiles
+    creds = world.creds()
+    pid = tenant_profiles.upsert({"name": "Acme", "cloud": CREDS["cloud"], "vanity_domain": CREDS["vanity_domain"], "client_id": CREDS["client_id"]},
+                                 client_secret=CREDS["client_secret"], remember_secret=True)["id"]
+    pov.create(pid, None, {"customer": "Acme", "vertical": "general"}, by=ASSESSOR)
+    op = {"id": deployments.new_operation_id(), "at": deployments._now(), "tenant_label": tenant_auth.record_label(creds), "by": ASSESSOR,
+          "type": "rule_state", "title": "QA", "product": "zia", "spec": OPERATION, "plan_hash": HASH, "status": "applied", "counts": {},
+          "created": [], "items": [], "inverse": dict(OPERATION, value="ENABLED"), "undo_of": None, "undone_by": None, "undone_at": None,
+          **srv._record_ids(creds)}
+    deployments.add_operation(op)
+    bid = pov.new_build_id()
+    pov.add_build(pid, None, {"id": bid, "at": "2026-10-31T00:00:00+00:00", "by": ASSESSOR, "plan_hash": HASH, "status": "applied",
+                              "steps": [{"key": "zia_baseline", "label": "ZIA security baseline", "status": "applied", "operation_id": op["id"]}]},
+                  by=ASSESSOR)
+    return pid, bid
+
+
+def _pov_build_body(world: World, undo: bool = False) -> Dict[str, Any]:
+    pid, bid = _pov_with_build(world)
+    body = dict(_b(**SCOPE), profile_id=pid, plan_hash=HASH, confirm=True, confirm_text="APPLY 1 POV CHANGE")
+    if undo:
+        return dict(body, build_id=bid)
+    return dict(body, parts={"zia_baseline": {"type": "zia_baseline", "tier": "balanced", "prefix": "QA", "areas": ["url"]}})
+
+
 # ---------------------------------------------------------------------------
 # The routes that can change a tenant, with every gate satisfied
 # ---------------------------------------------------------------------------
@@ -284,6 +324,7 @@ ZCC_SCOPE = {"scopes": ["zcc"], "channels": {}, "from_page": True}
 ZCC_BUILD = {"type": "zcc_profile_build", "platform": "windows", "forwarding": {"template": "best_practice", "name": "QA fwd"},
              "app": {"template": "best_practice", "name": "QA app"}}
 ZCC_DELETE = {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}
+ZDX_SCOPE = {"scopes": ["zdx"], "channels": {}, "from_page": True}
 
 WRITE_CASES: List[WriteCase] = [
     ("deploy", "POST", "/api/dlp-packs/apply",
@@ -295,11 +336,11 @@ WRITE_CASES: List[WriteCase] = [
     ("undo-deployment", "POST", "/api/deployments/{dep_id}/undo",
      lambda w: (f"/api/deployments/{_deployment(w)}/undo", _b(confirm=True)), BOOL),
     ("removal", "POST", "/api/dlp-packs/removal/apply",
-     lambda w: ("/api/dlp-packs/removal/apply", _b(pack_ids=[PACK], plan_hash=HASH, confirm=True)), BOOL),
+     lambda w: ("/api/dlp-packs/removal/apply", _b(pack_ids=[PACK], plan_hash=HASH, confirm=True, confirm_phrase=DELETE_PHRASE)), BOOL),
     ("removal-job", "POST", "/api/dlp-packs/removal/apply/start",
-     lambda w: ("/api/dlp-packs/removal/apply/start", _b(pack_ids=[PACK], plan_hash=HASH, confirm=True)), BOOL),
+     lambda w: ("/api/dlp-packs/removal/apply/start", _b(pack_ids=[PACK], plan_hash=HASH, confirm=True, confirm_phrase=DELETE_PHRASE)), BOOL),
     ("removal-undo-deployment", "POST", "/api/dlp-packs/removal/apply",
-     lambda w: ("/api/dlp-packs/removal/apply", _b(deployment_id=_deployment(w), plan_hash=HASH, confirm=True)), BOOL),
+     lambda w: ("/api/dlp-packs/removal/apply", _b(deployment_id=_deployment(w), plan_hash=HASH, confirm=True, confirm_phrase=DELETE_PHRASE)), BOOL),
     ("proposal-apply", "POST", "/api/proposals/{tenant}/{pid}/apply",
      lambda w: (f"/api/proposals/{_proposal_tenant(w)}/p-1/apply", _b(confirm=True)), BOOL),
     ("proposal-rollback", "POST", "/api/proposals/{tenant}/{pid}/rollback",
@@ -324,15 +365,27 @@ WRITE_CASES: List[WriteCase] = [
     ("bulk-apply-aiguard", "POST", "/api/operations/apply",
      lambda w: ("/api/operations/apply", dict(_b(**dict(SCOPE, scopes=SCOPE["scopes"] + ["aiguard"])),
                                               operation={"type": "aiguard_detection_policy", "profile": "HIPAA"}, plan_hash=HASH, confirm=True)), BOOL),
+    # ZIA activation (ops_zia_activation): its own ACTIVATE phrase is checked by the engine; the route holds the four gates.
+    ("bulk-apply-zia-activation", "POST", "/api/operations/apply",
+     lambda w: ("/api/operations/apply", dict(_b(**SCOPE), operation={"type": "zia_activation"}, plan_hash=HASH, confirm=True,
+                                              confirm_text="ACTIVATE")), BOOL),
+    ("pov-build-apply", "POST", "/api/pov/build/apply/start",
+     lambda w: ("/api/pov/build/apply/start", _pov_build_body(w)), BOOL),
+    ("pov-build-undo", "POST", "/api/pov/build/undo/apply/start",
+     lambda w: ("/api/pov/build/undo/apply/start", _pov_build_body(w, undo=True)), BOOL),
     ("self-heal", "POST", "/api/self-heal/tenant/heal",
      lambda w: ("/api/self-heal/tenant/heal", dict(_b(**SCOPE), ids=[_heal_proposal(w)], confirm=PHRASE)), PHRASE),
     ("remediation", "POST", "/api/remediation/execute",
-     lambda w: ("/api/remediation/execute", _b(check_id="FW-01", criteria={}, dry_run=False, confirm=True,
+     lambda w: ("/api/remediation/execute", _b(check_id="FW-01", criteria={}, dry_run=False, confirm=True, plan_hash=HASH,
                                              scopes=["zia_extras"], channels={}, from_page=True)), BOOL),
     ("migrate-enable", "POST", "/api/migrate/enable",
-     lambda w: ("/api/migrate/enable", dict(_b(**SCOPE), dry_run=False, confirm=True)), BOOL),
+     lambda w: ("/api/migrate/enable", dict(_b(**SCOPE), dry_run=False, confirm=True, plan_hash=HASH)), BOOL),
     ("migrate-delete-all", "POST", "/api/migrate/delete-all",
-     lambda w: ("/api/migrate/delete-all", dict(_b(**SCOPE), dry_run=False, confirm=True, plan_hash=HASH)), BOOL),
+     lambda w: ("/api/migrate/delete-all", dict(_b(**SCOPE), dry_run=False, confirm=True, plan_hash=HASH, confirm_phrase="DELETE 1 RULES")), BOOL),
+    ("zdx-analysis-start", "POST", "/api/zdx/analysis/start",
+     lambda w: ("/api/zdx/analysis/start", _b(**ZDX_SCOPE, app_id="3002", confirm=True, confirm_text="START ANALYSIS")), BOOL),
+    ("zdx-analysis-stop", "POST", "/api/zdx/analysis/stop",
+     lambda w: ("/api/zdx/analysis/stop", _b(**ZDX_SCOPE, analysis_id="90001", confirm=True)), BOOL),
     ("migrate-post", "POST", "/api/migrate/post",
      lambda w: ("/api/migrate/post", dict(_b(**SCOPE), dry_run=False, confirm=True, mode="update", plan_hash=HASH,
                                           proposed_rules=[{"id": 1, "name": "QA rule"}])), BOOL),
@@ -341,13 +394,62 @@ WRITE_CASES: List[WriteCase] = [
 # Routes that never change a tenant (they may write the app's own files),
 # with why. A new state-changing route must be added to one of the tables.
 READ_ONLY: Dict[Tuple[str, str], str] = {
+    ("POST", "/api/auth/team/login"): "signs in to the team server: team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/me/password"): "changes your own password in the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/users"): "adds an account to the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/users/{user_id}"): "changes an account in the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("DELETE", "/api/team/users/{user_id}"): "deletes an account from the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/users/{user_id}/password"): "sets an account's password in the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/users/{user_id}/unlock"): "unlocks an account in the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/grants"): "gives or takes per-tenant-profile access in the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/scim-token"): "makes the SCIM bearer token (stored hashed) in the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("DELETE", "/api/team/scim-token"): "revokes the SCIM bearer token in the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/store-key/rotate"): "re-encrypts the app's own local stores with a new key (store_crypto.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/share"): "shares a template or saved plan in the team server account store (team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/auth/saml/acs"): "receives the identity provider's signed SAML response and hands a verified sign-in to the browser that started it (sso_saml.py), never a tenant; 404 unless team mode and SAML are on",
+    ("POST", "/api/auth/team/passkey/options"): "makes a one-use passkey sign-in challenge (team_passkeys.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/auth/team/passkey/login"): "signs in to the team server with a passkey (team_passkeys.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/auth/team/passkey/enroll"): "adds the first passkey during a password sign-in when passkeys are required (team_passkeys.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/me/passkeys/options"): "starts adding a passkey to your own team server account (team_passkeys.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/me/passkeys"): "adds a passkey to your own team server account (team_passkeys.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("DELETE", "/api/team/me/passkeys/{passkey_id}"): "removes one of your passkeys from the team server account store (team_passkeys.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("DELETE", "/api/team/users/{user_id}/passkeys"): "removes an account's passkeys from the team server account store (team_passkeys.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/sign-in"): "saves the team server's SAML and passkey sign-in settings in its account store (sso_saml.py, team_server.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/team/sign-in/test-saml"): "checks the saved SAML settings locally, no outbound call (sso_saml.py), never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/scim/v2/Users"): "SCIM provisioning of team server accounts and groups, never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("PUT", "/api/scim/v2/Users/{scim_id}"): "SCIM provisioning of team server accounts and groups, never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("PATCH", "/api/scim/v2/Users/{scim_id}"): "SCIM provisioning of team server accounts and groups, never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("DELETE", "/api/scim/v2/Users/{scim_id}"): "SCIM provisioning of team server accounts and groups, never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("POST", "/api/scim/v2/Groups"): "SCIM provisioning of team server accounts and groups, never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("PUT", "/api/scim/v2/Groups/{scim_id}"): "SCIM provisioning of team server accounts and groups, never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("PATCH", "/api/scim/v2/Groups/{scim_id}"): "SCIM provisioning of team server accounts and groups, never a tenant; 404 unless ZSCALER_TEAM_MODE",
+    ("DELETE", "/api/scim/v2/Groups/{scim_id}"): "SCIM provisioning of team server accounts and groups, never a tenant; 404 unless ZSCALER_TEAM_MODE",
     ("POST", "/api/offline/sample"): "uses the in-memory sample tenant in this browser (offline_tenant): no tenant is reached",
     ("POST", "/api/offline/leave"): "back to the live tenant in this browser: clears a cookie",
+    ("POST", "/api/offline/simulate/operation"): "rehearses a Build new / Bulk changes plan into an in-memory simulation copy (offline_tenant.simulate), never a tenant, the sample or a snapshot file (only its audit entries, marked simulation=true); 409 on a live tenant",
+    ("POST", "/api/offline/simulate/pov-build"): "rehearses a POV build into an in-memory simulation copy (offline_tenant.simulate), never a tenant, the sample or a snapshot file (only its audit entries, marked simulation=true); 409 on a live tenant",
+    ("POST", "/api/offline/simulation/discard"): "drops the in-memory simulation copy and returns this browser to the sample or snapshot; no tenant is reached",
+    ("POST", "/api/zia-baseline/selection"): "saves or checks a ZIA baseline rule-review selection locally (ops_zia_baseline); reads and writes no tenant",
     ("POST", "/api/tenant-profiles/snapshots/open-file"): "opens an uploaded snapshot offline and read-only",
     ("POST", "/api/tenant-profiles/snapshots/{snapshot_id}/open"): "opens a saved snapshot offline and read-only",
     ("POST", "/api/tenant-profiles/snapshots/{snapshot_id}/delete"): "deletes a local snapshot file, never anything in a tenant",
-    ("POST", "/api/tenant-profiles/snapshots/save/start"): "a GET-only, scoped tenant read kept in a local file",
+    ("POST", "/api/tenant-profiles/snapshots/save/start"): "a scoped tenant read (GETs and the two read-only Workflow Automation searches) kept in a local file",
+    ("POST", "/api/zwa/incident"): "reads one incident's metadata (details, triggers, history, tickets); never the evidence",
+    ("POST", "/api/zwa/audit-log"): "reads the Workflow Automation audit log (a search POST that changes nothing)",
+    ("POST", "/api/aiguard/inventory"): "reads AI Guard's policies, rules, providers, applications and credential names",
+    ("POST", "/api/aiguard/test-prompt"): "sends one synthetic catalogue prompt to AI Guard's policy detection; changes no configuration",
     ("POST", "/api/tenant-profiles/snapshots/compare/start"): "a GET-only, scoped tenant read compared with a snapshot",
+    ("POST", "/api/config-backups/save/start"): "a GET-only, scoped configuration read kept in a local owner-only file (config_backup)",
+    ("POST", "/api/config-cache/refresh/start"): "a GET-only, scoped configuration read kept in the local cache",
+    ("POST", "/api/config-backups/from-snapshot"): "reads a saved snapshot or the sample through the offline client: no tenant is reached",
+    ("POST", "/api/config-backups/{backup_id}/delete"): "deletes a local backup file, never anything in a tenant",
+    ("POST", "/api/config-backups/diff"): "compares two saved files; no tenant is read",
+    ("POST", "/api/config-backups/diff-live/start"): "a GET-only, scoped tenant read compared with a backup",
+    ("POST", "/api/config-backups/schedule"): "a local schedule of read-only backups; nothing is ever applied by it",
+    ("POST", "/api/config-backups/rehearse"): "plans against a saved copy; builds no client and writes nothing",
+    ("POST", "/api/config-templates/export"): "makes a local template file from a backup",
+    ("POST", "/api/config-templates/import"): "keeps an uploaded template file (checked as untrusted)",
+    ("POST", "/api/config-templates/{template_id}/delete"): "deletes a local template file, never anything in a tenant",
     ("POST", "/api/auth/unlock"): "session sign-in",
     ("POST", "/api/auth/logout"): "session sign-out",
     ("POST", "/api/remediation/plan"): "builds a plan, sends nothing",
@@ -370,6 +472,8 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/zpa/analysis/start"): "reads",
     ("POST", "/api/zpa/diagnose"): "reads",
     ("POST", "/api/browser-security/start"): "reads",
+    ("POST", "/api/ztw/start"): "reads the Cloud & Branch Connector configuration (list and get calls only); no write method is called",
+    ("POST", "/api/other-products/start"): "reads",
     ("POST", "/api/device-posture/start"): "reads",
     ("POST", "/api/rate-check"): "local forecast",
     ("POST", "/api/dlp-packs/removal/preflight"): "preview",
@@ -401,9 +505,46 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/operations/objects"): "reads",
     ("POST", "/api/operations/preview/start"): "preview",
     ("POST", "/api/operations/preview"): "preview",
+    ("POST", "/api/pov/build/defaults"): "local: the parts an intake suggests",
+    ("POST", "/api/pov/build/preview/start"): "preview",
+    ("POST", "/api/pov/build/preview"): "preview",
+    ("POST", "/api/pov/build/undo/preview/start"): "preview",
     ("POST", "/api/operations/{op_id}/undo/preview/start"): "preview",
     ("POST", "/api/operations/{op_id}/undo/preview"): "preview",
     ("POST", "/api/operations/zpa/provisioning-key"): "reveals once a value held in this app's memory; reaches no tenant",
+    ("POST", "/api/operations/zidentity/secret"): "reveals once a value held in this app's memory; reaches no tenant",
+    # Day-to-day admin (ops_zcc_admin, ops_zdx_trace, ops_zpa_admin): searches, a bounded read-only follow, and the
+    # one place a Browser Access key enters the app (held in memory for the next previewed operation; writers only).
+    ("POST", "/api/operations/lookup"): "reads (a Client Connector or ZDX search for a form)",
+    ("POST", "/api/operations/zdx/deeptrace/follow/start"): "reads (follows a ZDX deep trace, bounded)",
+    ("POST", "/api/operations/zcc/domain-users.csv"): "reads (one paged read of enrolled devices: a domain's user names as CSV, personal-data opt-in)",
+    ("POST", "/api/operations/zpa/ba-certificate"): "holds an uploaded certificate and key in this app's memory; reaches no tenant",
+    # Rules from a spreadsheet and scheduled sync (rule_csv, ops_rule_csv, sync_jobs): the import itself is an
+    # operation type on the engine (WRITE path); a sync job only reads and files plans in the change queue.
+    ("POST", "/api/rule-csv/validate"): "checks a file; reads no tenant",
+    ("POST", "/api/rule-csv/export"): "reads",
+    ("POST", "/api/sync-jobs"): "a sync job (local): it only reads and files plans for approval",
+    ("DELETE", "/api/sync-jobs/{jid}"): "a sync job (local)",
+    ("POST", "/api/sync-jobs/{jid}/enabled"): "a sync job's schedule (local)",
+    ("POST", "/api/sync-jobs/{jid}/run"): "reads source and targets, files plans in the change queue (local); never writes a tenant",
+    ("POST", "/api/path-analyzer/zpa-identity"): "reads (ZPA IdPs, SAML attributes, one SCIM user's groups)",
+    ("POST", "/api/tenant-terraform/start"): "reads the tenant into Terraform files (tenant_terraform); writes nothing",
+    ("POST", "/api/zcc/fleet/import"): "reads uploaded Client Connector Portal exports (no tenant call)",
+    ("POST", "/api/zcc/fleet/{job_id}/sites"): "groups a finished fleet read into sites (no tenant call)",
+    ("POST", "/api/zcc/fleet/{job_id}/history"): "keeps a counts-only snapshot of a fleet read (local file)",
+    ("POST", "/api/zcc/fleet/history/forget"): "forgets the local fleet history (no tenant)",
+    ("POST", "/api/traffic-logs/analyze"): "reads uploaded traffic and session logs (no tenant call)",
+    ("POST", "/api/traffic-logs/watch"): "local settings (the daily report's watched folder; writer, audited)",
+    ("POST", "/api/traffic-logs/watch/run"): "reads local log files into a report (no tenant call; writer, audited)",
+    ("POST", "/api/traffic-logs/syslog/start"): "starts the local syslog listener (no tenant call; writer, audited)",
+    ("POST", "/api/traffic-logs/syslog/stop"): "stops the local syslog listener (no tenant call; writer, audited)",
+    ("POST", "/api/traffic-logs/syslog/clear"): "forgets the syslog lines held in memory (no tenant call; writer, audited)",
+    ("POST", "/api/traffic-logs/syslog/analyze"): "analyses the syslog lines held in memory (no tenant call)",
+    ("POST", "/api/tenant-health/start"): "reads (tenant health checks)",
+    ("DELETE", "/api/traffic-logs/report/{report_id}"): "forgets a traffic log report held in memory (no tenant)",
+    ("POST", "/api/traffic-logs/report/{report_id}/save"): "keeps a traffic log report as a local file (no tenant)",
+    ("POST", "/api/traffic-logs/saved/{saved_name}/open"): "opens a saved traffic log report (local file)",
+    ("DELETE", "/api/traffic-logs/saved/{saved_name}"): "deletes a saved traffic log report (local file)",
     ("POST", "/api/console-index"): "reads (extension allow-list)",
     ("POST", "/api/workspace/notes"): "local notes",
     ("DELETE", "/api/workspace/notes"): "local notes",
@@ -428,10 +569,15 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/compliance"): "report",
     ("POST", "/api/compliance/drilldown"): "report",
     ("POST", "/api/compliance/report"): "report",
+    ("POST", "/api/compliance/profile-view"): "report",
+    ("POST", "/api/compliance-pack"): "local files from the posted build; reads and writes no tenant",
+    ("POST", "/api/compliance-pack/file"): "local files from the posted build; reads and writes no tenant",
+    ("POST", "/api/compliance-profiles/choice"): "the local tenant profile store only; never a tenant",
     ("POST", "/api/logs/analyze"): "uploaded logs",
     ("POST", "/api/vendor-migrate/inventory"): "uploaded export",
     ("POST", "/api/vendor-migrate/compile"): "uploaded export",
     ("POST", "/api/vendor-migrate/workspace"): "Terraform files",
+    ("POST", "/api/vendor-migrate/panos/plan"): "uploaded export (a plan; Bulk changes applies it)",
     ("POST", "/api/benchmarks"): "report",
     ("POST", "/api/benchmarks/export"): "report",
     ("POST", "/api/dlp/efficacy"): "reads",
@@ -451,12 +597,19 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/report/findings-csv"): "report",
     ("POST", "/api/zcc/fleet/start"): "reads",
     ("POST", "/api/zcc/install"): "builds an install command; with app_profile_id it reads that profile's policy token (scope-gated)",
+    ("POST", "/api/zcc/otp"): "reads one device's one-time passwords (scope-gated, writer, assessor, write mode, typed phrase, rate-limited; tests/test_zcc_otp.py); writes nothing",
+    ("POST", "/api/zcc/device-details"): "reads one device's service state (scope-gated)",
+    ("POST", "/api/zcc/disable-reasons"): "reads the disable-reason report and counts it (scope-gated)",
+    ("POST", "/api/zdx/cloudpath"): "reads ZDX applications and one measured cloud path (scope-gated)",
+    ("POST", "/api/zdx/analysis/status"): "reads a ZDX score analysis back (scope-gated)",
     ("POST", "/api/readiness/start"): "reads (the API role, licences and one call per product in scope)",
     ("POST", "/api/report/bypass"): "reads",
     ("POST", "/api/report/data-flow"): "reads",
     ("POST", "/api/path-analyzer/batch/start"): "reads",
     ("POST", "/api/bulk-test/start"): "reads (Test a list)",
     ("POST", "/api/bulk-test/{job_id}/fix"): "hand-off to Bulk changes (local), writes nothing",
+    ("POST", "/api/category-lookup/start"): "reads (Category lookup)",
+    ("POST", "/api/bulk-test/fix/{fix_id}/prove/start"): "reads (Prove it: the handed-off rows tested again)",
     ("POST", "/api/audit-timeline/start"): "reads",
     ("POST", "/api/shadow-rules/start"): "reads",
     ("POST", "/api/shadow-rules"): "reads",
@@ -464,6 +617,25 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/posture/project"): "local projection",
     ("POST", "/api/posture/summary"): "reads",
     ("PUT", "/api/posture/settings"): "local settings",
+    ("PUT", "/api/m365-endpoints/settings"): "local setting: may this app fetch Microsoft's Microsoft 365 endpoint list (no tenant)",
+    ("POST", "/api/m365-endpoints/refresh"): "fetches Microsoft's public endpoint list into a local file (no tenant)",
+    ("POST", "/api/m365-endpoints/import"): "keeps an uploaded Microsoft 365 endpoint list as a local file (no tenant)",
+    ("DELETE", "/api/m365-endpoints"): "forgets the local Microsoft 365 endpoint list (no tenant)",
+    ("PUT", "/api/vendor-endpoints/settings"): "local setting: may this app fetch a UCaaS provider's published endpoint list (no tenant)",
+    ("POST", "/api/vendor-endpoints/refresh"): "fetches a UCaaS provider's public endpoint list into a local file (no tenant)",
+    ("POST", "/api/vendor-endpoints/import"): "keeps an uploaded UCaaS provider endpoint list as a local file (no tenant)",
+    ("DELETE", "/api/vendor-endpoints/{provider}"): "forgets a local UCaaS provider endpoint list (no tenant)",
+    ("PUT", "/api/app/update/notify"): "local settings",
+    ("PUT", "/api/plugins/settings"): "local settings",
+    ("POST", "/api/plugins/approve"): "local plugin allow-list",
+    ("POST", "/api/plugins/revoke"): "local plugin allow-list",
+    ("POST", "/api/zcc/fleet/{job_id}/dns-records"): "builds DNS text from a finished fleet read (no tenant call)",
+    ("PUT", "/api/zscaler-ranges/settings"): "local setting: may this app fetch Zscaler's published IP ranges (no tenant)",
+    ("POST", "/api/zscaler-ranges/fetch"): "fetches Zscaler's public IP range feeds into local files (no tenant)",
+    ("POST", "/api/zscaler-ranges/import"): "keeps an uploaded IP range feed as a local file (no tenant)",
+    ("DELETE", "/api/zscaler-ranges"): "forgets the local IP range feeds (no tenant)",
+    ("POST", "/api/zscaler-ranges/build"): "builds an allowlist from local files (no tenant)",
+    ("POST", "/api/zscaler-ranges/download"): "downloads an allowlist built from local files (no tenant)",
     ("POST", "/api/self-heal/run"): "local self-healing",
     ("POST", "/api/self-heal/tenant/scan"): "reads",
     ("POST", "/api/self-heal/tenant/view"): "local",
@@ -473,6 +645,10 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/path-analyzer/start"): "reads",
     ("POST", "/api/path-analyzer"): "reads",
     ("POST", "/api/path-analyzer/identities"): "reads (one page of names)",
+    ("POST", "/api/path-analyzer/devices"): "reads (one page of a user's enrolled devices)",
+    ("POST", "/api/path-analyzer/devices/detail"): "reads (one device's details)",
+    ("POST", "/api/path-analyzer/compare/start"): "reads (two analyses on one read)",
+    ("POST", "/api/path-analyzer/test-from-here"): "no tenant call: DNS, a TCP connect and a TLS handshake from this computer (path_probe)",
     ("POST", "/api/report/data-flow/{report_id}/trace"): "reads",
     ("POST", "/api/report/ssl-flow"): "reads",
     ("POST", "/api/ssl-coverage/start"): "reads",

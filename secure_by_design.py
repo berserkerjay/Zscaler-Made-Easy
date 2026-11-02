@@ -39,6 +39,32 @@ PLEDGE = {
 
 _DANGEROUS_RE = re.compile(r"\beval\(|\bexec\(|\bpickle\b|shell\s*=\s*True|os\.system\(")
 _LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def _dangerous_lines(src: str) -> List[int]:
+    """The lines whose code (not a comment or a string: a SIEM query's
+    count(eval(...)) is text) calls eval / exec, uses pickle, passes
+    shell=True or calls os.system. Falls back to the line regex when the
+    file does not tokenize."""
+    import io
+    import tokenize
+    try:
+        toks = [t for t in tokenize.generate_tokens(io.StringIO(src).readline)
+                if t.type not in (tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT)]
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return [n for n, line in enumerate(src.splitlines(), 1) if not line.strip().startswith("#") and _DANGEROUS_RE.search(line)]
+    out = set()
+    for i, t in enumerate(toks):
+        nxt = toks[i + 1].string if i + 1 < len(toks) else ""
+        if t.type == tokenize.NAME and t.string in ("eval", "exec") and nxt == "(" and (i == 0 or toks[i - 1].string != "."):
+            out.add(t.start[0])
+        elif t.type == tokenize.NAME and t.string == "pickle":
+            out.add(t.start[0])
+        elif t.type == tokenize.NAME and t.string == "shell" and nxt == "=" and i + 2 < len(toks) and toks[i + 2].string == "True":
+            out.add(t.start[0])
+        elif t.type == tokenize.NAME and t.string == "os" and nxt == "." and i + 3 < len(toks) and toks[i + 2].string == "system" and toks[i + 3].string == "(":
+            out.add(t.start[0])
+    return sorted(out)
 # A call that sends a write to the tenant: the SDK write methods the
 # shared-path guard knows (tests/test_shared_path.py), and the REST
 # client's post/put/patch/delete.
@@ -211,7 +237,7 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
             hosts = []
     if hosts:
         checks.append(_check("outbound", "Outbound calls go to an allowlist of hosts", P_OWN, "secure_defaults", "pass",
-                             f"{len(hosts)} documentation hosts allowed for the update check, the best-practice library and the SaaS matrix; the Zscaler API for the tenant; GitHub for updates; your own SMTP relay or https webhook only when configured. No AI or LLM service is called.",
+                             f"{len(hosts)} documentation hosts allowed for the update check, the best-practice library and the SaaS matrix; the Zscaler API for the tenant; GitHub for updates; Zscaler's config portal for published IP ranges only when turned on and asked; your own SMTP relay or https webhook only when configured; the Path analyzer's Test from here only on an explicit click (one destination, ports 443, 80, 8443, 8080). No AI or LLM service is called.",
                              "Nothing to do."))
     else:
         checks.append(_check("outbound", "Outbound calls go to an allowlist of hosts", P_OWN, "secure_defaults", "warn", "The documentation-host allowlist could not be read.", "Check bp_crawler.ALLOWED_HOSTS."))
@@ -219,12 +245,7 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
     # ── Reduce entire classes of vulnerability ───────────────────────────
     hits: List[str] = []
     for p in _python_sources():
-        for n, line in enumerate(_read(p).splitlines(), 1):
-            s = line.strip()
-            if s.startswith("#") or not s:
-                continue
-            if _DANGEROUS_RE.search(line):
-                hits.append(f"{os.path.relpath(p, APP_DIR)}:{n}")
+        hits += [f"{os.path.relpath(p, APP_DIR)}:{n}" for n in _dangerous_lines(_read(p))]
     if not hits:
         checks.append(_check("constructs", "No eval, exec, pickle, os.system or shell=True in the app's Python", P_OWN, "classes", "pass",
                              f"{len(_python_sources())} source files scanned; Python is a memory-safe language, and the app has no SQL and one HTML escaper at every render site.",

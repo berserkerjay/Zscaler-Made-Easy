@@ -102,7 +102,7 @@
   // opens; `stop` is the step that decides, marked (block, drop, isolate,
   // caution, bypass, or "not assessed"); a conditional step has a fork.
   const TP_SHORT = { atp: 'Threat protection', firewall: 'Cloud Firewall', dns: 'DNS Control', cac: 'Cloud App Control', url: 'URL filtering',
-    ssl: 'SSL inspection', sandbox: 'Sandbox', ftc: 'File Type Control', dlp: 'Web DLP' };
+    ssl: 'SSL inspection', sandbox: 'Sandbox', ftc: 'File Type Control', dlp: 'Web DLP', fwdctl: 'Forwarding control' };
   const TP_WORD = {
     allow: 'allows it', block: 'blocks it', caution: 'shows a caution page', isolate: 'isolates it', redirect: 'redirects it', inspect: 'inspects it',
     decrypt: 'decrypts it', no_decrypt: 'leaves it encrypted', none: 'no rule applies', blind: 'cannot see it', skipped: 'skipped',
@@ -145,12 +145,13 @@
     ['pac', 'PAC file', 'evaluated, never run'], ['zte', 'Zero Trust Exchange', 'ZIA receives it'], ['atp', 'Threat protection', 'threat categories'],
     ['firewall', 'Cloud Firewall', 'every port and protocol'], ['dns', 'DNS Control', 'the name lookup'], ['cac', 'Cloud App Control', 'the cloud app'],
     ['url', 'URL filtering', 'the URL category'], ['ssl', 'SSL inspection', 'decides what is seen'], ['sandbox', 'Sandbox', 'unknown files'],
-    ['ftc', 'File Type Control', 'the file type'], ['dlp', 'Web DLP', 'the content'], ['dest', 'Destination', 'the internet'],
+    ['ftc', 'File Type Control', 'the file type'], ['dlp', 'Web DLP', 'the content'], ['fwdctl', 'Forwarding control', 'how ZIA sends it on'],
+    ['dest', 'Destination', 'the internet'],
   ];
   function tpReference() {
     const nodes = TP_REFERENCE.map(r => tpNode(r[0], r[1], 'none', { sub: r[2], word: r[2], tone: 'idle' }));
     return { mode: 'reference', nodes, stop: -1, dest: '', traffic: 'Any traffic', identity: '', source: 'device', verdict: { tone: '', outcome: '', text: '' },
-      summary: ['The reference path, idling: no destination analyzed yet. Traffic leaves the device through Client Connector; ZPA takes private applications to the App Connectors; the PAC file (evaluated, never run) and the forwarding profile send the rest to the Zero Trust Exchange, where every ZIA module applies in order: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control, URL filtering, SSL inspection (which decides what the later modules see), Sandbox, File Type Control and Web DLP, then the destination.'] };
+      summary: ['The reference path, idling: no destination analyzed yet. Traffic leaves the device through Client Connector; ZPA takes private applications to the App Connectors; the PAC file (evaluated, never run) and the forwarding profile send the rest to the Zero Trust Exchange, where every ZIA module applies in order: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control, URL filtering, SSL inspection (which decides what the later modules see), Sandbox, File Type Control and Web DLP, then Forwarding control (how ZIA sends it on) and the destination.'] };
   }
 
   // Path analyzer result → {mode, nodes, stop, traffic, identity, verdict, summary}.

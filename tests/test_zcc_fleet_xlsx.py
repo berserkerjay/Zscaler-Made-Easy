@@ -21,7 +21,8 @@ def test_the_workbook_has_devices_versions_os_and_stale_devices():
     stem, data = zf.export_xlsx(r, False)
     wb = read_workbook(data)
     assert stem == "zcc_fleet"
-    assert list(wb) == ["Summary", "Versions", "Operating systems", "Stale devices", "Devices", "Alerts", "Plan"]
+    assert list(wb) == ["Summary", "Versions", "Version health", "Profile health", "Forwarding health", "Last seen",
+                        "Operating systems", "Stale devices", "Devices", "Alerts", "Plan"]
     k = r["kpis"]
     versions = {(row[0], row[1]): row[2] for row in wb["Versions"][1:]}
     assert versions == {(p, v): str(n) for p, vs in k["versions"].items() for v, n in vs.items()}

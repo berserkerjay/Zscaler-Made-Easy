@@ -28,7 +28,7 @@ def test_articles_map_to_checks_packs_and_channels():
     m = g.map_entry({"title": "Protecting PHI on generative AI destinations", "url": "https://www.zscaler.com/blogs/phi-genai"})
     assert m and set(m["packs"]) == {"healthcare_phi_baseline", "zbp_source_code_baseline"} and "AI.7" in m["checks"]
     assert g.map_entry({"title": "Company picnic photos", "url": "https://www.zscaler.com/blogs/picnic"}) is None
-    assert g.resolve_checks(["ZID.*"]) == ["ZID.1", "ZID.2", "ZID.3", "ZID.4", "ZID.5"]
+    assert g.resolve_checks(["ZID.*"]) == ["ZID.1", "ZID.2", "ZID.3", "ZID.4", "ZID.5", "ZID.6", "ZID.7"]
     assert "ZID.1" in g.resolve_checks(["section:Directory"]) and g.resolve_checks(["12.4"]) == ["12.4"]
 
 

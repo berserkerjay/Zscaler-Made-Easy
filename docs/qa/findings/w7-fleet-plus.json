@@ -1,0 +1,190 @@
+{
+ "area": "Client Connector fleet depth (zcc_fleet, zcc_fleet_import, zcc_fleet_history, /api/zcc/fleet/*, static/report_fleet.html, static/zcc_fleet.js): version x service matrix, profile health, last seen, sites, history and trends, portal CSV import, PDF and Excel exports",
+ "title": "Fleet depth built and checked against fixtures and the sample tenant: semantics at each boundary, untrusted CSV and history input, counts-only exports, the UI in Chrome",
+ "standards": [
+  "ASVS V11.1.4",
+  "ASVS V12.1.1",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.3.10",
+  "ASVS V5.3.3",
+  "ASVS V8.3.4",
+  "CWE-1236",
+  "CWE-1333",
+  "CWE-20",
+  "CWE-359",
+  "CWE-400",
+  "CWE-409",
+  "CWE-682",
+  "CWE-732",
+  "CWE-754",
+  "CWE-79",
+  "WCAG 2.2 SC 1.1.1",
+  "WCAG 2.2 SC 1.3.1",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 2.1.1"
+ ],
+ "checks": [
+  {
+   "id": "FP-C01",
+   "what": "Version x service matrix: registered devices per platform and version, each service's active share among known statuses, newest and unsupported marked",
+   "standard": "ASVS V11.1.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C02",
+   "what": "A version 10 or more points below the fleet with at least 5 known devices is flagged; 4 known never; the boundary itself flags",
+   "standard": "ASVS V11.1.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C03",
+   "what": "No service status: shares are unknown (None), never 0% or 100%; configuration only has no new view at all",
+   "standard": "ASVS V11.1.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C04",
+   "what": "Health per app profile and, through the read app profile, per forwarding profile; an unread app profile is never guessed onto a forwarding profile",
+   "standard": "ASVS V11.1.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C05",
+   "what": "Last-seen buckets exact to the second (24 h, 7 d, 30 d), registered devices only, per platform",
+   "standard": "ASVS V11.1.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C06",
+   "what": "Site grouping by prefix length, delimiter or pick list; no regular expression mode; every field range-checked (11 hostile rules refused)",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C07",
+   "what": "Counts-only site tables merge sites with fewer than 3 registered devices",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C08",
+   "what": "History snapshot holds counts and versions only (no user, host, UDID, profile or site)",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C09",
+   "what": "History file owner-only 0600, atomic replace, one snapshot per read, 60 per tenant, 20 tenants; forget needs confirm",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C10",
+   "what": "A tampered history file is read as untrusted: wrong types, markup, impossible values and oversize or deeply nested files dropped",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C11",
+   "what": "Trend deltas and compare (versions new and gone); out-of-range compare is a 400",
+   "standard": "ASVS V11.1.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C12",
+   "what": "Portal CSV import: base64 / gzip-base64 / text, UTF-16 BOM and cp1252, header found after a preamble, export time from the portal's file names, pairs more than 12 hours apart flagged",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C13",
+   "what": "Import caps: 48 MB per file before and after decoding, bounded gzip inflation (bomb refused), 200,000 rows, 300 columns, 200 characters a cell, NUL bytes and damaged uploads refused with a reason",
+   "standard": "ASVS V12.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C14",
+   "what": "Import route builds no tenant client and needs no sign-in; formula-looking host names neutralised in CSV and Excel; markup stays text",
+   "standard": "ASVS V5.3.10",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C15",
+   "what": "PDF report counts only (no user, host or UDID), A4 or Letter, every section; Excel gains Version health, Profile health, Forwarding health, Last seen, Sites, History",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C16",
+   "what": "Start route: a bad site rule is a 400 before sign-in; the Scope rule is unchanged (ZCC must be ticked)",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C17",
+   "what": "UI in Chrome on the sample tenant: every new section renders, site form fields follow the mode, chart named in words with a table, compare, forget asks first",
+   "standard": "WCAG 2.2 SC 1.3.1",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C18",
+   "what": "Hostile imported host name stays text (no element, no script)",
+   "standard": "ASVS V5.3.3",
+   "result": "pass"
+  },
+  {
+   "id": "FP-C19",
+   "what": "No sideways scroll at 320px with every new section (read and import); every new control takes keyboard focus; help entry and ? mark for each new control",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-FLEET-PLUS-01",
+   "title": "A service-status file with both \"ZIA Enabled\" and \"ZIA Health\" was read by the Enabled column when it came first, so an enabled but inactive service counted as active",
+   "severity": "medium",
+   "cwe": "CWE-682",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "zcc_fleet.service_columns prefers health, status, state, then service; Enabled is kept apart and an Enabled=false service is not applicable",
+   "test": "tests/test_zcc_fleet_plus.py::test_service_columns_prefer_health_and_fall_back_to_enabled",
+   "commit": "9dd7377"
+  },
+  {
+   "id": "W7-FLEET-PLUS-02",
+   "title": "The offline SDK client had no get_request_executor, so the sample tenant's fleet could never read a service status (always 'partly read')",
+   "severity": "low",
+   "cwe": "CWE-754",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "OfflineSdkClient.get_request_executor (as the SDK's OneAPI client); the sample tenant serves a service-status CSV",
+   "test": "tests/test_zcc_fleet_plus.py::test_the_sample_tenant_fleet_now_has_service_status",
+   "commit": "9dd7377"
+  },
+  {
+   "id": "W7-FLEET-PLUS-03",
+   "title": "A device record without a last-seen time counted as never seen although the service-status file had its last-seen time",
+   "severity": "low",
+   "cwe": "CWE-754",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "normalize_devices falls back to the service row's last-seen column for the same device",
+   "test": "tests/test_zcc_fleet_plus.py::test_last_seen_falls_back_to_the_service_status_file",
+   "commit": "0942b30"
+  },
+  {
+   "id": "W7-FLEET-PLUS-04",
+   "title": "The new-marks browser tests were bound to the 2026-10-28 marks on the Path analyzer and failed as soon as a newer release rotated them out",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "tests/test_new_marks.py injects probe features for the two marked releases and reads the expected dates from CHANGELOG.md",
+   "test": "tests/test_new_marks.py::test_the_star_opens_what_is_new_and_the_item_opens_nothing",
+   "commit": "8c0b6d2"
+  }
+ ],
+ "tests_added": 66
+}

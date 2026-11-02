@@ -13,6 +13,14 @@
 // Names are looked up in ZIA only when ZIA platform is ticked on the Scope
 // page (the server checks it again): one search of at most 20 names per
 // click, never a bulk listing. Nothing here writes to the tenant.
+//
+// The ZPA identity (fieldset #paWiZpa, zpa_identity.py on the server): the
+// IdP picked from ZPA's list, a SCIM user name whose SCIM groups ZPA looks
+// up during the analysis (read-only, kept only for that run), and attribute
+// values typed as Name=value. Loading the IdPs and previewing a user's
+// groups need ZPA ticked on the Scope page (the server checks it again).
+// PathWhatIf.zpaSection(res.zpa_identity) says which identity condition
+// decided ZPA's access policy.
 (function () {
   'use strict';
   // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
@@ -36,7 +44,14 @@
       out[k] = p && p.name === v ? p : v;
     });
     if (picked.groups && out.group === picked.groups.map(g => g.name).join(', ')) { out.groups = picked.groups; delete out.group; }
+    const z = zpaIdentity();
+    if (z) out.zpa = z;
     return out;
+  }
+  function zpaIdentity() {
+    const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    const z = { idp: v('paWiZ_idp'), user: v('paWiZ_user').slice(0, 128), attributes: v('paWiZ_attrs').slice(0, 4000) };
+    return (z.idp || z.user || z.attributes) ? z : null;
   }
   // The panel is in the page; this wires its buttons and the scope hint.
   function init(fns) {
@@ -52,6 +67,7 @@
     };
     refresh();
     box.addEventListener('toggle', refresh);
+    initZpa(box);
     box.addEventListener('click', e => {
       const b = e.target.closest('[data-wi-find]');
       if (b) { find(b.dataset.wiFind, b); return; }
@@ -59,6 +75,62 @@
       if (r) pick(r.dataset.wiField, Number(r.dataset.wiPick));
     });
   }
+  // ── The ZPA identity ─────────────────────────────────────────────────
+  const zpaAllowed = () => (page.scopeSelection().scopes || []).includes('zpa');
+  async function zpaAsk(body) {
+    const r = await fetch('/api/path-analyzer/zpa-identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({}, page.credBody(), page.scopeSelection(), body)) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(errText(d, r.status));
+    return d;
+  }
+  function initZpa(box) {
+    const set = document.getElementById('paWiZpa');
+    if (!set) return;
+    const hint = document.getElementById('paWiZScope'), live = document.getElementById('paWiLive');
+    const load = document.getElementById('paWiZ_load'), findBtn = document.getElementById('paWiZ_find');
+    const refresh = () => {
+      const ok = zpaAllowed();
+      hint.textContent = ok ? 'Loading the IdPs and looking a user up only read ZPA. The analysis looks the user up again, and keeps nothing after it.'
+        : 'A ZPA identity needs ZPA ticked on the Scope page.';
+      load.disabled = findBtn.disabled = !ok;
+    };
+    refresh();
+    box.addEventListener('toggle', refresh);
+    load.addEventListener('click', async () => {
+      load.disabled = true; load.textContent = 'Loading…';
+      try {
+        const d = await zpaAsk({ action: 'idps' });
+        if (d.error) throw new Error(`ZPA could not answer: ${d.error}`);
+        const sel = document.getElementById('paWiZ_idp'), keep = sel.value;
+        sel.innerHTML = '<option value="">Not given</option>' + (d.idps || []).map(i => `<option value="${E(i.id)}">${E(i.name)}${i.enabled === false ? ' (disabled)' : ''}${i.scim_enabled && i.scim_policy !== false ? '' : ' (no SCIM policy)'}</option>`).join('');
+        if (keep) sel.value = keep;
+        const attrs = (d.saml_attributes || []).map(a => (a.saml_name && a.saml_name !== a.name ? a.name + ' (' + a.saml_name + ')' : a.name));
+        document.getElementById('paWiZAttrHint').textContent = attrs.length ? `SAML attributes in ZPA: ${attrs.slice(0, 12).join(', ')}${attrs.length > 12 ? ` and ${attrs.length - 12} more` : ''}.` : 'ZPA lists no SAML attribute.';
+        live.textContent = `${(d.idps || []).length} IdP(s) loaded. Pick one.`;
+        sel.focus();
+      } catch (e) { live.textContent = `The IdPs could not be loaded: ${e.message}`; hint.textContent = e.message; }
+      finally { load.textContent = 'Load IdPs from ZPA'; load.disabled = !zpaAllowed(); }
+    });
+    findBtn.addEventListener('click', async () => {
+      const idp = document.getElementById('paWiZ_idp').value, user = document.getElementById('paWiZ_user').value.trim();
+      const list = document.getElementById('paWiZRes');
+      if (!idp || !user) { live.textContent = 'Load the IdPs, pick one and type the SCIM user name first.'; (idp ? document.getElementById('paWiZ_user') : load).focus(); return; }
+      findBtn.disabled = true; findBtn.textContent = 'Looking up…';
+      try {
+        const d = await zpaAsk({ action: 'user', idp, user });
+        list.hidden = false;
+        if (d.error) { list.innerHTML = `<li class="df-hint">${E(d.error)}. The analysis keeps SCIM group conditions unknown.</li>`; live.textContent = d.error; return; }
+        const n = d.group_count || 0;
+        list.innerHTML = n ? `<li class="df-hint">${E(n)} SCIM group(s)${d.complete ? '' : ' (the first pages only)'}: ${(d.groups || []).map(g => E(g.name)).join(', ')}${n > (d.groups || []).length ? ` and ${E(n - d.groups.length)} more` : ''}.</li>`
+          : '<li class="df-hint">ZPA lists no SCIM group for this user in this IdP: check the SCIM user name (usually the email).</li>';
+        live.textContent = `${n} SCIM group(s) found.`;
+      } catch (e) {
+        list.hidden = false; list.innerHTML = `<li class="df-hint">${E(e.message)}</li>`; live.textContent = `The lookup could not run: ${e.message}`;
+      } finally { findBtn.textContent = 'Look up SCIM groups'; findBtn.disabled = !zpaAllowed(); }
+    });
+  }
+
   const found = {};
   async function find(kind, btn) {
     const input = document.getElementById(`paWi_${kind}`);
@@ -130,6 +202,23 @@
         <div class="df-hint">Each row is a rule scoped to a user, group, department, location, time window or device trust level that would change what happens to this traffic, most disruptive first.</div>
         ${who}${table}</section>`;
   }
+  // ── The result: what the ZPA identity decided ─────────────────────────
+  function zpaSection(z) {
+    if (!z) return '';
+    const groups = z.groups || [];
+    const n = z.group_count;
+    const lines = [];
+    if (z.sentence) lines.push(`<div class="df-hop-d"><strong>${E(z.sentence)}</strong></div>`);
+    if (n != null) lines.push(`<div class="df-hop-d">SCIM groups found for the user: ${E(n)}${z.complete === false ? ' (the first pages only)' : ''}${groups.length ? `:</div><ul class="pa-wi-groups">${groups.map(g => `<li>${E(g.name)}</li>`).join('')}</ul>${n > groups.length ? `<div class="df-hint">and ${E(n - groups.length)} more.</div>` : ''}` : '.</div>'}`);
+    if ((z.attributes || []).length) lines.push(`<div class="df-hop-d">Attribute values you gave: ${z.attributes.map(a => `${E(a.name)} = ${E(a.value)}`).join('; ')}.</div>`);
+    (z.missed || []).forEach(m => lines.push(`<div class="df-hop-d"><span class="df-chip st-fail">not met</span> “${E(m.rule)}” does not apply to this user: ${E(m.why)}.</div>`));
+    (z.unknown || []).forEach(u => lines.push(`<div class="df-hop-d"><span class="df-chip st-warn">unknown</span> ${E(u)}.</div>`));
+    return `<section class="pa-whatif-out pa-zid-out" id="paZidOut" aria-labelledby="paZidH">
+        <h2 class="df-h" id="paZidH">ZPA identity</h2>
+        <div class="df-hint">ZPA's access policy evaluated for ${E(z.label || 'the identity you gave')}: SCIM group, SCIM and SAML attribute and IdP conditions are checked; anything not given stays unknown.</div>
+        ${lines.join('')}</section>`;
+  }
+
   // The "Show more" button of a drawn section.
   function wire(container) {
     const more = container && container.querySelector('#paWiMore');
@@ -143,5 +232,5 @@
     });
   }
 
-  window.PathWhatIf = { init, identity, section, wire };
+  window.PathWhatIf = { init, identity, section, wire, zpaSection };
 })();

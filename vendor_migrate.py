@@ -434,7 +434,7 @@ def inventory_bytes(data: bytes, source_name: str = "export.xml") -> Dict[str, A
     DTDs and entities are refused before parsing."""
     _refuse_dtd(data, "DTD/entities are not accepted")
     try:
-        root = ET.fromstring(data)
+        root = ET.fromstring(data)  # nosec B314 # _refuse_dtd above refused any DOCTYPE/ENTITY; size capped by MAX_EXPORT_BYTES
     except ET.ParseError as e:
         raise ValueError(f"Not well-formed XML: {e}")
     policies = []
@@ -602,7 +602,7 @@ def _refuse_dtd(data: bytes, message: str) -> None:
 def _xml_root(data: bytes, name: str):
     _refuse_dtd(data, f"{name}: DTD/entities are not accepted")
     try:
-        root = ET.fromstring(data)
+        root = ET.fromstring(data)  # nosec B314 # _refuse_dtd above refused any DOCTYPE/ENTITY; size capped by MAX_EXPORT_BYTES
     except ET.ParseError as e:
         raise ValueError(f"{name}: not well-formed XML ({e})")
     if not _depth_ok(root, list):

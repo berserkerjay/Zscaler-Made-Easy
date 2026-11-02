@@ -41,6 +41,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import safe_files
+import store_crypto
 
 try:  # POSIX
     import fcntl  # type: ignore
@@ -58,6 +59,10 @@ KINDS = {
     "pack_deploy": "Deploy policy packs",
     "pack_removal": "Remove selected rules",
     "fix_recipe": "Fix recipe",
+    # A Bulk changes plan (admin_ops) filed by a scheduled sync job (sync_jobs):
+    # applied through admin_ops.execute, which plans again and refuses a
+    # different plan_hash (the request is then marked stale).
+    "admin_operation": "Bulk change plan",
 }
 STATUSES = ("pending", "approved", "rejected", "applied", "failed", "stale", "withdrawn")
 OPEN_STATUSES = ("pending", "approved")
@@ -79,8 +84,20 @@ class QueueError(ValueError):
 
 
 # ── settings ────────────────────────────────────────────────────────────
+def _team_on() -> bool:
+    try:
+        import team_server
+        return team_server.enabled()
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def four_eyes_required() -> bool:
-    """True unless DLP_CHECK_FOUR_EYES is 0/false/no/off."""
+    """True unless DLP_CHECK_FOUR_EYES is 0/false/no/off. Always true on a
+    team server: there everyone is a named person, so the setting cannot
+    turn the second pair of eyes off."""
+    if _team_on():
+        return True
     return os.environ.get("DLP_CHECK_FOUR_EYES", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
@@ -96,6 +113,11 @@ def settings() -> Dict[str, Any]:
     req = four_eyes_required()
     raw = os.environ.get("DLP_CHECK_FOUR_EYES")
     note = ""
+    if _team_on():
+        return {"four_eyes": True, "setting": "ZSCALER_TEAM_MODE", "value": "team server: always on", "sso": True, "team": True,
+                "note": "Team server: the person who approves must be another signed-in person than the one who asked, with the "
+                        "approve right on the request's tenant profile; DLP_CHECK_FOUR_EYES cannot turn this off.",
+                "confirm_phrase": CONFIRM_PHRASE}
     if req and not sso_on:
         note = ("Four-eyes approval needs SSO: without it everyone using this server is the same \"local UI token\", so "
                 "nobody can approve a request they filed. Turn on SSO (ZSCALER_SSO_ENABLED) so each person signs in, or set "
@@ -169,7 +191,7 @@ def _locked() -> Iterator[None]:
 def _read() -> Dict[str, Any]:
     try:
         with open(store_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = store_crypto.load_json(f)
         if isinstance(data, dict) and isinstance(data.get("requests"), dict):
             return data
     except (OSError, ValueError):
@@ -185,7 +207,7 @@ def _write(data: Dict[str, Any]) -> None:
     fd, tmp = tempfile.mkstemp(prefix=".change_requests.", suffix=".tmp", dir=folder)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=1)
+            store_crypto.dump_json(data, f, indent=1)
             f.flush()
             os.fsync(f.fileno())
         try:
@@ -276,8 +298,8 @@ def recipe_plan_hash(check_id: str, plan: Dict[str, Any]) -> str:
     """The hash of a fix recipe's planned call: method, endpoint and body.
     A recipe preview does not read the tenant, so this only changes when
     the recipe or the parameters change."""
-    core = {"check_id": str(check_id), "method": plan.get("method"), "endpoint": plan.get("endpoint"), "body": plan.get("body")}
-    return hashlib.sha256(json.dumps(core, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    import remediation
+    return remediation.plan_hash(check_id, plan)   # one formula: the direct apply checks the same hash
 
 
 # ── filing ──────────────────────────────────────────────────────────────
@@ -300,6 +322,12 @@ def file_request(*, kind: str, tenant: str, tenant_label: str, title: str, summa
         "requested_by": str(requested_by), "requested_at": now, "updated_at": now, "status": "pending",
         "comments": [], "history": [],
     }
+    if _team_on():
+        # A team server names the tenant profile the request was filed for, so
+        # only people with a right on that profile see, approve or apply it.
+        import team_server
+        if team_server.current_profile():
+            rec["profile_id"] = team_server.current_profile()
     first = _clean_text(note)
     if first:
         rec["comments"].append({"at": now, "by": rec["requested_by"], "text": first})
@@ -356,6 +384,13 @@ def decide(rid: str, decision: str, *, by: str, comment: str = "") -> Dict[str, 
     def fn(rec: Dict[str, Any]) -> None:
         if rec.get("status") != "pending":
             raise QueueError(f"only a pending request can be {decision}d; this one is {rec.get('status')}")
+        if _team_on():
+            # Checked by the access rule already (approve on the request's
+            # tenant profile); again here, where the decision is made.
+            import team_server
+            profs = team_server.record_profiles(rec)
+            if team_server.context() is not None and not any(team_server.may("approve", p) for p in profs):
+                raise QueueError(f"{by} may not approve or reject requests for this tenant profile on this team server.", 403)
         if decision == "approve" and four_eyes_required() and _is_local_identity(by):
             # Without SSO every caller is a local identity (with or without the
             # UI token, or the app itself): none of them is a second person.
@@ -432,6 +467,22 @@ def withdraw(rid: str, *, by: str, comment: str = "") -> Dict[str, Any]:
 
     rec = _mutate(rid, fn)
     _audit("withdrawn", rec, by)
+    return rec
+
+
+def supersede(rid: str, *, by: str, reason: str) -> Optional[Dict[str, Any]]:
+    """Mark an open request stale because a newer plan replaces it (a sync
+    job planned the same target again). Never one being applied."""
+    def fn(rec: Dict[str, Any]) -> None:
+        if rec.get("status") not in OPEN_STATUSES or rec.get("applying"):
+            raise QueueError(f"this request is {rec.get('status')} and cannot be superseded")
+        rec["status"] = "stale"
+        _history(rec, "superseded", by or "app", note=_clean_text(reason, 300))
+    try:
+        rec = _mutate(rid, fn)
+    except QueueError:
+        return None
+    _audit("superseded", rec, by, reason=_clean_text(reason, 300))
     return rec
 
 

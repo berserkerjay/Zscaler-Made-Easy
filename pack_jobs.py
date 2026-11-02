@@ -254,9 +254,17 @@ def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None,
                 job.cancel.set()
                 job.log(STOPPED_BEFORE_START)
 
+    # Team mode (team_server): the job is the starter's, bound to the tenant
+    # profile the request named, and runs with the request's team context so
+    # what it stores (a report, a filtered audit read) is bound the same way.
+    import team_server
+    team_server.bind(job.id)
+    team_ctx = team_server.capture()
+
     def _run() -> None:
         final = FAILED
         _here.job = job
+        team_token = team_server.restore(team_ctx) if team_ctx else None
         try:
             result = fn(job.log, job.cancel)
             with job.lock:
@@ -273,6 +281,8 @@ def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None,
             job.log(f"The run stopped with an error: {job.error}")
         finally:
             _here.job = None
+            if team_token is not None:
+                team_server.reset(team_token)
             with job.lock:
                 first = not job.ending
                 job.ending = True
@@ -356,7 +366,7 @@ def cancel(job_id: str) -> bool:
     if job is None or job.status != RUNNING:
         return False
     job.cancel.set()
-    if job.kind in ("path", "fleet", "shadow", "browser"):   # a read-only analysis: there is no write, activation or read-back
+    if job.kind in ("path", "fleet", "shadow", "browser", "other"):   # a read-only analysis: there is no write, activation or read-back
         job.log("Stop requested: nothing more is read from the tenant, also while waiting for ZIA's rate limit; the analysis ends as stopped with no partial result.")
     elif job.kind == "insights":   # read-only traffic numbers: nothing is written
         job.log("Stop requested: the Insights query in flight finishes, nothing more is asked; the run ends as stopped with no partial result.")
@@ -364,7 +374,8 @@ def cancel(job_id: str) -> bool:
         job.log("Stop requested: nothing more is read from the tenant; the ZPA analysis ends as stopped with no partial result.")
     elif job.kind == "export":   # read-only: nothing is written or activated
         job.log("Stop requested: the read in flight finishes, nothing more is read and no pack is produced.")
-    elif job.kind in ("policy_export", "urls_export", "category_analyzer", "locations_export", "client_connector_export"):   # read-only exports (the URL lookup changes nothing)
+    elif job.kind in ("policy_export", "urls_export", "category_analyzer", "locations_export", "client_connector_export",
+                      "tenant_terraform"):   # read-only exports (the URL lookup changes nothing)
         job.log("Stop requested: nothing more is read from the tenant, also while waiting between lookups or for ZIA's rate limit; no file is produced.")
     elif job.kind in ("ops_objects", "ops_preview"):   # Bulk changes reads: nothing is written or activated
         job.log("Stop requested: the read in flight finishes, nothing more is read and nothing is written.")

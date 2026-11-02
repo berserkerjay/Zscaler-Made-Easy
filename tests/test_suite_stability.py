@@ -122,7 +122,7 @@ def test_the_running_suite_has_only_its_own_app_settings():
     # The Zscaler SDK itself writes ZSCALER_SDK_LOG (and _VERBOSE when logging
     # is on) each time a client is built (zscaler/config/config_setter.py); the
     # app always builds it with logging off, so a later test sees "false".
-    baseline = set(conftest.STORE_ENV) | {"ZSCALER_UI_AUTH", "DLP_CHECK_SELF_HEAL_MINUTES", "ZSCALER_SDK_LOG"}
+    baseline = set(conftest.STORE_ENV) | {"ZSCALER_UI_AUTH", "DLP_CHECK_SELF_HEAL_MINUTES", "DLP_CHECK_BACKUP_SCHEDULE_MINUTES", "ZSCALER_SDK_LOG"}
     assert os.environ.get("ZSCALER_SDK_LOG", "false") == "false" and "ZSCALER_SDK_VERBOSE" not in os.environ
     stray = sorted(k for k in os.environ
                    if (k.startswith(conftest.APP_ENV_PREFIXES) or k in conftest.APP_ENV_NAMES) and k not in baseline

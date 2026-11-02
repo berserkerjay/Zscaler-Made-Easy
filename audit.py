@@ -3,7 +3,9 @@
 Every non-GET request to /api/* is appended to audit.log (JSON lines,
 owner-only, git-ignored; path in DLP_CHECK_AUDIT) with the time, method,
 path, status, duration, caller address, who made the call (`actor`: the
-signed-in email under SSO, otherwise "local UI token"), whether write
+signed-in email under SSO, the account's user name on a team server,
+otherwise "local UI token"; on a team server also the tenant `profile` the
+request named), whether write
 mode was on, and a redacted view of the request body (keys that look like secrets or tokens
 are dropped, long values truncated; for a classic-API sign-in the admin
 login and any vanity domain sent with it are dropped too, user rule 3). Write-mode toggles and updates go
@@ -26,6 +28,7 @@ import sys
 import threading
 import time
 from typing import Any, Dict, Optional
+import store_crypto
 
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 _LOCK = threading.Lock()
@@ -146,12 +149,27 @@ def _is_classic(d: Dict[str, Any]) -> bool:
 
 
 def _actor() -> str:
-    """Who the request being handled is from (security.current_actor)."""
+    """Who the request being handled is from (security.current_actor). On a
+    team server, a background job a person started is theirs too: its
+    entries name them (the job carries their team context, team_server)."""
     try:
         import security
-        return security.current_actor()
+        who = security.current_actor()
+        if who == security.NO_REQUEST_ACTOR:
+            team = _team_ctx()
+            if team and team.get("username"):
+                return str(team["username"])
+        return who
     except Exception:  # noqa: BLE001
         return "unknown"
+
+
+def _team_ctx() -> Optional[Dict[str, Any]]:
+    try:
+        import team_server
+        return team_server.context() if team_server.enabled() else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def report_failure(what: str, error: Any) -> None:
@@ -172,9 +190,15 @@ def record(event: str, **fields: Any) -> Optional[str]:
     could not be written (never raises; auditing must not break a call,
     but the failure is reported on stderr)."""
     entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": event, "actor": fields.pop("actor", None) or _actor()}
+    # On a team server every entry made for a request that named a tenant
+    # profile says which, so a person sees only the entries of the tenant
+    # profiles they may read (team_server.filter_audit_entries).
+    team = _team_ctx()
+    if team and team.get("profile") and "profile" not in fields:
+        entry["profile"] = str(team["profile"])[:64]
     secrets = tuple(_secret_values(fields))
     entry.update({k: redact(v, 0, secrets) for k, v in fields.items()})
-    line = json.dumps(entry, default=str, separators=(",", ":")) + "\n"
+    line = store_crypto.seal_text(json.dumps(entry, default=str, separators=(",", ":"))) + "\n"
     p = path()
     try:
         with _LOCK:
@@ -241,8 +265,8 @@ def tail(n: int = 200) -> list:
     out = []
     for ln in lines:
         try:
-            out.append(json.loads(ln))
-        except ValueError:
+            out.append(json.loads(store_crypto.open_text(ln.rstrip("\n"))))
+        except (ValueError, store_crypto.StoreLocked):
             continue
     return out
 

@@ -366,6 +366,9 @@ class _FakeRaw:
     def __init__(self):
         self.sent = []
 
+    def get(self, endpoint):
+        return [], 200   # the rule policy re-read before the create: no rule of that name yet
+
     def post(self, endpoint, body):
         self.sent.append(("POST", endpoint, body))
         return {"id": 42}, 200

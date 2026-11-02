@@ -219,6 +219,10 @@ AIGUARD = page(["aiguard"])                                  # AI Guard only
 AUTOMATION = page(["automation"])
 ZDX = page(["zdx"])
 ZTW = page(["ztw"])
+ZTB = page(["ztb"])                                          # Other products: Zero Trust Branch only
+ZMS = page(["zms"])                                          # Other products: Microsegmentation only
+ZWA = page(["dlp"], workflow_automation="zscaler")           # DLP ticked, Workflow Automation on Zscaler (incident drill-down, audit log)
+ZIDENTITY = page(["zidentity"])
 
 # What each partial selection leaves out: a read naming any of these is out of scope.
 OTHER_DLP = ("endpoint_dlp_rules", "outbound_email_dlp_rules", "casb_dlp_rules", "saas_security_api", "casb_tenant",
@@ -237,6 +241,11 @@ ZDX_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "zidentity
 AIG_ZIA_OUT = tuple(x for x in ZIA_OUT if x != "aiguard.")   # ZIA platform and AI Guard both ticked
 AIGUARD_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
 ZTW_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
+OTHER_OUT = ("zia.", "/zia/", "zpa.", "/zpa/", "zcc.", "/zcc/", "zins.", "zwa.", "zdx.", "zidentity.")
+ZTB_OUT = OTHER_OUT + ("/easm/", "/bi/", "/zcell/", "/zms/")
+ZMS_OUT = OTHER_OUT + ("/ztb/", "/easm/", "/bi/", "/zcell/")
+ZWA_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "aiguard.", "get_incident_evidence", "get_incident_transactions")
+ZIDENTITY_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zdx.", "/zdx/", "zins.", "zwa.")
 AUTOMATION_OUT = ("zia.", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "/zia/webDlpRules", "/zia/urlFilteringRules")
 
 
@@ -262,12 +271,39 @@ def _recorded_operation(sel: Dict[str, Any]) -> Dict[str, Any]:
     return dict(CREDS, **sel)
 
 
+def _kept_fix(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A Fix selected hand-off kept under a known id, so Prove it can test its rows again."""
+    import time as _time
+    import bulk_test
+    with bulk_test._FIX_LOCK:
+        bulk_test._FIXES["f" * 24] = {"id": "f" * 24, "urls": [], "excluded": [], "over_limit": 0, "purpose": "block", "created": _time.time(),
+                                      "tenant_label": "acme", "fixes": [], "rows_before": {"1": {"target": "example.com", "expected": "BLOCK"}},
+                                      "retest_text": "destination,expected\nexample.com,block\n", "retest_rows": [1], "network": "off",
+                                      "platform": "windows", "note": ""}
+    return dict(CREDS, **sel)
+
+
 def _opened_snapshot(sel: Dict[str, Any]) -> Dict[str, Any]:
     """A snapshot opened from a file, to compare with the live tenant (offline_tenant)."""
     import offline_tenant
     doc = offline_tenant.build_snapshot({"/zia/api/v1/webDlpRules": {"status": 200, "body": []}}, {"tenant_label": "acme (production)"})
     st = offline_tenant.open_document(offline_tenant.dumps(doc))
     return dict(CREDS, snapshot_id=st.id, **sel)
+
+
+def _cache_profile(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A saved profile the configuration cache belongs to; the page's selection is sent."""
+    import tenant_profiles
+    pid = tenant_profiles.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": CREDS["client_id"]})["id"]
+    return dict(CREDS, profile_id=pid, **sel)
+
+
+def _saved_backup(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A saved configuration backup of ZIA, ZPA and Client Connector, to compare with the live tenant."""
+    import config_backup
+    doc = config_backup.build_doc({"zia.rule_labels": [], "zpa.segment_groups": [], "zcc.trusted_networks": []},
+                                  {"tenant_label": "acme (production)", "products": ["zia", "zpa", "zcc"]})
+    return dict(CREDS, backup_id=config_backup.save_backup(doc)["id"], **sel)
 
 
 def _pov_for(sel: Dict[str, Any]) -> Dict[str, Any]:
@@ -280,6 +316,15 @@ def _pov_for(sel: Dict[str, Any]) -> Dict[str, Any]:
     return dict(CREDS, profile_id=pid, **sel)
 
 
+def _device_lookup(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A kept device lookup (path_device) for this tenant, so one device's details can be asked for."""
+    import tenant_auth
+    creds = srv._tenant_creds(types.SimpleNamespace(**CREDS))
+    rid = srv._remember_report("pathdev", {"kind": "pathdev", "devices": [{"id": "d1", "udid": "U1", "user": "jane@acme.example"}]},
+                               tenant_auth.record_label(creds))
+    return dict(CREDS, ref=rid, device_id="d1", **sel)
+
+
 class Route:
     """One tenant-reading route: its body, the partial selection that puts
     only part of what it reads in scope and what that selection leaves out,
@@ -287,8 +332,12 @@ class Route:
 
     def __init__(self, path: str, body: Optional[Dict[str, Any]] = None, *, partial: Optional[Dict[str, Any]] = WEB,
                  out: tuple = WEB_OUT, nothing: int = 400, setup: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
-                 why: str = "") -> None:
+                 why: str = "", ok: int = 200, write_mode: bool = False) -> None:
         self.path, self.body, self.partial, self.out, self.nothing, self.setup, self.why = path, body or {}, partial, out, nothing, setup, why
+        # The answer once the part in scope is read (the OTP route's fake device list has no such device: 404 after the read).
+        self.ok = ok
+        # A sensitive read that also needs write mode (the OTP route, wave 9): on for the cases that read the part in scope.
+        self.write_mode = write_mode
 
     def request(self, sel: Dict[str, Any]) -> Dict[str, Any]:
         if self.setup is not None:
@@ -313,6 +362,7 @@ ROUTES: List[Route] = [
     # Job starts and their waited-for twins
     Route("/api/dlp-packs/removal/inventory"),
     Route("/api/dlp-packs/export/start", {"pack_name": "qa"}),
+    Route("/api/tenant-terraform/start", {"products": ["zia"]}),
     Route("/api/dlp-packs/inventory/start"),
     Route("/api/shadow-rules/start"),
     Route("/api/shadow-rules"),
@@ -324,7 +374,15 @@ ROUTES: List[Route] = [
     Route("/api/path-analyzer", dict(DEST, source="workload", workload={"ip": "10.0.0.5"}), partial=ZTW, out=ZTW_OUT),
     Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}),
     Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/category-lookup/start", {"text": "example.com\ncategory:Gambling"}),
+    Route("/api/category-lookup/start", {"text": "example.com"}, partial=ZIA, out=ZIA_OUT),
+    Route("/api/bulk-test/fix/" + "f" * 24 + "/prove/start", setup=_kept_fix),
     Route("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}, partial=ZIA, out=ZIA_OUT),
+    Route("/api/path-analyzer/zpa-identity", {"action": "idps"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/path-analyzer/zpa-identity", {"action": "user", "idp": "216196257331281111", "user": "jo@example.com"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/path-analyzer/devices", {"device_user": "jane"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/path-analyzer/devices/detail", setup=_device_lookup, partial=ZCC, out=ZCC_OUT),
+    Route("/api/path-analyzer/compare/start", DEST),
     Route("/api/report/data-flow"),
     Route("/api/report/ssl-flow"),
     Route("/api/report/bypass"),
@@ -366,7 +424,17 @@ ROUTES: List[Route] = [
     Route("/api/zpa/diagnose", {"destination": "app.example.com", "port": "443"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/device-posture/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/browser-security/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/ztw/start", partial=ZTW, out=ZTW_OUT),
     Route("/api/browser-security/start", partial=ZIA, out=ZIA_OUT),
+    Route("/api/other-products/start", partial=ZTB, out=ZTB_OUT),
+    Route("/api/other-products/start", {"customer_id": "72000000000000001"}, partial=ZMS, out=ZMS_OUT),
+    # Workflow Automation incidents in depth and AI Guard depth (never the evidence; synthetic prompts only)
+    Route("/api/zwa/incident", {"incident_id": "1-152-QA-1"}, partial=ZWA, out=ZWA_OUT),
+    Route("/api/zwa/audit-log", {"days": 7}, partial=ZWA, out=ZWA_OUT),
+    Route("/api/aiguard/inventory", partial=AIGUARD, out=AIGUARD_OUT),
+    # In scope it reads nothing through the tenant client: one synthetic prompt goes to AI Guard's legacy detection
+    # API, and only with AIGUARD_API_KEY set (tests/test_w8_zwa_aiguard.py); out of scope it is a 400 before sign-in.
+    Route("/api/aiguard/test-prompt", {"prompt_id": "clean"}, partial=None),
     Route("/api/ssl-coverage/start", partial=page(["dlp"], web_dlp="zscaler", ssl_inspection="zscaler"),
           out=OTHER_DLP + NOT_ZIA_PLATFORM + ("zpa.", "zcc.", "/zcc/", "zins.")),
     # Self-healing, the audit timeline, the fleet, bulk changes, the loop
@@ -376,6 +444,8 @@ ROUTES: List[Route] = [
     Route("/api/zcc/fleet/start", partial=ZCC, out=ZCC_OUT),
     Route("/api/readiness/start", partial=ZCC, out=ZCC_OUT),
     Route("/api/readiness/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/tenant-health/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/tenant-health/start", partial=ZIA, out=ZIA_OUT),
     Route("/api/operations/objects/start", {"family": "rules"}),
     Route("/api/operations/objects", {"family": "rules"}),
     Route("/api/operations/preview/start", RULE_STATE_WEB),
@@ -396,15 +466,54 @@ ROUTES: List[Route] = [
     Route("/api/operations/preview", {"operation": {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}},
           partial=ZCC, out=ZCC_OUT),
     Route("/api/zcc/install", {"app_profile_id": "21"}, partial=ZCC, out=ZCC_OUT),
+    # One device's one-time passwords (zcc_otp): a sensitive read, ZCC only.
+    Route("/api/zcc/otp", {"assessor": "QA tester", "user": "jdoe@acme.example", "device": "LT-1", "confirm_text": "SHOW OTP LT-1"},
+          partial=ZCC, out=ZCC_OUT, ok=404, write_mode=True),
+    # ZDX cloud path and score analysis (zdx_insights); Client Connector device details and disable reasons (zcc_devices)
+    Route("/api/zdx/cloudpath", {"app_id": "3002", "host": "billing.example.com"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/zdx/analysis/status", {"analysis_id": "90001"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/zdx/analysis/start", {"app_id": "3002", "confirm": True, "confirm_text": "START ANALYSIS"}, partial=None),   # a write: refused before sign-in only
+    Route("/api/zdx/analysis/stop", {"analysis_id": "90001", "confirm": True}, partial=None),   # a write: refused before sign-in only
+    Route("/api/zcc/device-details", {"udid": "LKF-WIN-0001"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/zcc/disable-reasons", partial=ZCC, out=ZCC_OUT),
+    # ZIdentity group members (ops_zid) and Client Connector live changes (ops_zcc_live): plugin families on the same engine
+    Route("/api/operations/objects", {"family": "zid_groups"}, partial=ZIDENTITY, out=ZIDENTITY_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zid_group_members", "group": "g-33", "add": ["a@example.com"]}},
+          partial=ZIDENTITY, out=ZIDENTITY_OUT),
+    Route("/api/operations/objects", {"family": "zcc_app_profile_live"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/preview/start", {"operation": {"type": "zcc_app_profile_state", "targets": [{"id": "1", "platform": "windows", "to": "off"}]}},
+          partial=ZCC, out=ZCC_OUT),
     # The ZPA builder (ops_zpa): plugin types and their pick lists on the same routes
     Route("/api/operations/objects", {"family": "zpa_objects"}, partial=ZPA, out=ZPA_OUT),
+    # Day-to-day admin (ops_zpa_admin, ops_zcc_admin, ops_zdx_trace): the picker, previews, lookups and the deep trace follow
+    Route("/api/operations/objects", {"family": "zpa_admin"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zpa_infra_update", "targets": [{"kind": "connector", "id": "1", "set": {"enabled": False}}]}},
+          partial=ZPA, out=ZPA_OUT),
+    Route("/api/operations/objects", {"family": "zcc_admin"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/lookup", {"family": "zcc_admin", "what": "devices", "user": "jdoe@acme.com"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/zcc/domain-users.csv", {"domain": "acme.com", "personal_data_ok": True}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zcc_entitlements", "service": "zpa", "enable_for_all": False}}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/objects", {"family": "zdx_trace"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/lookup", {"family": "zdx_trace", "what": "devices", "user": "jdoe@acme.com"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/lookup", {"family": "zdx_trace", "what": "health", "device_id": "1"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/zdx/deeptrace/follow/start", {"device_id": "1", "trace_id": "2"}, partial=ZDX, out=ZDX_OUT),
     Route("/api/operations/preview/start", {"operation": {"type": "zpa_policies", "prefix": "pov1", "access": True}}, partial=ZPA, out=ZPA_OUT),
     Route("/api/operations/preview", {"operation": {"type": "zpa_prefix_delete", "prefix": "pov1", "everything": True}}, partial=ZPA, out=ZPA_OUT),
+    # The POV build (pov_build): each part's own scope rule, before sign-in
+    Route("/api/pov/build/preview", {"parts": {"zia_baseline": {"type": "zia_baseline", "tier": "balanced", "prefix": "QA", "areas": ["url"]}}},
+          setup=_pov_for, partial=None),
+    Route("/api/pov/build/preview/start", {"parts": {"zpa_connector_group": {"type": "zpa_connector_group", "prefix": "QA"}}},
+          setup=_pov_for, partial=None),
     # Snapshots (offline_tenant): saving one, and comparing one with the live tenant
     Route("/api/tenant-profiles/snapshots/save/start"),
     Route("/api/tenant-profiles/snapshots/save/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/tenant-profiles/snapshots/compare/start", setup=_opened_snapshot),
     Route("/api/tenant-profiles/snapshots/compare/start", setup=_opened_snapshot, partial=ZCC, out=ZCC_OUT),
+    # Configuration backups (config_backup): a backup, the per-profile cache, and a backup compared with the live tenant
+    Route("/api/config-backups/save/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/config-backups/save/start", partial=ZCC, out=ZCC_OUT),
+    Route("/api/config-cache/refresh/start", setup=_cache_profile, partial=ZPA, out=ZPA_OUT),
+    Route("/api/config-backups/diff-live/start", setup=_saved_backup, partial=ZPA, out=ZPA_OUT),
     Route("/api/digests/run", setup=_profile_from, nothing=200,
           why="by design: the loop reads saved profiles, and one with nothing in scope is reported 'not read' in the digest"),
 ]
@@ -435,23 +544,27 @@ PARTIAL = [r for r in ROUTES if r.partial is not None]
 
 
 @pytest.mark.parametrize("route", PARTIAL, ids=_ids)
-def test_part_in_scope_reads_only_that_part(tenant, route):
+def test_part_in_scope_reads_only_that_part(tenant, route, monkeypatch):
     """ASVS V4.1.3 · ASVS V1.4.4 · CWE-272 · CWE-201: part in scope -> a client is built and only the in-scope part is read."""
     # Arrange
+    if route.write_mode:
+        monkeypatch.setattr(srv, "writes_enabled", lambda: True)
     body = route.request(route.partial)
     # Act
     r = TestClient(srv.app).post(route.path, json=body)
     # Assert
-    assert r.status_code == 200, r.text[:400]
+    assert r.status_code == route.ok, r.text[:400]
     assert tenant.built and tenant.reads, "nothing was read: the partial selection proves nothing"
     leaked = sorted({x for x in tenant.reads if any(o in x for o in route.out)})
     assert not leaked, f"read out of scope: {leaked}"
 
 
 @pytest.mark.parametrize("route", [r for r in PARTIAL if r.setup is None], ids=_ids)
-def test_part_in_scope_of_a_saved_profile_reads_only_that_part(tenant, route):
+def test_part_in_scope_of_a_saved_profile_reads_only_that_part(tenant, route, monkeypatch):
     """ASVS V4.1.3 · CWE-272: with no Scope page selection sent, the saved profile's partial selection is honoured just as narrowly."""
     # Arrange: the page sends nothing; the chosen profile holds the partial selection.
+    if route.write_mode:
+        monkeypatch.setattr(srv, "writes_enabled", lambda: True)
     import tenant_profiles
     pid = tenant_profiles.upsert({"name": "Partial", "cloud": "production", "vanity_domain": "acme", "client_id": CREDS["client_id"],
                                   "scopes": route.partial["scopes"], "channels": route.partial["channels"]},
@@ -460,10 +573,116 @@ def test_part_in_scope_of_a_saved_profile_reads_only_that_part(tenant, route):
     # Act
     r = TestClient(srv.app).post(route.path, json=body)
     # Assert
-    assert r.status_code == 200, r.text[:400]
+    assert r.status_code == route.ok, r.text[:400]
     assert tenant.built and tenant.reads
     leaked = sorted({x for x in tenant.reads if any(o in x for o in route.out)})
     assert not leaked, f"read out of scope: {leaked}"
+
+
+# ── A saved profile's cloud is never replaced by a request model's default ──
+
+def _ten_profile(**extra: Any) -> str:
+    """A saved profile on a non-production cloud (zscalerten), with its secret remembered."""
+    import tenant_profiles
+    return tenant_profiles.upsert(dict({"name": "Ten", "cloud": "zscalerten", "vanity_domain": "acme", "client_id": CREDS["client_id"]}, **extra),
+                                  client_secret=CREDS["client_secret"], remember_secret=True)["id"]
+
+
+def _ten_pov(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """The zscalerten profile with a POV, for Prove it."""
+    import pov
+    pid = _ten_profile(scopes=WEB["scopes"], channels=WEB["channels"])
+    pov.create(pid, None, {"customer": "Acme", "vertical": "general"}, by="qa")
+    return {"profile_id": pid}
+
+
+PROFILE_ONLY = [
+    Route("/api/path-analyzer/start", DEST),
+    Route("/api/path-analyzer", DEST),
+    Route("/api/report/data-flow"),
+    Route("/api/migrate/status"),
+    Route("/api/flow/scenario", {"scenario_id": "web_upload", "destination": "example.com"}),
+    Route("/api/remediation/execute", {"check_id": "DLP-01", "dry_run": True}),
+    Route("/api/pov/prove/start", {"test_id": "url-block"}, setup=_ten_pov),
+    # Newer routes on the TenantCredsRequest family (their cloud was always blank): kept that way.
+    Route("/api/readiness/start"),
+    Route("/api/tenant-profiles/snapshots/save/start"),
+    Route("/api/operations/objects", {"family": "rules"}),
+    Route("/api/path-analyzer/batch/start", {"har_hosts": ["example.com"]}),
+]
+
+
+@pytest.mark.parametrize("route", PROFILE_ONLY, ids=_ids)
+def test_a_profile_only_request_signs_in_on_the_profiles_cloud(tenant, monkeypatch, route):
+    """ASVS V4.2.1 · CWE-639: a body naming only a saved profile on another cloud signs in on that cloud, never the request model's default (regression: production was used)."""
+    # Arrange: a profile on zscalerten; the page (report_path.html's credBody) sends only its id.
+    body = route.request({}) if route.setup else dict(route.body, profile_id=_ten_profile(scopes=WEB["scopes"], channels=WEB["channels"]))
+    clouds: List[str] = []
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda c: clouds.append(c["cloud"]) or FakeSdk(tenant))
+    monkeypatch.setattr(srv, "_raw_client", lambda c: clouds.append(c["cloud"]) or FakeRaw(tenant))
+    # Act
+    r = TestClient(srv.app).post(route.path, json=body)
+    # Assert
+    assert r.status_code == 200, r.text[:400]
+    assert clouds and set(clouds) == {"zscalerten"}, clouds
+
+
+# Every request model that signs in with a saved profile, and what its typed
+# sign-in with no cloud resolved to before the fix (kept identical).
+CRED_MODELS = {"MigrateRequest": "production", "PathAnalyzerRequest": "production", "PovProveRequest": "production",
+               "AssessRequest": "production", "RemediationExecuteRequest": "production",
+               "TenantCredsRequest": "", "ScopedTenantCredsRequest": "", "OperationRequest": "", "ReadinessRequest": "", "PovRequest": ""}
+
+
+@pytest.mark.parametrize("model", list(CRED_MODELS))
+def test_a_rebuilt_profile_only_request_keeps_the_profiles_cloud(tenant, model):
+    """ASVS V4.2.1 · CWE-639: boundary: a request rebuilt from every field (cloud now counts as sent) still takes the profile's cloud; nothing named still falls back to production."""
+    # Arrange
+    import tenant_auth
+    M = getattr(srv, model)
+    pid = _ten_profile()
+    rebuilt = M(**M(profile_id=pid).model_dump())
+    copied = M(profile_id=pid).model_copy()
+    # Act
+    creds, copy_creds = srv._tenant_creds(rebuilt), srv._tenant_creds(copied)
+    typed = srv._tenant_creds(M(**CREDS))
+    # Assert
+    assert creds["cloud"] == copy_creds["cloud"] == "zscalerten" and tenant_auth.record_label(creds) == "acme (zscalerten)"
+    assert typed["cloud"] == CRED_MODELS[model] and srv._validate_creds(typed)["cloud"] == "production"
+
+
+def test_no_request_model_that_takes_a_profile_defaults_its_cloud():
+    """ASVS V4.2.1 · CWE-1188 · CWE-639: guard: every request model with a profile_id leaves its cloud blank by default, so a saved profile's cloud is never overridden by a default."""
+    # Arrange
+    from pydantic import BaseModel
+    models = [m for m in vars(srv).values() if isinstance(m, type) and issubclass(m, BaseModel) and m is not BaseModel
+              and "cloud" in m.model_fields]
+    # Act
+    defaulted = sorted(m.__name__ for m in models if m.model_fields["cloud"].default and "profile_id" in m.model_fields)
+    # Assert
+    assert len(models) >= len(CRED_MODELS) and not defaulted, defaulted
+
+
+def test_the_assessment_report_names_the_profiles_cloud(tenant, monkeypatch):
+    """ASVS V4.2.1 · CWE-639 · CWE-684: a profile-only assessment on another cloud signs in there and its report names that cloud, not the request model's default."""
+    # Arrange
+    import security
+    from test_assess_stream import _events
+    pid = _ten_profile()
+    clouds: List[str] = []
+    monkeypatch.setattr(srv, "_raw_client", lambda c: clouds.append(c["cloud"]) or FakeRaw(tenant))
+    monkeypatch.setattr(srv, "_journey_packs", lambda ids: [])
+    monkeypatch.setattr(srv, "CHECK_TIMEOUT", 20)
+    c = TestClient(srv.app)
+    c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
+    # Act
+    with c.stream("POST", "/api/assess", json=dict(WEB, profile_id=pid)) as r:
+        assert r.status_code == 200, r.read()[:300]
+        ev = _events(r)
+    # Assert
+    complete = next(d for k, d in ev if k == "complete")
+    assert set(clouds) == {"zscalerten"}, clouds
+    assert complete["metadata"]["cloud"] == "zscalerten", complete["metadata"]
 
 
 # ── Negative and boundary cases ────────────────────────────────────────
@@ -525,6 +744,11 @@ FACTORIES = {"_build_sdk_client", "_build_client", "_raw_client"}
 # Routes that reach a client factory but are not the scope rule's to gate,
 # each with why (CISA Secure by Design: every exception is written down).
 EXEMPT: Dict[str, str] = {
+    "POST /api/rule-csv/export": ("reads one policy the operator picked, refused before sign-in unless that policy is in scope "
+                                  "(_ops_scope: test_rule_csv.py::test_export_needs_the_policy_in_scope_before_sign_in)"),
+    "POST /api/sync-jobs/{jid}/run": ("reads each profile only for what its saved Scope page selection puts in scope (a target without the "
+                                      "policy is never signed in to: test_sync_jobs.py); the job's groups were checked against the Scope page "
+                                      "when it was saved"),
     "POST /api/tenant/check": "sign-in test only: lists and counts nothing (tenant_check docstring)",
     "POST /api/remediation/execute": ("one remediation of a check the operator picked: a live fix is refused before sign-in unless its rule policy is "
                                       "in scope (test_c6_admin_ops.py); a dry run plans without reading"),
@@ -552,6 +776,9 @@ EXEMPT: Dict[str, str] = {
     "POST /api/proposals/{tenant}/{pid}/rollback": "a write: rolls an applied proposal back",
     "POST /api/operations/apply": "a write: write mode, confirm and plan_hash first, then the same scope gate as the preview (_ops_apply_gate)",
     "POST /api/operations/apply/start": "a write: as /api/operations/apply",
+    "POST /api/pov/build/apply/start": "a write: writer, confirm, plan_hash, the assessor and write mode first, then each part's scope rule as in the preview",
+    "POST /api/pov/build/undo/apply/start": "a write: as /api/pov/build/apply/start, over the build's recorded Undos",
+    "POST /api/pov/build/undo/preview/start": "plans a recorded build's Undos: each part's scope rule (_pov_build_scope) runs before a client is built (tests/test_pov_build.py)",
     "ON_EVENT startup": "the continuous evaluation timer: the same run as POST /api/digests/run (in ROUTES)",
 }
 
@@ -587,7 +814,7 @@ def _route_reaches_a_client_factory() -> Dict[str, str]:
 
 
 def _table_key(path: str) -> str:
-    return "POST " + re.sub(r"/op-qa-1/", "/{op_id}/", path)
+    return "POST " + re.sub(r"/f{24}/", "/{fix_id}/", re.sub(r"/op-qa-1/", "/{op_id}/", path))
 
 
 def test_every_route_that_reaches_a_tenant_client_is_in_the_scope_table():

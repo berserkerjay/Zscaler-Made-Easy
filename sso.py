@@ -270,7 +270,9 @@ def verify_id_token(id_token: str, nonce: str) -> Dict[str, Any]:
     except jwt.PyJWTError:
         raise RuntimeError("The identity provider's ID token is not a signed JSON Web Token.") from None
     alg = header.get("alg")
-    if alg not in ID_TOKEN_ALGORITHMS:
+    import store_crypto
+    allowed = store_crypto.FIPS_ID_TOKEN_ALGORITHMS if store_crypto.fips_mode() else ID_TOKEN_ALGORITHMS
+    if alg not in allowed:
         raise RuntimeError(f"The ID token is signed with an algorithm this server does not accept ({str(alg)[:20]!r}): "
                            "only a public-key signature from the identity provider's key set is.")
     key = next((k for k in jwks() if isinstance(k, dict) and k.get("kid") == header.get("kid")), None)
@@ -370,22 +372,46 @@ def is_writer(session: Optional[Dict[str, Any]]) -> bool:
     return bool(wanted & mine)
 
 
+def _idle_of(s: Dict[str, Any]) -> float:
+    """A session's own idle limit (a team server session carries its own,
+    team_server.idle_seconds), else ZSCALER_SSO_IDLE_MINUTES."""
+    v = s.get("idle")
+    return float(v) if isinstance(v, (int, float)) and v > 0 else float(idle_seconds())
+
+
 def _sweep_sessions(now: float) -> None:
-    idle = idle_seconds()
-    for sid in [k for k, v in _SESSIONS.items() if now >= v["expires"] or now - v["last_seen"] > idle]:
+    for sid in [k for k, v in _SESSIONS.items() if now >= v["expires"] or now - v["last_seen"] > _idle_of(v)]:
         _SESSIONS.pop(sid, None)
 
 
-def create_session(claims: Dict[str, Any]) -> str:
-    """Start a session for a verified sign-in. Returns its random id (the cookie's only content)."""
+def create_session(claims: Dict[str, Any], *, team_user: Optional[str] = None, via: str = "oidc",
+                   groups: Optional[List[str]] = None, idle: Optional[int] = None, max_seconds: Optional[int] = None) -> str:
+    """Start a session for a verified sign-in. Returns its random id (the
+    cookie's only content). A team server session (team_server.start_session)
+    names its account (`team_user`), how it signed in (`via`: password or
+    oidc) and its own idle and absolute limits."""
     now = time.time()
     sid = secrets.token_urlsafe(32)
+    entry = {"sub": claims.get("sub"), "email": claims.get("email"), "email_verified": email_verified(claims),
+             "groups": list(groups) if groups is not None else claim_groups(claims),
+             "created": now, "last_seen": now,
+             "expires": now + min(SESSION_MAX_SECONDS, int(max_seconds or SESSION_MAX_SECONDS))}
+    if team_user:
+        entry.update(team_user=str(team_user), via=via, idle=int(idle or idle_seconds()))
     with _SESSIONS_LOCK:
         _sweep_sessions(now)
-        _SESSIONS[sid] = {"sub": claims.get("sub"), "email": claims.get("email"), "email_verified": email_verified(claims),
-                          "groups": claim_groups(claims),
-                          "created": now, "last_seen": now, "expires": now + SESSION_MAX_SECONDS}
+        _SESSIONS[sid] = entry
     return sid
+
+
+def end_sessions_for(team_user: str) -> int:
+    """End every session of one team server account (a password change, a
+    role change, a disabled or deleted account). Returns how many ended."""
+    with _SESSIONS_LOCK:
+        gone = [k for k, v in _SESSIONS.items() if team_user and v.get("team_user") == team_user]
+        for k in gone:
+            _SESSIONS.pop(k, None)
+    return len(gone)
 
 
 def get_session(sid: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -398,7 +424,7 @@ def get_session(sid: Optional[str]) -> Optional[Dict[str, Any]]:
         s = _SESSIONS.get(sid)
         if s is None:
             return None
-        if now >= s["expires"] or now - s["last_seen"] > idle_seconds():
+        if now >= s["expires"] or now - s["last_seen"] > _idle_of(s):
             _SESSIONS.pop(sid, None)
             return None
         s["last_seen"] = now

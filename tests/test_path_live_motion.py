@@ -27,7 +27,7 @@ from test_path_zpa_workloads import api, zpa_data, Sdk, CHANNELS  # noqa: F401 -
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="node is not installed")
-ZIA_ORDER = ["zte", "atp", "firewall", "dns", "cac", "url", "ssl", "sandbox", "ftc", "dlp"]
+ZIA_ORDER = ["zte", "atp", "firewall", "dns", "cac", "url", "ssl", "sandbox", "ftc", "dlp", "fwdctl"]
 
 
 def _model(res):
@@ -199,7 +199,7 @@ def test_before_any_result_the_reference_path_idles():
     # Act
     m = _model(None)
     # Assert
-    assert m["mode"] == "reference" and m["stop"] == -1 and len(m["nodes"]) == 15
+    assert m["mode"] == "reference" and m["stop"] == -1 and len(m["nodes"]) == 16
     assert _keys(m)[:5] == ["device", "zcc", "zpa", "pac", "zte"] and m["nodes"][-1]["key"] == "dest"
     assert all(n["tone"] == "idle" for n in m["nodes"]) and "reference path" in m["summary"][0]
 

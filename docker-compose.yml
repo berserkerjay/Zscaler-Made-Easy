@@ -7,7 +7,10 @@
 # settings (ZSCALER_SSO_ISSUER / _CLIENT_ID / _CLIENT_SECRET /
 # _REDIRECT_URL) in that .env file. It is required only if you publish
 # the container beyond this machine's loopback (DLP_CHECK_HOST_BIND);
-# see SECURITY.md.
+# see SECURITY.md. For a team, the supported way is a team server:
+# ZSCALER_TEAM_MODE=1 with HTTPS (ZSCALER_TLS=self-signed, or
+# ZSCALER_TLS_CERT/_KEY, or ZSCALER_TLS=acme) in .env; see INSTALL.md,
+# "Team server".
 #
 # Names: project, service and container are zscaler-made-easy; the image is
 # zscaler-made-easy:local; saved data is on the volume zscaler-made-easy-data,

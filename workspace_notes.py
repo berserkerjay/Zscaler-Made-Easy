@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
 import safe_files
+import store_crypto
 
 try:  # POSIX
     import fcntl  # type: ignore
@@ -136,7 +137,7 @@ def _read() -> Dict[str, Any]:
     buckets, buckets hold notes, notes are objects with list fields."""
     try:
         with open(store_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = store_crypto.load_json(f)
         if isinstance(data, dict) and isinstance(data.get("tenants"), dict):
             data["tenants"] = {t: _bucket_shape(b) for t, b in data["tenants"].items() if isinstance(t, str) and isinstance(b, dict)}
             return data
@@ -165,7 +166,7 @@ def _write(data: Dict[str, Any]) -> None:
     fd, tmp = tempfile.mkstemp(prefix=".workspace_notes.", suffix=".tmp", dir=folder)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=1)
+            store_crypto.dump_json(data, f, indent=1)
             f.flush()
             os.fsync(f.fileno())
         try:

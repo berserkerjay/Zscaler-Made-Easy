@@ -61,6 +61,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set,
 
 import pack_channels as pc
 import pack_ops as ops
+import admin_rank
+import rank_inherit as ri
 from dlp_importer import (resolve_template, engine_limit_problems, heal_predefined_names, norm_name,
     DICT_DESCRIPTION_MAX,
     ENGINE_DESCRIPTION_MAX,
@@ -417,6 +419,15 @@ def load_pack_file(configs: str, filename: str, pack_id: Any = "") -> List[Dict[
                 raise PackFileError(f"{where}: sub_rules must be a list of objects")
             for s in subs:
                 _check_fields(s, schema, where)
+    if filename == "dlp_policies.json":
+        # Device trust / user risk levels: ["ANY"] means every level and is
+        # expanded here, once, for deploy, removal, Terraform and the library
+        # alike; ANY mixed with levels, or an unknown level, is refused.
+        for x in data:
+            problem = pc.level_problem(x)
+            if problem:
+                raise PackFileError(f"{where}: rule '{str(x.get('name'))[:80]}': {problem}")
+        data = [pc.normalize_levels(x) for x in data]
     return data
 
 
@@ -430,7 +441,8 @@ _ITEMS = "items"       # a list of objects whose values are text (patterns, phra
 _IDS = "ids"           # a list of strings or integers (application ids)
 _POLICY_FIELDS = {"name": _TEXT, "engines": _TEXTS, "protocols": _TEXTS, "rank": _INT, "order": _INT, "action": (str, dict),
                   "state": _TEXT, "channel": _TEXT, "severity": _TEXT, "description": _TEXT, "parent_rule": _TEXT,
-                  "endpoint_application_groups": _TEXTS, "target_action": (str, dict)}
+                  "endpoint_application_groups": _TEXTS, "target_action": (str, dict), "device_trust_levels": _TEXTS,
+                  "user_risk_score_levels": _TEXTS}
 _PACK_FIELDS: Dict[str, Dict[str, Any]] = {
     "dlp_dictionaries.json": {"name": _TEXT, "patterns": _ITEMS, "phrases": _ITEMS, "proximity": _INT, "description": _TEXT,
                               "confidence_threshold": _TEXT, "custom_phrase_match_type": _TEXT, "dict_template_name": _TEXT,
@@ -744,6 +756,8 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
                 "name": str(_field(r, "name", default="") or "").strip(),
                 "order": int(_field(r, "order", default=0) or 0),
                 "rank": _field(r, "rank"),
+                # READ_ONLY when the rule's rank is above the API client's (rank_inherit.caller, assumed).
+                "access_control": _field(r, "access_control", "accessControl"),
                 "action": _field(r, "action"),
                 "state": _field(r, "state"),
                 # Content fields used for baseline drift detection.
@@ -1487,6 +1501,49 @@ def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], sa
     return out
 
 
+def _plan_ranks(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], setting: Dict[str, Any], use_rank_0: bool) -> List[Dict[str, Any]]:
+    """The admin rank each new top-level rule takes (rank_inherit.place),
+    kept on the item as `rank_plan`: {rank (shown), send (the rank written
+    over the pack's, or None to keep the payload's), order, why, warning}.
+
+    Web, Endpoint, Email DLP and the containment rules go in at order 1, so
+    with Admin Ranking on each takes the rank of the rule now at order 1 of
+    its policy (the rule it is placed above); SaaS Security API rules go last
+    of their type and take the rank of the rule just above them. Off or
+    unknown, the pack's rank (7 unless it says otherwise) is kept as before.
+    'Use rank 0' is the operator's explicit choice and always wins. Outbound
+    Email DLP rules carry no rank (SDK model) and sub-rules follow their parent."""
+    placements: List[Dict[str, Any]] = []
+    for item in policy_items.values():
+        d = item.get("definition") or {}
+        if item["status"] != CREATE or d.get("parent_rule"):
+            continue
+        channel = item.get("channel") or pc.channel_of(d)
+        if channel == pc.EMAIL:
+            continue
+        rules = _tenant_rules_for(tenant, channel)
+        if channel in (pc.SAAS, pc.CLOUD_APP):
+            want_type = str(d.get("saas_type") if channel == pc.SAAS else d.get("type") or "").upper()
+            rules = [r for r in rules if not want_type or str(r.get("type") or "").upper() in ("", want_type)]
+        asked = None if channel == pc.SAAS else 1
+        pack_rank = 0 if use_rank_0 else ri._int(d.get("rank", ri.LEGACY_RANK), ri.LEGACY_RANK)
+        if use_rank_0:
+            pl = {"rank": 0, "send": None, "order": asked, "asked_order": asked, "state": ri.state_of(setting), "assumed": False, "warning": "",
+                  "why": "'Use rank 0' is on: rank 0, as chosen (if ZIA refuses it for the API client's admin rank, rank 7 is tried)."}
+        else:
+            pl = ri.place(rules, asked, setting, name=item["name"])
+            if pl["state"] == ri.ON:
+                pl["send"] = pl["rank"]
+            else:
+                pl.update(rank=pack_rank, send=None)
+                if pack_rank != ri.LEGACY_RANK:
+                    pl["why"] = pl["why"].replace(f"rank {ri.LEGACY_RANK}", f"rank {pack_rank} (the pack's)", 1)
+        pl.update(name=item["name"], policy=pc.label(channel), channel=channel)
+        item["rank_plan"] = pl
+        placements.append(pl)
+    return placements
+
+
 def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], use_rank_0: bool) -> Tuple[List[Dict[str, Any]], List[str]]:
     impacts: List[Dict[str, Any]] = []
     blockers: List[str] = []
@@ -1608,7 +1665,8 @@ def _rate_detail(f: Dict[str, Any]) -> str:
     return "This run sends: " + "; ".join(parts) + ". " + zia_rate.history_text(f)
 
 
-def _plan_hash(pack_ids: Sequence[str], options: Dict[str, Any], items: Sequence[Dict[str, Any]], tenant: Dict[str, Any]) -> str:
+def _plan_hash(pack_ids: Sequence[str], options: Dict[str, Any], items: Sequence[Dict[str, Any]], tenant: Dict[str, Any],
+               ranks: Optional[Dict[str, Any]] = None) -> str:
     """Binds an approval to the plan the user saw: what each item will do
     and with what content (a pack file edited since the preflight changes
     it), and which objects the tenant held (an object replaced, renamed or
@@ -1634,6 +1692,8 @@ def _plan_hash(pack_ids: Sequence[str], options: Dict[str, Any], items: Sequence
             "casb_tenants": sorted(t["name"] for t in (tenant["channels"].get("casb_tenants") or [])),
         },
     }
+    if ranks:   # the admin rank each new rule takes: a rank that changed since the preview changes the plan
+        core["ranks"] = ranks
     return hashlib.sha256(_canonical(core).encode("utf-8")).hexdigest()
 
 
@@ -1651,6 +1711,9 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
         "extension": bool(d.get("extension")),
         "pruned": item.get("pruned") or [],
     }
+    if item.get("rank_plan"):
+        rp = item["rank_plan"]
+        out["rank_plan"] = {k: rp.get(k) for k in ("rank", "order", "asked_order", "why", "warning", "assumed", "state")}
     if item["kind"] == "dictionary":
         out["detail"] = {"type": "clone" if d.get("predefined_clone") else "custom",
                          "patterns": len(d.get("patterns") or []), "phrases": len(d.get("phrases") or []),
@@ -1771,12 +1834,13 @@ def preflight(
     read_scope: Optional[Dict[str, Any]] = None,
     log: LogFn = None,
     cancel: Optional[threading.Event] = None,
+    rank_scopes: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """preflight_plan, with the operator's Stop (`cancel`) honoured before
     every tenant read: once Stop is clicked nothing more is read and the
     plan comes back with status "stopped" (stopped_report)."""
     kw = dict(use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled, restore_drift=restore_drift,
-              channel_targets=channel_targets, tenant_cache=tenant_cache, read_scope=read_scope, log=log)
+              channel_targets=channel_targets, tenant_cache=tenant_cache, read_scope=read_scope, log=log, rank_scopes=rank_scopes)
     if cancel is None:
         return preflight_plan(client, packs, **kw)
     if cancel.is_set():
@@ -1801,8 +1865,14 @@ def preflight_plan(
     tenant_cache: Optional[Dict[str, Any]] = None,
     read_scope: Optional[Dict[str, Any]] = None,
     log: LogFn = None,
+    rank_scopes: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """Build the deployment plan for the selected packs without writing.
+
+    `rank_scopes` (the Scope page's ticked scopes) lets the plan read the
+    tenant's Admin Ranking setting when ZIA platform is among them, so each
+    new rule takes the admin rank it needs (_plan_ranks); None or without
+    ZIA platform it is not read and rules keep the pack's rank (7).
     `log` receives one line per tenant read (see fetch_tenant).
 
     `tenant_cache` (a dict the caller keeps across calls) makes several
@@ -1861,6 +1931,8 @@ def preflight_plan(
                "channel_targets": {k: sorted(v) for k, v in sorted(targets_norm.items())}}
 
     blockers: List[str] = []
+    rank_setting: Dict[str, Any] = {"state": ri.OUT_OF_SCOPE, "why": "", "source": ""}
+    placements: List[Dict[str, Any]] = []
     if not tenant["reachable"]:
         blockers.append("Could not read the tenant's current configuration, so overlaps and dependencies can't be checked: "
                         + "; ".join(tenant["errors"]))
@@ -1878,6 +1950,11 @@ def preflight_plan(
         _plan_policies(merged["policy"], merged["engine"], tenant, restore=restore_drift, app_group_items=merged["app_group"])
         tweak_items = _plan_tweaks(sources, tenant, apply_tweaks)
         impacts, impact_blockers = _impacts(merged["policy"], tenant, use_rank_0)
+        if any(i["status"] == CREATE and not (i.get("definition") or {}).get("parent_rule") for i in merged["policy"].values()):
+            if log and admin_rank.in_scope(rank_scopes or []):
+                log("Reading the tenant: whether admin ranking is on…")
+            rank_setting = ri.read_setting(client, rank_scopes or [])
+            placements = _plan_ranks(merged["policy"], tenant, rank_setting, use_rank_0)
         impacts = _baseline_impacts(list(merged["dictionary"].values()) + list(merged["engine"].values())
                                     + list(merged["app_group"].values()) + list(merged["policy"].values()), restore_drift) + impacts
         blockers.extend(impact_blockers)
@@ -1895,6 +1972,9 @@ def preflight_plan(
                     item["status"] = BLOCKED_DEPENDENCY
                     item["reason"] = "Tenant unreachable — cannot verify."
         tweak_items, impacts = [], []
+    if placements:
+        impacts.append({"type": "admin_rank", "title": "Admin rank of the new rules",
+                        "detail": " ".join(ri.notes(rank_setting)), "severity": "info"})
 
     all_items = (list(merged["dictionary"].values()) + list(merged["engine"].values())
                  + list(merged["app_group"].values()) + list(merged["policy"].values()) + tweak_items)
@@ -1941,6 +2021,7 @@ def preflight_plan(
     for imp in impacts:
         if imp.get("severity") == "warning":
             warnings.append(imp["title"])
+    warnings.extend(pl["warning"] for pl in placements if pl.get("warning"))
     for src in sources:
         note = src.get("channel_note") or {}
         for w in note.get("warnings") or []:
@@ -1994,7 +2075,10 @@ def preflight_plan(
         "will_create": creates,
         "will_restore": sum(1 for i in all_items if i["status"] == RESTORE),
         "will_skip": sum(1 for i in all_items if i["status"] in BLOCKING_STATUSES),
-        "plan_hash": _plan_hash([s["id"] for s in sources], options, all_items, tenant) if tenant["reachable"] else "",
+        "plan_hash": _plan_hash([s["id"] for s in sources], options, all_items, tenant,
+                                ranks={"state": ri.state_of(rank_setting), "rules": sorted([p["name"], p["rank"], p.get("order")] for p in placements)}
+                                if placements else None) if tenant["reachable"] else "",
+        "admin_ranking": ri.summary(rank_setting, placements) if placements else None,
         "elapsed_seconds": round(time.time() - started, 2),
         # Internal — stripped by the API layer, consumed by apply().
         "_internal": {"merged": merged, "tweaks": tweak_items, "tenant": tenant, "sources": sources},
@@ -2316,9 +2400,11 @@ def apply(
     settle_seconds: float = 45.0,
     cancel: Optional[threading.Event] = None,
     assessor: str = "",
+    rank_scopes: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """Execute a previously approved plan. `assessor` is the name the
-    provenance tag in each created object's description carries.
+    provenance tag in each created object's description carries;
+    `rank_scopes` is passed to the preflight (preflight_plan).
 
     The preflight is recomputed first; if its hash differs from
     `plan_hash` the tenant or selection changed after the user approved,
@@ -2344,20 +2430,21 @@ def apply(
         with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
             run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
                                    writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
-                                   activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor, cancel=cancel)
+                                   activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor, cancel=cancel,
+                                   rank_scopes=rank_scopes)
             return run["result"]
 
 
 def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_0: bool, apply_tweaks: bool, verify: bool,
            writes_enabled: Optional[bool], restore_drift: bool, channel_targets: Optional[Dict[str, Sequence[str]]],
            activate: bool, log: LogFn, settle_seconds: float, assessor: str = "",
-           cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+           cancel: Optional[threading.Event] = None, rank_scopes: Optional[Sequence[str]] = None) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     started = time.time()
     _log("Checking the approved plan against the tenant as it is now…")
     # Stop also ends this read: nothing more is read, and nothing is written.
     report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
-                       restore_drift=restore_drift, channel_targets=channel_targets, log=_log, cancel=cancel)
+                       restore_drift=restore_drift, channel_targets=channel_targets, log=_log, cancel=cancel, rank_scopes=rank_scopes)
     if report.get("status") == "stopped":
         return {"status": "stopped", "stopped": report["stopped"], "results": [], "report": public_report(report)}
     if writes_enabled is not True:
@@ -2612,6 +2699,12 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                 continue
         try:
             payload = pc.build_payload(channel, p, ids, resolved, use_rank_0=use_rank_0)
+            rank_plan = item.get("rank_plan") or {}
+            if parent_id is None and channel != pc.EMAIL and rank_plan.get("send") is not None:
+                # Admin Ranking is on: the rank of the rule it is placed above (_plan_ranks), not the pack's 7.
+                payload["rank"] = rank_plan["send"]
+                if channel != pc.SAAS and rank_plan.get("order"):
+                    payload["order"] = int(rank_plan["order"])
             if parent_id is not None:
                 payload["order"] = int(p.get("order") or 1)
             if item["status"] == RESTORE:
@@ -2638,7 +2731,8 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
             if out.ok and out.id is not None:
                 policy_ids[item["name"]] = out.id
                 record(item, "created", outcome=out, id=out.id, channel=channel,
-                       order=payload.get("order") if parent_id is None else None, parent_id=parent_id, rank_note=rank_note)
+                       order=payload.get("order") if parent_id is None else None, parent_id=parent_id, rank_note=rank_note,
+                       rank=payload.get("rank") if parent_id is None and channel != pc.EMAIL else None)
             elif parent_id is None and (twin := _twin_after_duplicate(zia, "policy", item["name"], out, channel)) is not None:
                 policy_ids[item["name"]] = twin
                 record(item, "reused", id=twin, channel=channel, reason=_DUPLICATE_REUSED)
@@ -2713,7 +2807,7 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
         _log("Reading the tenant back to verify the deployment…")
         try:
             again = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
-                              restore_drift=restore_drift, channel_targets=channel_targets, log=_log)
+                              restore_drift=restore_drift, channel_targets=channel_targets, log=_log, rank_scopes=rank_scopes)
             fresh = {(i["kind"], i["name"]): i for i in again.get("items", [])}
             tenant_now = again.get("tenant") or {}
             read_check["read"] = bool(tenant_now.get("reachable", True))
@@ -2725,6 +2819,7 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                     unread[f"{ch} rules"] = err
             list_of = {"dictionary": "dictionaries", "engine": "engines", "policy": "web DLP rules"}
             read_check["unreadable"] = {k: ops.describe_error(e) for k, e in unread.items()}
+            read_check["rank_mismatched"] = []
             for r in results:
                 if r.get("status") not in ("created", "restored", "modified", "reused") or r.get("kind") == "tweak":
                     continue
@@ -2732,6 +2827,14 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                 f = fresh.get((r["kind"], r["name"]))
                 if f is not None and f.get("status") not in (CREATE, BLOCKED_DEPENDENCY, CONFLICT, SKIP_EMPTY):
                     read_check["present"] += 1
+                    row = f.get("tenant") if isinstance(f.get("tenant"), dict) else None
+                    if r.get("status") == "created" and r.get("rank") is not None and row is not None:
+                        # The rank ZIA stored is the one sent; the order is shown (later rules of this run move it down).
+                        r["stored_order"], r["stored_rank"] = row.get("order"), row.get("rank")
+                        where = ri.stored({"rank": r["rank"]}, row)
+                        if where:
+                            r["stored"] = where
+                            read_check["rank_mismatched"].append({"name": r["name"], "channel": r.get("channel"), "detail": where})
                 else:
                     ch = r.get("channel")
                     key = f"{ch} rules" if (r["kind"] == "policy" and ch and ch != pc.WEB) else list_of.get(r["kind"])
@@ -2741,7 +2844,7 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                         reason = (f or {}).get("reason") or "not listed by the tenant"
                     read_check["missing"].append({"kind": r["kind"], "name": r["name"], "channel": ch, "reason": reason,
                                                   "unverified": key in unread})
-            read_check["clean"] = read_check["read"] and not read_check["missing"]
+            read_check["clean"] = read_check["read"] and not read_check["missing"] and not read_check["rank_mismatched"]
             unverified = [m for m in read_check["missing"] if m.get("unverified")]
             not_found = len(read_check["missing"]) - len(unverified)
             parts = []
@@ -2750,6 +2853,9 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
             if unverified:
                 parts.append(f"{len(unverified)} object(s) could not be verified — the tenant refused to be read: "
                              + "; ".join(f"{k} ({v})" for k, v in read_check["unreadable"].items()))
+            if read_check["rank_mismatched"]:
+                parts.append(f"{len(read_check['rank_mismatched'])} rule(s) stored with another admin rank than sent: "
+                             + "; ".join(f"{m['name']} ({m['detail']})" for m in read_check["rank_mismatched"][:5]))
             _log("Read-back: " + (f"all {read_check['present']} object(s) present." if read_check["clean"] else "; ".join(parts) + "."))
         except Exception as ex:  # noqa: BLE001
             read_check["error"] = str(ex)[:300]
@@ -2836,7 +2942,10 @@ def _verification_from_read_back(sources: Sequence[Dict[str, Any]], merged: Dict
                     ch = item.get("channel") or pc.channel_of(item["definition"])
                     slot = v["rules"].setdefault(ch, {"total": 0, "ok": 0, "missing": []})
                     slot["total"] += 1
-                    if present:
+                    if present and r.get("stored"):   # found, but ZIA stored another admin rank than sent
+                        slot.setdefault("rank_mismatched", []).append(f"{item['name']}: {r['stored']}")
+                        v["all_good"] = False
+                    elif present:
                         slot["ok"] += 1
                     else:
                         slot["missing"].append(item["name"])

@@ -23,6 +23,9 @@
       <a class="rp-btn" href="#formats">What the app accepts</a>
       <a class="rp-btn" href="#update">Update the app</a>
       <a class="rp-btn" href="#server">This server</a>
+      <a class="rp-btn" href="#m365">Microsoft 365 endpoint list</a>
+      <a class="rp-btn" href="#vendors">Other providers' lists</a>
+      <a class="rp-btn" href="#apicalls">API calls</a>
       <a class="rp-btn" href="#appearance">Appearance</a>
       <a class="rp-btn" href="#sbd">This app's Secure by Design score</a>
       <a class="rp-btn" href="#quality">Quality and security score</a>
@@ -45,6 +48,7 @@
             <thead><tr><th scope="col">Pack</th><th scope="col">Source</th><th scope="col">Dictionaries</th><th scope="col">Engines</th><th scope="col">Rules</th><th scope="col">Channels</th><th scope="col">Actions</th></tr></thead>
             <tbody><tr><td colspan="7" class="dim">Loading…</td></tr></tbody>
           </table></div>
+          <p class="adv-lead" id="advRetired"><strong>Retired: ZBP Endpoint DLP pack.</strong> The PCI-only Endpoint DLP pack (3 rules, 5 sub-rules, 1 application group) was retired on 11 September 2026 and is not in this list. Every pack here now carries its rules on Endpoint DLP too (see Channels), so it added no coverage: for card numbers on endpoints, deploy Global Banking or ZBP Enterprise. Remove rules from this tenant (in Deploy policy packs) still recognises the rules, engines and dictionaries the retired pack put in a tenant. Details: POLICY_PACKS.md, "Shipped policy packs".</p>
         </section>
 
         <section id="add" aria-labelledby="advAddH">
@@ -121,11 +125,81 @@
             <button type="button" class="rp-btn" id="advUpdCheck">Check again</button>
           </div>
           <div id="advUpdSteps" class="adv-update-steps" hidden></div>
+          <label class="adv-switch" for="advUpdNotify"><input type="checkbox" id="advUpdNotify" role="switch" aria-describedby="advUpdNotifyNote"><span>Tell me when a newer version is out (e-mail or webhook, once per version)</span></label>
+          <p class="adv-lead dim" id="advUpdNotifyNote" role="status" aria-live="polite"></p>
+          <h3 class="adv-qs-h" id="advLicH">Licence</h3>
+          <p class="adv-lead" id="advOpenSource"><strong>Open source.</strong> Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.</p>
+          <p class="adv-lead">The full licence is the LICENSE file in the app folder. NOTICE and THIRD_PARTY_NOTICES.md, beside it, list what the app is built with and each part's own licence.</p>
+        </section>
+
+        <section id="plugins" aria-labelledby="advPlugH">
+          <h2 class="df-h" id="advPlugH">Local plugins</h2>
+          <p class="adv-lead">Off by default. A local plugin is a Python package in the folder <code>DLP_CHECK_PLUGINS_DIR</code> names; it can add Bulk changes operations and read-only pages, which go through the same preview and the same four gates as everything else. It is code that runs inside this app with the app's privileges, so approve only a plugin whose code you have read: approval is for its exact SHA-256, and a plugin whose files change is refused until approved again. Approved plugins load when the app starts. SECURITY.md says what this costs.</p>
+          <label class="adv-switch" for="advPlugOn"><input type="checkbox" id="advPlugOn" role="switch" aria-describedby="advPlugNote"><span>Allow approved local plugins</span></label>
+          <p class="adv-lead dim" id="advPlugNote" role="status" aria-live="polite">Loading…</p>
+          <div class="tw"><table class="bp-table adv-table" id="advPlugins" aria-describedby="advPlugH">
+            <thead><tr><th scope="col">Plugin</th><th scope="col">Version</th><th scope="col">SHA-256</th><th scope="col">Asks for</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+            <tbody><tr><td colspan="6" class="dim">Loading…</td></tr></tbody></table></div>
         </section>
 
         <section id="server" aria-labelledby="advSrvH">
           <h2 class="df-h" id="advSrvH">This server</h2>
           <div class="tw"><table class="bp-table adv-table" id="advServer" aria-describedby="advSrvH"><tbody><tr><td class="dim">Loading…</td></tr></tbody></table></div>
+          <p class="adv-lead" id="advSignInNote">On a team server, people can sign in through your identity provider with SAML 2.0, and use a passkey after their password. An administrator sets both up in the Sign-in section of the Team server page.</p>
+        </section>
+
+        <section id="m365" aria-labelledby="advM365H">
+          <h2 class="df-h" id="advM365H">Microsoft 365 endpoint list</h2>
+          <p class="adv-lead">ZIA's Office 365 One Click rule names the app service group OFFICE365, and Zscaler's API never says which sites and addresses it holds. With Microsoft's published list of Microsoft 365 endpoints, the Path analyzer, Test a list and Shadowed rules can say whether a destination is in it, and why; without the list they say "unknown", as before. A list older than 30 days is not trusted until it is refreshed.</p>
+          <p class="adv-lead">Fetching contacts <code>endpoints.office.com</code> (Microsoft) over HTTPS and sends nothing about your tenant. It is off until you turn it on here; with it on, the app checks for a new version at most once a day when you analyze. On a machine without internet access, save <code>https://endpoints.office.com/endpoints/worldwide?clientrequestid=</code> followed by any GUID on another machine and import the file here.</p>
+          <div id="advM365Box" class="adv-sbd adv-m365-box" role="status" aria-live="polite"><span class="dim">Loading…</span></div>
+          <label class="adv-switch" for="advM365On"><input type="checkbox" id="advM365On" role="switch" aria-describedby="advM365Box"><span>Fetch Microsoft's list</span></label>
+          <div class="adv-actions">
+            <button type="button" class="rp-btn" id="advM365Fetch">Fetch now</button>
+            <button type="button" class="rp-btn danger" id="advM365Remove">Remove the list</button>
+          </div>
+          <div class="adv-m365-import">
+            <label class="adv-field" for="advM365File"><span>Import the list from a file</span><input type="file" id="advM365File" accept=".json,application/json"></label>
+            <label class="adv-field" for="advM365Ver"><span>Its version <small>(optional, ten digits)</small></span><input type="text" id="advM365Ver" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="2026100100"></label>
+            <div class="adv-actions"><button type="button" class="rp-btn" id="advM365Import">Import</button></div>
+          </div>
+        </section>
+
+        <section id="vendors" aria-labelledby="advVendH">
+          <h2 class="df-h" id="advVendH">Other providers' endpoint lists</h2>
+          <p class="adv-lead">ZIA's UCaaS One Click rule names app service groups such as ZOOM, WEBEX, RINGCENTRAL, GOTO and TALKDESK, and Zscaler's API never says which sites and addresses they hold. With the provider's own list, the Path analyzer and Test a list can say whether a destination is in the group; without it they say "unknown". A list older than 30 days is not trusted until it is fetched or imported again.</p>
+          <p class="adv-lead">Only Zoom publishes its list as a file. Fetching it contacts <code>assets.zoom.us</code> over HTTPS, sends nothing about your tenant, and happens only when you click Fetch now; it is off until you turn it on here. Webex, RingCentral, GoTo and Talkdesk publish theirs as web pages: copy the address ranges and host names into a text file, one per line, and import it.</p>
+          <div id="advVendBox" class="adv-sbd adv-m365-box" role="status" aria-live="polite"><span class="dim">Loading…</span></div>
+          <label class="adv-switch" for="advVendZoomOn"><input type="checkbox" id="advVendZoomOn" role="switch" aria-describedby="advVendBox"><span>Fetch Zoom's list</span></label>
+          <div class="adv-actions">
+            <button type="button" class="rp-btn" id="advVendFetch">Fetch Zoom's list now</button>
+          </div>
+          <div class="adv-m365-import">
+            <label class="adv-field" for="advVendProv"><span>Provider</span><select id="advVendProv"><option value="zoom">Zoom</option><option value="webex">Webex</option><option value="ringcentral">RingCentral</option><option value="goto">GoTo</option><option value="talkdesk">Talkdesk</option></select></label>
+            <label class="adv-field" for="advVendFile"><span>Import its list from a text file</span><input type="file" id="advVendFile" accept=".txt,.csv,text/plain"></label>
+            <div class="adv-actions">
+              <button type="button" class="rp-btn" id="advVendImport">Import</button>
+              <button type="button" class="rp-btn danger" id="advVendRemove">Remove this provider's list</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="apicalls" aria-labelledby="advApiH">
+          <h2 class="df-h" id="advApiH">API calls</h2>
+          <p class="adv-lead">Every call this app made to Zscaler's API since it started: when, which product, the method and the path (every id shown as {id}), the answer, how long it took, how often it was sent again and how long it waited for a rate limit. It never shows a request or answer body, a header, a token, a secret or a tenant name. It is kept in this server's memory only, holds the newest calls up to a limit, and is empty again after a restart. Reading it calls nothing.</p>
+          <div id="advApiBox" class="adv-sbd" role="status" aria-live="polite"><span class="dim">Loading…</span></div>
+          <div class="adv-actions adv-api-ctl">
+            <label class="df-ctl"><span class="lbl">Run</span><select id="advApiJob" aria-label="Show the API calls of one run"><option value="">Every call</option></select></label>
+            <label class="df-ctl"><span class="lbl">Product</span><select id="advApiProduct" aria-label="Show the API calls of one product"><option value="">Every product</option></select></label>
+            <label class="adv-switch" for="advApiFailed"><input type="checkbox" id="advApiFailed"><span>Only failed or retried</span></label>
+            <button type="button" class="rp-btn" id="advApiReload">Reload</button>
+            <a class="rp-btn" id="advApiCsv" href="/api/api-calls/export?format=csv" download>Export CSV</a>
+            <a class="rp-btn" id="advApiJson" href="/api/api-calls/export?format=json" download>Export JSON</a>
+          </div>
+          <div class="df-tablewrap" tabindex="0" role="region" aria-labelledby="advApiH"><table class="df-table" id="advApi" aria-labelledby="advApiH">
+            <thead><tr><th scope="col">Time</th><th scope="col">Product</th><th scope="col">Method</th><th scope="col">Path</th><th scope="col">Answer</th><th scope="col">Took</th><th scope="col">Sent again</th><th scope="col">Waited</th><th scope="col">Error</th><th scope="col">Run</th></tr></thead>
+            <tbody><tr><td colspan="10" class="dim">Loading…</td></tr></tbody>
+          </table></div>
         </section>
 
         <section id="appearance" aria-labelledby="advLookH">
@@ -205,6 +279,8 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/advanced.js"></script>
   <script src="/static/quality_score.js"></script>
+  <script src="/static/advanced_plugins.js"></script>
+  <script src="/static/api_calls.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
 </body>

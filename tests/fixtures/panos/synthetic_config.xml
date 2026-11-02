@@ -1,0 +1,141 @@
+<?xml version="1.0"?>
+<!-- A synthetic PAN-OS configuration written for the tests: made-up names,
+     documentation and private addresses only (RFC 5737, RFC 1918). -->
+<config version="10.2.0" urldb="paloaltonetworks">
+  <shared>
+    <address>
+      <entry name="dns-public"><ip-netmask>192.0.2.53/32</ip-netmask></entry>
+    </address>
+    <service>
+      <entry name="tcp-8443"><protocol><tcp><port>8443</port></tcp></protocol></entry>
+    </service>
+  </shared>
+  <devices>
+    <entry name="localhost.localdomain">
+      <vsys>
+        <entry name="vsys1">
+          <zone>
+            <entry name="trust"><network><layer3><member>ethernet1/2</member></layer3></network></entry>
+            <entry name="untrust"><network><layer3><member>ethernet1/1</member></layer3></network></entry>
+            <entry name="gp-users"><network><tunnel/></network></entry>
+            <entry name="dmz"><network><layer3><member>ethernet1/3</member></layer3></network></entry>
+          </zone>
+          <address>
+            <entry name="lan-users"><ip-netmask>10.10.0.0/16</ip-netmask></entry>
+            <entry name="lab-range"><ip-range>10.20.0.10-10.20.0.20</ip-range></entry>
+            <entry name="intranet"><fqdn>intranet.example.test</fqdn></entry>
+            <entry name="wiki"><fqdn>wiki.example.test</fqdn></entry>
+            <entry name="build-srv"><ip-netmask>10.30.1.15</ip-netmask></entry>
+            <entry name="partner-api"><ip-netmask>198.51.100.0/24</ip-netmask></entry>
+            <entry name="odd-mask"><ip-wildcard>10.0.0.1/0.0.255.0</ip-wildcard></entry>
+            <entry name="v6-host"><ip-netmask>2001:db8::10/128</ip-netmask></entry>
+          </address>
+          <address-group>
+            <entry name="internal-web"><static><member>intranet</member><member>wiki</member><member>build-srv</member></static></entry>
+            <entry name="tagged-servers"><dynamic><filter>'prod' and 'web'</filter></dynamic></entry>
+          </address-group>
+          <service>
+            <entry name="tcp-8080-8090"><protocol><tcp><port>8080-8090</port></tcp></protocol></entry>
+            <entry name="udp-syslog"><protocol><udp><port>514</port></udp></protocol></entry>
+            <entry name="sctp-sig"><protocol><sctp><port>2905</port></sctp></protocol></entry>
+          </service>
+          <service-group>
+            <entry name="web-alt"><members><member>tcp-8080-8090</member><member>tcp-8443</member></members></entry>
+          </service-group>
+          <application-group>
+            <entry name="remote-admin"><members><member>ssh</member><member>ms-rdp</member></members></entry>
+          </application-group>
+          <rulebase>
+            <security>
+              <rules>
+                <entry name="Allow-DNS-out">
+                  <from><member>trust</member></from><to><member>untrust</member></to>
+                  <source><member>lan-users</member></source><destination><member>dns-public</member></destination>
+                  <source-user><member>any</member></source-user><category><member>any</member></category>
+                  <application><member>dns</member></application><service><member>application-default</member></service>
+                  <action>allow</action>
+                </entry>
+                <entry name="Partner API alt ports">
+                  <from><member>trust</member></from><to><member>untrust</member></to>
+                  <source><member>lab-range</member><member>10.40.0.0/24</member></source><destination><member>partner-api</member></destination>
+                  <application><member>any</member></application><service><member>web-alt</member><member>udp-syslog</member></service>
+                  <action>reset-client</action><description>Partner integration</description>
+                  <profile-setting><group><member>default</member></group></profile-setting>
+                </entry>
+                <entry name="Block remote admin">
+                  <from><member>trust</member></from><to><member>untrust</member></to>
+                  <source><member>any</member></source><destination><member>any</member></destination>
+                  <application><member>remote-admin</member></application><service><member>application-default</member></service>
+                  <action>drop</action>
+                </entry>
+                <entry name="GP to intranet">
+                  <from><member>gp-users</member></from><to><member>trust</member></to>
+                  <source><member>any</member></source><destination><member>internal-web</member></destination>
+                  <source-user><member>example\engineering</member></source-user>
+                  <application><member>web-browsing</member><member>ssl</member></application><service><member>application-default</member></service>
+                  <action>allow</action>
+                </entry>
+                <entry name="GP to build server ssh">
+                  <from><member>gp-users</member></from><to><member>dmz</member></to>
+                  <source><member>any</member></source><destination><member>build-srv</member><member>lab-range</member></destination>
+                  <application><member>ssh</member></application><service><member>application-default</member></service>
+                  <action>allow</action>
+                </entry>
+                <entry name="Users to social">
+                  <from><member>trust</member></from><to><member>untrust</member></to>
+                  <source><member>lan-users</member></source><destination><member>any</member></destination>
+                  <application><member>facebook-base</member></application><service><member>application-default</member></service>
+                  <action>allow</action>
+                </entry>
+                <entry name="Not to partner">
+                  <from><member>trust</member></from><to><member>untrust</member></to>
+                  <source><member>any</member></source><destination><member>partner-api</member></destination>
+                  <negate-destination>yes</negate-destination>
+                  <application><member>any</member></application><service><member>any</member></service>
+                  <action>allow</action>
+                </entry>
+                <entry name="Engineering only">
+                  <from><member>trust</member></from><to><member>untrust</member></to>
+                  <source><member>any</member></source><destination><member>any</member></destination>
+                  <source-user><member>example\engineering</member></source-user>
+                  <application><member>ssh</member></application><service><member>application-default</member></service>
+                  <action>allow</action>
+                </entry>
+                <entry name="Wildcard and dynamic">
+                  <from><member>trust</member></from><to><member>dmz</member></to>
+                  <source><member>odd-mask</member></source><destination><member>tagged-servers</member></destination>
+                  <application><member>any</member></application><service><member>any</member></service>
+                  <action>deny</action>
+                </entry>
+                <entry name="Signalling">
+                  <from><member>trust</member></from><to><member>dmz</member></to>
+                  <source><member>any</member></source><destination><member>v6-host</member></destination>
+                  <application><member>any</member></application><service><member>sctp-sig</member></service>
+                  <action>allow</action>
+                </entry>
+                <entry name="Old rule">
+                  <from><member>trust</member></from><to><member>untrust</member></to>
+                  <source><member>any</member></source><destination><member>any</member></destination>
+                  <application><member>ftp</member></application><service><member>application-default</member></service>
+                  <action>allow</action><disabled>yes</disabled>
+                </entry>
+                <entry name="Default deny">
+                  <from><member>any</member></from><to><member>any</member></to>
+                  <source><member>any</member></source><destination><member>any</member></destination>
+                  <application><member>any</member></application><service><member>any</member></service>
+                  <action>deny</action>
+                </entry>
+              </rules>
+            </security>
+            <nat><rules><entry name="Outbound PAT"><from><member>trust</member></from></entry></rules></nat>
+            <decryption><rules><entry name="Decrypt all"><action>decrypt</action></entry></rules></decryption>
+          </rulebase>
+          <global-protect>
+            <global-protect-portal><entry name="gp-portal"/></global-protect-portal>
+            <global-protect-gateway><entry name="gp-gateway"/></global-protect-gateway>
+          </global-protect>
+        </entry>
+      </vsys>
+    </entry>
+  </devices>
+</config>

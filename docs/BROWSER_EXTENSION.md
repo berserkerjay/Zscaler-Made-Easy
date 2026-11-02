@@ -1,5 +1,7 @@
 # Zscaler Made Easy companion browser extension
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 A small Chrome and Edge extension that works **with** the Zscaler Made Easy app on
 your computer. It is a launcher, not a second copy of the app: everything
 that reads or changes a Zscaler tenant still happens in the app, with its

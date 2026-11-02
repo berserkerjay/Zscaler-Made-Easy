@@ -1,5 +1,7 @@
 # Fed Policy Pack: CUI markings (tiers 1-7) — dictionary notes
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 Build metadata from the design file (tier, intended action, minimum match count, notes). The pack configs carry the API fields only; regenerate with `python tools/pack_from_design.py <pack_dir>`.
 
 **Documented ZIA limits:** 8 patterns per dictionary; 256 bytes per pattern; proximity 0-10000 bytes; PCRE syntax minus lookaround; phrases fuzzy-match unless quoted; Count Unique collapses repeated matches to a single count. Engine builder: 4 subexpressions / 4 operators / 16 dictionaries per operator per level; root accepts All, Any, Sum only. Proximity requires BOTH the proximity integer AND proximityEnabledForCustomDictionary = true on custom dictionaries. Engine match counts accept any value under 1000.

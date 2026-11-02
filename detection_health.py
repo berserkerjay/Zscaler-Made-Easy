@@ -626,7 +626,7 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
         else:
             h["why"], h["fix"] = "", ""
     recent = sorted([i for i in incidents if i.get("_created")], key=lambda i: i["_created"], reverse=True)[: int(s["recent_limit"])]
-    recent_rows = [{"at": i["created_at"], "who": i.get("user") or "", "department": i.get("department") or "", "channel": i["channel"],
+    recent_rows = [{"id": str(i.get("id") or "")[:80], "at": i["created_at"], "who": i.get("user") or "", "department": i.get("department") or "", "channel": i["channel"],
                     "actions": i.get("actions") or [], "trigger": ", ".join(i["rules"]) or "(no rule name)",
                     "dictionaries": ", ".join(f"{d['name']} ×{d['count']}" if d.get("count") else d["name"] for d in i["dictionaries"]),
                     "sent_to": i.get("destination") or i.get("application") or "", "host": i.get("host") or "", "application": i.get("application") or "",

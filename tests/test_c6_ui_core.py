@@ -113,6 +113,18 @@ async function grab(key, promise) { try { out[key] = await promise; } catch (e) 
     return { ctx, errs, dialogs };
   }
   async function open(ctx, path) { const pg = await ctx.newPage(); await pg.goto(base + path, { waitUntil: 'networkidle' }); return pg; }
+  // Let every finite animation and transition (a fade-in, say) finish, so
+  // what is measured is the page's resting state, not a frame of an entry
+  // effect; endless ones (the living backdrop) are left running. Two rounds
+  // catch an effect that starts when another ends; capped at 5 s.
+  async function settled(pg) {
+    await pg.evaluate(() => {
+      const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const finite = () => document.getAnimations().filter(a => a.playState !== 'finished' && a.effect && isFinite(a.effect.getComputedTiming().endTime));
+      const round = async () => { await frame(); await Promise.all(finite().map(a => a.finished.catch(() => null))); };
+      return Promise.race([round().then(round), new Promise(r => setTimeout(r, 5000))]);
+    }).catch(() => null);
+  }
   async function assess(pg) {
     await pg.evaluate(() => { document.getElementById('org').value = 'Larkspur'; document.getElementById('assessor').value = 'QA'; runAssessment(); });
     await pg.waitForFunction(() => /complete/i.test(document.getElementById('statusMsg').textContent), null, { timeout: 120000 });
@@ -303,7 +315,7 @@ async function grab(key, promise) { try { out[key] = await promise; } catch (e) 
   out.a11y = {};
   for (const scheme of ['dark', 'light']) for (const width of [1280, 320]) {
     const { ctx } = await context({ colorScheme: scheme, viewport: { width, height: 900 } });
-    for (const path of PAGES) { const pg = await open(ctx, path); out.a11y[`${scheme} ${width} ${path}`] = await pg.evaluate(metric); await pg.close(); }
+    for (const path of PAGES) { const pg = await open(ctx, path); await settled(pg); out.a11y[`${scheme} ${width} ${path}`] = await pg.evaluate(metric); await pg.close(); }
     await ctx.close();
   }
   console.log(JSON.stringify(out));

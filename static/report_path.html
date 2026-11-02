@@ -27,7 +27,8 @@
       <label class="df-ctl"><span class="lbl">Traffic from</span><select id="paSource" aria-label="Where the traffic comes from" aria-describedby="paSourceHow">
         <option value="device">A user device</option><option value="workload">A workload</option></select></label>
       <label class="df-ctl" id="paNetWrap"><span class="lbl">Network</span><select id="paNet" aria-label="Network the device is on"></select></label>
-      <label class="df-ctl" id="paPlatWrap"><span class="lbl">Platform</span><select id="paPlat" aria-label="Platform"></select></label>
+      <label class="df-ctl" id="paPlatWrap"><span class="lbl">Platform</span><select id="paPlat" aria-label="Platform" aria-describedby="paPlatFrom"></select></label>
+      <span class="df-hint" id="paPlatFrom" hidden></span>
       <label class="df-ctl"><span class="lbl">Protocol</span><select id="paProto" aria-label="Protocol of the traffic" aria-describedby="paPortHint">
         <option value="">From the URL</option><option value="tcp">TCP</option><option value="udp">UDP</option></select></label>
       <label class="df-ctl pm-port"><span class="lbl">Port</span><input type="text" id="paPort" inputmode="numeric" maxlength="5" placeholder="443" aria-label="Destination port (1 to 65535; empty: from the URL)" aria-describedby="paPortHint" autocomplete="off"></label>
@@ -52,10 +53,11 @@
       <div class="rp-tabs" role="tablist" aria-label="Path analyzer views">
         <button type="button" role="tab" id="tab-one" aria-controls="panel-one" aria-selected="true" tabindex="0">One destination or a HAR file</button>
         <button type="button" role="tab" id="tab-list" aria-controls="panel-list" aria-selected="false" tabindex="-1">Test a list</button>
+        <button type="button" role="tab" id="tab-cat" aria-controls="panel-cat" aria-selected="false" tabindex="-1">Category lookup</button>
       </div>
       <section role="tabpanel" id="panel-one" aria-labelledby="tab-one" tabindex="0">
       <details class="pa-framework pa-whatif" id="paWhatIf">
-        <summary>What-if: a user, group, department or location (optional)</summary>
+        <summary>What-if: a user, group, location or ZPA identity (optional)</summary>
         <div class="df-hint">Leave these empty to analyze for anyone; the result then lists what the policy action also depends on. Fill any of them to evaluate rules scoped to that identity: rules for it apply, rules for others are skipped. Groups you give are taken as the user's only groups.</div>
         <div class="pa-wi-grid">
           <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">User</span><input type="text" id="paWi_user" placeholder="jane@acme.com or a display name" autocomplete="off" spellcheck="false" maxlength="200"></label>
@@ -68,12 +70,95 @@
             <button type="button" class="rp-btn" data-wi-find="location" aria-describedby="paWiScope">Look up in ZIA</button><ul class="pa-wi-results" id="paWiRes_location" aria-label="Location matches in ZIA" hidden></ul></div>
         </div>
         <p class="df-hint" id="paWiScope"></p>
+        <fieldset class="pa-wi-zpa" id="paWiZpa">
+          <legend>ZPA identity</legend>
+          <div class="df-hint">For ZPA's access policy. Pick the IdP the user signs in with and type their SCIM user name: their SCIM groups are looked up in ZPA (read-only, kept only for this analysis). Type SAML or SCIM attribute values by hand, one Name=value per line. Anything you leave out stays unknown, never a match.</div>
+          <div class="pa-wi-grid">
+            <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">IdP</span><select id="paWiZ_idp"><option value="">Not given</option></select></label>
+              <button type="button" class="rp-btn" id="paWiZ_load" aria-describedby="paWiZScope">Load IdPs from ZPA</button></div>
+            <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">SCIM user name</span><input type="text" id="paWiZ_user" placeholder="jane@acme.com" autocomplete="off" spellcheck="false" maxlength="128"></label>
+              <button type="button" class="rp-btn" id="paWiZ_find" aria-describedby="paWiZScope">Look up SCIM groups</button><ul class="pa-wi-results" id="paWiZRes" aria-label="SCIM groups found in ZPA" hidden></ul></div>
+          </div>
+          <label class="op-block"><span class="lbl">Attribute values</span><textarea id="paWiZ_attrs" rows="2" maxlength="4000" spellcheck="false" autocomplete="off" placeholder="Department=Finance&#10;memberOf=VPN users" aria-describedby="paWiZAttrHint"></textarea></label>
+          <p class="df-hint" id="paWiZAttrHint"></p>
+          <p class="df-hint" id="paWiZScope"></p>
+        </fieldset>
         <div class="sr-only" id="paWiLive" role="status" aria-live="polite"></div>
+      </details>
+      <!-- A user's enrolled device, and two identities compared (static/path_extras.js) -->
+      <details class="pa-framework pa-whatif" id="paDevice">
+        <summary>Device: trace one user's enrolled device (optional)</summary>
+        <div class="df-hint">Look the user's devices up in the Client Connector Portal and pick one. The trace then uses that device's platform, the app profile the Portal reports for it, its Client Connector version and what the Portal says about it, instead of the Platform you chose. What the API does not give stays unknown: the network the device is on right now (the Network you chose applies) and its ZPA posture results.</div>
+        <div class="pa-wi-grid">
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">User's sign-in name</span><input type="text" id="paDevQ" placeholder="jane@acme.com or part of it" autocomplete="off" spellcheck="false" maxlength="128"></label>
+            <button type="button" class="rp-btn" id="paDevFind" aria-describedby="paDevScope">Find devices</button><ul class="pa-wi-results" id="paDevRes" aria-label="Devices found" hidden></ul></div>
+        </div>
+        <div id="paDevChosen" hidden></div>
+        <p class="df-hint" id="paDevScope"></p>
+        <div class="sr-only" id="paDevLive" role="status" aria-live="polite"></div>
+      </details>
+      <!-- Manual inputs: a PAC or bypass lists that are not in the tenant, evaluated, never run (path_manual.py, static/path_extras.js) -->
+      <details class="pa-framework pa-whatif" id="paManual">
+        <summary>Manual inputs (what-if): a PAC file or bypass lists not in the tenant (optional)</summary>
+        <div class="df-hint">For a PAC file ZIA does not host, or a bypass you have not set up yet. Paste the PAC and type VPN gateways and Z-Tunnel 2.0 lists, one entry per line. The analysis says what they would do. Nothing is written to the tenant, nothing typed here is kept, and the PAC is read, never run. Applies to traffic from a user device.</div>
+        <fieldset class="op-inline" id="paManMode"><legend>How to use them</legend>
+          <label class="df-ctl"><input type="radio" name="paManMode" id="paManAlone" value="alone" checked><span>On their own, next to the tenant's answer</span></label>
+          <label class="df-ctl"><input type="radio" name="paManMode" id="paManMerge" value="merge"><span>Added to the tenant's app profiles (needs ZCC on the Scope page)</span></label>
+        </fieldset>
+        <label class="op-block"><span class="lbl">PAC file (pasted)</span><textarea id="paManPac" rows="4" maxlength="262144" spellcheck="false" autocomplete="off" placeholder="function FindProxyForURL(url, host) { ... }"></textarea></label>
+        <div class="pa-wi-grid">
+          <div class="pa-wi-field"><label class="op-block"><span class="lbl">VPN gateways</span><textarea id="paManVpn" rows="2" maxlength="127500" spellcheck="false" autocomplete="off" placeholder="vpn.acme.com&#10;203.0.113.10:443"></textarea></label></div>
+          <div class="pa-wi-field"><label class="op-block"><span class="lbl">IP inclusions (Z-Tunnel 2.0)</span><textarea id="paManIpInc" rows="2" maxlength="127500" spellcheck="false" autocomplete="off" placeholder="10.0.0.0/8"></textarea></label></div>
+          <div class="pa-wi-field"><label class="op-block"><span class="lbl">IP exclusions (Z-Tunnel 2.0)</span><textarea id="paManIpExc" rows="2" maxlength="127500" spellcheck="false" autocomplete="off" placeholder="192.0.2.0/24"></textarea></label></div>
+          <div class="pa-wi-field"><label class="op-block"><span class="lbl">Domain inclusions (Z-Tunnel 2.0)</span><textarea id="paManDomInc" rows="2" maxlength="127500" spellcheck="false" autocomplete="off" placeholder=".corp.example"></textarea></label></div>
+          <div class="pa-wi-field"><label class="op-block"><span class="lbl">Domain exclusions (Z-Tunnel 2.0)</span><textarea id="paManDomExc" rows="2" maxlength="127500" spellcheck="false" autocomplete="off" placeholder="*.example.net"></textarea></label></div>
+        </div>
+        <p><button type="button" class="rp-btn" id="paManClear">Clear the manual inputs</button></p>
+        <p class="df-hint" id="paManNote" role="status" aria-live="polite"></p>
+      </details>
+      <details class="pa-framework pa-whatif" id="paCompare">
+        <summary>Compare two identities (optional)</summary>
+        <div class="df-hint">Runs the destination above twice on one tenant read and shows each step side by side, marking the step where the two paths diverge. A is the what-if and the device above (or anyone); B is what you give here. Names are matched as typed; a user, group, department or location left empty is not given.</div>
+        <div class="pa-wi-grid">
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: user</span><input type="text" id="paCmp_user" placeholder="sam@acme.com or a display name" autocomplete="off" spellcheck="false" maxlength="200"></label></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: group</span><input type="text" id="paCmp_group" placeholder="one or more, separated by commas" autocomplete="off" spellcheck="false" maxlength="200"></label></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: department</span><input type="text" id="paCmp_department" placeholder="Engineering" autocomplete="off" spellcheck="false" maxlength="200"></label></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: location</span><input type="text" id="paCmp_location" placeholder="Branch office" autocomplete="off" spellcheck="false" maxlength="200"></label></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: device (user's sign-in name)</span><input type="text" id="paCmpDevQ" placeholder="optional" autocomplete="off" spellcheck="false" maxlength="128"></label>
+            <button type="button" class="rp-btn" id="paCmpDevFind" aria-describedby="paCmpDevScope">Find devices</button><ul class="pa-wi-results" id="paCmpDevRes" aria-label="Devices found for B" hidden></ul></div>
+        </div>
+        <div id="paCmpDevChosen" hidden></div>
+        <p class="df-hint" id="paCmpDevScope"></p>
+        <div class="sr-only" id="paCmpDevLive" role="status" aria-live="polite"></div>
+        <p><button type="button" class="rp-btn primary" id="paCmpRun">Compare A and B</button></p>
+        <div id="paCmpOut"></div>
       </details>
       <details class="pa-framework" id="paFramework" open>
         <summary>The framework: how Zscaler processes a policy, device to incident</summary>
-        <div class="df-hint">Every analysis follows this order. With ZPA in scope, ZPA is checked first (application segment, bypass, client forwarding and access policy): a destination ZPA carries never reaches ZIA. Otherwise the path starts from a <strong>candidate Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose (for a workload, the Cloud or Branch Connector forwarding rules), then the PAC file, evaluated for the destination but never run, then the ZIA modules: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control and URL filtering, SSL inspection (which decides what the later modules can see), Sandbox, File Type Control and Web DLP. Traffic that is not web is decided by the Cloud Firewall (and DNS Control for its lookup). Endpoint DLP, SaaS Security API and Email DLP are separate inventories, not tested on this path. This is a configuration prediction: it does not prove that every stage executed for a real transaction.</div>
+        <div class="df-hint">Every analysis follows this order. With ZPA in scope, ZPA is checked first (application segment, bypass, client forwarding and access policy): a destination ZPA carries never reaches ZIA. Otherwise the path starts from a <strong>candidate Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose (for a workload, the Cloud or Branch Connector forwarding rules), then the PAC file, evaluated for the destination but never run, then the ZIA modules: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control and URL filtering, SSL inspection (which decides what the later modules can see), Sandbox, File Type Control and Web DLP, then Forwarding control (how ZIA sends allowed traffic on: direct, proxy chaining, ZPA, a dedicated egress IP, or dropped). Traffic that is not web is decided by the Cloud Firewall (and DNS Control for its lookup). Endpoint DLP, SaaS Security API and Email DLP are separate inventories, not tested on this path. This is a configuration prediction: it does not prove that every stage executed for a real transaction.</div>
         <div id="paFrameworkBody"></div>
+      </details>
+      <details class="pa-framework" id="zdxCp">
+        <summary id="zdxCpH">ZDX: the measured cloud path and its root cause (optional)</summary>
+        <div class="df-hint">The analysis above predicts the path from the configuration. ZDX measures it: from a device that probes the application to the network exit, to the Zscaler service edge and to the application, with the time and the loss on each leg. Needs ZDX ticked on the Scope page. No device or person is named; private addresses are hidden.</div>
+        <div class="rp-bar zdx-bar">
+          <button type="button" class="rp-btn" id="zdxCpLoad">Load ZDX applications</button>
+          <label class="df-ctl"><span class="lbl">ZDX application</span><select id="zdxCpApp" aria-label="ZDX application to show the cloud path of" disabled><option value="">Load the applications first</option></select></label>
+          <button type="button" class="rp-btn primary" id="zdxCpShow" disabled>Show the cloud path</button>
+        </div>
+        <div id="zdxCpOut" role="status" aria-live="polite"></div>
+        <h2 class="df-h" id="zdxRcaH">Find the root cause: a ZDX score analysis</h2>
+        <div class="df-hint">ZDX analyses the application on one device over the last hours and says what made the score drop. It changes nothing in the configuration, but it is an action on the tenant: it needs write mode, your permission to change the tenant, the assessor's name and the typed phrase START ANALYSIS. One start per tenant every 5 minutes.</div>
+        <div class="rp-bar zdx-bar">
+          <label class="df-ctl"><span class="lbl">Device id (optional)</span><input type="text" id="zdxRcaDev" inputmode="numeric" maxlength="20" placeholder="picked for you" aria-label="ZDX device id, digits only (optional)" autocomplete="off"></label>
+          <label class="df-ctl"><span class="lbl">Look back</span><select id="zdxRcaHours" aria-label="Hours to analyse"><option value="1">1 hour</option><option value="2" selected>2 hours</option><option value="4">4 hours</option><option value="8">8 hours</option><option value="24">24 hours</option></select></label>
+          <label class="df-ctl"><span class="lbl">Assessor's name</span><input type="text" id="zdxRcaWho" maxlength="80" aria-label="The assessor's name" autocomplete="name"></label>
+          <label class="df-ctl"><span class="lbl">Type START ANALYSIS</span><input type="text" id="zdxRcaPhrase" maxlength="40" aria-label="Type START ANALYSIS to confirm" autocomplete="off" spellcheck="false"></label>
+          <button type="button" class="rp-btn" id="zdxRcaStart" disabled>Start the analysis</button>
+          <button type="button" class="rp-btn" id="zdxRcaStatus" disabled>Read the result</button>
+          <button type="button" class="rp-btn" id="zdxRcaStop" disabled>Stop the analysis</button>
+        </div>
+        <div id="zdxRcaOut" role="status" aria-live="polite"></div>
       </details>
       <div id="paBody">
         <div class="pa-intro" id="paHow">
@@ -99,7 +184,7 @@
         <div class="pa-intro" id="plHow">
           <div class="pa-intro-t">Test a list</div>
           <p class="pl-lead">Test many destinations at once and see which are blocked, allowed or sent around Zscaler, and, when your list says what you expected, where to fix each miss. Choose a CSV file or paste the list, then click Test the list.</p>
-          <div class="df-hint">One destination per line: an IP address, a CIDR block (up to a /16), a range such as 10.0.0.1-10.0.0.50, a host name or a URL. A first line with column names lets you add: port, protocol, source IP, location, country, category, user, group, department, label and expected (block or allow). The Network, Platform and Tenant above apply. Up to 8 MB and 250,000 rows; the file is read in this browser and only its text is sent to this app. Nothing is written to the tenant.</div>
+          <div class="df-hint">One destination per line: an IP address, a CIDR block (up to a /16), a range such as 10.0.0.1-10.0.0.50, a host name or a URL. A first line with column names lets you add: port, protocol, source IP, location, country, category, user, group, department, label and expected (block or allow), and for ZPA's access policy an identity: idp (the IdP's name), SCIM user (its SCIM groups are looked up once per run, read-only) and attributes (Name=value, separated by ;). A ZPA identity needs ZPA ticked on the Scope page. The Network, Platform and Tenant above apply. Up to 8 MB and 250,000 rows; the file is read in this browser and only its text is sent to this app. Nothing is written to the tenant.</div>
         </div>
         <div class="pl-form">
           <div class="pl-row">
@@ -123,6 +208,23 @@
         <div id="plBody"></div>
       </section>
       <!-- /Test a list -->
+      <!-- Category lookup (static/category_lookup.js, category_lookup.py on the server) -->
+      <section role="tabpanel" id="panel-cat" aria-labelledby="tab-cat" tabindex="0" hidden>
+        <div class="pa-intro" id="clHow">
+          <div class="pa-intro-t">Category lookup</div>
+          <p class="pl-lead">See which ZIA URL categories a URL, host name or IP address is in, predefined and custom, and every rule that names each category, in the order ZIA evaluates them.</p>
+          <div class="df-hint">One entry per line, up to 100: a URL, a host name, an IP address, or a category (its id, such as GAMBLING or CUSTOM_01, or <code>category:</code> and its name, such as <code>category:Partner portals</code>). The rules come from URL filtering, Cloud App Control, SSL inspection, Cloud Firewall, DNS Control, File Type Control, Web DLP and Sandbox, each with its order, rank and action. Only what is in scope on the Scope page is read, once; later lookups reuse that read. ZIA's URL lookup is asked about each destination. Nothing is written to the tenant.</div>
+        </div>
+        <div class="pl-form cl-form">
+          <label class="op-block"><span class="lbl">Look up</span><textarea id="clText" rows="3" maxlength="16000" spellcheck="false" autocomplete="off" aria-describedby="clHow" placeholder="dropbox.com&#10;https://casino.example/play&#10;category:Partner portals"></textarea></label>
+          <div class="pl-row">
+            <button type="button" class="rp-btn primary" id="clRun">Look up</button>
+            <button type="button" class="rp-btn" id="clFresh" aria-pressed="false" title="Read the tenant again before the next lookup (otherwise the last read is reused)">↻ Fresh read</button>
+            <span class="df-hint" id="clInfo" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        <div id="clBody"></div>
+      </section>
     </main>
   </div>
   <script src="/static/icons.js"></script>
@@ -135,8 +237,11 @@
   <script src="/static/har_parse.js"></script>
   <script src="/static/path_modules.js"></script><!-- every module on the path, one hop shape -->
   <script src="/static/path_whatif.js"></script><!-- what-if lookups and "Policy action also depends on" -->
+  <script src="/static/path_extras.js"></script><!-- a picked device, two identities compared, Test from here -->
   <script src="/static/flow_anim.js"></script><!-- the live path and the list flow (one motion engine) -->
   <script src="/static/path_list.js"></script>
+  <script src="/static/category_lookup.js"></script>
+  <script src="/static/zdx_cloudpath.js"></script><!-- ZDX: the measured cloud path and the score analysis -->
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>
@@ -220,6 +325,8 @@
       if (val('paProto')) out.protocol = val('paProto');
       if (val('paPort')) out.port = val('paPort');
       if (out.source === 'workload') out.workload = { ip: val('paWlIp'), tags: val('paWlTags'), workload_group: val('paWlGroup'), connector_group: val('paWlEc') };
+      else if (window.PathExtras && PathExtras.device().ref) out.device = PathExtras.device();   // a picked device (path_extras.js)
+      if (out.source !== 'workload' && window.PathExtras) { const m = PathExtras.manual(); if (m) out.whatif_bypass = m; }   // manual what-if inputs (path_extras.js)
       return out;
     }
 
@@ -495,6 +602,7 @@
             <ol class="fa-log" id="paHopLog" aria-label="Hops reached so far"></ol>
           </div>
         </section>
+        ${res.zpa_identity ? PathWhatIf.zpaSection(res.zpa_identity) : ''}
         ${res.whatif ? PathWhatIf.section(res.whatif) : ''}
         ${PathModules.section(res)}
         <h2 class="df-h">What blocks this traffic</h2>
@@ -518,6 +626,7 @@
         <ul class="pa-assume">${(res.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>
         <details class="pa-details"><summary>What was read (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
       PathWhatIf.wire(body);
+      PathExtras.afterRender(res, body);   // the picked device and Test from here (path_extras.js)
       showFlow(res);
       body.querySelectorAll('.df-node').forEach(n => {
         const go = () => { const el = body.querySelector(`.df-hop[data-hop="${n.dataset.hop}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('sel'); setTimeout(() => el.classList.remove('sel'), 1600); } };
@@ -705,6 +814,9 @@
     document.getElementById('paProto').addEventListener('change', syncPortHint);
     document.getElementById('paPort').addEventListener('input', syncPortHint);
     PathWhatIf.init({ credBody, scopeSelection });
+    PathExtras.init({ credBody, scopeSelection, traffic, say, destination: () => document.getElementById('paDest').value.trim(),
+      network: () => document.getElementById('paNet').value, platform: () => document.getElementById('paPlat').value,
+      reportId: () => (fresh ? '' : lastReport) });
     document.getElementById('paRun').addEventListener('click', run);
     document.getElementById('paDest').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
     document.getElementById('paFresh').addEventListener('click', () => { setFresh(!fresh); say(fresh ? 'The next analysis reads the tenant again.' : 'The next analysis reuses the last read.'); });
@@ -715,6 +827,11 @@
     if (q.get('p') && PLATFORMS.includes(q.get('p'))) document.getElementById('paPlat').value = q.get('p');
     if (q.get('id') && q.get('id').startsWith('dataflow-')) lastReport = q.get('id');
     if (q.get('src') === 'workload') document.getElementById('paSource').value = 'workload';
+    // From the Cloud & Branch Connector page: the workload's connector group,
+    // workload group and source IP, and its kept connector read (reused, as a
+    // read kept here is; the server reuses it only for the same tenant).
+    [['ec', 'paWlEc'], ['wlg', 'paWlGroup'], ['wlip', 'paWlIp']].forEach(([k, id]) => { const v = q.get(k); if (v) document.getElementById(id).value = v.slice(0, 200); });
+    if (/^pathztw-[A-Za-z0-9_-]{6,40}$/.test(q.get('ztw') || '')) kept.ztw = q.get('ztw');
     if (['tcp', 'udp'].includes(q.get('proto'))) document.getElementById('paProto').value = q.get('proto');
     if (/^\d{1,5}$/.test(q.get('port') || '')) document.getElementById('paPort').value = q.get('port');
     syncSource(); syncPortHint();

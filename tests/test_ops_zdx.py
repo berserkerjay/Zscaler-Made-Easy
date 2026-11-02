@@ -640,7 +640,7 @@ def test_read_objects_lists_every_app_and_probe_with_what_may_be_deleted(zdx):
     assert out["apps"][1]["deletable"] and [p["kind"] for p in out["apps"][1]["probes"]] == ["web", "cloudpath"]
     ml = next(x for x in out["catalogue"] if x["provider"] == "MICROSOFT_LOGIN")
     assert ml["configured"] and not ml["active"] and next(x for x in out["catalogue"] if x["provider"] == "ZOOM")["needs_prefix"]
-    assert [t["id"] for t in out["templates"]] == ["best_practice", "microsoft_365", "empty"]
+    assert [t["id"] for t in out["templates"]] == ["best_practice", "microsoft_365", "federal", "empty"]
     assert out["intervals"] == [5, 10, 15, 30] and out["protocols"] == ["ADAPTIVE", "ICMP", "TCP", "UDP"]
     assert fake.writes == []
 

@@ -12,7 +12,9 @@
  },
  "static/ops_zia_baseline.js": {
   "E(httpsOnly(s.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"],
-  "E(httpsOnly(c.source.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"]
+  "E(httpsOnly(c.source.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"],
+  "E(httpsOnly(x.url))": [1, "link target from the app's own catalogue (compliance_profiles.SOURCES: standards documents), https only (httpsOnly), never tenant text"],
+  "E(httpsOnly(src.url))": [1, "link target from the app's own catalogue (ucaas_oneclick sources: Zscaler's documentation), https only (httpsOnly), never tenant text"]
  },
  "static/dashboard.js": {
   "last.journey.stage": [1, "number the server computes (count, percentage, score, stage, position)"],
@@ -332,6 +334,15 @@
   "c": [1, "HTML the page or server builds with every value escaped (reviewed at its source)"],
   "['total', 'Findings']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"]
  },
+ "static/report_ztw.html": {
+  "r[0]": [1, "HTML the page or server builds with every value escaped (reviewed at its source)"],
+  "c": [1, "HTML the page or server builds with every value escaped (reviewed at its source)"],
+  "['st-fail', c.fail, 'Fix']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
+  "['', 'All']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"]
+ },
+ "static/report_other_products.html": {
+  "['total', 'Findings']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"]
+ },
  "static/report_compliance.html": {
   "s.alignment_pct": [2, "number the server computes (count, percentage, score, stage, position)"],
   "s.control_count": [1, "number the server computes (count, percentage, score, stage, position)"],
@@ -346,7 +357,10 @@
   "c.review_count": [1, "number the server computes (count, percentage, score, stage, position)"],
   "c.info_count": [1, "number the server computes (count, percentage, score, stage, position)"],
   "c.total_evidence": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "evColor(e.status)": [2, "style value from the page's own palette function, colour table or a number; no tenant text"]
+  "evColor(e.status)": [4, "style value from the page's own palette function, colour table or a number; no tenant text"],
+  "col[x.status] || 'var(--dim)'": [2, "style value from the page's own palette function, colour table or a number; no tenant text"],
+  "C.selectHtml('cpProfilePick', '', 'Compliance profile to read the assessment against')": [1, "markup built by static/compliance_choice.js, which escapes every value with its own E() (that file is checked here too)"],
+  "C.summaryHtml(k)": [1, "markup built by static/compliance_choice.js, which escapes every value with its own E() (that file is checked here too)"]
  },
  "static/report_dataflow.html": {
   "s.traces": [1, "number the server computes (count, percentage, score, stage, position)"],
@@ -384,7 +398,7 @@
  "static/report_operations.html": {
   "c.url_count": [1, "number the server computes (count, percentage, score, stage, position)"],
   "['add', 'Add URLs']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
-  "['move', 'Move domains']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
+  "['add', 'Add typed domains to a segment']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
   "c": [1, "CSS class or icon from the page's own status table"],
   "head[1]": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"]
  },
@@ -403,14 +417,16 @@
   "p.skipped": [1, "number the server computes (count, percentage, score, stage, position)"],
   "['host', 'Host']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
   "r.requests": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "r.uploads": [1, "number the server computes (count, percentage, score, stage, position)"]
+  "r.uploads": [1, "number the server computes (count, percentage, score, stage, position)"],
+  "PathWhatIf.zpaSection(res.zpa_identity)": [1, "HTML the page or server builds with every value escaped (reviewed at its source: static/path_whatif.js, scanned on its own)"]
  },
  "static/report_posture.html": {
   "cls": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
   "E(f.guidance_url)": [1, "link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text"]
  },
  "static/report_queue.html": {
-  "r.items_total": [1, "number the server computes (count, percentage, score, stage, position)"]
+  "r.items_total": [1, "number the server computes (count, percentage, score, stage, position)"],
+  "(run.targets.length ? run.targets : [{ profile_name: '', policy: '', status: run.status, message: (run.errors || []).join('; ') }]).map(t => `<tr><td>${E(fmt(run.at))}</td><td>${E(run.trigger === 'schedule' ? 'schedule' : `Run now by ${run.by}`)}</td><td>${E(t.profile_name || '')}</td><td>${E(t.policy ? groupLabel(GROUPS_BY_POLICY[t.policy] || t.policy) : '')}</td> <td>${E(RUN[t.status] || t.status)}${t.request ? ` <code>${E(t.request)}</code>` : ''}</td><td>${E(t.counts ? `${t.counts.add} add, ${t.counts.update} update, ${t.counts.move} move, ${t.counts.delete} delete` : (t.message || ''))}</td></tr>`)": [1, "sync run history rows: every cell is escaped with E() inside the map callback (fmt, the trigger, profile, policy label, status, request id, counts or message)"]
  },
  "static/report_self_heal.html": {
   "cls": [1, "CSS class or icon from the page's own status table"]
@@ -476,5 +492,25 @@
  "static/zcc_fleet.js": {
   "cls": [1, "CSS class or icon from the page's own status table"],
   "v.devices": [1, "number the server computes (count, percentage, score, stage, position)"]
+ },
+ "static/compliance_choice.js": {
+  "E(httpsOnly(x.url))": [1, "link target from the app's own catalogue (compliance_profiles.SOURCES: standards documents), https only (httpsOnly), never tenant text"]
+ },
+ "static/net_ranges.js": {
+  "box.querySelector('legend').outerHTML": [1, "the fieldset's own static legend (DOM from the page's HTML), put back before the escaped options"],
+  "f.querySelector('legend').outerHTML": [1, "the fieldset's own static legend (DOM from the page's HTML), put back before the escaped options"]
+ },
+ "static/ops_zpa.js": {
+  "H.zpaPicker()": [1, "HTML the page or server builds with every value escaped (reviewed at its source): report_operations.html zpaPickerHtml(), each segment name through E()"]
+ },
+ "static/ops_admin.js": {
+  "H.errorsHtml(res || {})": [1, "the Bulk changes page's own errorsHtml(), which escapes every value with E() (static/report_operations.html, scanned on its own)"],
+  "f(r)": [1, "the row formatter matchHtml passes in; every formatter there escapes each value with E()"]
+ },
+ "static/ops_fw_import.js": {
+  "H.errorsHtml(res || {})": [1, "the Bulk changes page's own errorsHtml(), which escapes every value with E() (static/report_operations.html, scanned on its own)"]
+ },
+ "static/ops_zia_admin.js": {
+  "m": [3, "an <option> tag opts() built with every value escaped (H.E), matched again only to add ' selected'"]
  }
 }

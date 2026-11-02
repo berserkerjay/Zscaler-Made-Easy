@@ -404,7 +404,7 @@ def test_the_atp_write_keeps_settings_the_sdk_model_does_not_know():
     ({"op": "restore_atp", "fields": {"risk_tolerance": 0}}, "not an Advanced Threat Protection setting"),
     ({"op": "delete", "area": "url", "id": {"$ne": 1}, "name": "x"}, "id and name"),
     ({"op": "delete", "area": "url", "id": "11\n", "name": "x"}, "id and name"),
-    ({"op": "create", "area": "url"}, "delete, restore or restore_atp"),
+    ({"op": "create", "area": "url"}, "delete, restore, restore_atp or restore_ucaas"),
 ])
 def test_an_undo_step_of_the_wrong_shape_is_refused_before_anything_is_read(step, why):
     """ASVS V5.1.3 · V4.2.1 · CWE-20 · CWE-915 · CWE-755: a crafted Undo step is refused in plain words before any read; it cannot rename a rule or set an unknown ATP field."""

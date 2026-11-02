@@ -15,7 +15,7 @@
 .rp-bar { position: sticky; top: 0.5rem; z-index: 5; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.5rem 0.6rem; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); box-shadow: var(--shadow-sm); }
 .rp-bar .sep { flex: 1; }
 .rp-bar .lbl { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 0 0.3rem; }
-.rp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 38px; padding: 0.5rem 0.9rem; border-radius: var(--r-md); font-size: 0.8rem; font-weight: 600; font-family: inherit; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--dim); text-decoration: none; white-space: nowrap; transition: all 0.2s var(--ease, ease); }
+.rp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 38px; padding: 0.5rem 0.9rem; border-radius: var(--r-md); font-size: 0.8rem; font-weight: 600; font-family: inherit; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--dim); text-decoration: none; white-space: nowrap; transition: background-color 0.2s var(--ease, ease), border-color 0.2s var(--ease, ease), color 0.2s var(--ease, ease), opacity 0.2s var(--ease, ease), transform 0.2s var(--ease, ease); }
 .rp-btn:hover { color: var(--text); border-color: var(--border-strong); background: var(--well); }
 .rp-btn.primary { background: var(--btn, #2563eb); color: #fff; border-color: transparent; }
 .rp-btn.primary:hover { background: var(--btn-hover, var(--accent)); }   /* darker on hover: white text stays above 4.5:1 */
@@ -306,6 +306,11 @@ body.theme-light .df-chip.st-block { color: var(--accent); }
 .adv-field input { width: 100%; box-sizing: border-box; padding: 0.55rem 0.7rem; border-radius: 8px; border: 1px solid var(--border); background: var(--well); color: var(--text); font: inherit; font-size: 0.85rem; }
 .adv-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .adv-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.3rem; }
+.adv-m365-import { display: grid; gap: 0.6rem; max-width: 34rem; margin-top: 0.9rem; }
+.adv-m365-import .adv-field input[type="file"] { padding: 0.4rem 0.5rem; }
+.adv-sbd.adv-m365-box { display: block; }
+.adv-m365-box > div + div { margin-top: 0.3rem; }
+.adv-m365-box code { overflow-wrap: anywhere; }
 .adv-preview { margin-top: 1rem; display: grid; gap: 0.8rem; }
 .adv-verdict { font-weight: 700; font-size: 1rem; }
 .adv-verdict.ok { color: var(--pass); }
@@ -324,7 +329,7 @@ body.theme-light .df-chip.st-block { color: var(--accent); }
 .adv-page .dim { color: var(--dim); font-size: 0.78rem; }
 .adv-page .mono { font-family: var(--mono); }
 .adv-page .tw { overflow-x: auto; }
-@media (max-width: 760px) { .adv-grid { grid-template-columns: 1fr; } .adv-table .adv-k { width: auto; white-space: normal; } }
+@media (max-width: 760px) { .adv-grid, .adv-fields { grid-template-columns: minmax(0, 1fr); } .adv-table .adv-k { width: auto; white-space: normal; } }
 
 /* Advanced settings: app update */
 .adv-update { padding: 0.8rem 1rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--well); font-size: 0.88rem; line-height: 1.5; margin-bottom: 0.7rem; }
@@ -622,6 +627,25 @@ summary { min-height: 24px; }
 .ex-colgrid input { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--accent); }
 .ex-colgrid input:disabled + span { color: var(--dim); }
 .ex-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.8rem; }
+/* Zscaler IP ranges and allowlists (net_ranges.js). */
+.ex-ranges { display: flex; flex-direction: column; gap: 0.6rem; max-width: 100ch; }
+.ex-ranges .ex-pick legend { font-size: 0.8rem; color: var(--dim); padding: 0; margin-bottom: 0.2rem; width: 100%; }
+.ex-rg-box div { margin: 0.15rem 0; overflow-wrap: anywhere; }
+.ex-rg-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 0.6rem 1rem; }
+.ex-rg-cell { display: flex; align-items: flex-start; gap: 0.3rem; min-width: 0; padding-right: 4px; }
+.ex-rg-cell .ex-rg-text { flex: 1 1 0; }
+.ex-ranges .ex-pick .hh-mark { align-self: center; }
+.ex-rg-text { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; font-weight: 600; min-width: 0; }
+.ex-rg-text small { font-weight: 400; color: var(--dim); }
+.ex-rg-text textarea { width: 100%; box-sizing: border-box; min-height: 4.2rem; padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--well); color: var(--text); font-family: var(--mono); font-size: 0.8rem; resize: vertical; }
+.ex-rg-text textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ex-rg-out .df-tablewrap { overflow-x: auto; max-width: 100%; }
+.ex-rg-out td, .ex-rg-out code { overflow-wrap: anywhere; }
+.ex-rg-import input[type="file"] { max-width: 100%; min-width: 0; font-size: 0.8rem; }
+.ex-rg-box .rg-on { font-weight: 700; color: var(--chip-warn, var(--warn)); }
+.ex-rg-box .rg-off { font-weight: 700; color: var(--chip-ok, var(--pass)); }
+.ex-rg-box .rg-warn { color: var(--chip-warn, var(--warn)); font-weight: 700; }
+.ex-rg-pre { font-family: var(--mono); font-size: 0.74rem; background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem; overflow: auto; max-height: 360px; white-space: pre; max-width: 100%; }
 @media (max-width: 760px) {
   .ex-page .df-ctl { flex-wrap: wrap; max-width: 100%; }
   .ex-page .df-ctl select, .ex-page .df-ctl input:not([type="checkbox"]) { max-width: 100%; min-width: 0; }
@@ -644,6 +668,9 @@ summary { min-height: 24px; }
 .op-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.6rem 0; }
 .op-inline { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center; }
 .op-inline legend { float: left; margin-right: 0.6rem; font-size: 0.82rem; color: var(--dim); }
+/* ZPA builder: who the access rule allows (static/ops_zpa.js) */
+.zb-scim, .zb-saml { list-style: none; margin: 0.3rem 0 0.6rem; padding: 0; display: grid; gap: 0.2rem; max-height: 16rem; overflow-y: auto; overflow-wrap: anywhere; }
+.zb-saml li { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .op-pick { max-height: 55vh; overflow-y: auto; }
 .op-order { list-style: none; margin: 0.5rem 0; padding: 0; display: grid; gap: 0.3rem; }
 .op-order li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card-solid); font-size: 0.86rem; }
@@ -656,6 +683,11 @@ summary { min-height: 24px; }
 .op-block .lbl { font-size: 0.82rem; color: var(--dim); }
 .op-block textarea { width: 100%; max-width: 70ch; font: inherit; font-family: var(--mono); font-size: 0.82rem; padding: 0.5rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); }
 .op-checks { list-style: none; margin: 0.3rem 0; padding: 0.4rem 0.6rem; max-height: 40vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); display: grid; gap: 0.2rem; font-family: var(--mono); font-size: 0.8rem; }
+/* A PAC preview's line diff: the leading + or - says it; the tint and the strike only repeat it. */
+.op-diff { max-height: 420px; white-space: pre; overflow-x: auto; }
+.op-diff .op-add { background: var(--accent-tint); }
+.op-diff .op-del { text-decoration: line-through; }
+.op-diff:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .op-checks input { accent-color: var(--accent); }
 .op-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.4rem 0; }
 .op-h { font-size: 0.86rem; margin: 1rem 0 0.4rem; }
@@ -703,6 +735,20 @@ summary { min-height: 24px; }
 .pl-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pl-list textarea { width: 100%; box-sizing: border-box; min-height: 6rem; margin-top: 0.4rem; font: 0.82rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); }
 .pl-note { margin: 0.6rem 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: var(--r-md); background: var(--well); font-size: 0.86rem; line-height: 1.5; }
+/* Path analyzer: Category lookup (static/category_lookup.js) and its link from Test a list rows */
+.pl-cat { margin-left: 0.35rem; min-height: 24px; padding: 0.05rem 0.5rem; border-radius: var(--r-pill); border: 1px solid var(--border); background: var(--well); color: var(--accent); font: inherit; font-size: 0.74rem; font-weight: 600; cursor: pointer; }
+.pl-cat:hover { border-color: var(--accent); }
+.pl-cat:focus-visible, .cl-entry h2:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.cl-form textarea { min-height: 4.5rem; }
+.cl-entry { margin: 1rem 0 1.4rem; padding: 0.8rem 0.9rem; border: 1px solid var(--border); border-radius: var(--r-lg, 12px); background: var(--well); min-width: 0; }
+.cl-entry h2 { margin: 0 0 0.3rem; font-size: 1.05rem; overflow-wrap: anywhere; }
+.cl-entry h3 { margin: 0.9rem 0 0.3rem; font-size: 0.95rem; display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; overflow-wrap: anywhere; }
+.cl-entry .cl-line { margin: 0.25rem 0; font-size: 0.88rem; line-height: 1.5; overflow-wrap: anywhere; }
+.cl-entry .df-chip { text-transform: none; letter-spacing: 0; }
+.cl-table { min-width: 38rem; }   /* narrow screens scroll the table inside its region rather than breaking words */
+.cl-table td { vertical-align: top; overflow-wrap: break-word; }
+.cl-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cl-off { color: var(--dim); }
 
 /* Path analyzer what-if (static/path_whatif.js) */
 .pa-whatif .pa-wi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); gap: 0.6rem 1rem; margin: 0.6rem 0 0.2rem; }
@@ -710,8 +756,65 @@ summary { min-height: 24px; }
 .pa-whatif .pa-wi-field .df-ctl input { width: 100%; min-width: 0; }
 .pa-wi-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; max-height: 14rem; overflow-y: auto; }
 .pa-wi-results .rp-btn { width: 100%; text-align: left; justify-content: flex-start; }
+/* What-if: the ZPA identity (static/path_whatif.js). A fieldset's min-width is min-content by default: 0 keeps 320px free of sideways scroll. */
+.pa-wi-zpa { min-width: 0; margin: 0.8rem 0 0.2rem; padding: 0.5rem 0.8rem 0.6rem; border: 1px solid var(--border); border-radius: var(--r-md); }
+.pa-wi-zpa legend { padding: 0 0.3rem; font-weight: 600; font-size: 0.9rem; }
+.pa-wi-zpa .df-ctl select { width: 100%; min-width: 0; }
+.pa-wi-zpa .op-block textarea { max-width: 100%; box-sizing: border-box; }
+.pa-wi-groups { margin: 0.3rem 0 0; padding-left: 1.1rem; overflow-wrap: anywhere; }
+.pa-zid-out .df-hop-d { overflow-wrap: anywhere; }
 .pa-whatif-out .df-table td { vertical-align: top; }
 .pa-whatif-out .df-table td > div + div { margin-top: 0.25rem; }
 /* Advanced settings: the Glass effect switch (static/glass.js keeps it in step with the page). */
 .adv-switch { display: inline-flex; align-items: center; gap: 0.6rem; min-height: var(--ctl-md); margin: 0.2rem 0; font-weight: 600; cursor: pointer; }
 .adv-switch input { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
+/* Path analyzer: a picked device, two identities compared, Test from here (static/path_extras.js) */
+.pa-dev-card { margin: 0.5rem 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-left: 4px solid var(--pass); border-radius: var(--r-md); background: var(--well); }
+.pa-dev-card .df-hop-d { overflow-wrap: anywhere; }
+.pa-dev-facts th[scope="row"], .pa-probe-table th[scope="row"], .pa-cmp-table th[scope="row"] { text-align: left; font-weight: 600; }
+.pa-dev-facts td, .pa-probe-table td, .pa-cmp-table td { vertical-align: top; overflow-wrap: anywhere; }
+.pa-unknown { color: var(--dim); font-style: italic; }
+.pa-device-out, .pa-probe, .pa-cmp-out { margin: 1rem 0; }
+.pa-cmp-table tr.pa-cmp-first > * { background: color-mix(in srgb, var(--warn) 14%, var(--card-solid)); }
+.pa-cmp-table tr.pa-cmp-first > th { border-left: 4px solid var(--warn); }
+.pa-cmp-table tr.pa-cmp-diff > * { background: color-mix(in srgb, var(--warn) 6%, var(--card-solid)); }
+.pa-cmp-o { font-weight: 600; }
+.pa-cmp-headline { font-size: 1.02rem; line-height: 1.45; margin: 0.8rem 0 0.4rem; }
+.pa-cmp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; }
+.pa-probe-list { list-style: none; margin: 0.5rem 0; padding: 0; display: grid; gap: 0.4rem; }
+.pa-probe-cmp { padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-left: 4px solid var(--dim); border-radius: var(--r-md); background: var(--well); overflow-wrap: anywhere; }
+.pa-probe-cmp.ok { border-left-color: var(--pass); }
+.pa-probe-cmp.no { border-left-color: var(--fail); }
+[id="paPlatFrom"] { align-self: center; }   /* (an id selector written without a hash: the shadow test keeps hex colours out of this file part) */
+.pa-probe .df-ctl, .pa-probe select { max-width: 100%; min-width: 0; }
+
+/* Tenant health on /report/health (static/tenant_health.js) */
+.th-card { margin-bottom: 1rem; }
+.th-lead { margin: 0.25rem 0 0.6rem; }
+.th-ctl { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.th-ctl .df-ctl { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 0.35rem; width: auto; }
+.th-ctl input[type="number"] { width: 5rem !important; min-width: 0; flex: 0 0 auto; }
+.th-item .df-tablewrap { overflow-x: auto; }
+.th-item table { overflow-wrap: normal; min-width: 30rem; }
+.th-ctl [hidden] { display: none !important; }
+.th-err { color: var(--fail); font-weight: 600; }
+.th-sum { margin: 0.6rem 0; }
+.th-items { list-style: none; margin: 0; padding: 0; }
+.th-item { border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: var(--r-md, 8px); padding: 0.55rem 0.75rem; margin: 0 0 0.55rem; overflow-wrap: anywhere; }
+.th-item.th-critical { border-left-color: var(--fail); }
+.th-item.th-warning { border-left-color: var(--warn); }
+.th-item.th-ok { border-left-color: var(--pass); }
+.th-h { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: baseline; margin-bottom: 0.2rem; }
+.th-steps summary { cursor: pointer; color: var(--accent); }
+.th-steps summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.th-steps ol { margin: 0.3rem 0 0 1.2rem; }
+.th-names { margin: 0.3rem 0 0 1.1rem; }
+/* API calls on Advanced settings (static/api_calls.js) */
+.adv-api-ctl { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; max-width: 100%; }
+.adv-api-ctl .df-ctl { max-width: 100%; min-width: 0; }
+.adv-api-ctl .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.adv-api-ctl .adv-switch { max-width: 100%; overflow-wrap: anywhere; }
+[id="advApi"] { min-width: 46rem; }
+[id="advApi"] td code { overflow-wrap: anywhere; }
+[id="advApi"] td:nth-child(6), [id="advApi"] td:nth-child(8) { white-space: nowrap; }
+[id="advApi"] tr.adv-api-bad td { color: var(--fail); }

@@ -695,7 +695,7 @@ def test_insights_read_uses_the_injected_clock():
 
     out = insights.read(z, NOW_MS - DAY_MS, NOW_MS, pace=0, now_ms=NOW_MS)
 
-    assert out["window"] == {"start_ms": NOW_MS - DAY_MS, "end_ms": NOW_MS, "days": 1.0} and out["queries"] == 9
+    assert out["window"] == {"start_ms": NOW_MS - DAY_MS, "end_ms": NOW_MS, "days": 1.0} and out["queries"] == 15
 
 
 # ═══ pass 2: facts, verdicts, the live cursor, every export ═══════════

@@ -25,12 +25,13 @@ TOOLBAR = {
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openShadowRulesTab()": "shadow",
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openZpaTab()": "zpa", "openDevicePostureTab()": "deviceposture",
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openZpaTab()": "zpa",
-    "openBrowserSecurityTab()": "browser",
+    "openBrowserSecurityTab()": "browser", "openCloudConnectorTab()": "ztw", "openOtherProductsTab()": "otherproducts",
+    "openAiGuardTab()": "aiguard",
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openSimpleMode()": "simple",
     "openToolTab('efficacy')": "efficacy", "openDetectionHealthTab()": "health", "openDlpPacksModal()": "packs",
     "openToolTab('terraform')": "terraform", "openVendorMigrateTab()": "vendormigrate", "_gdGoMigration()": "migration", "openEvalAllTab()": "evalall", "openOperationsTab()": "operations",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates",
-    "openLogAnalyzerTab()": "logs", "openBeaconTab()": "beacon", "openDigestTab()": "digest", "openLiveFeedTab()": "live", "openInsightsTab()": "insights", "openAuditTimelineTab()": "audit", "openSslCoverageTab()": "sslcoverage",
+    "openLogAnalyzerTab()": "logs", "openTrafficLogsTab()": "trafficlogs", "openBeaconTab()": "beacon", "openDigestTab()": "digest", "openLiveFeedTab()": "live", "openInsightsTab()": "insights", "openAuditTimelineTab()": "audit", "openSslCoverageTab()": "sslcoverage",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates", "openExportsTab()": "exports",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates", "openQueueTab()": "queue",
     "openSelfHealTab()": "selfheal",
@@ -260,11 +261,13 @@ def test_the_bulk_changes_explainer_names_every_builder(label):
 
 
 @pytest.mark.parametrize("key,phrases", [
-    ("fleet", ["install command"]),                                                  # report_fleet.html: Install command builder
+    ("fleet", ["install command", "service health by client connector version", "last seen", "sites", "history",
+               "csv exports", "pdf report"]),                                          # report_fleet.html sections (2026-10-31 too)
     ("advanced", ["secure by design", "upstream contract check", "app updates"]),    # report_advanced.html sections
     ("live", ["forwarding profiles", "pac files"]),                                  # report_live.html inventory
     ("pov", ["runbook", "test kit", "report"]),                                      # report_pov.html tabs
     ("path", ["what-if", "har", "list"]),                                            # report_path.html views
+    ("trafficlogs", ["sessions", "failure reason", "health", "anomalies", "rules hit", "dlp", "ssl", "siem"]),   # report_traffic_logs.html sections
     ("connect", ["sample tenant", "snapshot", "readiness"]),                         # Connect page (Wave 5)
 ])
 def test_every_page_explainer_names_the_sections_the_page_has(key, phrases):

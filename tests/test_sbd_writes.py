@@ -638,11 +638,13 @@ def test_an_ai_guard_undo_plan_asks_for_its_phrase_and_refuses_a_blank_one(aig, 
 
 ao.load_plugins()
 ALL_TYPES = list(ao.types())
-EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard"],
+EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard", "zidentity", "insights"],
               "channels": {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "cloud_app_control", "ssl_inspection")},
               "from_page": True}
 # The Scope page keys that put each product in scope.
-PRODUCT_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "aiguard": ("aiguard",)}
+PRODUCT_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "aiguard": ("aiguard",),
+                "zidentity": ("zidentity",),
+                "zwa": ("dlp",)}   # Workflow Automation incidents: DLP ticked (and the channel not another product)
 BUILTIN_PRODUCT = {"rule_state": "zia", "reorder": "zia", "url_categories": "zia", "zpa_domains": "zpa"}
 
 
@@ -734,7 +736,9 @@ class Tripwire:
     """A tenant client that fails the test on any use: nothing may be read."""
 
     def __getattr__(self, name):
-        if name.startswith("__") or name.startswith("_zia_rate"):   # the app's own stamps (tenant key, label), not a read
+        # The app's own stamps, not a read: the tenant key and label, and the
+        # simulation flag pack_ops.audited_run checks (offline_tenant's in-memory copy).
+        if name.startswith("__") or name.startswith("_zia_rate") or name == "simulation":
             raise AttributeError(name)
         pytest.fail(f"the tenant was read before the scope check ({name})")
 
@@ -807,6 +811,15 @@ def _zpa_segments_default():
     return bool(segs) and all((s.get("desired") or {}).get("enabled") is False for s in segs)
 
 
+def _list_fix_default():
+    import ops_list_fix
+    n = ops_list_fix.normalize({"type": "list_fix", "fixes": [{"area": "firewall", "purpose": "block", "destinations": [{"value": "203.0.113.9"}],
+                                                               "ip_group": {"new": "QA"}, "rule": {"new": {"name": "QA rule"}}},
+                                                              {"area": "url", "purpose": "allow", "destinations": [{"value": "qa.example"}],
+                                                               "category": {"new": "QA URLs"}, "rule": {"new": {"name": "QA URL rule"}}}]})
+    return all(f["rule"]["new"]["enabled"] is False for f in n["fixes"])   # Cloud Firewall, DNS and URL filtering rules alike
+
+
 def _aiguard_policy_default():
     import test_ops_aiguard as t_aig
     spec = {k: v for k, v in t_aig.POLICY.items() if k != "mode"}
@@ -814,9 +827,69 @@ def _aiguard_policy_default():
     return p["status"] == "ready" and "Monitor" in p["title"]
 
 
+def _rule_edit_default():
+    import ops_rule_editor
+    n = ops_rule_editor.normalize({"type": "rule_edit", "action": "create", "policy": "url_filtering",
+                                   "fields": {"name": "QA", "action": "BLOCK", "url_categories": ["GAMBLING"]}})
+    return n["enabled"] is False
+
+
+def _config_restore_default():
+    """A clone from a backup creates its rules and segments disabled unless
+    the operator ticks 'keep each rule's state' (ops_config_restore)."""
+    import config_backup as cb
+    import ops_config_restore as ocr
+    rule = {"id": 10, "name": "R", "order": 1, "state": "ENABLED", "action": "BLOCK"}
+    seg = {"id": "601", "name": "S", "enabled": True, "domain_names": ["a.example"]}
+    src = {"zia.url_filtering_rules": [rule], "zpa.application_segments": [seg]}
+    tgt = {"zia.url_filtering_rules": [], "zpa.application_segments": []}
+    ok = True
+    for t, key, field, off in (("config_restore_zia", "zia.url_filtering_rules", "state", "DISABLED"),
+                               ("config_restore_zpa", "zpa.application_segments", "enabled", False)):
+        p = ocr.build_plan(src, ocr.DocReader(tgt), ocr.check_spec({"type": t, "source": {"backup": "bk-" + "0" * 16}, "mode": "add_missing",
+                                                                   "target": "other", "target_profile_id": "qa"}, t.rsplit("_", 1)[1]),
+                           t.rsplit("_", 1)[1])
+        made = [g["target"]["desired"] for g in p["groups"] if g["handler"] == "cfg_create" and g["target"]["type"] == key]
+        ok = ok and bool(made) and all(m.get(field) == off for m in made)
+    return ok and bool(cb.BY_KEY)
+
+
+def _rules_csv_default():
+    """A new ZIA rule from a file is planned DISABLED, even when the row says ENABLED."""
+    from fake_rule_tenant import client
+    _st, c = client()
+    text = "name,state,action\r\nQA new rule,ENABLED,BLOCK_DROP\r\n"
+    p = ao.plan(c, {"type": "zia_rules_csv", "policy": "firewall", "csv": text}, scope=ao.scope_for(["zia_extras"], {}))
+    adds = [g["target"] for g in p["groups"] if g["handler"] == "rcsv_create"]
+    return len(adds) == 1 and adds[0]["values"]["state"] == "DISABLED"
+
+
+def _zpa_access_csv_default():
+    """A new ZPA access rule (it cannot be created disabled) is left out unless the operator ticks 'create new rules enabled'."""
+    from fake_rule_tenant import client
+    _st, c = client()
+    text = "name,action,segment_groups\r\nQA new access,ALLOW,Finance apps\r\n"
+    p = ao.plan(c, {"type": "zpa_access_csv", "policy": "zpa_access", "csv": text}, scope=ao.scope_for(["zpa"], {}))
+    return not p["groups"] and any(u["kind"] == "rule_add" and u["status"] == "excluded" for u in p["items"])
+
+
+def _zid_user_default():
+    import ops_zid
+    n = ops_zid.normalize_users({"changes": [{"action": "create", "login_name": "qa@example.com", "display_name": "QA"}]})
+    return n["changes"][0]["enable"] is False and ops_zid.user_create_payload(n["changes"][0])["status"] is False
+
+
+def _zid_client_default():
+    import ops_zid
+    n = ops_zid.normalize_clients({"action": "create", "name": "QA", "scopes": [{"resource": "r", "scope": "s"}]})
+    return n["enable"] is False and ops_zid.client_create_payload(dict(n, resources=[]))["status"] is False
+
+
 # How each type that creates or changes enforcement keeps it off unless the
 # operator chose it; or why "off" does not apply. A new type must be listed.
 DEFAULT_OFF: Dict[str, Any] = {
+    "zia_rules_csv": _rules_csv_default,
+    "zpa_access_csv": _zpa_access_csv_default,
     "zcc_profile_build": _zcc_default,
     "zia_baseline": _baseline_default,
     "zpa_app_segments": _zpa_segments_default,
@@ -826,14 +899,53 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zpa_policies": "rules over segments created disabled decide nothing until a segment is enabled",
     "zdx_probes": "probes measure only; they never allow or block traffic",
     "ssl_certificate_move": "moves the intermediate certificate; asks its typed phrase every time (always=True)",
+    "zia_sandbox_hashes": "a blocked file hash is the change asked for (a block list has no monitor mode); asks its typed phrase every time",
     "rule_state": "the operator picks ENABLED or DISABLED explicitly, per operation",
     "reorder": "changes order only; no rule is created or enabled",
     "url_categories": "custom URL category content; no rule is created or enabled",
     "zpa_domains": "domains only; a clone keeps its source segment's state so domains moved to it keep working (accepted)",
+    "zpa_segment_fields": "changes only the fields the operator picked on existing segments; creates nothing, and enables a segment only when Enabled is picked",
     "zdx_probe_state": "the operator picks on or off explicitly, per target",
     "zcc_profile_delete": "deletes profiles only; creates and enables nothing",
     "zdx_probe_delete": "deletes apps and probes (or turns them off) only",
     "zpa_prefix_delete": "deletes the prefixed objects only; creates and enables nothing",
+    "rule_edit": _rule_edit_default,
+    "zpa_segment_edit": "edits one existing segment; the operator picks enabled or not, and any change to an enabled segment needs the typed phrase",
+    "app_object_edit": "cloud app instances and tenancy profiles decide nothing until a Cloud App Control rule uses them",
+    "proxy_chain_edit": "a proxy forwards nothing until a gateway and a forwarding rule (created disabled) use it",
+    "config_restore_zia": _config_restore_default,
+    "config_restore_zpa": _config_restore_default,
+    "config_restore_zcc": "Client Connector trusted networks, forwarding profiles and settings carry no on/off state; app profiles are never written",
+    "zia_directory": "users, groups and departments: membership only, no policy rule is created or enabled; no password is set",
+    "zia_pac": "a new version is created STAGED; a new PAC file has a new URL nothing uses yet; switching the active version is the change asked for",
+    # Day-to-day admin for ZPA, Client Connector and ZDX (ops_zpa_admin, ops_zcc_admin, ops_zdx_trace).
+    "zpa_infra_update": "changes the fields the operator sets on existing connectors, groups and portals; creates and enables nothing",
+    "zpa_infra_delete": "deletes (or revokes) the objects picked only; an object still connected or used is excluded",
+    "zpa_provisioning_key_new": "a new provisioning key is created turned off unless the operator turns it on",
+    "zpa_ba_certificate": "uploads a certificate and points the Browser Access applications the operator picks at it; creates no application or policy",
+    "zcc_device_remove": "removes the devices picked only; creates and enables nothing",
+    "zcc_device_bulk_remove": "removes the devices matched and confirmed only; creates and enables nothing",
+    "zcc_bypass_app": "a new custom bypass application is created off unless the operator turns it on",
+    "zcc_entitlements": "sets the ZPA and ZDX entitlements to exactly what the operator picks; narrowing them asks for the typed confirmation",
+    "zdx_deeptrace_start": "a time-boxed measurement on one device (5 to 60 minutes) that enforces nothing",
+    "zdx_deeptrace_stop": "stops a deep trace only; creates and enables nothing",
+    "zia_firewall_import": "the plan's Cloud Firewall rules are created DISABLED unless the operator ticks 'create the rules enabled'; groups and services enforce nothing until a rule uses them",
+    "zid_users": _zid_user_default,
+    "zid_api_clients": _zid_client_default,
+    "list_fix": _list_fix_default,
+    "ip_group_edit": "group content only; no rule is created or enabled (a change to a group an enabled rule uses asks the typed phrase)",
+    "atp_list_edit": "the security policy list content asked for; it acts at activation, so the typed phrase is asked every time",
+    "cloud_app_sanction": "changes an app's sanction label only (the operator picks the state per app); creates and enables no rule",
+    "zwa_close_false_positives": "closes incidents as false positives only; creates or enables no rule; asks its typed phrase every time",
+    "zid_group_members": "adds or removes the people the operator typed in one group; creates no group, role or rule",
+    "zcc_app_profile_state": "the operator picks on or off explicitly, per profile, and types the profile's name",
+    "zcc_app_profile_settings": "changes only the allowlisted settings the operator set, each shown before and after; creates nothing",
+    "zia_activation": "activates changes already saved and pending; creates, enables or changes no object; refused when nothing is pending; ACTIVATE typed every time",
+    "url_category_manage": "renames or deletes one existing custom URL category; creates no rule (an Undo re-creates only the deleted category)",
+    "ip_group_admin": "group content only (edit, delete while unused, CSV import of groups); no rule is created or enabled",
+    "dlp_object_edit": "a new dictionary or engine matches nothing until a rule uses it; creates no rule; a change to what an enabled rule detects asks the typed phrase",
+    "zid_user_edit": "changes the fields and groups the operator set on one existing user; creates no user, group or rule",
+    "zid_user_reset": "resets one user's password or sets skip MFA once, as the operator picked; creates nothing; RESET <login> typed every time",
 }
 
 
@@ -960,6 +1072,10 @@ UNDO_SHAPES = [
     {"type": "aiguard_routing", "action": "undo", "steps": [{"kind": "firewall_rule", "op": "delete", "id": "1", "name": "AIG-x"}]},
     {"type": "aiguard_detection_policy", "action": "undo", "steps": [{"kind": "aiguard_rule", "op": "delete", "id": "1", "name": "AIG-x"}]},
     {"type": "zpa_prefix_delete", "prefix": "pov1", "undo": True, "select": [], "restore": []},
+    {"type": "zia_directory", "action": "undo", "changes": [{"kind": "user", "action": "delete", "id": "41"}]},
+    {"type": "zia_pac", "action": "undo", "delete": {"id": "61", "name": "corp.pac"}},
+    {"type": "zid_users", "action": "undo", "changes": [{"action": "delete", "id": "u-1"}]},
+    {"type": "zid_api_clients", "action": "undo", "delete": {"id": "c-1", "name": "Reporting"}},
 ]
 
 

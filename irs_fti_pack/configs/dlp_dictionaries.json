@@ -1,0 +1,70 @@
+[
+  {
+    "name": "FTI-Markings",
+    "description": "Federal tax information labels: the 26 U.S.C. 6103 / IRC 6103 citation and the words Federal Tax Information.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:IRC|I\\.R\\.C\\.|26\\s?U\\.?\\s?S\\.?\\s?C\\.?)\\s*(?:§{1,2}\\s*|SEC(?:TION|\\.)?\\s*)?6103\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bFEDERAL\\s+TAX\\s+INFORMATION\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"FEDERAL TAX INFORMATION\""
+      }
+    ]
+  },
+  {
+    "name": "FTI-Tax-Forms",
+    "description": "Names of IRS returns, information returns and transcripts that carry return information.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bForm\\s+(?:1040(?:-?(?:SR|NR|X|ES))?|W-?2|1099(?:-[A-Z]{1,4})?|941|1120(?:-?S)?|1065|4506(?:-?[CT])?|8821)\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:Account|Record\\s+of\\s+Account|Wage\\s+and\\s+Income|Tax\\s+Return)\\s+Transcript\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bSchedule\\s+K-1\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "\"adjusted gross income\""
+      }
+    ]
+  },
+  {
+    "name": "FTI-Social Security Numbers (US) - Prox 500",
+    "description": "Cloned predefined SSN dictionary with 500-character proximity, used WITH the tax form names so only SSNs in return data fire.",
+    "predefined_clone": true,
+    "dict_template_name": "Social Security Numbers (US)",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_HIGH",
+    "proximity": 500,
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH"
+  },
+  {
+    "name": "FTI-Tax Identification Number (US) - Prox 500",
+    "description": "Cloned predefined US taxpayer identification number dictionary with 500-character proximity, used WITH the tax form names.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USITIN_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "proximity": 500
+  }
+]

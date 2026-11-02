@@ -1,0 +1,116 @@
+{
+ "area": "Client Connector, the rest of the way (zcc_bypass.py and the Path analyzer's Client Connector step, the profile builder's tamper passwords in ops_zcc.py, one device's one-time passwords in zcc_otp.py and /api/zcc/otp)",
+ "title": "Every Client Connector bypass evaluated on the path with the list that decided named; tamper passwords typed, sent once and never kept; device one-time passwords as a gated, rate-limited, audited read that keeps nothing",
+ "standards": [
+  "ASVS V1.4.4",
+  "ASVS V4.1.1",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V7.1.1",
+  "ASVS V7.4.1",
+  "ASVS V8.2.2",
+  "ASVS V8.3.4",
+  "ASVS V11.1.1",
+  "ASVS V11.1.4",
+  "CWE-20",
+  "CWE-209",
+  "CWE-256",
+  "CWE-285",
+  "CWE-312",
+  "CWE-345",
+  "CWE-524",
+  "CWE-532",
+  "CWE-693",
+  "CWE-697",
+  "CWE-754",
+  "CWE-799",
+  "CWE-841",
+  "CWE-863",
+  "CWE-922",
+  "WSTG-ATHZ-02",
+  "WSTG-BUSL-05",
+  "WSTG-ERRH-01",
+  "WCAG 2.2 SC 2.2.1",
+  "WCAG 2.2 SC 4.1.3"
+ ],
+ "checks": [
+  {
+   "id": "W7-ZCC-C01",
+   "what": "Oracle tables for the Client Connector step: VPN gateway bypass (host, wildcard, address, address with a port, none), IP-based application bypass (custom, predefined by id and appSvcId, app service id; address, port range, protocol, fqdn), Z-Tunnel 1.0 and Tunnel with local proxy (TCP 80 and 443 only), Enforce proxy (web only), Z-Tunnel 2.0 (every port; exclusions, limited inclusions), each naming the list and entry that decided",
+   "standard": "ASVS V1.4.4 · CWE-697 · CWE-693",
+   "result": "pass"
+  },
+  {
+   "id": "W7-ZCC-C02",
+   "what": "Unknowns stay unknown: IP-based application definitions that cannot be read leave an address unknown (verdict 'Unable to verify how the device reaches', also for traffic that is not web), limited Z-Tunnel 2.0 inclusions leave a host name unknown, the Z-Tunnel 1.0 proxy-port option leaves another web port unknown",
+   "standard": "ASVS V7.4.1 · CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W7-ZCC-C03",
+   "what": "Tamper passwords: preview shows set (hidden); the plan hash covers a salted, keyed digest (a different password or salt moves it, plan_changed writes nothing); sent once in the create call (Windows snake-case and macOS camel-case SDK fields); read back as set without the value; a read-back without the field is not confirmed",
+   "standard": "ASVS V8.3.4 · ASVS V11.1.1 · CWE-256 · CWE-345",
+   "result": "pass"
+  },
+  {
+   "id": "W7-ZCC-C04",
+   "what": "No sink holds a password in any encoding (typed, URL, form, JSON, a fragment): plan, plan PDF, approval request, job result and log, record, audit log, console, and errors that echo the request body (an error answer, an exception, ZCC's success false) all masked",
+   "standard": "ASVS V7.1.1 · CWE-209 · CWE-312 · CWE-532",
+   "result": "pass"
+  },
+  {
+   "id": "W7-ZCC-C05",
+   "what": "Passwords are taken only by the profile builder, validated before sign-in (known fields, at most 128 characters, no control characters) without echoing a value, and must be typed again for the apply; the page keeps them out of the spec and of browser storage",
+   "standard": "ASVS V5.1.3 · ASVS V8.2.2 · CWE-20 · CWE-922",
+   "result": "pass"
+  },
+  {
+   "id": "W7-ZCC-C06",
+   "what": "Device one-time passwords: scope (checked first), a person who may change the tenant, the named assessor (not the tool), SHOW OTP <device> typed, the device validated, all before sign-in; at most 5 a person in 10 minutes and 30 in an hour (429 with Retry-After, audited)",
+   "standard": "ASVS V4.1.1 · ASVS V4.1.3 · ASVS V11.1.4 · CWE-285 · CWE-799 · WSTG-ATHZ-02",
+   "result": "pass"
+  },
+  {
+   "id": "W7-ZCC-C07",
+   "what": "Device one-time passwords are in the answer only (no-store, no-cache); the audit entry names who, the assessor, the device (host name and UDID hash) and the kinds shown, never a value; an unknown or ambiguous device shows nothing and is audited; the page hides them after 60 seconds or on Hide now and stores nothing",
+   "standard": "ASVS V8.3.4 · CWE-524 · CWE-532 · WCAG 2.2 SC 2.2.1",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-ZCC-01",
+   "title": "The Path analyzer read the app profile's VPN gateways and IP-based application ids but never evaluated them: a VPN gateway or an IP-based app bypass was reported as reaching Zscaler",
+   "severity": "medium",
+   "cwe": "CWE-697",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "zcc_bypass.py: VPN gateway check, IP-based application definitions read (SDK custom-ip-based-apps, predefined-ip-based-apps, webAppService) and matched by address, host name, port and protocol; data_flow.trace names the deciding list; Test a list indexes the new lists",
+   "test": "tests/test_zcc_bypass_path.py",
+   "commit": ""
+  },
+  {
+   "id": "W7-ZCC-02",
+   "title": "Z-Tunnel 1.0 carried every web port in the trace (TCP 8080 and 8443 included), and a host name that limited Z-Tunnel 2.0 inclusions would need resolved was reported as tunnelled",
+   "severity": "low",
+   "cwe": "CWE-754",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "zcc_bypass.tunnel_check (TCP 80 and 443 for Z-Tunnel 1.0, unknown with the proxy-port option) and tunnel2_lists (unknown for a host name with limited inclusions)",
+   "test": "tests/test_zcc_bypass_path.py::test_z_tunnel_1_and_enforce_proxy_carry_web_traffic_only",
+   "commit": ""
+  },
+  {
+   "id": "W7-ZCC-03",
+   "title": "For traffic that is not web, an unverified Client Connector or forwarding step still ended in the firewall's headline and a 'blind' outcome",
+   "severity": "low",
+   "cwe": "CWE-754",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "zia_path_modules.extend_trace keeps 'unknown' and annotate_verdict keeps 'Unable to verify how the device reaches' (the firewall's decision moves to the summary, as what applies if the traffic gets there)",
+   "test": "tests/test_zcc_bypass_path.py::test_definitions_that_cannot_be_read_leave_an_address_unknown_never_not_bypassed",
+   "commit": ""
+  }
+ ],
+ "tests_added": 101
+}

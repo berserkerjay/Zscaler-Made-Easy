@@ -247,7 +247,9 @@ WRITE_GRANTS = {("apply-patch.yml", "apply", "contents"), ("upstream_check.yml",
                 # The standalone builds: a Sigstore certificate and the stored provenance per build,
                 # and the GitHub Release on a version tag (release-standalone.yml).
                 ("release-standalone.yml", "build", "id-token"), ("release-standalone.yml", "build", "attestations"),
-                ("release-standalone.yml", "release", "contents")}
+                ("release-standalone.yml", "release", "contents"),
+                # CodeQL uploads its results to code scanning (codeql.yml).
+                ("codeql.yml", "analyze", "security-events")}
 
 
 @pytest.mark.parametrize("path", WORKFLOWS, ids=os.path.basename)
@@ -379,7 +381,9 @@ def _sample(pattern: str) -> str:
     return re.sub(r"\[([^\]]+)\]", lambda m: m.group(1)[0], p).replace("*", "x")
 
 
-@pytest.mark.parametrize("pattern", [p for p in _patterns(".gitignore") if p not in BUILD_INPUTS])
+# A `!` line re-includes a file git keeps (agent-workspace/output/README.md):
+# it names no ignored file, so it is not a pattern to keep out of the image.
+@pytest.mark.parametrize("pattern", [p for p in _patterns(".gitignore") if p not in BUILD_INPUTS and not p.startswith("!")])
 def test_every_git_ignored_file_stays_out_of_the_image(pattern):
     """ASVS V14.1.1 · ASVS V8.3.4 · CWE-538 · SSDF PS.1.1: local state git ignores is not baked into the image by COPY . ."""
     # Arrange

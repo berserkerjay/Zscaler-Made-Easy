@@ -52,7 +52,7 @@ const clickText = (sel, text) => ev(`(() => { const b = [...document.querySelect
 # Open the sample tenant through the Connect page, fill the report details,
 # tick every scope the sample serves and run the assessment from the Scope
 # page, as a user does. Leaves `run` = { started, org, checks }.
-SAMPLE_SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac"]
+SAMPLE_SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "ztw"]
 SETUP = r"""
 trace('setup: start');
 await go('/');

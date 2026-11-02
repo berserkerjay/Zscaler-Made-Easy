@@ -272,6 +272,7 @@ CHECK_DOMAIN_MAP = {
     "BW.": ["firewall"],
     "LOC.": ["firewall", "device_compliance"],
     "USR.": ["identity_admin", "logging_monitoring"],
+    "GOV.": ["logging_monitoring", "identity_admin"],   # config audit, alerts, NSS log streaming
     "CA.": ["url_filtering", "dlp"],
     "ZPA.": ["zpa_zero_trust"],
     "ZCC.": ["device_compliance", "endpoint_dlp"],
@@ -280,6 +281,18 @@ CHECK_DOMAIN_MAP = {
     # Admin roles, SSO and the identity directory
     "RBAC.": ["identity_admin"],
     "ZID.": ["identity_admin"],
+    # Other Zscaler products (zscaler_other_products_checks)
+    "ZTB.": ["firewall", "zpa_zero_trust"],
+    "EASM.": ["malware_threat"],
+    "ZBI.": ["logging_monitoring"],
+    "ZCELL.": ["device_compliance"],
+    "ZMS.": ["zpa_zero_trust", "firewall"],
+    # Coverage checks (2026-11-01) outside the prefixes above
+    "THR.12": ["device_compliance"],             # partner integrations feed device posture
+    "HLT.5": ["zpa_zero_trust"],                 # disconnected connectors cleaned up
+    "HLT.6": ["zpa_zero_trust"],                 # connector groups on a current version profile
+    "AIG.7": ["ai_governance", "identity_admin"],   # LLM provider credentials rotated
+    "ZTW.9": ["firewall"],                       # connector IP groups that forwarding and DNS rules match on
 }
 
 

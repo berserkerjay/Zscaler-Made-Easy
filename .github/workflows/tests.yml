@@ -32,9 +32,10 @@ jobs:
           # the tests run against exactly what a real install gets, not a loose
           # requirements.txt resolution.
           pip install --require-hashes --no-deps -r requirements.lock
-          # Test tools (pytest, pyflakes, httpx for the TestClient) are
-          # hash-pinned too, compiled against requirements.lock so they keep
-          # its pins for every package the two share.
+          # Test tools (pytest, pyflakes, httpx for the TestClient, bandit
+          # for the SAST gate in tests/test_sast.py) are hash-pinned too,
+          # compiled against requirements.lock so they keep its pins for
+          # every package the two share.
           pip install --require-hashes --no-deps -r requirements-dev.lock
           pip check
 
@@ -102,12 +103,32 @@ jobs:
       - name: Generated Terraform is terraform fmt-clean
         run: |
           python tools/terraform_samples.py /tmp/tf_samples
-          terraform fmt -check -recursive -diff terraform/ /tmp/tf_samples/vendor_hcl /tmp/tf_samples/containment /tmp/tf_samples/endpoint
+          terraform fmt -check -recursive -diff terraform/ /tmp/tf_samples/vendor_hcl /tmp/tf_samples/containment /tmp/tf_samples/endpoint /tmp/tf_samples/tenant
 
       - name: Validate generated Terraform against the zscaler/zia provider
         run: |
           rc=0
           for d in terraform/*/ /tmp/tf_samples/vendor_hcl/ /tmp/tf_samples/vendor_json/ /tmp/tf_samples/containment/ /tmp/tf_samples/endpoint/; do
+            echo "== $d"
+            terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null || { rc=1; continue; }
+            terraform -chdir="$d" validate -no-color || rc=1
+          done
+          exit $rc
+
+      # Advisory until a first green run: the whole-tenant export (tenant_terraform) of the
+      # sample tenant, every product's workspace the export writes (zia, zpa, ztc and zcc; the
+      # samples tool fails when one is missing), against the provider each one pins. The
+      # zscaler/zcc provider is a beta pinned exactly (0.1.2-beta.3). Owner decision (wave 9):
+      # this step becomes blocking (remove continue-on-error) after its first green run; it has
+      # never run yet (no Actions minutes), so ztc and zcc have never been validated in CI.
+      - name: Validate the whole-tenant export of the sample tenant, every product (advisory)
+        continue-on-error: true
+        run: |
+          rc=0
+          for p in zia zpa ztc zcc; do
+            [ -f "/tmp/tf_samples/tenant/tenant-terraform/$p/terraform.tf" ] || { echo "::error::no $p workspace in the sample export"; rc=1; }
+          done
+          for d in /tmp/tf_samples/tenant/tenant-terraform/*/; do
             echo "== $d"
             terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null || { rc=1; continue; }
             terraform -chdir="$d" validate -no-color || rc=1

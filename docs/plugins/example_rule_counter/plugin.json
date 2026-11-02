@@ -1,0 +1,6 @@
+{
+  "name": "example_rule_counter",
+  "version": "1.0.0",
+  "description": "Example only: a read-only page counting this app's operation types, and a Bulk changes operation that disables picked Cloud Firewall rules by name prefix.",
+  "permissions": ["operations", "pages"]
+}
