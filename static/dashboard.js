@@ -198,7 +198,7 @@
     setMenu(false);
     if (k === 'scope') { showScopeView(); setCurrent('scope'); return; }
     hideScopeView();
-    if (k === 'dashboard') { const r = $('results'); if (r && getComputedStyle(r).display !== 'none') r.scrollIntoView({ behavior: 'smooth', block: 'start' }); else window.scrollTo({ top: 0, behavior: 'smooth' }); setCurrent('dashboard'); return; }
+    if (k === 'dashboard') { const r = $('results'); if (r && getComputedStyle(r).display !== 'none') r.scrollIntoView({ behavior: 'instant', block: 'start' }); else window.scrollTo({ top: 0, behavior: 'instant' }); setCurrent('dashboard'); return; }
     if (typeof _stepGo === 'function') _stepGo(k);
     setCurrent(k);
   }));
@@ -434,7 +434,11 @@
     const foot = $('dbFooter'); if (foot && !foot.hidden) { foot.dataset.dbHiddenFor = 'scope'; foot.hidden = true; }
     scopeView.hidden = false;
     renderChannelsList();
-    scopeView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // A jump, not an animation ('instant': the page's CSS makes 'auto'
+    // smooth): the content was just swapped, and a smooth scroll carried the
+    // newly shown controls (Run assessment, the channel ticks) under a
+    // pointer that was already pressing them.
+    scopeView.scrollIntoView({ behavior: 'instant', block: 'start' });
     say('Scope assessment.');
   }
   function hideScopeView() {

@@ -377,6 +377,8 @@ def test_browser_driver_preserves_assertions_and_requires_trusted_native_clicks(
     # One bounded orchestration owns every native click; the receipt window is not lengthened.
     assert source.count("await clickUntilReceived(") == 1 and "trusted === true`,1500," in source
     assert "attempts = 3" in helpers and "if (!verdict.retryable) break;" in helpers
+    # Consecutive samples straddle a rendered frame, so a scroll or layout shift in flight never reads as stable.
+    assert "requestAnimationFrame(()=>requestAnimationFrame(sample))" in source and "w:r.width,h:r.height" in source
     assert "event.type === 'click' && record.trusted && matches" in helpers
     assert "last.targetId === previous.targetId" in helpers
     assert "inputActions:" in source and "type:'click-dispatched'" in source

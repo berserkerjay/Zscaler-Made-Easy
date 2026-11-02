@@ -284,3 +284,36 @@ def test_the_idle_refresh_never_rebuilds_controls_or_repeats_the_live_status(tmp
     assert out["ticks"] >= 4 and out["status"].startswith("Signed in to Browser fixture"), out
     assert out["watch"] == {"dbScopeRun": [], "dbLastRun": [], "authStatus": []}, out
     assert out["sameRun"] and out["sameGo"], out
+
+
+# Switching to the Scope page swaps the page's content; it used to scroll
+# there smoothly, so for a few frames Run assessment and the channel ticks
+# slid under a pointer already pressing them (CI's native click landed on a
+# channel label instead of Run assessment). Frames are sampled with
+# requestAnimationFrame, never a fixed delay.
+_SCOPE_JUMP_DRIVER = r"""
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 700, deviceScaleFactor: 1, mobile: false });
+await send('Page.navigate', { url: base + '/' });
+await until(() => ev(`document.readyState === 'complete' && !!window.__dbReady && !!document.querySelector('.db-item[data-db="scope"]')`), 'the dashboard');
+const out = await ev(`new Promise(resolve => {
+  document.querySelector('.db-item[data-db="scope"]').click();
+  const run = () => Math.round(document.getElementById('dbScopeRun').getBoundingClientRect().top);
+  const tops = [], runs = [];   // painted frames only: what the click handler leaves before the first frame is never seen
+  const frame = () => { tops.push(Math.round(document.getElementById('dbScopeView').getBoundingClientRect().top)); runs.push(run());
+    if (tops.length < 8) requestAnimationFrame(frame); else resolve({ tops, runs, y: Math.round(scrollY), max: document.documentElement.scrollHeight - innerHeight }); };
+  requestAnimationFrame(frame);
+})`);
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+
+def test_opening_the_scope_page_jumps_to_it_instead_of_sliding_controls_under_the_pointer(tmp_path):
+    """WCAG 2.2 SC 2.3.3, 3.2.1 · CWE-1188: from the dashboard, the Scope link shows the Scope page at its top at once, and it and Run assessment stay put over the next frames (they slid there smoothly)."""
+    from test_findings_reflow import CDP_PRELUDE, run_in_browser
+    out = run_in_browser(tmp_path, CDP_PRELUDE + _SCOPE_JUMP_DRIVER, timeout=120)
+    # The Scope page and its Run assessment stay where they first appear on
+    # screen, frame after frame, and that is the Scope page's top (or the page's end).
+    # (1 px of slack: scroll anchoring settles sub-pixel offsets.)
+    assert max(out["tops"]) - min(out["tops"]) <= 1 and max(out["runs"]) - min(out["runs"]) <= 1, out
+    assert abs(out["tops"][0]) <= 1 or out["y"] >= out["max"] - 1, out

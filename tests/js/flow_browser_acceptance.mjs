@@ -79,7 +79,11 @@ async function click(selector, frameId) {
   const token=String(++clickSequence);
   await evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)throw Error('Missing click target');if(frame)frame.scrollIntoView({block:'center',behavior:'instant'});el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});window.__acceptanceClickReceipts=window.__acceptanceClickReceipts||{};window.__acceptanceInputProbe=window.__acceptanceInputProbe||{receipts:window.__acceptanceClickReceipts};window.__acceptanceProbeCleanup=window.__acceptanceProbeCleanup||{};window.__acceptanceProbeCleanup[${JSON.stringify(token)}]=(${installNativeClickProbe.toString()})(doc,window.__acceptanceInputProbe,${JSON.stringify(selector)},${JSON.stringify(token)});return true})()`);
   const reveal=()=>evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)return false;if(frame)frame.scrollIntoView({block:'center',behavior:'instant'});el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});return true})()`);
-  const measure=()=>evaluate(`(()=>{
+  // Each sample is taken after two fresh animation frames, so consecutive
+  // samples straddle a rendered frame: a scroll animation or layout shift in
+  // flight cannot read as two equal boxes. (The timeout covers a page that
+  // renders no frames; it then fails the hidden/ready checks below.)
+  const measure=()=>evaluate(`new Promise((resolve,reject)=>{let done=false;const sample=()=>{if(done)return;done=true;try{resolve((()=>{
     const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};
     const doc=frame?frame.contentDocument:document,el=doc.querySelector(${JSON.stringify(selector)});
     if(!el)return {ready:false,reason:'missing',selector:${JSON.stringify(selector)}};
@@ -92,7 +96,7 @@ async function click(selector, frameId) {
       x:outerX,y:outerY,w:r.width,h:r.height,targetId:window.__acceptanceInputProbe.identify(el),offscreen:sized&&!inViewport,hidden,disabled:!!el.disabled,hit:hit?.tagName,outer:outer?.tagName,selector:${JSON.stringify(selector)}};
     window.__acceptanceInputProbe.actions[${JSON.stringify(token)}].prepared={...point,connected:el.isConnected,activeTargetId:window.__acceptanceInputProbe.identify(doc.activeElement),activeId:doc.activeElement?.id||null,at:performance.now()};
     return point;
-  })()`);
+  })())}catch(error){reject(error)}};requestAnimationFrame(()=>requestAnimationFrame(sample));setTimeout(sample,500);})`);
   // The receipt window stays 1.5 s per attempt; a miss returns false so the
   // probe's events can say whether pressing again is safe.
   const awaitReceipt=()=>waitFor(`window.__acceptanceClickReceipts?.[${JSON.stringify(token)}]?.trusted === true`,1500,'trusted native click on '+selector)
