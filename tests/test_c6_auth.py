@@ -1207,3 +1207,61 @@ def test_the_api_rate_limiter_refuses_a_burst_and_refills(monkeypatch):
 
     assert [r.status_code for r in codes] == [200, 200, 429] and codes[2].headers["Retry-After"] == "1"
     assert client.get("/api/x").status_code == 200
+
+
+
+def _limited_rw_app(client=("127.0.0.1", 50000)):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    app = FastAPI()
+
+    @app.get("/api/status")
+    def status():
+        return {"ok": True}
+
+    @app.post("/api/change")
+    def change():
+        return {"ok": True}
+    app.add_middleware(security.RateLimitMiddleware, rps=1, burst=2)
+    return TestClient(app, client=client)
+
+
+def test_the_local_user_reading_pages_is_never_rate_limited(monkeypatch):
+    """ASVS V11.1.4 · CWE-770 · WSTG-BUSL-05: with the token gate off (loopback only), a burst of page reads from this computer is never 429; its writes still are."""
+    monkeypatch.setattr(security, "_monotonic", lambda: 10.0)   # no refill
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "0")
+    c = _limited_rw_app()
+    assert {c.get("/api/status", headers={"Host": "127.0.0.1:8000"}).status_code for _ in range(50)} == {200}
+    assert [c.post("/api/change", headers={"Host": "127.0.0.1:8000"}).status_code for _ in range(3)] == [200, 200, 429]
+
+
+def test_reads_from_beyond_loopback_or_a_rebinding_host_still_count(monkeypatch):
+    """ASVS V11.1.4 · CWE-770 · CWE-350 · WSTG-BUSL-05: the exemption is the loopback user's only: another address, or a Host that is not a loopback name, is 429 after the burst."""
+    monkeypatch.setattr(security, "_monotonic", lambda: 10.0)
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "0")
+    far = _limited_rw_app(client=("10.66.0.9", 50000))
+    assert [far.get("/api/status", headers={"Host": "127.0.0.1:8000"}).status_code for _ in range(3)] == [200, 200, 429]
+    near = _limited_rw_app(client=("127.0.0.1", 50001))
+    assert [near.get("/api/status", headers={"Host": "evil.example"}).status_code for _ in range(3)] == [200, 200, 429]
+
+
+def test_with_the_token_gate_on_only_reads_carrying_the_token_are_exempt(monkeypatch):
+    """ASVS V11.1.4 · ASVS V2.2.1 · CWE-307 · CWE-770 · WSTG-BUSL-05: reads with the UI token are never 429; the same reads without it, and writes even with it, are limited."""
+    monkeypatch.setattr(security, "_monotonic", lambda: 10.0)
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "1")
+    good = {security.UI_TOKEN_HEADER: security.ui_token(), "Host": "127.0.0.1:8000"}
+    c = _limited_rw_app()
+    assert {c.get("/api/status", headers=good).status_code for _ in range(50)} == {200}
+    assert [c.post("/api/change", headers=good).status_code for _ in range(3)] == [200, 200, 429]
+    anon = _limited_rw_app(client=("127.0.0.1", 50002))
+    bad = {security.UI_TOKEN_HEADER: "not-the-token", "Host": "127.0.0.1:8000"}
+    assert [anon.get("/api/status", headers=bad).status_code for _ in range(3)] == [200, 200, 429]
+
+
+def test_a_signed_in_read_is_placed_without_raising(monkeypatch):
+    """ASVS V11.1.4 · CWE-755: a caller lookup that fails counts the request instead of failing it."""
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "1")
+    monkeypatch.setattr(security, "_caller_for", lambda *a: (_ for _ in ()).throw(RuntimeError("store down")))
+    monkeypatch.setattr(security, "_monotonic", lambda: 10.0)
+    c = _limited_rw_app(client=("127.0.0.1", 50003))
+    assert [c.get("/api/status").status_code for _ in range(3)] == [200, 200, 429]

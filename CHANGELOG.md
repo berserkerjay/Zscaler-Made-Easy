@@ -9,8 +9,9 @@ lists what each batch of changes did, newest first.
 
 ## 2026-11-01
 
-### Advanced settings no longer slows the server each time it is opened
+### Pages stay quick: no piled-up scans, no "Rate limit exceeded" on your own pages
 - The CISA Secure by Design score on Advanced settings scanned every source file again (about 5 seconds of processor time) each time the page was opened, and leaving the page did not stop the scan, so opening it again and again piled scans up and the app's pages, Advanced settings included, loaded more slowly each time until they stalled. The scan now remembers each file's result until the file changes (measuring again takes a hundredth of a second), and requests that arrive while a measurement runs share it.
+- Moving quickly between pages, or reopening several tabs at once, no longer gets the app's own pages refused with "Rate limit exceeded" (HTTP 429). Each page asks for 5 to 20 status and data reads as it opens, and the API rate limit (20 a second, bursts of 60, per address) counted them all. It now counts only writes and calls that are not signed in; reads by the signed-in user (the UI token or a sign-in session, or, with the token off, this computer's loopback address) are not counted. Sign-in attempts keep their own per-address limits.
 - The SBOM (`docs/sbom.cdx.json`) is regenerated, and `tools/sbom_enrich.py` takes the app's own licence (Apache-2.0) from `pyproject.toml` and writes the root component in a fixed order, so regenerating it as `docs/SBOM.md` describes gives the committed file byte for byte.
 
 ### Agent workspace: layered context for the AI agents that build this app
