@@ -31,6 +31,7 @@ module — by design.
 
 import bisect
 import json
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 # String values that represent "Evaluate All Rules is ON" in enum-style
@@ -1052,26 +1053,72 @@ def _probe_eval_all_field(client) -> Dict[str, Any]:
     }
 
 
-def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
+ENUM_EVALUATE_ALL = "EVALUATE_ALL_RULES"   # the value written to a setting the tenant holds as text (BY_RULE_ORDER today)
+ENABLE_PLAN_CHANGED = ("The Evaluate All Rules setting changed in the tenant since the dry run (the settings object it lives in "
+                       "is not the one previewed), so nothing was written. Run the dry run again, review it, and apply that.")
+ENABLE_NOT_FOUND = ("The Evaluate All Rules setting was not found in any ZIA setting this tenant answers, so nothing will be "
+                    "written (this app never writes a guessed field or endpoint). Ask your Zscaler account team to switch the "
+                    "mode, or check the ZIA Admin Portal (Policy > Data Loss Prevention).")
+
+
+# Verified: zscaler-sdk-python zia/web_dlp_global_options.py reads and
+# writes GET/PUT /webDlpGlobalOptions, whose model has
+# enableEvaluateAllDlpRules (the first endpoint the probe reads).
+# ASSUMED (not verified against the SDK or Zscaler's documentation): the
+# other candidate endpoints and field names the probe reads, and that a PUT
+# of the whole object as read with only that field changed switches the
+# mode. So the enable writes only the endpoint and field the probe found,
+# after a dry run with its plan hash, and reads it back.
+def _enable_target(found_via: Optional[str]) -> Optional[Tuple[str, str]]:
+    """(endpoint, field) from the probe's "endpoint → field = value", or None."""
+    if not found_via or "→" not in found_via:
+        return None
+    ep_part, field_part = found_via.split("→", 1)
+    endpoint = ep_part.strip()
+    field = field_part.split("=", 1)[0].strip()
+    return (endpoint, field) if endpoint and field else None
+
+
+def enable_plan_hash(endpoint: str, field: str, value: Any, before: Dict[str, Any]) -> str:
+    """sha256 over the one write the enable makes (endpoint, field, value)
+    and the settings object as it was read: the dry run hands it out, the
+    live run re-reads the object and recomputes it, so a setting changed in
+    between (someone else's change) stops the write."""
+    import hashlib
+    import json as _json
+    blob = _json.dumps({"endpoint": endpoint, "field": field, "value": value, "before": before}, sort_keys=True,
+                       separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _enable_value(current: Any) -> Any:
+    """The value that means "evaluate all rules", in the type the tenant
+    holds the field in: True for a yes/no setting, the enum word for text."""
+    return ENUM_EVALUATE_ALL if isinstance(current, str) else True
+
+
+def enable_evaluate_all_rules(client, dry_run: bool = True, plan_hash: Optional[str] = None) -> Dict[str, Any]:
     """
-    Toggle 'Evaluate All DLP Rules' ON via the ZIA API.
+    Turn 'Evaluate All DLP Rules' on through the ZIA API, the way every
+    write in this app is made: plan, preview with a plan hash, re-read,
+    write, read back.
 
-    Self-contained: only depends on the Client (tenant credentials).
-    Does NOT call assess_current_status, does NOT fetch rules, does
-    NOT compute order safety. Uses _probe_eval_all_field() to locate
-    the toggle endpoint, then writes if asked.
+      1. Plan: _probe_eval_all_field reads (GET only) the mode-bearing ZIA
+         settings and finds the one field that holds the mode. Nothing
+         found: nothing is ever written (no guessed endpoint or field, no
+         blind PUT).
+      2. Preview (dry_run=True, the default): the endpoint, the field, the
+         value and the plan_hash (the write and the object as read).
+      3. Re-read: the live run reads the settings object again; a
+         different object than the one previewed (plan_hash differs) is
+         plan_changed and nothing is written. The API route requires the
+         dry run's plan_hash for a live run.
+      4. Write: the whole object PUT back with only that field changed
+         (a settings PUT replaces the object), then read back; a value
+         that did not take is put back as it was read.
 
-    Strategy:
-      1. _probe_eval_all_field finds the field in GET responses.
-      2. If found, GET → modify → PUT to the same endpoint.
-      3. If not found, try each candidate endpoint + field combination
-         with a real PUT, verifying via follow-up GET.
-      4. Every attempt is recorded in `attempts[]`.
-
-    SAFETY:
-      - dry_run=True (default) returns the plan only.
-      - dry_run=False + ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND is required
-        to actually call PUT.
+    Self-contained: only depends on the Client. dry_run=False also needs
+    ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND (security.writes_enabled).
     """
     probe = _probe_eval_all_field(client)
     current = probe["evaluate_all_enabled"]
@@ -1084,19 +1131,31 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             "message": "Evaluate All Rules is already enabled. No change needed.",
         }
 
+    target = _enable_target(found_via)
+    before: Optional[Dict[str, Any]] = None
+    if target:
+        try:
+            got, code = client.get(target[0])
+        except Exception:  # noqa: BLE001 - an unreadable object is a plan with no write
+            got, code = None, 0
+        if code == 200 and isinstance(got, dict) and target[1] in got:
+            before = got
+    if target is None or before is None:
+        out = {"status": "not_found" if dry_run else "failed", "current": current, "would_enable": False, "attempts": [],
+               "diagnostics": probe.get("diagnostics") or [], "message": ENABLE_NOT_FOUND}
+        if not dry_run:
+            out["summary"] = {"total_attempts": 0, "discover_reachable": 0, "put_200": 0, "put_400_or_422": 0, "put_401_or_403": 0, "put_404": 0}
+        return out
+    endpoint, field = target
+    value = _enable_value(before.get(field))
+    current_hash = enable_plan_hash(endpoint, field, value, before)
+    plan = {"endpoint": endpoint, "field": field, "value": value, "plan_source": found_via, "plan_hash": current_hash}
+
     if dry_run:
-        plan_source = found_via or "(field not in GET response — will attempt blind PUT on candidate endpoints)"
-        return {
-            "status": "dry_run",
-            "current": current,
-            "would_enable": True,
-            "plan_source": plan_source,
-            "message": (
-                f"DRY RUN: Would enable Evaluate All DLP Rules. "
-                f"Plan source: {plan_source}. "
-                f"Set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND and click Activate to apply."
-            ),
-        }
+        return dict(plan, status="dry_run", current=current, would_enable=True, message=(
+            f"DRY RUN: Would set {field} = {value!r} on {endpoint} (the whole settings object is sent back with only that "
+            "field changed, then read back). Apply sends this exact change; if the setting changes in the tenant first, "
+            "nothing is written."))
 
     if not __import__("security").writes_enabled():
         return {
@@ -1104,233 +1163,57 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND (relaunch via START_Zscaler_Made_Easy_WRITES_ENABLED.bat).",
             "current": current,
         }
+    # The read above is the re-read before the write: the object now.
+    if plan_hash is not None and str(plan_hash) != current_hash:
+        return dict(plan, status="plan_changed", message=ENABLE_PLAN_CHANGED, expected_hash=str(plan_hash)[:64], current_hash=current_hash,
+                    attempts=[])
 
-    # ── Real activation path ─────────────────────────────────────
-    attempts: List[Dict[str, Any]] = []
+    rec: Dict[str, Any] = {"endpoint": endpoint, "field": field, "server_key": field, "value": value}
+    new_body = dict(before)
+    new_body[field] = value
+    try:
+        resp, put_code = client.put(endpoint, new_body)
+    except Exception as e:  # noqa: BLE001 - reported, nothing else is tried
+        rec["error"] = str(e)[:150]
+        return dict(plan, status="failed", attempts=[rec], message="The write could not be sent; nothing else was tried.")
+    rec["put_status"] = put_code
+    if put_code not in (200, 201, 204):
+        rec["put_error"] = (resp.get("error") if isinstance(resp, dict) else str(resp)[:200])
+        return dict(plan, status="failed", attempts=[rec], summary=_enable_summary([rec]),
+                    message=f"ZIA refused the change (HTTP {put_code}); nothing else was tried.")
+    try:
+        client._c = type(client._c)()  # reset the read cache before the read-back
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        verified, vcode = client.get(endpoint)
+    except Exception as e:  # noqa: BLE001
+        verified, vcode = None, 0
+        rec["verify_error"] = str(e)[:150]
+    rec["verify_status"] = vcode
+    rec["verify_value"] = verified.get(field) if isinstance(verified, dict) else None
+    if isinstance(verified, dict) and _is_truthy(verified.get(field)):
+        rec["successful_value"] = value
+        return dict(plan, status="activated", via=endpoint, attempts=[rec], read_back=True,
+                    message=f"✓ Evaluate All DLP Rules enabled: {endpoint} → {field} = {value!r} (read back).")
+    # Accepted but it did not take: the object goes back exactly as it was read.
+    try:
+        _resp, rcode = client.put(endpoint, dict(before))
+        rec["restored"] = rcode in (200, 201, 204)
+    except Exception as e:  # noqa: BLE001 - recorded for the attempts list
+        rec["restored"] = False
+        rec["restore_error"] = str(e)[:150]
+    return dict(plan, status="failed", current=current, attempts=[rec], summary=_enable_summary([rec]),
+                message="ZIA accepted the change but the read-back does not show it, so the setting was put back as it was read. "
+                        "Ask your Zscaler account team to switch the mode.")
 
-    # Same candidate lists used by assess_current_status — defined below
-    candidate_fields = [
-        "evaluateAllRules", "dlpEvaluateAllRules", "enableDlpEvaluateAllRules",
-        "dlpEvaluateAll", "dlpEvaluateAllRulesEnabled",
-        "isDlpEvaluateAllRules", "evaluateAllDlpRules",
-        "dlpEvalAll", "evalAll", "evaluateAll",
-        "enableEvaluateAllRules", "enableEvaluateAllDlpRules",
-        "evalAllRulesForDlp", "evaluateAllDlp",
-        # Enum-style fields — correspond to the admin UI's
-        # "Inline DLP Rule Evaluation" selector
-        "inlineDlpRuleEvaluation", "inlineDlpRuleEvaluationType",
-        "dlpRuleEvaluation", "dlpRuleEvaluationType",
-        "ruleEvaluationType", "dlpEvaluationType",
-        "evaluationType", "evaluationMode", "dlpEvaluationMode",
-        # User-confirmed feature-flag field (UPPER_SNAKE_CASE).
-        # Underscore-agnostic match handles case/underscore variants.
-        "DLP_RULE_EVALUATE_ALL",
-        "DLP_EVAL_ALL", "DLP_EVALUATE_ALL_RULES",
-        "FEATURE_DLP_EVALUATE_ALL", "FEATURE_EVALUATE_ALL_DLP",
-    ]
-    # Write path probes MODE-BEARING endpoints only — NOT the feature-flag
-    # capability endpoints (writing DLP_RULE_EVALUATE_ALL=True to
-    # /zia/featureFlags would not change the active mode). The documented
-    # one first: GET/PUT /webDlpGlobalOptions, enableEvaluateAllDlpRules
-    # (zscaler-sdk-python 1.11.3 zia/web_dlp_global_options.py).
-    candidate_endpoints = [
-        "/zia/webDlpGlobalOptions",
-        "/zia/dlpAdvancedSettings", "/zia/advancedSettings",
-        "/zia/security/advanced", "/zia/dlpEvaluateAllRulesSetting",
-        "/zia/advancedSettings/dlp", "/zia/dlpSettings",
-        "/zia/dlp/advancedSettings", "/zia/dlp/settings",
-        "/zia/configuration/advanced",
-        # Raw-path variants bypass the /zia/api/v1/ resolver
-        "raw:/zia/api/v1/dlp-advanced-settings",
-        "raw:/zia/api/v1/admin/dlpAdvancedSettings",
-        "raw:/zia/api/v1/dlpSettings/advanced",
-        "raw:/zia/v1/dlpAdvancedSettings",
-        "raw:/zia/dlp/v1/advancedSettings",
-        "/zia/inlineDlpConfig", "/zia/inlineDlpSettings",
-        "/zia/dlpRuleEvaluation", "/zia/dlpConfiguration", "/zia/dlpConfig",
-    ]
 
-    # Value candidates to try per field. For boolean-looking fields we
-    # send True; for enum-named fields we ALSO try the known string
-    # values. _try_put sweeps all applicable values until one sticks.
-    ENUM_TRUE_VALUES = [
-        "EVALUATE_ALL_RULES", "EVALUATE_ALL", "EVAL_ALL_RULES", "EVAL_ALL",
-        "ALL_RULES",
-    ]
-    BOOLEAN_TRUE_VALUE = True
-
-    def _values_for_field(field: str):
-        """Yield the candidate 'true' values to try for a given field name.
-        Enum-named fields get the string enum values. All fields also try
-        the boolean True as a fallback."""
-        fl = field.lower()
-        is_enum_named = any(t in fl for t in ("type", "mode", "evaluation"))
-        if is_enum_named:
-            for v in ENUM_TRUE_VALUES:
-                yield v
-        yield BOOLEAN_TRUE_VALUE
-
-    def _try_put(endpoint: str, field: str) -> Tuple[bool, Dict[str, Any]]:
-        """GET the endpoint, inject field=<candidate-value>, PUT, verify.
-        Sweeps multiple value types per field (enum string + bool) until
-        one is accepted AND verified. Returns (success, attempt_record)."""
-        rec: Dict[str, Any] = {"endpoint": endpoint, "field": field, "values_tried": []}
-        try:
-            current_data, code = client.get(endpoint)
-        except Exception as e:
-            rec["phase"] = "get"; rec["error"] = str(e)[:150]
-            return False, rec
-        rec["get_status"] = code
-        if code != 200 or not isinstance(current_data, dict):
-            rec["phase"] = "get"; rec["skip_reason"] = "non-200 or not dict"
-            return False, rec
-
-        # Resolve to the real key-name the server uses on this endpoint
-        # (e.g. server has 'DLP_RULE_EVALUATE_ALL' but the candidate is
-        # 'dlpRuleEvaluateAll' — they must match for the PUT to stick).
-        def _norm(s): return s.lower().replace("_", "").replace("-", "")
-        norm_keys = {_norm(k): k for k in current_data.keys()}
-        server_key = norm_keys.get(_norm(field))
-        rec["server_key"] = server_key
-        if server_key is None:
-            # Deny by default: a field the endpoint does not carry is never
-            # written into it (a guessed key on a settings object is a change
-            # nobody can predict).
-            rec["phase"] = "get"; rec["skip_reason"] = "field not on this endpoint"
-            return False, rec
-
-        # The value keeps the type the endpoint answered with: a boolean
-        # setting is only ever sent True, never an enum word.
-        values = [True] if isinstance(current_data.get(server_key), bool) else list(_values_for_field(field))
-        changed = False
-        for value in values:
-            sub: Dict[str, Any] = {"value": value, "server_key": server_key}
-            new_body = dict(current_data)
-            new_body[server_key] = value
-            try:
-                resp, put_code = client.put(endpoint, new_body)
-            except Exception as e:
-                sub["error"] = str(e)[:150]
-                rec["values_tried"].append(sub); continue
-            sub["put_status"] = put_code
-            if put_code not in (200, 201, 204):
-                sub["put_error"] = (resp.get("error") if isinstance(resp, dict) else str(resp)[:200])
-                rec["values_tried"].append(sub); continue
-            changed = True
-            # Verify via re-GET
-            try:
-                client._c = type(client._c)()  # reset LRU cache
-            except Exception:
-                pass
-            try:
-                verified, vcode = client.get(endpoint)
-            except Exception as e:
-                sub["verify_error"] = str(e)[:150]
-                rec["values_tried"].append(sub); continue
-            sub["verify_status"] = vcode
-            sub["verify_value"] = verified.get(server_key) if isinstance(verified, dict) else None
-            rec["values_tried"].append(sub)
-            if isinstance(verified, dict) and _is_truthy(verified.get(server_key)):
-                rec["successful_value"] = value
-                rec["put_status"] = put_code
-                rec["verify_status"] = vcode
-                return True, rec
-        # None of the candidate values succeeded — collapse the latest
-        # attempt into the top-level rec for the GUI summary chips.
-        if rec["values_tried"]:
-            last = rec["values_tried"][-1]
-            rec["put_status"] = last.get("put_status")
-            rec["verify_status"] = last.get("verify_status")
-        if changed:
-            # A value was accepted but none took effect: the object goes back
-            # exactly as it was read, so a failed enable changes nothing.
-            try:
-                _resp, rcode = client.put(endpoint, dict(current_data))
-                rec["restored"] = rcode in (200, 201, 204)
-            except Exception as e:  # noqa: BLE001 - recorded for the attempts list
-                rec["restored"] = False
-                rec["restore_error"] = str(e)[:150]
-        return False, rec
-
-    def _norm_field(s): return str(s).lower().replace("_", "").replace("-", "")
-
-    # Strategy 1: use found_via if available
-    if found_via:
-        # found_via format: "/zia/advancedSettings → fieldName = value"
-        try:
-            ep_part, field_part = found_via.split("→", 1)
-            endpoint = ep_part.strip()
-            field = field_part.split("=", 1)[0].strip().split(".", 1)[-1].strip()
-            ok, rec = _try_put(endpoint, field)
-            attempts.append(rec)
-            if ok:
-                return {
-                    "status": "activated",
-                    "via": endpoint,
-                    "field": field,
-                    "attempts": attempts,
-                    "message": f"✓ Evaluate All DLP Rules enabled via PUT {endpoint} → {field}=true (verified).",
-                }
-        except Exception as e:
-            attempts.append({"phase": "parse_found_via", "error": str(e)[:150], "found_via": found_via})
-
-    # Strategy 2: exhaustive probe — try every candidate endpoint and
-    # every candidate field. No early termination on 400/422 since some
-    # tenants reject SOME fields and accept OTHERS on the same endpoint.
-    seen_eps: set = set()
-    for endpoint in candidate_endpoints:
-        if endpoint in seen_eps:
-            continue
-        seen_eps.add(endpoint)
-        try:
-            data, code = client.get(endpoint)
-        except Exception as e:
-            attempts.append({"endpoint": endpoint, "phase": "discover", "error": str(e)[:150]})
-            continue
-        if code != 200 or not isinstance(data, dict):
-            attempts.append({"endpoint": endpoint, "phase": "discover",
-                             "get_status": code, "skip_reason": "non-200 or not dict"})
-            continue
-        # Record that this endpoint was reachable so the user sees it in diagnostics
-        attempts.append({"endpoint": endpoint, "phase": "discover",
-                         "get_status": code, "keys_count": len(data),
-                         "keys_sample": list(data.keys())[:15]})
-        for field in candidate_fields:
-            if _norm_field(field) not in {_norm_field(k) for k in data}:
-                continue   # only a field this endpoint carries is written (see _try_put)
-            ok, rec = _try_put(endpoint, field)
-            attempts.append(rec)
-            if ok:
-                return {
-                    "status": "activated",
-                    "via": endpoint,
-                    "field": field,
-                    "attempts": attempts,
-                    "message": f"✓ Evaluate All DLP Rules enabled via PUT {endpoint} → {field}=true (verified after blind-probe).",
-                }
-
-    # There is no minimal-body PUT: ZIA's settings endpoints replace the
-    # whole object on PUT, so a body of one field would reset every other
-    # setting on it (/zia/advancedSettings carries dozens).
-
-    return {
-        "status": "failed",
-        "current": current,
-        "attempts": attempts,
-        "summary": {
-            "total_attempts":    len(attempts),
-            "discover_reachable": sum(1 for a in attempts if a.get("phase") == "discover" and a.get("get_status") == 200),
-            "put_200":           sum(1 for a in attempts if a.get("put_status") in (200, 201, 204)),
-            "put_400_or_422":    sum(1 for a in attempts if a.get("put_status") in (400, 422)),
-            "put_401_or_403":    sum(1 for a in attempts if a.get("put_status") in (401, 403)),
-            "put_404":           sum(1 for a in attempts if a.get("put_status") == 404),
-        },
-        "message": (
-            f"Exhausted {len(attempts)} attempts — none enabled the toggle. "
-            "Paste the attempts list into a Zscaler support ticket; they can tell you "
-            "which endpoint/field your tenant actually exposes (or enable it for you)."
-        ),
-    }
+def _enable_summary(attempts: List[Dict[str, Any]]) -> Dict[str, int]:
+    return {"total_attempts": len(attempts), "discover_reachable": 1,
+            "put_200": sum(1 for a in attempts if a.get("put_status") in (200, 201, 204)),
+            "put_400_or_422": sum(1 for a in attempts if a.get("put_status") in (400, 422)),
+            "put_401_or_403": sum(1 for a in attempts if a.get("put_status") in (401, 403)),
+            "put_404": sum(1 for a in attempts if a.get("put_status") == 404)}
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1435,7 +1318,15 @@ def _rules_read(client) -> Tuple[Optional[List[Dict[str, Any]]], Optional[int]]:
     return [], code
 
 
-def delete_all_rules(client, dry_run: bool = True, plan_hash: Optional[str] = None) -> Dict[str, Any]:
+def delete_phrase(n: int) -> str:
+    """The phrase a person types to confirm deleting `n` Web DLP rules."""
+    return f"DELETE {int(n)} RULES"
+
+
+DELETE_PHRASE_SHAPE = re.compile(r"\A\s*DELETE\s+\d{1,6}\s+RULES\s*\Z", re.IGNORECASE)
+
+
+def delete_all_rules(client, dry_run: bool = True, plan_hash: Optional[str] = None, confirm_text: Optional[str] = None) -> Dict[str, Any]:
     """
     Delete every Inline Web DLP rule in the tenant. Used when the
     migration plan is to wipe + repost a fresh optimized set under
@@ -1449,6 +1340,8 @@ def delete_all_rules(client, dry_run: bool = True, plan_hash: Optional[str] = No
       - `plan_hash` (the dry run's): the live run deletes only when the
         rules are still the ones the dry run listed (plan_changed
         otherwise). The API route requires it for a live run.
+      - `confirm_text`: the typed phrase (DELETE <n> RULES), checked
+        against the number of rules read now; the API route requires it.
     """
     rules = fetch_current_rules(client, "web_dlp")
     current_hash = rules_plan_hash(rules)
@@ -1471,6 +1364,7 @@ def delete_all_rules(client, dry_run: bool = True, plan_hash: Optional[str] = No
             ),
             "warning": "This is destructive and cannot be undone via API — restore requires re-posting from your backup.",
             "plan_hash": current_hash,
+            "confirm_phrase": delete_phrase(len(plan)),
         }
 
     if not __import__("security").writes_enabled():
@@ -1482,6 +1376,13 @@ def delete_all_rules(client, dry_run: bool = True, plan_hash: Optional[str] = No
     if plan_hash is not None and plan_hash != current_hash:
         return {"status": "plan_changed", "message": PLAN_CHANGED, "expected_hash": plan_hash, "current_hash": current_hash,
                 "would_delete_count": len(plan), "deleted_count": 0, "failed_count": 0, "deleted": [], "failed": []}
+    if confirm_text is not None:
+        import security
+        want = delete_phrase(len(plan))
+        if not security.typed_phrase_matches(confirm_text, want):
+            return {"status": "phrase_mismatch", "confirm_phrase": want, "would_delete_count": len(plan), "deleted_count": 0,
+                    "failed_count": 0, "deleted": [], "failed": [],
+                    "message": f"Type {want} to confirm (the number of rules this deletes). Nothing was deleted."}
 
     deleted, failed = [], []
     # Every rule deleted, as it was read, in its order: the undo. Posting it

@@ -11,8 +11,8 @@ Operation types (`spec["type"]`):
 
   rule_state      enable or disable up to MAX_TARGETS ZIA rules (URL
                   filtering, SSL inspection, Cloud Firewall, Cloud App
-                  Control, File Type Control and the four DLP channels);
-                  one field (`state`) per operation.
+                  Control, File Type Control, the four DLP channels, DNS
+                  Control and IPS); one field (`state`) per operation.
   reorder         put one policy's rules in a desired order with the
                   fewest moves (the rules outside a longest increasing
                   subsequence move; the others keep their place). Locked
@@ -22,16 +22,17 @@ Operation types (`spec["type"]`):
   url_categories  add, remove, move or copy URLs on custom URL categories,
                   optionally into a new category; shows which rules in
                   scope reference each category the change touches.
-  zpa_domains     move or copy domains between ZPA application segments,
-                  or clone a segment's settings with a domain list, with
-                  the FQDN and port overlap check.
+  zpa_domains     add typed domains to an existing ZPA application segment,
+                  remove them from one, move or copy domains between
+                  segments, or clone a segment's settings with a domain
+                  list, with the FQDN and port overlap check.
 
-Cloud application sanction (Sanctioned / Unsanctioned) is not offered:
-the installed SDK can write it (zia.shadow_it_report.bulk_update, PUT
-/cloudApplications/bulkUpdate) but has no read of an application's current
-sanction state (list_apps returns id and name only, the Shadow IT export is
-a usage report rate-limited to one a minute), so neither the "before" of a
-preview, the conflict guard nor an exact inverse could be honoured.
+Cloud application sanction (Sanctioned / Unsanctioned) is the plugin type
+cloud_app_sanction (ops_sanction.py): the SDK can write it
+(zia.shadow_it_report.bulk_update) and each application's current state is
+read from ZIA Insights' Shadow IT applications (the SDK's list_apps keeps
+id and name only), so the preview, the conflict guard and an exact Undo
+hold; an application whose state cannot be read is excluded.
 
 Every operation goes:
 
@@ -200,6 +201,78 @@ def plugin_catalog() -> List[Dict[str, Any]]:
     """What the page needs to offer the plugin types: no callables."""
     load_plugins()
     return [{k: p[k] for k in ("type", "family", "product", "label", "hint", "group", "script")} for p in sorted(PLUGINS.values(), key=lambda p: (p["group"], p["label"]))]
+
+# ---------------------------------------------------------------------------
+# A plan made as one step of several (the POV build): what earlier steps of
+# the same plan will create or delete
+# ---------------------------------------------------------------------------
+# While pov_build plans its steps one after another, before anything is
+# written, a builder that needs what an earlier step creates (ZPA segments
+# need the connector group, policies the segments) asks pending_ref() and
+# gets a stand-in instead of a blocker; an Undo step asks pending_deleted()
+# so an object an earlier Undo step deletes no longer keeps another. Outside
+# such a plan (every ordinary preview and apply) both answer "no", so no
+# builder's own checks change.
+import contextvars as _cv
+
+PENDING_PREFIX = "pending:"
+_PENDING: "_cv.ContextVar[Optional[Dict[str, Any]]]" = _cv.ContextVar("admin_ops_pending", default=None)
+
+
+def pending_token(product: str, kind: str, name: str) -> str:
+    """The stand-in id for an object an earlier step of this plan creates."""
+    return f"{PENDING_PREFIX}{product}:{kind}:{name}"
+
+
+class pending_plan:
+    """Plan with `creates` ({(product, kind, name)}) and `deletes`
+    ({(product, kind, id)}) of the earlier steps in effect."""
+
+    def __init__(self, creates: Iterable[Tuple[str, str, str]] = (), deletes: Iterable[Tuple[str, str, str]] = ()):
+        self.state = {"creates": {tuple(map(str, c)) for c in creates}, "deletes": {tuple(map(str, d)) for d in deletes}}
+        self._token: Any = None
+
+    def __enter__(self) -> "pending_plan":
+        self._token = _PENDING.set(self.state)
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        _PENDING.reset(self._token)
+
+
+def pending_ref(product: str, kind: str, name: str) -> Optional[str]:
+    """pending_token() when an earlier step of this plan creates the object, else None."""
+    st = _PENDING.get()
+    return pending_token(product, kind, name) if st and (product, kind, name) in st["creates"] else None
+
+
+def pending_names(product: str, kind: str) -> Dict[str, str]:
+    """{name: stand-in id} of the objects of `kind` earlier steps of this plan create."""
+    st = _PENDING.get()
+    return {n: pending_token(p, k, n) for p, k, n in sorted((st or {}).get("creates") or ()) if p == product and k == kind}
+
+
+def pending_deleted(product: str, kind: str, oid: Any) -> bool:
+    """Whether an earlier (Undo) step of this plan deletes the object."""
+    st = _PENDING.get()
+    return bool(st) and (product, kind, str(oid)) in st["deletes"]
+
+
+def planned_effects(prepared: Dict[str, Any]) -> Dict[str, List[Tuple[str, str, str]]]:
+    """What a prepared operation will create ((product, kind, name)) and
+    delete ((product, kind, id)), from its "exists" items that change."""
+    product = str(prepared.get("product") or "zia")
+    creates, deletes = [], []
+    for u in prepared.get("items") or []:
+        if u.get("status") != "change" or u.get("field") != "exists":
+            continue
+        obj = u.get("object") or {}
+        if u.get("before") in (False, None) and u.get("after") is True and obj.get("name"):
+            creates.append((product, str(u.get("kind")), str(obj["name"])))
+        elif u.get("before") is True and u.get("after") is False and obj.get("id") not in (None, ""):
+            deletes.append((product, str(u.get("kind")), str(obj["id"])))
+    return {"creates": creates, "deletes": deletes}
+
 STATES = ("ENABLED", "DISABLED")
 
 # Policy types an operation can change: label, the pack_channels channel
@@ -216,14 +289,21 @@ POLICIES: Dict[str, Dict[str, Any]] = {
     "endpoint_dlp": {"label": "Endpoint DLP", "channel": pc.ENDPOINT, "ordered": True},
     "email_dlp": {"label": "Outbound Email DLP", "channel": pc.EMAIL, "ordered": True},
     "saas_dlp": {"label": "SaaS Security API DLP", "channel": pc.SAAS, "ordered": False},
+    # DNS Control and IPS (Cloud Firewall) rules: ZIA platform settings, in
+    # scope when ZIA platform is ticked (zscaler-sdk-python 1.11.3
+    # zia/cloud_firewall_dns.py and zia/cloud_firewall_ips.py: list_rules,
+    # get_rule, update_rule; models with state, order and rank).
+    "dns_control": {"label": "DNS Control", "channel": "dns", "ordered": True, "platform": True},
+    "firewall_ips": {"label": "IPS (Cloud Firewall)", "channel": "ips", "ordered": True, "platform": True},
 }
 # Rules naming URL categories: the policies read for a URL category change's impact.
 CATEGORY_POLICIES = ("url_filtering", "ssl_inspection", "web_dlp", "file_type_control", "firewall")
 _CATEGORY_FIELDS = ("urlcategories", "destipcategories")
 
-SANCTION_NOTE = ("Cloud application sanction is not offered: the installed Zscaler SDK can set it (shadow_it_report.bulk_update) "
-                 "but cannot read an application's current sanction state, so a preview, the conflict guard and an exact undo "
-                 "are not possible. Change it in the ZIA Admin Portal.")
+# Where cloud application sanction lives (read_objects' "sanction" key, kept for its callers).
+SANCTION_NOTE = ("Cloud application sanction is its own operation: Sanction or unsanction cloud apps (needs ZIA platform and ZIA "
+                 "Insights ticked on the Scope page). Each application's current state comes from ZIA Insights, so the preview, "
+                 "the conflict check and an exact Undo hold; an application whose state cannot be read is not changed.")
 READ_RATE_STOP = ("ZIA refused a read for its rate limit while the change was running, so nothing more is sent. What was "
                   "already applied is kept and listed; wait a few minutes, then preview again to finish (or Undo).")
 REORDER_BROKEN = "the policy's rule order changed while the operation ran, so the remaining moves were not sent"
@@ -253,8 +333,12 @@ def scope_for(scopes: Any, channels: Any) -> Dict[str, Any]:
     sr = shadow_rules.scope_for(scopes, channels)
     ps = data_flow.path_scope(scopes, channels)
     read, nis = [], {}
+    given = {str(s) for s in (scopes or [])}
     for key in POLICIES:
-        if key == "file_type_control":
+        if POLICIES[key].get("platform"):
+            ok = "zia_extras" in given
+            why = f"Not in scope: ZIA platform is not ticked on the Scope page, so the {POLICIES[key]['label']} rules are not read or changed."
+        elif key == "file_type_control":
             ok = "ftc" in ps["read"]
             why = ps["not_in_scope"].get("ftc") or (ps.get("read_blocked") or {}).get("ftc")
         else:
@@ -264,7 +348,6 @@ def scope_for(scopes: Any, channels: Any) -> Dict[str, Any]:
             read.append(key)
         else:
             nis[key] = why or NOT_IN_SCOPE
-    given = {str(s) for s in (scopes or [])}
     zpa = "zpa" in given
     urls = "url_filtering" in read
     if not urls:
@@ -821,7 +904,8 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     # A blank value never hides the other one, nor switches the phrase off.
     own = next((str(v).strip().upper() for v in (prepared.get("confirm_phrase"), prepared.get("confirm_always")) if str(v or "").strip()), "")
     prepared["confirm_phrase"] = own if own and counts["change"] else confirm_phrase(counts["change"])
-    prepared["needs_activation"] = prepared.get("product") == "zia"
+    # A plan that activates as its own last item (activation_step) is not activated again by the engine.
+    prepared["needs_activation"] = prepared.get("product") == "zia" and not prepared.get("activation_step")
     prepared["kind"] = KIND
     prepared["tenant_label"] = tenant_label
     prepared["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -830,7 +914,8 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     product = str(prepared.get("product") or "zpa").upper()   # a plugin's product (ZPA, ZDX, ...) saves each change at once
     prepared["notes"] = list(prepared.get("notes") or []) + (
         ["ZIA keeps every change pending until it is activated: the app activates once, after the last write, as a policy pack deploy does."]
-        if prepared["needs_activation"] else [prepared.get("apply_note") or f"{product} applies each change as it is saved; there is no activation step."])
+        if prepared["needs_activation"] else [] if prepared.get("activation_step") else
+        [prepared.get("apply_note") or f"{product} applies each change as it is saved; there is no activation step."])
     return prepared
 
 
@@ -848,7 +933,7 @@ def plan(client, spec: Dict[str, Any], *, scope: Dict[str, Any], tenant_label: s
     if t == "rule_state":
         prepared = _plan_rule_state(client.zia, spec, say, cancel)
     elif t == "reorder":
-        prepared = _plan_reorder(client.zia, spec, say, cancel)
+        prepared = _plan_reorder(client.zia, spec, say, cancel, client=client, scope=scope)
     elif t == "url_categories":
         prepared = _plan_urls(client.zia, spec, scope, say, cancel)
     elif t == "zpa_domains":
@@ -942,7 +1027,42 @@ def _plan_rule_state(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
 
 # ── reorder ────────────────────────────────────────────────────────────
 
-def _plan_reorder(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
+def _explicit_ranks(spec: Dict[str, Any]) -> Dict[str, int]:
+    """An Undo's ranks to put back ({rule id: rank 0-7}), validated."""
+    raw = spec.get("ranks")
+    if raw in (None, {}, []):
+        return {}
+    if not isinstance(raw, dict) or len(raw) > MAX_TARGETS:
+        raise OperationError(f"ranks must map up to {MAX_TARGETS} rule ids to an admin rank (0 to 7).")
+    out: Dict[str, int] = {}
+    for k, v in raw.items():
+        if isinstance(v, bool) or not isinstance(v, (int, str)) or not re.fullmatch(r"[0-7]", str(v).strip()) \
+                or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", str(k)):
+            raise OperationError("ranks must map rule ids to an admin rank from 0 to 7.")
+        out[_rid(k)] = int(str(v).strip())
+    return out
+
+
+def _reorder_ranks(rows_desired: List[Dict[str, Any]], moved: Set[str], explicit: Dict[str, int], by_id: Dict[str, Dict[str, Any]],
+                   setting: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """The rank each rule of a reorder takes ({id: {rank, before, change, why,
+    warning, assumed}}): the ranks an Undo puts back, or, with Admin Ranking
+    on, those the moved rules need (rank_inherit.place_moves)."""
+    import admin_rank
+    import rank_inherit as ri
+    if explicit:
+        out = {}
+        for rid, rk in explicit.items():
+            if rid not in by_id:
+                raise OperationError(f"Not a rule of this policy now: {rid}. Read the rules again.")
+            cur = admin_rank.rank_of(by_id[rid])
+            out[rid] = {"rank": rk, "before": cur, "change": rk != cur, "assumed": False, "warning": "",
+                        "why": f"rank {cur} → {rk}: put back as it was before the reorder" if rk != cur else f"already rank {rk}"}
+        return out
+    return ri.place_moves(rows_desired, moved, setting, id_of=lambda r: _rid(pc._field(r, "id")))
+
+
+def _plan_reorder(zia, spec: Dict[str, Any], say, cancel, *, client=None, scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     pol = str(spec.get("policy") or "")
     if pol not in POLICIES:
         raise OperationError(f"Unknown policy '{pol}'.")
@@ -979,6 +1099,14 @@ def _plan_reorder(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     it = iter(desired_movable)
     desired = [rid if rid in locked else next(it) for rid in current]
     steps = minimal_moves(current, desired, locked)
+    import admin_rank
+    import rank_inherit as ri
+    explicit = _explicit_ranks(spec)
+    if any(x in locked for x in explicit):
+        raise OperationError("A locked rule's rank is not changed here (Default, predefined, read-only or exception rules).")
+    say("Reading whether admin ranking is on…")
+    rank_setting = ri.read_setting(client if client is not None else type("C", (), {"zia": zia})(), (scope or {}).get("scopes"))
+    ranks = _reorder_ranks([by_id[r] for r in desired], {s_["id"] for s_ in steps}, explicit, by_id, rank_setting)
     slots = [_int(pc._field(by_id[r], "order"), 0) for r in current]
     pos_after = {rid: i for i, rid in enumerate(desired)}
     by_unit: Dict[str, Dict[str, Any]] = {}
@@ -993,15 +1121,35 @@ def _plan_reorder(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
         by_unit[s_["id"]] = _unit(gkey, gkey, "rule_order", ref, "order", _int(pc._field(r, "order"), 0), slots[at],
                                   reason=f"moves to just below '{prev_name}'" if prev_name else "moves to the top",
                                   depends_on=[prev_key] if prev_key else [])
-        groups.append({"key": gkey, "handler": "rule_order", "target": {"policy": pol, "rule_type": rtype, "id": ref["id"], "name": ref["name"],
-                                                                       "send_order": slots[s_["index"]], "expect_before": s_["before"],
-                                                                       "expect_after": s_["after"]}})
+        target = {"policy": pol, "rule_type": rtype, "id": ref["id"], "name": ref["name"], "send_order": slots[s_["index"]],
+                  "expect_before": s_["before"], "expect_after": s_["after"]}
+        rk = ranks.get(s_["id"])
+        if rk and rk["change"]:
+            target.update(send_rank=rk["rank"], expect_rank=rk["before"])
+        groups.append({"key": gkey, "handler": "rule_order", "target": target})
         prev_key = gkey
+    rank_units: Dict[str, Dict[str, Any]] = {}
+    for rid, rk in ranks.items():
+        r = by_id[rid]
+        ref = _rule_ref(pol, r, rtype)
+        gkey = f"order:{pol}:{rtype}:{rid}" if rid in by_unit else f"rank:{pol}:{rtype}:{rid}"
+        if not rk["change"]:
+            if rk.get("warning") or explicit:
+                rank_units[rid] = _unit(f"{gkey}:rank", gkey, "rule_rank", ref, "rank", rk["before"], rk["rank"], status="noop", reason=rk["why"])
+            continue
+        rank_units[rid] = _unit(f"{gkey}:rank", gkey, "rule_rank", ref, "rank", rk["before"], rk["rank"], reason=rk["why"])
+        if rid not in by_unit:   # an Undo puts back the rank of a rule that does not move: after every move
+            groups.append({"key": gkey, "handler": "rule_rank", "target": {"policy": pol, "rule_type": rtype, "id": ref["id"], "name": ref["name"],
+                                                                          "send_rank": rk["rank"], "expect_rank": rk["before"]}})
     items = []
     for rid in current:   # the items in the policy's current order
         if rid in by_unit:
             items.append(by_unit[rid])
+            if rid in rank_units:
+                items.append(rank_units[rid])
             continue
+        if rid in rank_units:
+            items.append(rank_units[rid])
         r = by_id[rid]
         ref = _rule_ref(pol, r, rtype)
         gkey = f"order:{pol}:{rtype}:{rid}"
@@ -1012,10 +1160,11 @@ def _plan_reorder(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
         else:
             note = "keeps its place" + (f"; its order number becomes {after} as the rules around it move" if after != before else "")
             items.append(_unit(gkey, gkey, "rule_order", ref, "order", before, after, status="noop", reason=note))
-    warnings = []
+    final_rank = {rid: (ranks[rid]["rank"] if rid in ranks else _int(pc._field(by_id[rid], "rank"), -1)) for rid in desired}
+    warnings = [rk["warning"] for rk in ranks.values() if rk.get("warning")]
     last = -1
     for rid in desired:
-        rk = _int(pc._field(by_id[rid], "rank"), -1)
+        rk = final_rank[rid]
         if rk < 0 or rid in locked:
             continue
         if rk < last:
@@ -1025,13 +1174,34 @@ def _plan_reorder(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
         last = rk
     moved = set(by_unit)
     n = len(steps)
-    return {"type": "reorder", "spec": {"type": "reorder", "policy": pol, "rule_type": rtype, "order": desired_movable}, "product": "zia",
-            "items": items, "groups": groups, "warnings": warnings,
-            "title": f"Reorder {_label(pol)}{' (' + rtype + ')' if rtype else ''}: {n} move{'s' if n != 1 else ''}",
-            "order_before": [{"id": by_id[r].get("id"), "name": by_id[r].get("name"), "order": by_id[r].get("order"), "locked": r in locked} for r in current],
+    nspec = {"type": "reorder", "policy": pol, "rule_type": rtype, "order": desired_movable}
+    if explicit:
+        nspec["ranks"] = {k: explicit[k] for k in sorted(explicit)}
+    st = ri.state_of(rank_setting)
+    if not steps and not explicit:
+        rank_notes: List[str] = []
+    elif st == ri.ON:
+        rank_notes = ["Admin ranking is on (ZIA advanced settings): a moved rule keeps its rank when it fits between its new neighbours, "
+                      "otherwise it takes the rank of the rule it now sits above, so it is evaluated where the new order puts it. The API "
+                      "client's own admin rank: " + ri.CALLER_NOT_READABLE + "."]
+    elif st == ri.OFF:
+        rank_notes = ["Admin ranking is off (ZIA advanced settings): only the order changes; ranks are left as they are."]
+    else:
+        rank_notes = [f"{ri.unknown_why(rank_setting)}: only the order changes and ranks are left as they are. If admin ranking is on in "
+                      "this tenant, a moved rule stays with the rules of its own rank, so it may not sit where the new order puts it."]
+    placed = [dict(name=by_id[rid].get("name"), policy=_label(pol), rank=rk["rank"], before=rk["before"], order=slots[desired.index(rid)],
+                   asked_order=slots[desired.index(rid)], why=rk["why"], warning=rk.get("warning") or "", assumed=rk.get("assumed"))
+              for rid, rk in ranks.items()]
+    return {"type": "reorder", "spec": nspec, "product": "zia",
+            "items": items, "groups": groups, "warnings": warnings, "notes": rank_notes,
+            "title": f"Reorder {_label(pol)}{' (' + rtype + ')' if rtype else ''}: {n} move{'s' if n != 1 else ''}"
+                     + (f", {sum(1 for x in ranks.values() if x['change'])} rank change(s)" if any(x["change"] for x in ranks.values()) else ""),
+            "order_before": [{"id": by_id[r].get("id"), "name": by_id[r].get("name"), "order": by_id[r].get("order"), "locked": r in locked,
+                              "rank": admin_rank.shown_rank(by_id[r])} for r in current],
             "order_after": [{"id": by_id[r].get("id"), "name": by_id[r].get("name"), "order": slots[i], "locked": r in locked,
-                             "moved": r in moved} for i, r in enumerate(desired)],
-            "before_order": movable}
+                             "moved": r in moved, "rank": final_rank[r] if final_rank[r] >= 0 else None,
+                             "rank_changed": bool(ranks.get(r, {}).get("change"))} for i, r in enumerate(desired)],
+            "before_order": movable, "rank_plan": ri.summary(rank_setting, placed)}
 
 
 # ── url_categories ─────────────────────────────────────────────────────
@@ -1313,8 +1483,8 @@ def _clean_domains(raw: Any) -> Tuple[List[str], List[Tuple[str, str]]]:
 
 def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     action = str(spec.get("action") or "").lower()
-    if action not in ("move", "copy", "clone", "revert"):
-        raise OperationError("The ZPA action must be move, copy or clone.")
+    if action not in ("move", "copy", "clone", "add", "remove", "revert"):
+        raise OperationError("The ZPA action must be add, remove, move, copy or clone.")
     say("Reading the ZPA application segments…")
     _check_stop(cancel)
     segs, err = read_segments(zpa, cancel)
@@ -1363,10 +1533,22 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             raise OperationError("List at least one domain.")
         if len(doms) > MAX_DOMAINS:
             raise OperationError(f"At most {MAX_DOMAINS} domains per operation; this one lists {len(doms)}.")
-        src = seg(spec.get("source"), "source")
-        sid = _rid(pc._field(src, "id"))
-        nspec.update(source=sid, domains=doms)
-        if action == "clone":
+        if action == "add":
+            # Typed domains into an existing segment (no source): the same
+            # overlap check, re-read before the write, read-back and Undo.
+            tgt = seg(spec.get("target"), "target")
+            tid = _rid(pc._field(tgt, "id"))
+            nspec.update(target=tid, domains=doms)
+            adds[tid] = list(doms)
+        elif action == "remove":
+            src = seg(spec.get("source"), "source")
+            sid = _rid(pc._field(src, "id"))
+            nspec.update(source=sid, domains=doms)
+            removes[sid] = list(doms)
+        elif action == "clone":
+            src = seg(spec.get("source"), "source")
+            sid = _rid(pc._field(src, "id"))
+            nspec.update(source=sid, domains=doms)
             name = _object_name(spec.get("name"), "new segment's")
             if not name:
                 raise OperationError("Name the new segment.")
@@ -1378,6 +1560,9 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             if move:
                 removes[sid] = [d for d in doms]
         else:
+            src = seg(spec.get("source"), "source")
+            sid = _rid(pc._field(src, "id"))
+            nspec.update(source=sid, domains=doms)
             tgt = seg(spec.get("target"), "target")
             tid = _rid(pc._field(tgt, "id"))
             if tid == sid:
@@ -1430,8 +1615,9 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             k = f"seg:{sid}:-{d}"
             remove_keys[(sid, d)] = k
             if d not in have:
-                items.append(_unit(k, gkey, "domain", ref, "domain_names", False, False, value=d, status="excluded",
-                                   reason="not in the source segment, so there is nothing to move"))
+                items.append(_unit(k, gkey, "domain", ref, "domain_names", False, False, value=d,
+                                   status="noop" if action == "remove" else "excluded",
+                                   reason="not in this segment" if action == "remove" else "not in the source segment, so there is nothing to move"))
             else:
                 items.append(_unit(k, gkey, "domain", ref, "domain_names", True, False, value=d))
         # ZPA keeps at least one domain in a segment: a removal that would
@@ -1541,7 +1727,9 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     n = sum(1 for u in items if u["kind"] == "domain" and u["status"] == "change" and u["after"] is True)
     sname = pc._field(by_id.get(nspec.get("source", ""), {}), "name") if nspec.get("source") else ""
     tname = pc._field(by_id.get(nspec.get("target", ""), {}), "name") if nspec.get("target") else ""
+    n_out = sum(1 for u in items if u["kind"] == "domain" and u["status"] == "change" and u["after"] is False)
     title = {"move": f"Move {n} domain{'s' if n != 1 else ''} from {sname} to {tname}", "copy": f"Copy {n} domain{'s' if n != 1 else ''} from {sname} to {tname}",
+             "add": f"Add {n} domain{'s' if n != 1 else ''} to {tname}", "remove": f"Remove {n_out} domain{'s' if n_out != 1 else ''} from {sname}",
              "clone": f"Clone {sname} as {(clone or {}).get('name')}", "revert": "Undo a ZPA segment change"}[action]
     notes = ["The overlap check assumes ZPA refuses the same domain in two segments on overlapping ports; a wildcard and a more "
              "specific domain may share ports (the most specific match wins)."]
@@ -1677,16 +1865,48 @@ def _h_rule_order(run: _Run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> 
         run.log(f"[{_label(t['policy'])}] order changed in the tenant during the run; the remaining moves are not sent")
         return
     fresh = next(r for r in rows if _rid(pc._field(r, "id")) == _rid(t["id"]))
+    if "send_rank" in t and _int(pc._field(fresh, "rank"), -1) != _int(t.get("expect_rank"), -2):
+        run.order_broken[pkey] = REORDER_BROKEN
+        run.mark(units, "conflict", f"its admin rank changed in the tenant since the preview (now {pc._field(fresh, 'rank')}); this and the remaining moves were skipped")
+        return
     body = _body(fresh)
     body["order"] = t["send_order"]
+    if "send_rank" in t:
+        body["rank"] = t["send_rank"]   # the rank its new place needs (rank_inherit.place_moves) or an Undo puts back
     if t["policy"] == "cloud_app_control":
         body["type"] = t["rule_type"]
     out = ops.update(run.zia, "policy", t["id"], body, channel=POLICIES[t["policy"]]["channel"], name=t["name"], log=run.log)
     if run.outcome(units, out, "update"):
         run.wrote_zia = True
-        run.log(f"[{_label(t['policy'])}] {t['name']}: order {units[0]['before']} → {t['send_order']}")
+        run.log(f"[{_label(t['policy'])}] {t['name']}: order {units[0]['before']} → {t['send_order']}"
+                + (f", rank {t['expect_rank']} → {t['send_rank']}" if "send_rank" in t else ""))
     else:
         run.order_broken[pkey] = f"the move of '{t['name']}' was not applied"
+
+
+def _h_rule_rank(run: _Run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
+    """Put back one rule's admin rank (an Undo of a reorder), its order as read."""
+    t = g["target"]
+    fresh, err = get_rule(run.zia, t["policy"], t["id"], t["rule_type"])
+    if fresh is None:
+        run.halt = _read_halt(err)
+        if run.halt:
+            run.mark(units, "skipped", f"not attempted: {run.halt}")
+        else:
+            run.mark(units, "failed", "", error=f"could not read the rule again before the change: {err}")
+            run.counts["failed"] += 1
+        return
+    if _int(pc._field(fresh, "rank"), -1) != _int(t["expect_rank"], -2):
+        run.mark(units, "conflict", f"changed in the tenant since the preview: rank is {pc._field(fresh, 'rank')} now; left as it is")
+        return
+    body = _body(fresh)
+    body["rank"] = t["send_rank"]
+    if t["policy"] == "cloud_app_control":
+        body["type"] = t["rule_type"] or fresh.get("rule_type")
+    out = ops.update(run.zia, "policy", t["id"], body, channel=POLICIES[t["policy"]]["channel"], name=t["name"], log=run.log)
+    if run.outcome(units, out, "update"):
+        run.wrote_zia = True
+        run.log(f"[{_label(t['policy'])}] {t['name']}: rank {t['expect_rank']} → {t['send_rank']}")
 
 
 def _h_url(run: _Run, g: Dict[str, Any], units: List[Dict[str, Any]], add: bool) -> None:
@@ -1849,7 +2069,7 @@ def _h_zpa_delete(run: _Run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> 
     run.outcome(units, out, "delete")
 
 
-HANDLERS = {"rule_state": _h_rule_state, "rule_order": _h_rule_order, "url_add": lambda r, g, u: _h_url(r, g, u, True),
+HANDLERS = {"rule_state": _h_rule_state, "rule_order": _h_rule_order, "rule_rank": _h_rule_rank, "url_add": lambda r, g, u: _h_url(r, g, u, True),
             "url_remove": lambda r, g, u: _h_url(r, g, u, False), "url_create": _h_url_create, "url_delete": _h_url_delete,
             "zpa_update": _h_zpa_update, "zpa_create": _h_zpa_create, "zpa_delete": _h_zpa_delete}
 
@@ -1872,10 +2092,20 @@ def _verify(run: _Run) -> Dict[str, Any]:
             return out
         want = [str(x["id"]) for x in run.p["order_after"]]
         seq = _sequence(rows)
+        # The ranks ZIA stored are those sent (rank_inherit.stored).
+        import rank_inherit as ri
+        got = {_rid(pc._field(r, "id")): r for r in rows}
+        bad_rank = {}
+        for u in applied:
+            if u["field"] == "rank":
+                where = ri.stored({"rank": u["after"]}, got.get(_rid(u["object"]["id"])))
+                if where:
+                    bad_rank[u["key"]] = u["stored"] = where
+                    out["mismatched"].append(f"{u['object'].get('name')}: {where}")
         if seq == want:
-            out["confirmed"] = len(applied)
+            out["confirmed"] = len(applied) - len(bad_rank)
             for u in applied:
-                u["verified"] = True
+                u["verified"] = u["key"] not in bad_rank
         else:
             out["mismatched"].append("the rule order read back differs from the desired order")
             for u in applied:
@@ -1944,8 +2174,12 @@ def inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                                                    "rule_type": u["object"].get("rule_type") or "", "to": u["before"]} for u in applied]}
     if t == "reorder":
         spec = result["spec"]
-        return {"type": "reorder", "policy": spec["policy"], "rule_type": spec.get("rule_type") or "",
-                "order": [str(x) for x in result.get("before_order") or []]}
+        inv = {"type": "reorder", "policy": spec["policy"], "rule_type": spec.get("rule_type") or "",
+               "order": [str(x) for x in result.get("before_order") or []]}
+        ranks = {_rid(u["object"]["id"]): u["before"] for u in applied if u["field"] == "rank" and u["before"] is not None}
+        if ranks:
+            inv["ranks"] = ranks   # the Undo puts back each rank the reorder changed
+        return inv
     if t == "url_categories":
         created_ids = {str(c["id"]) for c in result.get("created") or [] if c.get("type") == "url_category"}
         deltas: Dict[str, Dict[str, List[str]]] = {}
@@ -2105,6 +2339,9 @@ def _execute(client, spec, *, plan_hash, scope, confirm_text, assessor, tenant_l
     else:
         status = "nothing_to_do"
     result = dict(prepared)
+    # A plan that activates as its own step (activation_step) reports that activation, so the run's audit entry carries it.
+    if activation is None and prepared.get("activation_step_result"):
+        activation = dict(prepared["activation_step_result"])
     result.update(status=status, items=items, counts_run=counts, activation=activation, activation_status=settled,
                   verification=verification, stopped=run.halt, created=run.created, logs=logs,
                   elapsed_seconds=round(time.time() - started, 1),
@@ -2166,10 +2403,13 @@ def to_request(prepared: Dict[str, Any]) -> Dict[str, Any]:
 # The object picker
 # ---------------------------------------------------------------------------
 
-def read_objects(client, family: str, scope: Dict[str, Any], *, log: LogFn = None, cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+def read_objects(client, family: str, scope: Dict[str, Any], *, log: LogFn = None, cancel: Optional[threading.Event] = None,
+                 query: str = "") -> Dict[str, Any]:
     """The objects an operation can pick from, read-only: rules per policy
     in scope, custom URL categories with their URLs, or ZPA segments with
-    their domains and ports."""
+    their domains and ports. `query` (a search the page typed, at most
+    MAX_QUERY characters) goes to a plugin reader that takes it (a fifth
+    parameter): the users of a large directory are searched, not all read."""
     require_scope(family, scope)
     say = log or (lambda m: None)
     out: Dict[str, Any] = {"family": family, "not_in_scope": dict(scope.get("not_in_scope") or {}), "errors": {},
@@ -2179,7 +2419,10 @@ def read_objects(client, family: str, scope: Dict[str, Any], *, log: LogFn = Non
         for pol in scope["policies"]:
             _check_stop(cancel)
             say(f"Reading the {_label(pol)} rules…")
-            rows, err = read_rules(client.zia, pol, cancel=cancel)
+            try:
+                rows, err = read_rules(client.zia, pol, cancel=cancel)
+            except OperationError as e:   # this sign-in's SDK has no such service: say so, read the others
+                rows, err = [], str(e)
             if err:
                 out["errors"][pol] = err
                 say(f"{_label(pol)} rules could not be read: {err}")
@@ -2205,6 +2448,21 @@ def read_objects(client, family: str, scope: Dict[str, Any], *, log: LogFn = Non
         out["segments"] = [segment_summary(s) for s in sorted(segs, key=lambda s: str(pc._field(s, "name", default="")).lower())]
         say(f"{len(out['segments'])} application segments.")
     elif family in PLUGIN_FAMILIES:
-        out.update(PLUGIN_FAMILIES[family]["read_objects"](client, scope, say, cancel) or {})
+        reader = PLUGIN_FAMILIES[family]["read_objects"]
+        q = str(query or "")[:MAX_QUERY]
+        out.update((reader(client, scope, say, cancel, q) if q and _takes_query(reader) else reader(client, scope, say, cancel)) or {})
     _check_stop(cancel)
     return out
+
+
+MAX_QUERY = 100   # characters of a picker search
+
+
+def _takes_query(fn: Callable[..., Any]) -> bool:
+    """Does a plugin's reader take the picker's search (a fifth parameter)?"""
+    try:
+        params = [p for p in inspect.signature(fn).parameters.values()
+                  if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL)]
+    except (TypeError, ValueError):
+        return False
+    return len(params) >= 5 or any(p.kind == p.VAR_POSITIONAL for p in params)

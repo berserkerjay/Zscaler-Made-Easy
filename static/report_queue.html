@@ -48,6 +48,18 @@
   .cq-status.bad { color: var(--fail); }
   .cq-empty { color: var(--dim); font-size: 0.88rem; padding: 0.6rem 0; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .sy-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 0.6rem 1rem; margin: 0.6rem 0; }
+  .sy-f, .sy-c { display: flex; align-items: flex-end; gap: 0.3rem; min-width: 0; font-size: 0.85rem; }
+  .sy-c { align-items: center; margin: 0.15rem 0; }
+  .sy-f > label { display: flex; flex-direction: column; gap: 0.25rem; flex: 1 1 auto; min-width: 0; }
+  .sy-c > label { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+  .sy-form fieldset { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.4rem 0.6rem; margin: 0; min-width: 0; font-size: 0.85rem; }
+  .sy-form input[type="text"], .sy-form select { font: inherit; background: var(--well); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.3rem 0.45rem; min-width: 0; max-width: 100%; }
+  .sy-form input:focus-visible, .sy-form select:focus-visible, .sy-job .rp-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sy-job { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); margin: 0 0 0.6rem; padding: 0.7rem 0.9rem; }
+  .sy-job h3 { font-size: 0.95rem; margin: 0 0 0.3rem; overflow-wrap: anywhere; }
+  .sy-job .cq-wrap table.cq-t { min-width: 34rem; }   /* the run history scrolls in its own box on a phone, never the page */
+  .sy-job .cq-wrap table.cq-t td, .sy-job .cq-wrap table.cq-t th { overflow-wrap: normal; }
   @media (prefers-reduced-motion: reduce) { .cq-req, .cq-tab { transition: none; } }
   @media (max-width: 600px) { .cq-dl { grid-template-columns: 1fr; } }
 </style>
@@ -58,7 +70,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Change</span> queue</h1>
-      <p>Changes someone prepared but did not apply: a policy-pack deploy plan, a selective removal plan or a fix recipe, filed with <strong>Request approval</strong> in Deploy policy packs or Review &amp; remediate. A writer other than the requester approves or rejects each one (four-eyes). An approved request is applied from here: the plan is checked against the tenant again first, and a request whose plan no longer matches is marked stale and nothing is written. Every step is in the audit log with who did it.</p>
+      <p>Changes someone prepared but did not apply: a policy-pack deploy plan, a selective removal plan or a fix recipe, filed with <strong>Request approval</strong> in Deploy policy packs or Review &amp; remediate, or a plan a scheduled sync job made (below). A writer other than the requester approves or rejects each one (four-eyes). An approved request is applied from here: the plan is checked against the tenant again first, and a request whose plan no longer matches is marked stale and nothing is written. Every step is in the audit log with who did it.</p>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
@@ -93,6 +105,28 @@
         </div>
         <div id="panel" role="tabpanel" aria-labelledby="tab-pending" tabindex="0"></div>
       </section>
+
+      <section class="cq-sec" aria-labelledby="syH">
+        <h2 id="syH">Scheduled sync</h2>
+        <p class="cq-why">A sync job keeps rules of one or more target tenants in step with a source (a saved tenant profile or snapshot). Each run only <strong>reads</strong>: for every target it plans the adds, updates and (only if you ask) deletes, and files the plan here for another writer to approve. Nothing is applied until a named writer applies the approved request, through write mode and the typed confirmation; a plan whose target changed since is refused as stale. New rules are created disabled unless you say otherwise.</p>
+        <div class="cq-status" id="syStatus" aria-live="polite"></div>
+        <div id="syJobs"><p class="cq-empty">Loading…</p></div>
+        <details id="syNew" style="margin-top:0.6rem;"><summary>New sync job</summary>
+          <form class="sy-form" id="syForm" novalidate>
+            <div class="sy-f"><label>Name<input type="text" id="syName" maxlength="80" autocomplete="off"></label></div>
+            <div class="sy-f"><label>Source<select id="sySource"></select></label></div>
+            <fieldset><legend>Targets (tenant profiles)</legend><div id="syTargets"></div></fieldset>
+            <fieldset><legend>What to keep in step</legend><div id="syGroups"></div></fieldset>
+            <div class="sy-f"><label>Only rules with this rule label (optional)<input type="text" id="syLabel" maxlength="128" autocomplete="off"></label></div>
+            <div class="sy-f"><label>Only rules whose name starts with (optional)<input type="text" id="syPrefix" maxlength="128" autocomplete="off"></label></div>
+            <div class="sy-f"><label>How often<select id="syInterval"></select></label></div>
+            <fieldset><legend>Options</legend>
+              <div class="sy-c"><label><input type="checkbox" id="syDeletes"> Plan deletes of target rules the source does not have</label></div>
+              <div class="sy-c"><label><input type="checkbox" id="syEnabled"> Create new rules enabled</label></div></fieldset>
+          </form>
+          <div class="cq-actions"><button type="button" class="rp-btn primary" id="sySave">Save the job</button></div>
+        </details>
+      </section>
     </main>
   </div>
   <script src="/static/icons.js"></script>
@@ -108,7 +142,7 @@
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const $ = id => document.getElementById(id);
     const TABS = { pending: ['pending'], approved: ['approved'], history: ['rejected', 'applied', 'failed', 'stale', 'withdrawn'] };
-    const KIND = { pack_deploy: 'Deploy policy packs', pack_removal: 'Remove selected rules', fix_recipe: 'Fix recipe' };
+    const KIND = { pack_deploy: 'Deploy policy packs', pack_removal: 'Remove selected rules', fix_recipe: 'Fix recipe', admin_operation: 'Bulk change plan' };
     let state = { items: [], viewer: {}, settings: {}, writes_enabled: false }, tab = 'pending';
     const open = new Set();      // requests whose detail is open, kept across reloads
     const fmt = t => { try { return new Date(t).toLocaleString(); } catch (e) { return t || ''; } };
@@ -357,8 +391,16 @@
           const body = `This applies "${r.title}" to ${r.tenant_label || r.tenant} through the same path as the app's own apply. The plan is checked against the tenant first: if it changed since the request was filed, nothing is written and the request is marked stale.`;
           const typed = dlg ? await dlg.phrase({ title: 'Apply this approved request?', body, phrase, okLabel: 'Apply' }) : window.prompt(`${body}\n\nType ${phrase} to continue:`, '');
           if (!typed) return;
+          // A Bulk change plan (a sync job's) may name its own phrase too: above ten changes, or any delete (DELETE <n> RULES).
+          const own = r.kind === 'admin_operation' ? String((r.payload || {}).confirm_phrase || '') : '';
+          let typed2 = '';
+          if (own) {
+            const body2 = `This plan also needs its own confirmation${/^DELETE /.test(own) ? ': it deletes rules' : ''}.`;
+            typed2 = dlg ? await dlg.phrase({ title: 'Confirm this plan', body: body2, phrase: own, okLabel: 'Apply' }) : window.prompt(`${body2}\n\nType ${own} to continue:`, '');
+            if (!typed2) return;
+          }
           b.disabled = true;
-          const started = await post(`/api/change-queue/${encodeURIComponent(rid)}/apply`, { ...credBody(), ...scopeSelection(), confirm: typed });
+          const started = await post(`/api/change-queue/${encodeURIComponent(rid)}/apply`, { ...credBody(), ...scopeSelection(), confirm: typed, confirm_text: typed2 });
           announce(`Applying ${rid}.`);
           const snap = await followJob(started.job_id, rid);
           const rec = (snap.result || {}).change_request;
@@ -382,10 +424,114 @@
       }
     });
 
-    $('cqRefresh').addEventListener('click', () => load());
+    // ── Scheduled sync (GET/POST /api/sync-jobs): jobs, Run now, history ──
+    let sync = { jobs: [], sources: { profiles: [], snapshots: [], groups: [], intervals: [] }, viewer: {} };
+    function syStatus(t, bad) { const el = $('syStatus'); el.textContent = t || ''; el.classList.toggle('bad', !!bad); }
+    const every = h => !h ? 'Only when someone clicks Run now' : h === 1 ? 'Every hour' : h % 24 === 0 ? `Every ${h / 24 === 1 ? 'day' : h / 24 === 7 ? 'week' : `${h / 24} days`}` : `Every ${h} hours`;
+    const groupLabel = id => ((sync.sources.groups || []).find(g => g.id === id) || {}).label || id;
+    const profName = id => ((sync.sources.profiles || []).find(p => p.id === id) || {}).name || id;
+    function srcName(src) {
+      if (!src) return '';
+      if (src.kind === 'profile') return `profile ${profName(src.id)}`;
+      if (src.kind === 'snapshot') return `snapshot ${((sync.sources.snapshots || []).find(x => x.id === src.id) || {}).label || src.id}`;
+      return `template ${src.id}`;
+    }
+    const RUN = { planned: 'plan filed', unchanged: 'same plan already waiting', in_sync: 'in step: nothing to change', not_in_scope: 'not in scope: not read', error: 'error' };
+    function jobHtml(j) {
+      const w = !!(sync.viewer || {}).may_write;
+      const hist = (j.history || []).slice(0, 10).flatMap(run => (run.targets.length ? run.targets : [{ profile_name: '', policy: '', status: run.status, message: (run.errors || []).join('; ') }]).map(t =>
+        `<tr><td>${E(fmt(run.at))}</td><td>${E(run.trigger === 'schedule' ? 'schedule' : `Run now by ${run.by}`)}</td><td>${E(t.profile_name || '')}</td><td>${E(t.policy ? groupLabel(GROUPS_BY_POLICY[t.policy] || t.policy) : '')}</td>
+          <td>${E(RUN[t.status] || t.status)}${t.request ? ` <code>${E(t.request)}</code>` : ''}</td><td>${E(t.counts ? `${t.counts.add} add, ${t.counts.update} update, ${t.counts.move} move, ${t.counts.delete} delete` : (t.message || ''))}</td></tr>`)).join('');
+      return `<div class="sy-job" data-job="${E(j.id)}"><h3>${E(j.name)} ${j.enabled ? '' : '<span class="cq-chip">paused</span>'} ${j.running ? '<span class="cq-chip pending">running</span>' : ''}</h3>
+        <dl class="cq-dl"><dt>From</dt><dd>${E(srcName(j.source))}</dd><dt>To</dt><dd>${E((j.targets || []).map(profName).join(', '))}</dd>
+          <dt>Keeps in step</dt><dd>${E((j.groups || []).map(groupLabel).join(', '))}${j.label ? ` · label ${E(j.label)}` : ''}${j.prefix ? ` · names starting ${E(j.prefix)}` : ''}</dd>
+          <dt>Deletes</dt><dd>${j.include_deletes ? 'planned (each needs the typed DELETE confirmation when applied)' : 'never planned'}</dd>
+          <dt>New rules</dt><dd>${j.new_rules_enabled ? 'created enabled' : 'created disabled'}</dd>
+          <dt>Schedule</dt><dd>${E(every(j.interval_hours))}${j.next_run_at && j.enabled ? ` · next ${E(fmt(j.next_run_at))}` : ''}</dd>
+          <dt>Owner</dt><dd>${E(j.created_by)}</dd></dl>
+        <div class="cq-actions">${w ? `<button type="button" class="rp-btn primary" data-sy="run"${j.running ? ' disabled' : ''}>Run now</button>
+          ${j.interval_hours ? `<button type="button" class="rp-btn" data-sy="toggle">${j.enabled ? 'Pause' : 'Resume'}</button>` : ''}
+          <button type="button" class="rp-btn cq-danger" data-sy="delete">Delete job</button>` : '<span class="cq-why">Only a writer can run, pause or delete a job.</span>'}</div>
+        <div class="cq-job" id="syRun-${E(j.id)}"></div>
+        ${hist ? `<details style="margin-top:0.5rem;"><summary>History</summary><div class="cq-wrap"><table class="cq-t"><caption class="sr-only">Runs of ${E(j.name)}</caption>
+          <thead><tr><th scope="col">When</th><th scope="col">Started by</th><th scope="col">Target</th><th scope="col">What</th><th scope="col">Outcome</th><th scope="col">Changes</th></tr></thead><tbody>${hist}</tbody></table></div></details>` : '<p class="cq-empty">Not run yet.</p>'}</div>`;
+    }
+    let GROUPS_BY_POLICY = {};
+    function renderSync() {
+      GROUPS_BY_POLICY = Object.fromEntries((sync.sources.groups || []).map(g => [g.policy, g.id]));
+      $('syJobs').innerHTML = (sync.jobs || []).length ? sync.jobs.map(jobHtml).join('') : '<p class="cq-empty">No sync job yet.</p>';
+      $('syNew').hidden = !(sync.viewer || {}).may_write;
+      const src = $('sySource'), cur = src.value;
+      const P = sync.sources.profiles || [], SN = sync.sources.snapshots || [], T = sync.sources.templates || [];
+      src.innerHTML = '<option value="">Pick the source…</option>' + P.filter(p => p.has_secret).map(p => `<option value="profile:${E(p.id)}">Profile: ${E(p.name)}</option>`).join('')
+        + SN.map(x => `<option value="snapshot:${E(x.id)}">Snapshot: ${E(x.label)} (${E(fmt(x.saved_at))})</option>`).join('')
+        + T.map(x => `<option value="template:${E(x.id)}">Template: ${E(x.name)}</option>`).join('');
+      src.value = cur;
+      const tg = $('syTargets'), was = new Set([...tg.querySelectorAll('input:checked')].map(i => i.value));
+      tg.innerHTML = P.length ? P.map(p => `<div class="sy-c"><label><input type="checkbox" value="${E(p.id)}"${was.has(p.id) ? ' checked' : ''}${p.has_secret ? '' : ' disabled'}> ${E(p.name)}${p.has_secret ? '' : ' (no remembered secret)'}</label></div>`).join('') : '<span class="cq-why">Save a tenant profile with its secret first.</span>';
+      const gr = $('syGroups'), gwas = new Set([...gr.querySelectorAll('input:checked')].map(i => i.value));
+      gr.innerHTML = (sync.sources.groups || []).map(g => `<div class="sy-c"><label><input type="checkbox" value="${E(g.id)}"${gwas.has(g.id) ? ' checked' : ''}> ${E(g.label)}</label></div>`).join('');
+      const iv = $('syInterval'), ivCur = iv.value;
+      iv.innerHTML = (sync.sources.intervals || []).map(h => `<option value="${E(h)}">${E(every(h))}</option>`).join('');
+      if (ivCur) iv.value = ivCur;
+    }
+    async function loadSync() {
+      try { const r = await fetch('/api/sync-jobs', { cache: 'no-store' }); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`); sync = d; }
+      catch (e) { syStatus(`Could not load the sync jobs: ${e.message}`, true); return; }
+      renderSync();
+    }
+    async function followSync(jobId, jid) {
+      const box = $(`syRun-${jid}`);
+      if (box) box.innerHTML = `<div class="cq-log" role="log" aria-live="polite" aria-label="Sync run log" id="syLog-${E(jid)}">Starting…</div>`;
+      let next = 0; const lines = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 1000));
+        let snap;
+        try { const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' }); if (!r.ok) throw new Error(`HTTP ${r.status}`); snap = await r.json(); }
+        catch (e) { continue; }
+        lines.push(...(snap.logs || [])); next = snap.next;
+        const log = $(`syLog-${jid}`); if (log) { log.textContent = lines.join('\n') || 'Working…'; log.scrollTop = log.scrollHeight; }
+        if (snap.status !== 'running') return snap;
+      }
+    }
+    $('syJobs').addEventListener('click', async e => {
+      const b = e.target.closest('button[data-sy]'); if (!b) return;
+      const jid = b.closest('.sy-job').dataset.job, act = b.dataset.sy, job = (sync.jobs || []).find(j => j.id === jid) || {};
+      const dlg = window.dlpDialog;
+      try {
+        if (act === 'delete') {
+          if (dlg ? !(await dlg.ask({ title: 'Delete this sync job?', body: 'Its schedule and history go. Requests it filed stay in the queue.', okLabel: 'Delete' })) : !window.confirm('Delete this sync job?')) return;
+          await fetch(`/api/sync-jobs/${encodeURIComponent(jid)}`, { method: 'DELETE' }).then(async r => { if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).detail) || `HTTP ${r.status}`); });
+          syStatus(`Sync job ${job.name} deleted.`); announce('Sync job deleted.'); await loadSync(); return;
+        }
+        if (act === 'toggle') { await post(`/api/sync-jobs/${encodeURIComponent(jid)}/enabled`, { enabled: !job.enabled }); await loadSync(); return; }
+        b.disabled = true; syStatus(`Running ${job.name}: reading the source and the targets. Nothing is written.`);
+        const started = await post(`/api/sync-jobs/${encodeURIComponent(jid)}/run`, {});
+        const snap = await followSync(started.job_id, jid);
+        const res = snap.result || {}, run = res.run || {};
+        const msg = res.status === 'refused' ? res.message : `Run finished: ${(run.filed || []).length} plan(s) filed for approval${(run.errors || []).length ? `; ${run.errors.join('; ')}` : ''}.`;
+        syStatus(msg, res.status === 'refused' || run.status === 'error'); announce(msg);
+        await loadSync(); await load(true);
+      } catch (err) { syStatus(err.message, true); announce(err.message); b.disabled = false; }
+    });
+    $('sySave').addEventListener('click', async () => {
+      const [kind, ...rest] = ($('sySource').value || '').split(':');
+      const body = { name: $('syName').value.trim(), source: { kind, id: rest.join(':') },
+        targets: [...$('syTargets').querySelectorAll('input:checked')].map(i => i.value), groups: [...$('syGroups').querySelectorAll('input:checked')].map(i => i.value),
+        label: $('syLabel').value.trim(), prefix: $('syPrefix').value, interval_hours: Number($('syInterval').value || 0),
+        include_deletes: $('syDeletes').checked, new_rules_enabled: $('syEnabled').checked, ...scopeSelection() };
+      try {
+        const j = await post('/api/sync-jobs', body);
+        syStatus(`Sync job ${j.name} saved.`); announce('Sync job saved.');
+        $('syForm').reset(); await loadSync();
+      } catch (err) { syStatus(err.message, true); announce(err.message); }
+    });
+
+    $('cqRefresh').addEventListener('click', () => { load(); loadSync(); });
     $('cqTenant').addEventListener('change', () => load());
     tenantChoices();
     load();
+    loadSync();
   })();
   </script>
 </body>

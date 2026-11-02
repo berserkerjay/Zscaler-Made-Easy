@@ -472,3 +472,232 @@ GENAI_REG = [
     ("AI.20", "GenAI — Isolation & Posture", "Device posture gates AI access", ai_20),
 ]
 GENAI_REG = guard_registry(GENAI_REG)   # a refused read (HTTP 401/403) is "Not permitted", never judged
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# AI GUARD: its own configuration, scored (read only when AI Guard is ticked
+# on the Scope page; zscaler/aiguard over OneAPI: /aiguard/v1/...). Promoted
+# from the AI Guard readiness shown on the builders' forms.
+# ═══════════════════════════════════════════════════════════════════════
+_AIG = "/aiguard/v1"
+_AIG_REF = " Ref: https://help.zscaler.com/ai-guard"
+AIG_NA = ("AI Guard is not licensed or not linked to this tenant (the API answered 404): nothing to assess (N/A). It is reached only "
+          "through a OneAPI (ZIdentity) API client.")
+
+
+def _aig(cl, path):
+    """(rows, code) of an AI Guard list; AI Guard wraps lists in {"items": [...]}."""
+    d, c = cl.get(f"{_AIG}/{path}")
+    rows = _ls(d) if c in (200, 204) else []
+    if not rows and isinstance(d, dict) and isinstance(d.get("items"), list):
+        rows = d["items"]
+    return [x for x in rows if isinstance(x, dict)], c
+
+
+def _aig_unread(c, what):
+    if c == 404:
+        return R(R.INFO, AIG_NA)
+    if c == 0:
+        return R(R.INFO, f"AI Guard {what} were not read: AI Guard is not ticked on the Scope page, or this sign-in has no OneAPI client.")
+    return R(R.INFO, f"AI Guard {what} could not be read (HTTP {c}).")
+
+
+def _detectors(p, side):
+    key = "inputDetectorPolicies" if side == "input" else "outputDetectorPolicies"
+    out = []
+    for d in p.get(key) or p.get("input_detector_policies" if side == "input" else "output_detector_policies") or []:
+        if isinstance(d, dict) and d.get("enabled") is not False:
+            cfg = d.get("configuration") if isinstance(d.get("configuration"), dict) else {}
+            out.append((str(d.get("detector") or "").lower(), str(cfg.get("action") or cfg.get("defaultAction") or "").upper()))
+    return out
+
+
+def aig_1(cl):
+    """AI Guard has a detection policy that a policy match rule uses"""
+    pols, c = _aig(cl, "detections/policies")
+    if c not in (200, 204):
+        return _aig_unread(c, "detection policies")
+    if not pols:
+        return R(R.FAIL, "AI Guard has no detection policy, so it inspects nothing even when GenAI traffic reaches it. Fix: build one from "
+                 "a compliance profile in Bulk changes → Build new → AI Guard detection policy." + _AIG_REF)
+    rules, rc = _aig(cl, "detections/policy-match-rules")
+    if rc not in (200, 204):
+        return _aig_unread(rc, "policy match rules")
+    ids = {str(p.get("id")) for p in pols}
+    live = [r for r in rules if r.get("enabled") is not False]
+    used = [r for r in live if str(r.get("policyId") or r.get("policy_id")) in ids]
+    dangling = [str(r.get("name")) for r in live if str(r.get("policyId") or r.get("policy_id")) not in ids]
+    if dangling:
+        return R(R.FAIL, f"{len(dangling)} enabled policy match rule(s) point at a detection policy that does not exist: {', '.join(dangling[:5])}. "
+                 "The traffic they match is not inspected as intended. Fix: point each rule at an existing detection policy." + _AIG_REF)
+    if not used:
+        return R(R.FAIL, f"{len(pols)} detection polic{'y' if len(pols) == 1 else 'ies'}, but no enabled policy match rule uses one, so no "
+                 "GenAI traffic is matched to a policy. Fix: add a policy match rule for the LLM providers your people use." + _AIG_REF)
+    return R(R.PASS, f"{len(pols)} detection polic{'y' if len(pols) == 1 else 'ies'}; {len(used)} enabled policy match rule(s) use them.")
+
+
+def aig_2(cl):
+    """AI Guard detects prompt injection"""
+    pols, c = _aig(cl, "detections/policies")
+    if c not in (200, 204):
+        return _aig_unread(c, "detection policies")
+    if not pols:
+        return R(R.INFO, "No detection policy (check AIG.1).")
+    miss = [str(p.get("name")) for p in pols if not any(d == "prompt_injection" for d, _a in _detectors(p, "input"))]
+    if miss:
+        return R(R.WARN, f"{len(miss)} of {len(pols)} detection polic{'y does' if len(pols) == 1 else 'ies do'} not detect prompt injection "
+                 f"on prompts: {', '.join(miss[:5])}. A prompt that tells the model to ignore its rules is not noticed. Fix: turn on the "
+                 "prompt_injection input detector." + _AIG_REF)
+    return R(R.PASS, f"Every detection policy ({len(pols)}) detects prompt injection on prompts.")
+
+
+def aig_3(cl):
+    """AI Guard blocks, not only detects"""
+    pols, c = _aig(cl, "detections/policies")
+    if c not in (200, 204):
+        return _aig_unread(c, "detection policies")
+    if not pols:
+        return R(R.INFO, "No detection policy (check AIG.1).")
+    blocking = [str(p.get("name")) for p in pols if any(a == "BLOCK" for _d, a in _detectors(p, "input") + _detectors(p, "output"))]
+    if not blocking:
+        return R(R.WARN, f"Every detection policy ({len(pols)}) only detects: nothing is blocked, so a prompt carrying card numbers or an "
+                 "injection still reaches the model. Monitor first is right; once the detections look right, preview the policy again with "
+                 "Block (Bulk changes → AI Guard detection policy, mode Block)." + _AIG_REF)
+    return R(R.PASS, f"{len(blocking)} detection polic{'y blocks' if len(blocking) == 1 else 'ies block'} on at least one detector.")
+
+
+def aig_4(cl):
+    """AI Guard inspects the model's answers, not only the prompts"""
+    pols, c = _aig(cl, "detections/policies")
+    if c not in (200, 204):
+        return _aig_unread(c, "detection policies")
+    if not pols:
+        return R(R.INFO, "No detection policy (check AIG.1).")
+    blind = [str(p.get("name")) for p in pols if not _detectors(p, "output")]
+    if blind:
+        return R(R.WARN, f"{len(blind)} of {len(pols)} detection polic{'y has' if len(pols) == 1 else 'ies have'} no output detector: "
+                 f"{', '.join(blind[:5])}. Answers that carry personal data or a malicious link reach the user unchecked. Fix: add output "
+                 "detectors (pii, malicious_url, toxicity) to the policy." + _AIG_REF)
+    return R(R.PASS, f"Every detection policy ({len(pols)}) also inspects the model's answers.")
+
+
+def aig_5(cl):
+    """LLM applications that keep prompts keep them encrypted"""
+    apps, c = _aig(cl, "llm-applications")
+    if c not in (200, 204):
+        return _aig_unread(c, "LLM applications")
+    if not apps:
+        return R(R.INFO, "No LLM application is registered in AI Guard: nothing to check (N/A).")
+    plain = []
+    for a in apps:
+        st = a.get("applicationSettings") or a.get("application_settings") or {}
+        keeps = st.get("includeEventContents", st.get("include_event_contents"))
+        enc = st.get("encryptEventContents", st.get("encrypt_event_contents"))
+        if keeps is True and enc is not True:
+            plain.append(str(a.get("name")))
+    if plain:
+        return R(R.WARN, f"{len(plain)} of {len(apps)} LLM application(s) keep the prompts and answers without encrypting them: "
+                 f"{', '.join(plain[:5])}. What people typed (which can be personal or confidential data) is stored readable. Fix: turn on "
+                 "Encrypt Event Contents for each application in the AI Guard portal, or stop keeping the contents." + _AIG_REF)
+    return R(R.PASS, f"No LLM application ({len(apps)}) keeps prompts unencrypted.")
+
+
+def aig_6(cl):
+    """Every LLM application has a credential to its provider"""
+    apps, c = _aig(cl, "llm-applications")
+    if c not in (200, 204):
+        return _aig_unread(c, "LLM applications")
+    if not apps:
+        return R(R.INFO, "No LLM application is registered in AI Guard: nothing to check (N/A).")
+    creds, cc = _aig(cl, "llm-application-credentials")
+    if cc not in (200, 204):
+        return _aig_unread(cc, "LLM application credentials")
+    with_cred = {str(x.get("applicationId") or x.get("application_id")) for x in creds}
+    none = [str(a.get("name")) for a in apps if str(a.get("id")) not in with_cred]
+    if none:
+        return R(R.WARN, f"{len(none)} of {len(apps)} LLM application(s) have no application credential: {', '.join(none[:5])}. Their "
+                 "traffic cannot be sent through AI Guard, so it is not inspected, or the application is left over. Fix: create a credential "
+                 "for each in the AI Guard portal, or remove the unused application." + _AIG_REF)
+    return R(R.PASS, f"Every LLM application ({len(apps)}) has a credential ({len(creds)} in all; key values are never read).")
+
+
+# Provider credential age (assumed thresholds: a key older than a year with no
+# expiry is due for rotation; one expiring within 30 days needs planning).
+CRED_ROTATE_DAYS = 365
+CRED_SOON_DAYS = 30
+_DAY_MS = 86400 * 1000
+
+
+def _now_ms():
+    """The clock AIG.7 judges ages by (one seam, so tests inject the time)."""
+    import time
+    return int(time.time() * 1000)
+
+
+def _ms(v):
+    try:
+        n = int(float(v))
+    except (TypeError, ValueError):
+        return None
+    return n * 1000 if 0 < n < 10 ** 11 else (n if n > 0 else None)   # seconds or milliseconds
+
+
+def aig_7(cl):
+    """LLM provider credentials are not expired, expiring soon or unrotated
+
+    client.aiguard.llm_provider_credentials.list_credentials() GET
+    /aiguard/v1/llm-provider-credentials (LlmProviderCredentials: providerId,
+    name, expireTimeMillis, apiCredentials). Only names and dates are kept
+    (ai_guard.provider_credential_metadata): the key under apiCredentials
+    never reaches this check, a result, a log or a snapshot."""
+    import ai_guard
+    rows, c = _aig(cl, "llm-provider-credentials")
+    if c not in (200, 204):
+        return _aig_unread(c, "LLM provider credentials")
+    creds = ai_guard.provider_credential_metadata(rows)
+    if not creds:
+        return R(R.INFO, "No LLM provider credential is stored in AI Guard: nothing to check (N/A).")
+    now = _now_ms()
+
+    def nm(x):
+        s = "".join(ch for ch in str(x.get("name") or x.get("id") or "?") if ch.isprintable())
+        return s[:60]
+    expired, soon, old, unknown = [], [], [], []
+    for x in creds:
+        exp, made = _ms(x.get("expireTimeMillis")), _ms(x.get("createTimeMillis"))
+        if exp:
+            if exp <= now:
+                expired.append(nm(x))
+            elif exp - now <= CRED_SOON_DAYS * _DAY_MS:
+                soon.append(f"{nm(x)} ({max(0, (exp - now) // _DAY_MS)} day(s) left)")
+        elif made:
+            if now - made > CRED_ROTATE_DAYS * _DAY_MS:
+                old.append(f"{nm(x)} ({(now - made) // _DAY_MS} days old, no expiry)")
+        else:
+            unknown.append(nm(x))
+    few = lambda xs: ", ".join(xs[:5]) + (f" and {len(xs) - 5} more" if len(xs) > 5 else "")
+    if expired:
+        return R(R.FAIL, f"{len(expired)} of {len(creds)} LLM provider credential(s) have expired: {few(expired)}. Applications that use them "
+                 "cannot reach their model through AI Guard. Fix: issue a new key at the provider and replace the credential in AI Guard "
+                 "(key values are never read by this app)." + _AIG_REF)
+    if soon or old:
+        parts = ([f"expiring within {CRED_SOON_DAYS} days: {few(soon)}"] if soon else []) + \
+                ([f"older than {CRED_ROTATE_DAYS} days with no expiry: {few(old)}"] if old else [])
+        return R(R.WARN, f"LLM provider credential(s) {'; '.join(parts)}. Fix: rotate the provider key and update the credential in AI Guard "
+                 "before it lapses, and give new keys an expiry." + _AIG_REF)
+    if unknown:
+        return R(R.INFO, f"Unknown: {len(unknown)} of {len(creds)} LLM provider credential(s) state no expiry or creation date ({few(unknown)}); "
+                 f"the other {len(creds) - len(unknown)} are current. Not judged as current.")
+    return R(R.PASS, f"All {len(creds)} LLM provider credential(s) are current (none expired, expiring within {CRED_SOON_DAYS} days "
+             f"or older than {CRED_ROTATE_DAYS} days without expiry). Key values are never read.")
+
+
+AIGUARD_REG = guard_registry([
+    ("AIG.1", "AI Guard — Detection", "A detection policy is in use", aig_1),
+    ("AIG.2", "AI Guard — Detection", "Prompt injection detected", aig_2),
+    ("AIG.3", "AI Guard — Detection", "Blocks, not only detects", aig_3),
+    ("AIG.4", "AI Guard — Detection", "Answers inspected too", aig_4),
+    ("AIG.5", "AI Guard — Applications", "Stored prompts encrypted", aig_5),
+    ("AIG.6", "AI Guard — Applications", "Applications have a credential", aig_6),
+    ("AIG.7", "AI Guard — Applications", "Provider credentials current (metadata only)", aig_7),
+])

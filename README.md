@@ -1,5 +1,7 @@
 # Zscaler Made Easy — assess, administer, audit and deploy Zscaler, in plain words
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 Zscaler Made Easy connects to a customer's Zscaler tenant with API credentials,
 runs 300+ automated checks against the DLP assessment checklist and
 Zscaler's best practices, and gives a scored maturity report with plain
@@ -19,6 +21,8 @@ before; **[GETTING_STARTED.md](GETTING_STARTED.md)** then walks through a
 first engagement. Nothing to install at all: each release also ships a
 standalone edition for Windows, Mac and Linux, checked by checksum and
 build attestation before you run it (INSTALL.md, *Download and run*).
+To ask an AI assistant about a tenant with the app's engines (read-only),
+see **[docs/AI_ASSISTANT.md](docs/AI_ASSISTANT.md)**.
 
 Two ways to run it, built from this one source tree:
 
@@ -85,9 +89,10 @@ and terminates TLS; do not publish port 8000 on a public interface.
 ## Running the tests and the checks
 
 ```bash
-make dev                                 # once: installs pytest and pyflakes into .venv
+make dev                                 # once: installs pytest, pyflakes and bandit into .venv
 make test                                # .venv/bin/python -m pytest -q tests
 make check                               # compile, pyflakes, pack conventions, Terraform freshness, offline upstream check (what CI runs)
+make sast                                # offline static analysis (bandit); fails on a medium+ finding (tests/test_sast.py runs it too)
 make upstream                            # the daily upstream check by hand: SDK, Terraform provider, API reference vs what the app sends
 ```
 
@@ -98,6 +103,10 @@ prerelease (whose ZIA service definition is machine-readable), the
 `zscaler/zia` Terraform provider's latest version, schema and docs, and
 Zscaler's API reference. Drift opens or updates one issue labelled
 `upstream-drift` with the report; a clean day closes it.
+
+CodeQL (`.github/workflows/codeql.yml`) scans the Python and the JavaScript
+with GitHub's security-extended queries on pull requests to `dev`, `qa` and
+`main` and weekly; see `SECURITY.md` "Static analysis (SAST)".
 
 The same watchers also run inside the app as **Beacon** (`beacon.py`, the
 Beacon tab, `/report/beacon`): the SDK, the ZIA API (service definition,
@@ -237,8 +246,12 @@ non-root and read-only, reports treated as confidential.
 
 ## License
 
-Internal tooling. Not for redistribution. The repository is private today
-(access is granted per GitHub account; `INSTALL.md` says whom to ask).
-Whether or not it is ever made readable to others so its code can be
-reviewed and vulnerabilities disclosed responsibly (see `SECURITY.md`),
-the license terms in `LICENSE` apply unchanged.
+Open source under the Apache License 2.0: the full text is in `LICENSE`,
+and `NOTICE` carries the attribution that travels with every copy. You may
+use, copy, change and redistribute the app under those terms. Whether the
+GitHub repository is public or private is set by its owner; while it is
+private, access is granted per GitHub account (`INSTALL.md` says whom to
+ask). Third-party components keep their own licences:
+`THIRD_PARTY_NOTICES.md` lists every one and says what the GPL and LGPL
+components among them mean for redistributing the app. Report
+vulnerabilities as `SECURITY.md` describes.

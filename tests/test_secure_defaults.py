@@ -81,13 +81,16 @@ def test_vulnerability_classes_doc_covers_every_class():
     assert "pip-audit" in vc and "trivy" in vc and "hash" in vc
 
 
-def test_license_and_readme_note_the_repo_is_private_and_not_for_redistribution():
+def test_license_is_apache_2_and_the_readme_says_open_source_with_owner_set_visibility():
+    """SSDF PS.3.1 · CWE-1059: LICENSE is the Apache License 2.0; README says so and that the owner sets the repository's visibility, with no old internal-use terms."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     lic = " ".join(open(os.path.join(root, "LICENSE"), encoding="utf-8").read().split())   # wrapped lines
-    # The repository is private on GitHub; the LICENSE says so (not "public").
-    assert "not for redistribution" in lic.lower() and "repository is private" in lic.lower()
-    readme = open(os.path.join(root, "README.md"), encoding="utf-8").read()
-    assert "not for redistribution" in readme.lower()
+    assert lic.startswith("Apache License Version 2.0, January 2004") and "END OF TERMS AND CONDITIONS" in lic
+    readme = " ".join(open(os.path.join(root, "README.md"), encoding="utf-8").read().split())
+    assert "Apache License 2.0" in readme
+    assert "public or private is set by its owner" in readme, "the README does not claim the repository is public"
+    for text in (lic.lower(), readme.lower()):
+        assert "not for redistribution" not in text and "internal tooling" not in text and "all rights reserved" not in text
 
 
 def test_require_safe_bind_allows_loopback_and_refuses_otherwise(monkeypatch):

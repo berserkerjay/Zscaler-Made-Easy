@@ -1,0 +1,28 @@
+{
+ "area": "Builders: the remaining day-to-day edits on Bulk changes (ZIA activation, URL categories, IP groups, DLP dictionaries and engines, ZIdentity users, one Private Service Edge)",
+ "title": "Admin editors on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo or a stated no-Undo, audit with actor, a temporary password shown once",
+ "standards": [
+  "ASVS V2.5.2", "ASVS V4.1.3", "ASVS V5.1.3", "ASVS V7.1.3", "ASVS V7.4.1", "ASVS V11.1.1", "ASVS V11.1.6",
+  "OWASP Top 10 2021 A01", "OWASP Top 10 2021 A04", "OWASP Top 10 2021 A09", "WSTG-ATHZ-02", "WSTG-BUSL-01", "WSTG-INPV-01",
+  "CWE-20", "CWE-312", "CWE-367", "CWE-532", "CWE-697", "CWE-754", "CWE-778", "CWE-841", "CWE-862", "CWE-863", "CWE-1188"
+ ],
+ "checks": [
+  {"id": "W9-ADM-C01", "what": "ZIA activation: the plan reads GET /status and lists it; PENDING asks ACTIVATE every time; ACTIVE and INPROGRESS are refused; an unreadable or unknown status is unknown, never pending", "standard": "ASVS V11.1.1 · CWE-841 · CWE-697 · WSTG-BUSL-01", "result": "pass"},
+  {"id": "W9-ADM-C02", "what": "ZIA activation: without the phrase, write mode or the assessor nothing is sent; activated meanwhile gives plan_changed or a re-read conflict; the run's audit entry and the record name the actor; no Undo, said in the preview", "standard": "ASVS V4.1.3 · V7.1.3 · CWE-862 · CWE-367 · CWE-778", "result": "pass"},
+  {"id": "W9-ADM-C03", "what": "URL category rename and delete: sent back as read; a delete is refused while a rule names the category (rules listed) and needs DELETE <name>; Undo re-creates it with its URLs", "standard": "ASVS V11.1.1 · CWE-841", "result": "pass"},
+  {"id": "W9-ADM-C04", "what": "DLP dictionaries and engines: expression parsed and explained, ZIA limits and ReDoS guard, re-read conflict, Undo; a change to what an enabled DLP rule detects (or rules that cannot be checked) asks APPLY <n> CHANGES", "standard": "ASVS V4.1.3 · V5.1.3 · CWE-841", "result": "pass"},
+  {"id": "W9-ADM-C05", "what": "IP groups: source group edit, delete while unused with DELETE <name>, CSV import capped and parsed defensively, export cells spreadsheet-safe", "standard": "ASVS V5.1.3 · CWE-20 · CWE-1236", "result": "pass"},
+  {"id": "W9-ADM-C06", "what": "ZIdentity user edit (display name, names, email, department, groups) sent back as read, read back, undone; reset and skip MFA are a raw call to ZIdentity's public API behind the assessor and RESET <login>; a temporary password is in no result, job log, audit entry or record, before or after its one reveal", "standard": "ASVS V2.5.2 · V8.3.4 · CWE-532 · CWE-312", "result": "pass"},
+  {"id": "W9-ADM-C07", "what": "Every new type is in the secure-defaults table (test_sbd_writes DEFAULT_OFF) with why it creates nothing enforcing", "standard": "ASVS V4.1.3 · CWE-1188", "result": "pass"}
+ ],
+ "findings": [
+  {"id": "W9-ADME-01", "title": "During development: the five admin types added first were not in the secure-defaults table, so test_sbd_writes failed for each", "severity": "low", "cwe": "CWE-1188", "asvs": "V4.1.3", "status": "fixed", "fix": "each type listed in DEFAULT_OFF with its reason", "test": "tests/test_sbd_writes.py::test_every_operation_type_creates_nothing_enforcing_unless_asked"},
+  {"id": "W9-ADME-02", "title": "During development: a DLP dictionary or engine edit that changes what an enabled rule detects did not ask the typed phrase", "severity": "medium", "cwe": "CWE-841", "asvs": "V11.1.1", "status": "fixed", "fix": "ops_dlp_objects.live_users finds the enabled rules (through engines for a dictionary); unknown counts as used; APPLY <n> CHANGES is asked", "test": "tests/test_w9_dlp_objects.py::test_a_dictionary_an_enabled_rule_uses_through_an_engine_needs_the_typed_phrase"},
+  {"id": "W9-ADME-03", "title": "During development: the ZIdentity user edit could not change the email the spec names", "severity": "low", "cwe": "CWE-20", "asvs": "V5.1.3", "status": "fixed", "fix": "primary_email (the SDK model's field) is checked, sent back with the user as read, read back and undone", "test": "tests/test_w9_zid_user.py::test_the_email_is_edited_as_primary_email_and_undo_puts_it_back"}
+ ],
+ "notes": [
+  "Verified against zscaler-sdk-python 1.11.3: zia/activate.py status (GET /status) and activate (POST /status/activate); zid/users.py update_user and the UserRecord field primary_email.",
+  "Assumed (marked in the code): ZIA's activation status values ACTIVE, PENDING and INPROGRESS; that an activation makes every pending change live, whoever saved it; ZIdentity's POST /users/{id}:resetpassword and /users/{id}:setskipmfa paths and body, from Zscaler's published API reference."
+ ],
+ "tests_added": 80
+}

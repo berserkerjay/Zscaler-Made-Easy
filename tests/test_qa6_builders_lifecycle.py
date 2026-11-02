@@ -31,6 +31,9 @@ ALL = ao.scope_for(["dlp", "zia_extras", "zpa", "zcc", "zdx", "genai", "automati
                    {"web_dlp": "zscaler", "ssl_inspection": "zscaler", "cloud_app_control": "zscaler", "endpoint_dlp": "zscaler",
                     "casb_dlp": "zscaler", "email_dlp": "zscaler"})
 RNG_SEED = 6
+# Cloud Firewall and Cloud Sandbox Advanced (editions.py): the sample tenant holds the standard editions, under which
+# the baseline leaves the application-based firewall rules and the quarantine sandbox rules out (test_editions.py).
+ADVANCED = {f"{ZIA}/subscriptions": [{"id": s, "subscribed": True, "status": "ACTIVE"} for s in ("ZIA_TENANT", "ZFW_NG_WITH_LOG", "ZSEC_WEB_ABA_ADV")]}
 
 
 @pytest.fixture(autouse=True)
@@ -173,8 +176,8 @@ def test_zia_rule_constraints_hold_in_the_tenant_after_a_build(tier, mode):
 
 @pytest.mark.parametrize("mode", ["tier", "allow_all", "block_all"])
 def test_locked_rules_cannot_be_weakened_by_any_choice(mode):
-    """ASVS V1.4.1 · CWE-1188: Allow-Web and Allow-NTP are created on and Allow whatever the mode and the per-rule choices ask."""
-    st, cl = tenant(wf.zia_catalogues())
+    """ASVS V1.4.1 · CWE-1188: on a tenant whose edition offers them, Allow-Web and Allow-NTP are created on and Allow whatever the mode and the per-rule choices ask."""
+    st, cl = tenant(wf.zia_catalogues(), ADVANCED)
     spec = {"type": "zia_baseline", "tier": "strict", "mode": mode, "prefix": "BL", "areas": ["firewall"],
             "rules": {"fw.allow_web": {"on": False, "action": "BLOCK"}, "fw.allow_ntp": {"on": False, "action": "ISOLATE"}}}
     run(cl, spec)
@@ -208,8 +211,8 @@ def test_a_rule_the_customer_already_has_is_updated_in_place_and_undo_puts_it_ba
 
 
 def test_a_rerun_keeps_the_sandbox_isolation_profile_the_sdk_model_cannot_read():
-    """ASVS V11.1.1 · CWE-221: a re-read object keeps the fields SDK 1.11.3's model drops (sandbox cbiProfile): a re-run update never clears them and the read-back confirms the build."""
-    st, cl = tenant()
+    """ASVS V11.1.1 · CWE-221: a re-read object keeps the fields SDK 1.11.3's model drops (sandbox cbiProfile): a re-run update never clears them and the read-back confirms the build (Cloud Sandbox Advanced, which offers the Office/PDF rule)."""
+    st, cl = tenant(ADVANCED)
     spec = {"type": "zia_baseline", "tier": "balanced", "prefix": "BL", "areas": ["sandbox"]}
     _p, r = run(cl, spec)
     assert r["status"] == "applied" and r["verification"]["mismatched"] == []
@@ -437,7 +440,7 @@ CLASSIC = {
     "reorder_url": lambda st, cl: {"type": "reorder", "policy": "url_filtering",
                                    "order": [r["id"] for r in sorted(st.rows(f"{ZIA}/urlFilteringRules"), key=lambda r: -r["order"])]},
     "reorder_firewall": lambda st, cl: {"type": "reorder", "policy": "firewall",
-                                        "order": [r["id"] for r in sorted((x for x in st.rows(f"{ZIA}/firewallFilteringRules") if not x.get("defaultRule")),
+                                        "order": [r["id"] for r in sorted((x for x in st.rows(f"{ZIA}/firewallFilteringRules") if not x.get("defaultRule") and not x.get("predefined")),
                                                                           key=lambda r: -r["order"])]},
     "urls_add": lambda st, cl: {"type": "url_categories", "action": "add", "target": "CUSTOM_01", "urls": ["new.example.com", "two.example.org"]},
     "urls_remove": lambda st, cl: {"type": "url_categories", "action": "remove", "source": "CUSTOM_01", "urls": ["portal.harborline-logistics.example"]},

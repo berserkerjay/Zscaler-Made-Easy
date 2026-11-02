@@ -814,6 +814,64 @@ def test_zpa_overlap_check_excludes_a_domain_already_served_on_the_same_ports():
     assert p["groups"] == []
 
 
+def test_zpa_add_puts_typed_domains_in_a_segment_refuses_an_overlap_reads_back_and_undoes():
+    """ASVS V5.1.3 · V11.1.3 · CWE-20 · CWE-841: typed domains go into an existing segment; one already in another segment on overlapping ports is excluded with where it is, an invalid one with the reason; the write re-reads the segment, is read back, and the Undo takes the added domain out again."""
+    t = Tenant()
+    spec = {"type": "zpa_domains", "action": "add", "target": "s2", "domains": ["New.corp.example", "wiki.corp.example", "portal.corp.example", "not a domain"]}
+    p = preview(t, spec)
+    st = {u["value"]: u for u in p["items"]}
+    assert st["new.corp.example"]["status"] == "change"
+    assert st["wiki.corp.example"]["status"] == "excluded" and "Intranet" in st["wiki.corp.example"]["reason"]
+    assert st["portal.corp.example"]["status"] == "noop" and st["not a domain"]["status"] == "excluded"
+    assert p["title"] == "Add 1 domain to Intranet web" and [g["handler"] for g in p["groups"]] == ["zpa_update"]
+    res = apply(t, spec, p)
+    assert res["status"] == "applied" and res["verification"]["confirmed"] == res["verification"]["checked"] == 1, res
+    segs = t.zpa.application_segment
+    assert segs._find("s2")["domain_names"] == ["portal.corp.example", "new.corp.example"]
+    assert segs._find("s2")["tcp_port_ranges"] == ["443", "443", "8443", "8443"], "the segment is sent back whole"
+    assert res["inverse"]["deltas"] == [{"segment": "s2", "add": [], "remove": ["new.corp.example"]}]
+    undo = apply(t, res["inverse"])
+    assert undo["status"] == "applied" and segs._find("s2")["domain_names"] == ["portal.corp.example"]
+
+
+def test_zpa_add_conflicts_when_the_segment_changed_after_the_preview():
+    """ASVS V11.1.3 · CWE-367: a domain that appears in the segment between the preview and the apply changes the plan; nothing is written."""
+    t = Tenant()
+    spec = {"type": "zpa_domains", "action": "add", "target": "s2", "domains": ["new.corp.example"]}
+    p = preview(t, spec)
+    s2 = t.zpa.application_segment._find("s2")
+    s2["domain_names"] = s2["domain_names"] + ["new.corp.example"]   # someone adds it in ZPA (a new list: the fixture rows are shared)
+    res = apply(t, spec, p)
+    assert res["status"] == "plan_changed"
+    assert not t.writes_of("update_segment")
+
+
+def test_zpa_remove_takes_domains_out_of_one_segment_keeps_its_last_one_and_undoes():
+    """ASVS V7.2.1 · CWE-1188: removing picked domains from a segment (a ZPA row that should be blocked goes back to ZIA's policy) leaves a domain that is not there as nothing to do, never empties a segment, and the Undo puts the domain back."""
+    t = Tenant()
+    p = preview(t, {"type": "zpa_domains", "action": "remove", "source": "s2", "domains": ["portal.corp.example"]})
+    assert [u["status"] for u in p["items"] if u["value"] == "portal.corp.example"] == ["excluded"], "the last domain stays"
+    spec = {"type": "zpa_domains", "action": "remove", "source": "s1", "domains": ["hr.corp.example", "gone.corp.example"]}
+    p = preview(t, spec)
+    st = {u["value"]: u["status"] for u in p["items"]}
+    assert st == {"hr.corp.example": "change", "gone.corp.example": "noop"} and p["title"] == "Remove 1 domain from Intranet"
+    res = apply(t, spec, p)
+    segs = t.zpa.application_segment
+    assert res["status"] == "applied" and segs._find("s1")["domain_names"] == ["wiki.corp.example"]
+    undo = apply(t, res["inverse"])
+    assert undo["status"] == "applied" and sorted(segs._find("s1")["domain_names"]) == sorted(SEGMENTS[0]["domain_names"])
+
+
+def test_zpa_add_is_capped_and_needs_a_target():
+    """ASVS V5.1.3 · CWE-770 · CWE-20: more than the per-operation domain cap, or no segment to add to, is refused in words before any write."""
+    t = Tenant()
+    with pytest.raises(ao.OperationError, match="At most"):
+        preview(t, {"type": "zpa_domains", "action": "add", "target": "s2", "domains": [f"h{i}.corp.example" for i in range(ao.MAX_DOMAINS + 1)]})
+    with pytest.raises(ao.OperationError, match="target"):
+        preview(t, {"type": "zpa_domains", "action": "add", "domains": ["new.corp.example"]})
+    assert not t.writes
+
+
 def test_zpa_clone_with_move_and_undo_deletes_the_clone():
     t = Tenant()
     spec = {"type": "zpa_domains", "action": "clone", "source": "s1", "name": "HR portal", "domains": ["hr.corp.example"], "move": True}
@@ -884,7 +942,7 @@ def test_the_object_picker_reads_only_what_is_in_scope():
         ao.read_objects(t, "zpa_segments", scope)
     segs = ao.read_objects(t, "zpa_segments", FULL_SCOPE)["segments"]
     assert segs[0]["name"] == "Intranet" and segs[0]["tcp"] == ["443"]
-    assert "sanction" in out and "cannot read" in out["sanction"]
+    assert "sanction" in out and "Sanction or unsanction cloud apps" in out["sanction"]
     assert t.writes == []
 
 

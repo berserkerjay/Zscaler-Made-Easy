@@ -1,0 +1,29 @@
+{
+ "area": "Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients)",
+ "title": "Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once",
+ "standards": [
+  "ASVS V4.1.3", "ASVS V5.1.3", "ASVS V5.2.4", "ASVS V7.1.1", "ASVS V8.3.4", "ASVS V11.1.1", "ASVS V11.1.6",
+  "OWASP Top 10 2021 A01", "OWASP Top 10 2021 A04", "OWASP Top 10 2021 A09", "WSTG-ATHZ-02", "WSTG-INPV-01",
+  "CWE-20", "CWE-94", "CWE-200", "CWE-221", "CWE-250", "CWE-269", "CWE-312", "CWE-367", "CWE-532", "CWE-841", "CWE-863", "CWE-1188"
+ ],
+ "checks": [
+  {"id": "W7-ADM-C01", "what": "Every new type out of scope (ZIA platform / ZIdentity not ticked) is refused before sign-in and reads nothing: plan, apply, picker, every route", "standard": "ASVS V4.1.3 · CWE-863 · WSTG-ATHZ-02", "result": "pass"},
+  {"id": "W7-ADM-C02", "what": "Four gates before sign-in for every new type (cross-plugin tables in test_sbd_writes)", "standard": "ASVS V4.1.3 · CWE-862", "result": "pass"},
+  {"id": "W7-ADM-C03", "what": "Payload oracles: every write body has only fields of the SDK 1.11.3 model (UserManagement, Groups, Department, PacFiles, UserRecord, APIClientRecords, ClientAuthentication, ClientResources) or of the object as read; never a password", "standard": "ASVS V5.1.3 · CWE-20", "result": "pass"},
+  {"id": "W7-ADM-C04", "what": "Deletes ask DELETE <name> (or DELETE <n> OBJECTS) every time, rotation ROTATE <name>; blank, wrong and look-alike text write nothing; the preview says what cannot be undone", "standard": "ASVS V11.1.1 · CWE-841", "result": "pass"},
+  {"id": "W7-ADM-C05", "what": "A new API client secret (and one in the create's answer) is in no result, job log, change record, Undo preview, audit log, store file or server log; revealed once, to the person who applied, no-store", "standard": "ASVS V8.3.4 · V7.1.1 · CWE-532 · CWE-312", "result": "pass"},
+  {"id": "W7-ADM-C06", "what": "PAC never run: parsed by pac_eval (a looping PAC is refused in words), checked by ZIA's validator; refused text blocks the plan; text over 256 KB or with control characters refused before a read", "standard": "ASVS V5.2.4 · CWE-94 · CWE-400", "result": "pass"},
+  {"id": "W7-ADM-C07", "what": "Defaults off: new ZIdentity users and API clients created disabled, new PAC versions STAGED, no scope preselected; full-access scopes flagged (least privilege)", "standard": "ASVS V4.1.3 · CWE-1188 · CWE-250", "result": "pass"},
+  {"id": "W7-ADM-C08", "what": "Admin accounts, predefined and IdP groups, SCIM users and this app's own API client are left alone with the reason", "standard": "ASVS V4.1.3 · CWE-269", "result": "pass"},
+  {"id": "W7-ADM-C09", "what": "Moved tenant: plan_changed, nothing written; re-read conflict right before a write is skipped; Undo-only inverses refused without undo_of", "standard": "ASVS V11.1.6 · CWE-367 · CWE-840", "result": "pass"}
+ ],
+ "findings": [
+  {"id": "W7-ADMZ-01", "title": "Zscaler SDK 1.11.3 ZIdentity models drop data a read needs: ServiceScopes.request_format omits a resource server's scopes, and get_api_client_secret parses the list of secrets into one empty object", "severity": "low", "cwe": "CWE-221", "asvs": "V11.1.1", "status": "fixed", "fix": "ops_zid and ops_zia_directory read the raw answer when the SDK response carries it (ops_zia_directory.raw_body); secret values are dropped from every read (ops_zid.scrub)", "test": "tests/test_ops_zid.py::test_the_picker_searches_users_and_lists_clients_scopes_without_a_secret"},
+  {"id": "W7-ADMZ-02", "title": "During development: a new PAC version's plan hash did not cover the source version's text, so a version edited in the portal after the preview would still be cloned from", "severity": "low", "cwe": "CWE-367", "asvs": "V11.1.6", "status": "fixed", "fix": "the plan and the handler carry the source version's digest; a changed source gives plan_changed", "test": "tests/test_ops_zia_admin.py::test_versions_that_moved_since_the_preview_write_nothing"}
+ ],
+ "notes": [
+  "Not possible with zscaler-sdk-python 1.11.3 and so not offered (the page says so): resetting a ZIdentity user's password or MFA (zid/users.py has list, get, add, update, delete and list_user_group_details only; UserRecord has no password or MFA field) and disabling a ZIA user (UserManagement has no enabled or status field).",
+  "Assumed (marked in the module docstrings): ZIA refuses a duplicate user email; the PAC DEPLOY action takes the version's fields as read; PAC changes wait for activation; a new API client has no secret until one is added; ZIdentity PUTs take the object as read; the OAuth client ID is the API client's id; a missing object answers 404."
+ ],
+ "tests_added": 67
+}

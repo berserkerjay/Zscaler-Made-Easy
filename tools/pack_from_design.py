@@ -36,6 +36,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from dlp_importer import DICT_DESCRIPTION_MAX, dictionary_limit_problems, engine_limit_problems  # noqa: E402
+from open_source import NOTE_MD  # noqa: E402
 
 TIER_LABEL = {1: "Tier 1 structural marking", 2: "Tier 2 category token", 3: "Tier 3 malformed marking (proximity)",
               4: "Tier 4 legacy marking", 5: "Tier 5 designation block", 6: "Tier 6 exclusion"}
@@ -109,7 +110,7 @@ def convert(design: dict, prefix: str) -> tuple[list, list, str]:
         if engine_limit_problems(e["expression"]):
             raise SystemExit(f"engine {e['name']}: " + "; ".join(engine_limit_problems(e["expression"])))
 
-    lines = [f"# {design.get('_title') or prefix} — dictionary notes\n\n",
+    lines = [f"# {design.get('_title') or prefix} — dictionary notes\n\n", NOTE_MD + "\n\n",
              "Build metadata from the design file (tier, intended action, minimum match count, notes). "
              "The pack configs carry the API fields only; regenerate with `python tools/pack_from_design.py <pack_dir>`.\n\n"]
     if design.get("_documented_limits"):

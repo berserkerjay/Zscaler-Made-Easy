@@ -50,6 +50,7 @@ from typing import Dict, List, Optional, Tuple
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OPEN_LINE = re.compile(r"Open (http://localhost:(\d+)/)\?token=([A-Za-z0-9_-]+)")
 TOKEN_HEADER = "X-DLP-Check-Token"
+ALL_INTERFACES = "0.0.0.0"  # nosec B104 # a hostile setting the binary must ignore, and an address to compare; binds nothing
 START_TIMEOUT = 180   # a first start unpacks and scans ~100 MB (Windows Defender, Gatekeeper)
 
 
@@ -63,7 +64,7 @@ def isolated_env(home: str, port_start: int = 8000) -> Tuple[Dict[str, str], str
     env.update({"HOME": home, "USERPROFILE": home, "LOCALAPPDATA": local, "XDG_CACHE_HOME": cache,
                 "ZSCALER_OPEN_BROWSER": "0", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8",
                 # Settings that would loosen a normal install; the standalone edition must ignore all four.
-                "ZSCALER_UI_AUTH": "0", "ZSCALER_BIND_HOST": "0.0.0.0", "ENABLE_WRITE_ACTIONS": "YES_I_UNDERSTAND",
+                "ZSCALER_UI_AUTH": "0", "ZSCALER_BIND_HOST": ALL_INTERFACES, "ENABLE_WRITE_ACTIONS": "YES_I_UNDERSTAND",
                 "ZSCALER_UI_TOKEN": "weak"})
     if port_start != 8000:
         env["ZSCALER_PORT"] = str(port_start)
@@ -87,7 +88,7 @@ def _reader(stream, q: "queue.Queue[Optional[str]]", log: List[str]) -> None:
 def _get(url: str, token: Optional[str] = None, timeout: float = 30) -> Tuple[int, str]:
     req = urllib.request.Request(url, headers={TOKEN_HEADER: token} if token else {})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 - http://127.0.0.1 only
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310  # nosec B310 # only the http:// URLs this tool builds for the binary it started
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
@@ -99,7 +100,7 @@ def _non_loopback_address() -> Optional[str]:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("192.0.2.1", 9))   # TEST-NET-1: routing lookup only
             ip = s.getsockname()[0]
-        return None if ip.startswith("127.") or ip == "0.0.0.0" else ip
+        return None if ip.startswith("127.") or ip == ALL_INTERFACES else ip
     except OSError:
         return None
 
@@ -252,7 +253,7 @@ def unpack(archive: str, dest: str) -> str:
             raise SystemExit(f"{archive}: SHA-256 does not match {side}")
     if archive.endswith(".zip"):
         with zipfile.ZipFile(archive) as z:
-            z.extractall(dest)
+            z.extractall(dest)  # nosec B202 # zipfile, not tarfile (bandit sees tarfile imported): it drops absolute and .. paths and makes no links
     else:
         with tarfile.open(archive) as t:
             t.extractall(dest, filter="data")

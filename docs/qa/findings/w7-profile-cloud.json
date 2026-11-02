@@ -1,0 +1,71 @@
+{
+ "area": "Wave 7: a saved profile's cloud is never replaced by a request model's default (ported from an older draft change)",
+ "title": "Every request model that signs in with a saved profile leaves its cloud blank; production applies only when no profile, environment or tenant_config.json names one",
+ "files": [
+  "dlp_api_server.py",
+  "tests/test_scope_rule_routes.py",
+  "tests/test_regression_flows.py",
+  "tests/test_path_zpa_workloads.py"
+ ],
+ "standards": [
+  "ASVS V4.2.1",
+  "CWE-639",
+  "CWE-1188",
+  "CWE-684"
+ ],
+ "checks": [
+  {
+   "id": "PC-C01",
+   "what": "A body naming only a saved profile on zscalerten signs in on zscalerten on the Path analyzer (start and waited), Test a list, data flow, migration status, flow scenario, remediation dry run, the POV planner's Prove it, readiness, snapshot save and the bulk-change object read",
+   "standard": "ASVS V4.2.1 · CWE-639",
+   "result": "pass"
+  },
+  {
+   "id": "PC-C02",
+   "what": "A request rebuilt from every field (model_dump round trip, model_copy) keeps the profile's cloud on every request model that takes a profile; typed credentials with no cloud resolve exactly as before (production on the migration, assessment and remediation bodies, blank on the tenant-credentials family; both sign in on production)",
+   "standard": "ASVS V4.2.1 · CWE-639",
+   "result": "fixed"
+  },
+  {
+   "id": "PC-C03",
+   "what": "Guard: no request model with a profile_id has a non-blank cloud default (walks every pydantic model in the server)",
+   "standard": "CWE-1188",
+   "result": "fixed"
+  },
+  {
+   "id": "PC-C04",
+   "what": "The assessment report's metadata names the cloud the run signed in on, not the request body's cloud field",
+   "standard": "CWE-684",
+   "result": "fixed"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-PROFILE-CLOUD-01",
+   "title": "MigrateRequest, AssessRequest and RemediationExecuteRequest defaulted their cloud to production: a request rebuilt from every field counted that default as typed, so a profile on another cloud could be signed in on production",
+   "severity": "medium",
+   "cwe": "CWE-1188",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "Cloud defaults to blank on every credential model; _tenant_creds fills production only when no source names a cloud (for the bodies that always resolved to it); the POV planner's workaround is gone",
+   "test": "tests/test_scope_rule_routes.py::test_a_rebuilt_profile_only_request_keeps_the_profiles_cloud"
+  },
+  {
+   "id": "W7-PROFILE-CLOUD-02",
+   "title": "A profile-only assessment on another cloud wrote production as the cloud in its report metadata (the body's default, not the cloud signed in on)",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "The report metadata takes the validated, resolved cloud",
+   "test": "tests/test_scope_rule_routes.py::test_the_assessment_report_names_the_profiles_cloud"
+  }
+ ],
+ "notes": [
+  "Supersedes the older draft change that fixed only MigrateRequest with an isinstance check; this port also covers AssessRequest, RemediationPlanRequest and RemediationExecuteRequest and adds a guard over every model.",
+  "TenantProfileRequest keeps its production default on purpose: saving a profile replaces every field of the form, it is the source of a profile's cloud, not a consumer of one.",
+  "The tenant-credentials family (builders, readiness, snapshots, POV, Test a list, bulk changes) already defaulted to blank; it is covered by the HTTP test as a regression guard.",
+  "Two existing tests read the cloud field default to find the models that resolve an unnamed cloud to production; they now name those four model families (the same 19 models as before), so the path test no longer collects an empty parameter set and the regression test still pins production for typed sign-ins with no cloud."
+ ],
+ "tests_added": 23
+}

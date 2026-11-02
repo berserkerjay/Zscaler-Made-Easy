@@ -28,7 +28,7 @@ import os
 import re
 import shutil
 import subprocess
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -46,6 +46,9 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 # home in the app's pages to mark. A new phrase must either be covered by a
 # manifest feature's "changelog" list or be added here with its reason.
 EXCLUDED = {
+    # The agent workspace is for the agents that build the app, not a page or a control.
+    "Layered context": "agent workspace files in the repository, not in the app",
+    "Compiled references that can't drift": "agent workspace files in the repository, not in the app",
     # The entry's own structure, not features.
     "What you asked for": "the request, not a feature",
     "How": "how the change was built",
@@ -58,6 +61,22 @@ EXCLUDED = {
     # On every control of every page: it has no single place to mark, and
     # every mark's own pop-up is this help.
     "Help on hover": "on every control; each mark's pop-up is it",
+    # Team server (2026-10-31): a dialog shown only before an idle sign-out,
+    # a server rule with no new control, and what is not built.
+    "Still there?": "a dialog that appears only before an idle sign-out: no control to mark",
+    "Not built in": "says what the change does not add",
+    # The MCP server and the assistant skill (2026-10-31): tools and files an AI
+    # assistant uses, outside the app's pages.
+    "The MCP server answers live questions with the app's engines": "the MCP server's tools, used by an assistant, not a page",
+    "Read-only, twice over; no write tool at all": "how the MCP tools are kept read-only, not a page",
+    "Same sign-in and the Scope rule": "how the MCP server signs in and scopes its reads, not a page",
+    "A skill for assistants": "files for an AI assistant (skills/), not a page",
+    # A fix to existing routes (the profile's cloud), no new control.
+    "Fix": "a fix to existing routes, nothing new to see",
+    # Static analysis (SAST): test and CI tooling, no page or control.
+    "bandit, offline, in every test run": "a test-run gate (tests/test_sast.py, make sast), not a page",
+    "CodeQL in CI": "a GitHub Actions workflow, outside the app",
+    "Every current finding triaged": "code fixes and reviewed suppressions, nothing to see",
 }
 
 
@@ -190,7 +209,9 @@ def test_every_new_changelog_feature_with_a_ui_home_is_marked():
     assert not missing, "map these in static/whats_new.js or explain them in EXCLUDED: " + "; ".join(missing)
     unknown = sorted(covered - phrases)
     assert not unknown, f"manifest names CHANGELOG phrases that are not in the two newest entries: {unknown}"
-    assert len(covered) >= 10
+    # Each marked release has something marked (a count over both releases
+    # depended on how many features one release happened to bring).
+    assert all(covered & changelog_phrases(body) for _, body in marked_entries()), "a marked release with nothing marked"
 
 
 def test_the_phrase_parser_reads_bold_and_italic_names():
@@ -283,6 +304,11 @@ console.log(JSON.stringify({ now, next, bad, real: W.releases(), words: W.words(
 
 
 # ── In a real browser ─────────────────────────────────────────────────
+#
+# Release-agnostic: which items the tour points at, what their pop-ups must
+# say and how the next release rotates the marks are all derived from the
+# manifest, so a new release (or a feature added to one) never needs this
+# file rewritten.
 
 # Pages toured, and the marks there that show without a tenant (the rest
 # appear after a read or in a dialog: "shown" in the manifest).
@@ -305,10 +331,58 @@ def _load_marks():
     return out
 
 
+def marked_releases() -> list[str]:
+    """The releases the marks follow, newest first (the engine's own rule)."""
+    return [d for d, _ in marked_entries()]
+
+
+def expected_words(page: str, at: str) -> str:
+    """What whats_new.js puts on an item: "New in the <date> update: <what>
+    ...", one part per release, newest first (WhatsNew.words)."""
+    by: dict[str, list[str]] = {}
+    for f, mk in _marks():
+        if mk["page"] == page and mk["at"] == at and f["release"] in marked_releases():
+            by.setdefault(f["release"], []).append(re.sub(r"\s+", " ", f["what"]).strip())
+    return " ".join(f"New in the {d} update: {' '.join(w)}" for d, w in sorted(by.items(), reverse=True))
+
+
+def _probes() -> dict:
+    """The items the hover, keyboard and rotation checks use, from the
+    manifest: on one toured page, items marked only by the newest release
+    and items marked only by the one before it (by a plain #id), so the
+    browser can take the first of each that is on screen. The rotation adds
+    a release older than every marked one and one the day after the newest.
+    The Hide new marks check counts on the toured page with the most marks."""
+    rel = marked_releases()
+    newest, older = rel[0], rel[1]
+    marks = _load_marks()
+    plain = re.compile(r"#[A-Za-z][\w-]*")
+    pick = None
+    for page in ["/report/path"] + [p for p in BROWSER_PAGES if p != "/report/path"]:
+        new = [m["at"] for m in marks.get(page, []) if m["releases"] == [newest] and plain.fullmatch(m["at"])]
+        old = [m["at"] for m in marks.get(page, []) if m["releases"] == [older] and plain.fullmatch(m["at"])]
+        if new and old:
+            pick = {"page": page, "new": new, "old": old}
+            break
+    counted = sorted((p for p in marks if p != "/"), key=lambda p: (-len(marks[p]), BROWSER_PAGES.index(p)))
+    return {"newest": newest, "older": older, "pick": pick, "hidePage": counted[0] if counted else "/report/advanced",
+            "past": (date.fromisoformat(rel[-1]) - timedelta(days=400)).isoformat(),
+            "next": (date.fromisoformat(newest) + timedelta(days=1)).isoformat()}
+
+
+PROBES = _probes()
+
+
+def test_the_manifest_gives_the_tour_items_to_point_at():
+    """WCAG 2.2 SC 3.2.4 · CWE-1164: the newest release and the one before it each mark at least one item, by #id, on one toured page."""
+    assert PROBES["pick"], (f"no toured page has an item marked only by {PROBES['newest']} and one marked only by {PROBES['older']} "
+                            "(by a plain #id): mark one of each in static/whats_new.js")
+
+
 DRIVER = CDP_PRELUDE + EVENTS + r"""
-const [marksJson, narrowJson] = args;
-const MARKS = JSON.parse(marksJson);
-const out = { pages: {}, narrow: {}, themes: {} };
+const [marksJson, narrowJson, probesJson] = args;
+const MARKS = JSON.parse(marksJson), PR = JSON.parse(probesJson);
+const out = { pages: {}, narrow: {}, themes: {}, both: [], headings: [] };
 await send('DOM.enable'); await send('Accessibility.enable');
 await go('/');
 await ev(`(localStorage.setItem('zsimple_mode', 'expert'), localStorage.removeItem('zme_hide_new_marks'), true)`);
@@ -333,63 +407,98 @@ const PROBE = `((m, i) => {
   return { at: m.at, releases: m.releases, host: true, star: !!star, tag: star ? star.tagName : '', glyph: star ? getComputedStyle(star, '::before').content : '',
     words: host.textContent, news: host.getAttribute('data-wn-new') || '', expanded: star ? star.getAttribute('aria-expanded') : '',
     desc: star ? (document.getElementById(star.getAttribute('aria-describedby') || '') || {}).textContent || '' : '',
+    heading: /^H[1-6]$/.test(host.tagName),
     beside: !!(star && host.getClientRects().length && r.width >= 24 && r.height >= 24 && Math.abs((r.top + r.bottom) / 2 - (h.top + h.bottom) / 2) <= Math.max(h.height, 24)) };
 })`;
+// Items with both a * and a ? (in the order the marks come), on this page.
+const BOTH = `(() => { const by = new Map(); window.HoverHelp.marks().forEach(m => { const l = by.get(m.__hhFor) || []; l.push(m); by.set(m.__hhFor, l); });
+  return [...by.entries()].filter(([el, ms]) => el && el.isConnected && ms.some(m => m.getAttribute('data-hh-mark') === 'new') && ms.some(m => m.getAttribute('data-hh-mark') === 'help'))
+    .slice(0, 3).map(([el, ms]) => ms.map(m => m.getAttribute('data-hh-mark') + ':' + (m.getAttribute('aria-label') || ''))); })()`;
 for (const [page, marks] of Object.entries(MARKS)) {
   await open(page);
   const rec = await ev(`${JSON.stringify(marks)}.map(${PROBE})`);
-  for (let i = 0; i < rec.length; i++) rec[i].name = await axName(`[data-wn-probe="${i}"]`);
+  for (let i = 0; i < rec.length; i++) {
+    rec[i].name = await axName(`[data-wn-probe="${i}"]`);
+    if (rec[i].heading) out.headings.push({ page, at: rec[i].at, name: await axName(rec[i].at) });
+  }
+  for (const b of await ev(BOTH)) out.both.push({ page, marks: b });
   out.pages[page] = { marks: rec, legend: await ev(`(() => { const l = document.querySelector('.wn-legend'); return l ? { text: l.textContent, star: l.querySelector('[aria-hidden="true"]') ? l.querySelector('[aria-hidden="true"]').textContent : '' } : null; })()`),
                       errors: seen.errors.splice(0) };
   trace('page', page);
 }
 
-// Once the marks are placed the page goes quiet: placing them never asks for another pass.
-await open('/report/pov');
-out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObserver(ms => { n += ms.length; }); mo.observe(document.body, { subtree: true, childList: true, attributes: true });
+// Once the marks are placed the page goes quiet: placing them never asks for
+// another pass (on a page with an item that has both a * and a ?; Advanced
+// settings when it has one). Only changes to the marks count: a page's own
+// live content (a running flow, a status line) is not the marks' doing.
+const quietPage = out.both.some(b => b.page === '/report/advanced') ? '/report/advanced' : (out.both.length ? out.both[0].page : '/report/advanced');
+await open(quietPage);
+// The page's own late content (a status box filled after its fetch) lands
+// first: wait for 600 ms without any change (at most 8 s), then measure.
+await ev(`new Promise(r => { let t = null; const done = () => { mo.disconnect(); clearTimeout(cap); r(true); };
+  const mo = new MutationObserver(() => { clearTimeout(t); t = setTimeout(done, 600); });
+  mo.observe(document.body, { subtree: true, childList: true, attributes: true }); t = setTimeout(done, 600); const cap = setTimeout(done, 8000); })`);
+out.quiet = await ev(`new Promise(r => { let n = 0;
+  const MARK = /(^|\\s)(hh-mark|hh-mark-new|wn-legend|wn-legend-mark)(\\s|$)/;
+  const isMark = x => x && x.nodeType === 1 && (MARK.test(x.className || '') || !!(x.querySelector && x.querySelector('.hh-mark, .wn-legend')));
+  const ATTRS = ['data-wn-new', 'data-wn-for', 'data-hh-mark', 'aria-describedby', 'aria-expanded'];
+  const mo = new MutationObserver(ms => { ms.forEach(m => {
+    if (m.type === 'attributes' ? (ATTRS.includes(m.attributeName) || isMark(m.target)) : ([...m.addedNodes].some(isMark) || [...m.removedNodes].some(isMark))) n++; }); });
+  mo.observe(document.body, { subtree: true, childList: true, attributes: true });
   setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
-// The * is its own trigger: pointing at it opens "New in the <date> update"; pointing at the item opens nothing.
-await open('/report/path');
-const hoverAt = async js => {
-  const r = await ev(`(() => { const e = ${js}; e.scrollIntoView({ block: 'center', behavior: 'instant' }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
-  await ev(`(window.HoverHelp.hide(), true)`);
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y, button: 'none' });
-  await until(() => ev(`(() => { const t = document.getElementById('hhTip'); return !!t && !t.hidden; })()`), 'the help', 2000).catch(() => null);
-  return ev(`(() => { const t = document.getElementById('hhTip'); if (!t || t.hidden) return null; const first = t.querySelector('p'); return { first: first.className, text: first.textContent, all: t.textContent }; })()`);
-};
-out.hover = { item: await hoverAt(`document.getElementById('tab-list')`), tab: await hoverAt(STAR('#tab-list')), heading: await hoverAt(STAR('#paFlowRefH')) };
-await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
-await ev(`(window.HoverHelp.hide(), true)`);
-// Keyboard: focus alone opens nothing; Enter opens it.
-await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16 });
-await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16 });
-await ev(`(${STAR('#paFlowRefH')}.focus(), true)`);
-await frame();
-const focusOnly = await ev(`!document.getElementById('hhTip').hidden`);
-await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
-await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-await frame();
-out.focus = await ev(`(() => { const t = document.getElementById('hhTip'); const b = document.activeElement; const s = getComputedStyle(b); return { focusOnly: ${focusOnly}, open: !!t && !t.hidden, text: t ? t.textContent : '', ring: s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0, w: b.getBoundingClientRect().width, h: b.getBoundingClientRect().height, expanded: b.getAttribute('aria-expanded') }; })()`);
-await ev(`(window.HoverHelp.hide(), true)`);
-out.headingName = await axName('#paFlowRefH');
-// An item with both: * then ?, each its own button.
-out.both = await ev(`(() => { const el = document.getElementById('paProto'), ms = window.HoverHelp.marks().filter(m => m.__hhFor === el); return ms.map(m => m.getAttribute('data-hh-mark') + ':' + (m.getAttribute('aria-label') || '')); })()`);
+out.quietPage = quietPage;
 
-// An older release is not marked; the next release pushes the oldest set out.
-out.rotate = await ev(`(() => {
-  const W = window.WhatsNew, H = window.HoverHelp;
-  const has = sel => { const e = document.querySelector(sel); H.scan(); return !!e && (e.hasAttribute('data-wn-new') || H.marks().some(m => m.__hhFor === e && m.getAttribute('data-hh-mark') === 'new')); };
-  W.manifest.releases['2026-10-26'] = 'older';
-  W.manifest.features.push({ id: 'older-probe', release: '2026-10-26', label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
-  W.apply();
-  const before = { older: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH') };
-  W.manifest.releases['2026-10-30'] = 'next';
-  W.manifest.features.push({ id: 'next-probe', release: '2026-10-30', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
-  W.apply();
-  const after = { next: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH'), tabName: document.getElementById('tab-list').textContent.trim(), proto: document.getElementById('paProto').getAttribute('aria-label') };
-  return { before, after };
-})()`);
+if (PR.pick) {
+  // The first item of each release that is on screen with its *.
+  await open(PR.pick.page);
+  const onScreen = async list => { for (const at of list) if (await ev(`(() => { const e = document.querySelector(${JSON.stringify(at)}); return !!e && e.getClientRects().length > 0 && !!(${STAR(at)}); })()`)) return at; return null; };
+  const NEW = await onScreen(PR.pick.new), OLD = await onScreen(PR.pick.old);
+  out.picked = { page: PR.pick.page, new: NEW, old: OLD };
+  if (NEW && OLD) {
+    // The * is its own trigger: pointing at it opens "New in the <date> update"; pointing at the item opens nothing.
+    const hoverAt = async js => {
+      const r = await ev(`(() => { const e = ${js}; e.scrollIntoView({ block: 'center', behavior: 'instant' }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
+      await ev(`(window.HoverHelp.hide(), true)`);
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y, button: 'none' });
+      await until(() => ev(`(() => { const t = document.getElementById('hhTip'); return !!t && !t.hidden; })()`), 'the help', 2000).catch(() => null);
+      return ev(`(() => { const t = document.getElementById('hhTip'); if (!t || t.hidden) return null; const first = t.querySelector('p'); return { first: first.className, text: first.textContent, all: t.textContent }; })()`);
+    };
+    out.hover = { item: await hoverAt(`document.querySelector(${JSON.stringify(NEW)})`), newest: await hoverAt(STAR(NEW)), older: await hoverAt(STAR(OLD)) };
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
+    await ev(`(window.HoverHelp.hide(), true)`);
+    // Keyboard: focus alone opens nothing; Enter opens it.
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16 });
+    await ev(`(${STAR(OLD)}.focus(), true)`);
+    await frame();
+    const focusOnly = await ev(`!document.getElementById('hhTip').hidden`);
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await frame();
+    out.focus = await ev(`(() => { const t = document.getElementById('hhTip'); const b = document.activeElement; const s = getComputedStyle(b); return { focusOnly: ${focusOnly}, open: !!t && !t.hidden, text: t ? t.textContent : '', ring: s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0, w: b.getBoundingClientRect().width, h: b.getBoundingClientRect().height, expanded: b.getAttribute('aria-expanded') }; })()`);
+    await ev(`(window.HoverHelp.hide(), true)`);
+
+    // An older release is not marked; the next release pushes the oldest set out.
+    out.rotate = await ev(`(() => {
+      const W = window.WhatsNew, H = window.HoverHelp, NEW = ${JSON.stringify(NEW)}, OLD = ${JSON.stringify(OLD)};
+      const probe = document.createElement('span'); probe.id = 'wnProbe'; probe.textContent = 'Probe';
+      (document.querySelector('main') || document.body).appendChild(probe);
+      const has = sel => { const e = document.querySelector(sel); H.scan(); return !!e && (e.hasAttribute('data-wn-new') || H.marks().some(m => m.__hhFor === e && m.getAttribute('data-hh-mark') === 'new')); };
+      const text = document.querySelector(NEW).textContent;
+      W.manifest.releases[${JSON.stringify(PR.past)}] = 'older';
+      W.manifest.features.push({ id: 'older-probe', release: ${JSON.stringify(PR.past)}, label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: ${JSON.stringify(PR.pick.page)}, at: '#wnProbe' }] });
+      W.apply();
+      const before = { older: has('#wnProbe'), newest: has(NEW), prior: has(OLD) };
+      W.manifest.releases[${JSON.stringify(PR.next)}] = 'next';
+      W.manifest.features.push({ id: 'next-probe', release: ${JSON.stringify(PR.next)}, label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: ${JSON.stringify(PR.pick.page)}, at: '#wnProbe' }] });
+      W.apply();
+      const after = { next: has('#wnProbe'), newest: has(NEW), prior: has(OLD), sameText: document.querySelector(NEW).textContent === text,
+                      renamed: [...document.querySelectorAll('[aria-label]')].filter(e => /\\(new\\)$/.test(e.getAttribute('aria-label'))).length };
+      return { before, after };
+    })()`);
+  }
+}
 
 // The marks and the legend keep AA contrast: both themes, glass on and off.
 const PAINT = `(() => {
@@ -405,21 +514,25 @@ const PAINT = `(() => {
 })()`;
 for (const theme of ['dark', 'light']) for (const glass of ['on', 'off']) {
   await ev(`(localStorage.setItem('zassess_theme', '${theme}'), localStorage.setItem('zassess_glass', '${glass}'), true)`);
-  await open('/report/advanced');
+  await open(PR.hidePage);
   out.themes[theme + ' ' + glass] = { glassOff: await ev(`document.documentElement.classList.contains('glass-off')`), light: await ev(`document.body.classList.contains('theme-light')`), marks: await ev(PAINT) };
 }
 await ev(`(localStorage.removeItem('zassess_glass'), localStorage.setItem('zassess_theme', 'dark'), true)`);
 
-// Hide new marks (Advanced settings): off by default, hides every *, is remembered, and brings them back; the ? marks stay.
-await open('/report/advanced');
+// Hide new marks (Advanced settings): off by default, hides every *, is
+// remembered on every page, and brings them back; the ? marks stay. Counted
+// on the toured page with the most marks.
 const count = () => ev(`(window.HoverHelp.scan(), { marks: document.querySelectorAll('.hh-mark-new:not([hidden])').length, help: document.querySelectorAll('.hh-mark:not(.hh-mark-new)').length, legend: document.querySelectorAll('.wn-legend').length, news: document.querySelectorAll('[data-wn-new]').length, ticked: (document.getElementById('advWnHide') || {}).checked, glassName: document.getElementById('advGlass') ? document.getElementById('advGlass').labels[0].textContent.trim() : '' })`);
-const hide = { start: await count() };
+const hide = {};
+await open(PR.hidePage); hide.start = await count();
+await open('/report/advanced'); hide.adv = await count();
 await ev(`(document.getElementById('advWnHide').click(), true)`); await frame();
 hide.hidden = await count();
-await open('/report/path'); hide.otherPage = await count();
+await open(PR.hidePage); hide.otherPage = await count();
 await open('/report/advanced'); hide.reloaded = await count();
 await ev(`(document.getElementById('advWnHide').click(), true)`); await frame();
-hide.shown = await count();
+hide.unticked = await count();
+await open(PR.hidePage); hide.shown = await count();
 out.hide = hide;
 
 // 320px: nothing scrolls sideways and every mark and legend stays on screen.
@@ -438,7 +551,7 @@ ws.close(); p.kill(); process.exit(0);
 
 @pytest.fixture(scope="module")
 def marks_browser(tmp_path_factory):
-    return run_in_browser(tmp_path_factory.mktemp("new_marks"), DRIVER, json.dumps(_load_marks()), json.dumps(NARROW), timeout=240)
+    return run_in_browser(tmp_path_factory.mktemp("new_marks"), DRIVER, json.dumps(_load_marks()), json.dumps(NARROW), json.dumps(PROBES), timeout=240)
 
 
 def _browser_marks():
@@ -456,6 +569,7 @@ def test_each_mark_renders_with_a_name_that_says_new(marks_browser, page, at):
     newest = sorted(rec["releases"], reverse=True)
     assert rec["news"].startswith(f"New in the {newest[0]} update: "), rec
     assert all(f"New in the {d} update: " in rec["news"] for d in newest), rec
+    assert rec["news"] == expected_words(page, at), rec
     assert rec["news"] in rec["desc"] and rec["expanded"] == "false", "the description screen readers hear carries the same words"
 
 
@@ -467,37 +581,51 @@ def test_each_page_with_marks_shows_the_legend_and_no_errors(marks_browser, page
     assert rec["errors"] == [], rec["errors"]
 
 
+def _picked(marks_browser):
+    got = marks_browser.get("picked") or {}
+    assert got.get("new") and got.get("old"), f"no item of each marked release was on screen with its *: {got}"
+    return got
+
+
 def test_the_star_opens_what_is_new_and_the_item_opens_nothing(marks_browser):
-    """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of a tab or a heading opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
-    h = marks_browser["hover"]
+    """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of an item from each marked release opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
+    got, h = _picked(marks_browser), marks_browser["hover"]
     assert h["item"] is None, h["item"]
-    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith("New in the 2026-10-28 update: Test a list"), h["tab"]
-    assert h["heading"] and h["heading"]["text"].startswith("New in the 2026-10-29 update: The result shows as a live flow"), h["heading"]
+    for key, at in (("newest", got["new"]), ("older", got["old"])):
+        want = expected_words(got["page"], at)
+        assert want.startswith(f"New in the {PROBES[key]} update: "), want
+        assert h[key] and h[key]["first"] == "hh-new" and h[key]["text"].startswith(want[:120]), (key, at, h[key], want)
 
 
 def test_the_star_works_from_the_keyboard(marks_browser):
-    """WCAG 2.2 SC 2.1.1 · SC 2.4.7 · SC 2.5.8 · SC 3.2.1: focus on the * opens nothing by itself; Enter opens it; it has a visible ring and a 24px target; the heading's name says it is new."""
+    """WCAG 2.2 SC 2.1.1 · SC 2.4.7 · SC 2.5.8 · SC 3.2.1: focus on the * opens nothing by itself; Enter opens it; it has a visible ring and a 24px target; a marked heading's name says it is new."""
+    _picked(marks_browser)
     f = marks_browser["focus"]
     assert f["focusOnly"] is False, "focus alone opens nothing"
-    assert f["open"] and f["text"].startswith("New in the 2026-10-29 update") and f["expanded"] == "true", f
+    assert f["open"] and f["text"].startswith(f"New in the {PROBES['older']} update") and f["expanded"] == "true", f
     assert f["ring"], "a visible focus ring"
     assert f["w"] >= 24 and f["h"] >= 24, f
-    assert "New in this version" in marks_browser["headingName"], marks_browser["headingName"]
+    bad = [h for h in marks_browser["headings"] if "New in this version" not in (h["name"] or "")]
+    assert not bad, bad
 
 
 def test_an_item_with_both_marks_has_the_star_then_the_help(marks_browser):
     """WCAG 2.2 SC 1.3.2 (Meaningful Sequence) · SC 4.1.2: an item that is new and needs help gets two buttons, * then ?, each reachable on its own."""
     both = marks_browser["both"]
-    assert [b.split(":")[0] for b in both] == ["new", "help"], both
-    assert both[0].startswith("new:New in this version: ") and both[1].startswith("help:Help: "), both
+    assert both, "no marked item on the toured pages also has a ? (help)"
+    for b in both:
+        kinds = [m.split(":")[0] for m in b["marks"]]
+        assert kinds == ["new", "help"], b
+        assert b["marks"][0].startswith("new:New in this version: ") and b["marks"][1].startswith("help:Help: "), b
 
 
 def test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out(marks_browser):
-    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-10-30 release is listed, the 2026-10-28 marks go."""
+    """WCAG 2.2 SC 3.2.4 · CWE-1164: a feature older than the marked releases gets no mark; once a newer release is listed, the oldest marked release's marks go and the newest's stay, and no item's words or name change."""
+    _picked(marks_browser)
     before, after = marks_browser["rotate"]["before"], marks_browser["rotate"]["after"]
-    assert before == {"older": False, "tab": True, "live": True}, before
-    assert after["next"] and after["live"] and not after["tab"], after
-    assert after["tabName"] == "Test a list" and not str(after["proto"]).endswith("(new)"), after
+    assert before == {"older": False, "newest": True, "prior": True}, before
+    assert after["next"] and after["newest"] and not after["prior"], after
+    assert after["sameText"] and after["renamed"] == 0, after
 
 
 @pytest.mark.parametrize("combo", ["dark on", "dark off", "light on", "light off"])
@@ -513,11 +641,11 @@ def test_the_marks_keep_aa_contrast_in_both_themes_with_glass_on_and_off(marks_b
 def test_hide_new_marks_hides_them_everywhere_and_is_remembered(marks_browser):
     """WCAG 2.2 SC 3.2.1 · ASVS V7.4.1: "Hide new marks" is off by default, takes every * off on every page (the ? marks stay), survives a reload, and brings them back."""
     h = marks_browser["hide"]
-    assert h["start"]["ticked"] is False and h["start"]["marks"] >= 3 and h["start"]["legend"] == 1
+    assert h["adv"]["ticked"] is False and h["start"]["marks"] >= 1 and h["start"]["legend"] == 1, h
     for k in ("hidden", "otherPage", "reloaded"):
         assert h[k]["marks"] == 0 and h[k]["legend"] == 0 and h[k]["news"] == 0 and h[k]["help"] > 0, (k, h[k])
     assert h["reloaded"]["ticked"] is True and h["reloaded"]["glassName"] == "Glass effect"
-    assert h["shown"]["marks"] == h["start"]["marks"] and h["shown"]["ticked"] is False
+    assert h["unticked"]["ticked"] is False and h["shown"]["marks"] == h["start"]["marks"]
 
 
 @pytest.mark.parametrize("page", NARROW)
@@ -525,12 +653,13 @@ def test_no_sideways_scroll_at_320px(marks_browser, page):
     """WCAG 2.2 SC 1.4.10 (Reflow): at 320px the marks and the legend stay on screen and the page never scrolls sideways."""
     rec = marks_browser["narrow"][page]
     assert rec["overflow"] <= 0 and rec["off"] == [], rec
-    assert rec["marks"] >= 1
+    if page in _load_marks():   # a page the newest two releases mark
+        assert rec["marks"] >= 1
 
 
 def test_placing_the_marks_settles(marks_browser):
     """CWE-835 (loop with unreachable exit) · ASVS V11.1.4: on a page with a * and a ? in one title, nothing changes the page once the marks are placed (no rescan loop)."""
-    assert marks_browser["quiet"] == 0, marks_browser["quiet"]
+    assert marks_browser["quiet"] == 0, (marks_browser["quietPage"], marks_browser["quiet"])
 
 
 def test_the_tour_left_no_script_errors(marks_browser):

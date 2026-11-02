@@ -49,6 +49,7 @@ if TOOLS not in sys.path:
     sys.path.insert(0, TOOLS)
 
 import md_safe  # noqa: E402
+from open_source import NOTE_MD  # noqa: E402
 
 FINDINGS_DIR = os.path.join(ROOT, "docs", "qa", "findings")
 TEST_RUN = os.path.join(ROOT, "docs", "qa", "test_run.json")
@@ -85,51 +86,63 @@ AREAS: Tuple[Dict[str, Any], ...] = (
          "controls": ("SSDF PW.8.2", "SSDF PW.9.1", "SSDF RV.1.1", "Scorecard CI-Tests")},
     )},
     {"key": "secure_by_design", "name": "Secure by design", "weight": 35, "subs": (
-        {"key": "write_paths", "name": "Write paths", "slugs": ("sbd-writes", "c6-admin-ops", "c6-deploy", "c6-packs", "c6-migrate", "c6-update-heal", "review-backend"),
+        {"key": "write_paths", "name": "Write paths", "slugs": ("sbd-writes", "c6-admin-ops", "c6-deploy", "c6-packs", "c6-migrate", "c6-update-heal", "review-backend",
+                                                                "w7-rule-editor", "w7-sync-csv"),
          "tests": ("test_write_safety_gates.py", "test_pack_deploy.py", "test_pack_removal.py", "test_remediation.py",
                    "test_admin_ops.py", "test_proposal_apply.py", "test_channel_targets_undo.py", "test_team_queue.py",
                    "test_sbd_writes.py", "test_c6_admin_ops.py", "test_c6_deploy.py", "test_c6_packs.py", "test_c6_migrate.py",
-                   "test_c6_update_heal.py"),
+                   "test_c6_update_heal.py", "test_rule_editor.py", "test_rule_csv.py", "test_sync_jobs.py", "test_sync_template_source.py",
+                   "test_security_gates_ui.py", "test_restore_breadth.py"),
          "controls": ("ASVS V4.1.3", "ASVS V4.1.5", "ASVS V4.2.2", "ASVS V7.1.3", "ASVS V11.1.1",
                       "CWE-284", "CWE-352", "CWE-862", "CWE-863")},
-        {"key": "untrusted_input", "name": "Untrusted input", "slugs": ("sbd-input", "c6-exports", "c6-reports", "c6-traffic-reports", "c6-misc"),
+        {"key": "untrusted_input", "name": "Untrusted input", "slugs": ("sbd-input", "c6-exports", "c6-reports", "c6-traffic-reports", "c6-misc", "w7-log-analysis"),
          "tests": ("test_api_contracts.py", "test_dos_limits.py", "test_xss_*.py", "test_files_paths.py", "test_outbound_ssrf.py",
                    "test_export_injection.py", "test_csv_injection.py", "test_har_import.py", "test_log_analyzer.py",
                    "test_pack_library.py", "test_quality_score.py", "test_sbd_untrusted_input.py", "test_sbd_canary_renderers.py",
-                   "test_c6_exports.py", "test_c6_reports.py", "test_c6_traffic_reports.py", "test_c6_misc.py"),
+                   "test_c6_exports.py", "test_c6_reports.py", "test_c6_traffic_reports.py", "test_c6_misc.py", "test_url_analyzer_resume.py",
+                   "test_traffic_logs.py", "test_traffic_log_sources.py", "test_zcc_lists_w9.py", "test_dns_windows.py"),
          "controls": ("ASVS V5.1.3", "ASVS V5.1.4", "ASVS V5.2.4", "ASVS V5.3.3", "ASVS V12.1.1", "ASVS V12.3.1",
                       "CWE-20", "CWE-22", "CWE-79", "CWE-400", "CWE-611", "CWE-918", "CWE-1333")},
-        {"key": "auth_scope_secrets", "name": "Auth, scope and secrets", "slugs": ("sbd-auth", "c6-auth", "c6-api-server", "c6-scope-offline"),
-         "tests": ("test_auth_session.py", "test_scope_rule_routes.py", "test_secret_canaries.py", "test_ui_auth.py", "test_sso.py",
+        {"key": "auth_scope_secrets", "name": "Auth, scope and secrets", "slugs": ("sbd-auth", "c6-auth", "c6-api-server", "c6-scope-offline", "w7-mcp-skill", "w7-zcc-plus", "w7-profile-cloud", "w7-team-server", "w8-other-products", "w9-security-gates", "w9-team-auth"),
+         "tests": ("test_auth_session.py", "test_team_server.py", "test_team_server_extras.py", "test_team_saml.py", "test_team_passkeys.py", "test_team_signin_settings.py", "test_scope_rule_routes.py", "test_secret_canaries.py", "test_ui_auth.py", "test_sso.py",
                    "test_extension_security.py", "test_tools_read_only_in_scope.py", "test_no_implicit_reads.py",
                    "test_report_scope_reads.py", "test_sbd_offline_least_privilege.py", "test_c6_auth.py", "test_c6_api_server.py",
-                   "test_c6_scope_offline.py"),
+                   "test_c6_scope_offline.py", "test_mcp_tools.py", "test_update_notify.py", "test_zcc_tamper_passwords.py", "test_zcc_otp.py", "test_other_products.py", "test_security_gates.py", "test_mcp_tools_w9.py"),
          "controls": ("ASVS V3.4.1", "ASVS V3.4.3", "ASVS V4.1.1", "ASVS V4.2.1", "ASVS V6.4.1", "ASVS V7.1.1", "ASVS V8.3.4",
                       "CWE-200", "CWE-306", "CWE-532", "CWE-639", "CWE-798")},
-        {"key": "supply_chain", "name": "Supply chain", "slugs": ("sbd-supply", "supply-chain"),
+        {"key": "supply_chain", "name": "Supply chain", "slugs": ("w7-sast", "sbd-supply*", "supply-chain*"),
          "tests": ("test_supply_chain_qa.py", "test_ci_pinning.py", "test_sbom_*.py", "test_lock_platforms.py",
-                   "test_keyring_pinned.py", "test_packaging.py", "test_docker_rename.py"),
+                   "test_keyring_pinned.py", "test_packaging.py", "test_docker_rename.py", "test_sast.py", "test_local_plugins.py", "test_agent_workspace.py",
+                   "test_open_source_note.py"),
          "controls": ("SLSA v1.0 Build L2", "SLSA v1.0 Build L3", "Scorecard Pinned-Dependencies", "Scorecard Token-Permissions",
-                      "Scorecard Dangerous-Workflow", "Scorecard Vulnerabilities", "Scorecard SBOM",
+                      "Scorecard Dangerous-Workflow", "Scorecard Vulnerabilities", "Scorecard SBOM", "Scorecard SAST", "SSDF PW.7.2",
                       "SSDF PS.1.1", "SSDF PS.2.1", "SSDF PS.3.2", "SSDF PW.4.1", "CWE-494", "CWE-829")},
     )},
     {"key": "functionality", "name": "Functionality", "weight": 25, "subs": (
-        {"key": "traffic_analysis", "name": "Traffic analysis", "slugs": ("func-path", "c6-path", "c6-zpa", "c6-posture", "c6-checks", "c6-assessment"),
+        {"key": "traffic_analysis", "name": "Traffic analysis", "slugs": ("func-path", "c6-path", "c6-zpa", "c6-posture", "c6-checks", "c6-assessment", "w8-cloud-connector",
+                                                                         "w7-path-coverage", "w7-o365-endpoints", "w7-zpa-identity", "w8-zia-governance", "w8-zpa-rbac", "w7-path-extras", "w8-zpa-policy", "w8-zia-forwarding",
+                                                                         "w9-coverage-checks"),
          "tests": ("test_path_*.py", "test_pac_eval.py", "test_data_flow.py", "test_ssl_flow.py", "test_ssl_coverage.py",
                    "test_insights.py", "test_bulk_test.py", "test_zpa_*.py", "test_shared_path.py", "test_qa_func_path.py",
-                   "test_c6_path.py", "test_c6_zpa.py", "test_c6_posture.py", "test_c6_checks.py", "test_c6_assessment.py",
-                   "test_admin_rank.py"),
+                   "test_c6_path.py", "test_c6_zpa.py", "test_c6_posture.py", "test_c6_checks.py", "test_c6_assessment.py", "test_w8_cloud_connector.py",
+                   "test_admin_rank.py", "test_rule_fields.py", "test_category_lookup*.py", "test_ucaas_oneclick.py",
+                   "test_m365_app_services.py", "test_vendor_app_services.py", "test_w8_zia_governance.py", "test_zcc_bypass_path.py", "test_zia_forwarding.py",
+                   "test_w9_coverage_checks.py"),
          "controls": ("ASVS V11.1.1", "ASVS V11.1.4", "CWE-670", "CWE-682", "CWE-754")},
-        {"key": "builders", "name": "Builders", "slugs": ("func-builders", "c6-zia-baseline-aiguard", "c6-zcc-zdx"),
-         "tests": ("test_ops_*.py", "test_pack_*.py", "test_pov.py", "test_readiness.py", "test_offline_tenant.py",
+        {"key": "builders", "name": "Builders", "slugs": ("func-builders", "c6-zia-baseline-aiguard", "c6-zcc-zdx", "w7-restore-clone", "w7-admin-zpa-zcc-zdx", "w7-rank-inherit", "w7-federal-compliance", "w7-admin-zia-zid", "w9-admin-editors", "w7-migrate-tui-plugins", "w7-net-files", "w7-fix-selected", "w7-tf-export", "w7-fleet-plus", "w7-health-diag", "w7-pov-oneshot", "w7-parity-small", "w8-zia-threat-saas", "w8-shadow-it", "w8-zwa-aiguard", "w8-zdx-zid-zcc", "w9-ops-gaps", "w9-path-fix-flow"),
+         "tests": ("test_ops_*.py", "test_config_*.py", "test_pack_*.py", "test_pov.py", "test_readiness.py", "test_offline_tenant.py", "test_tenant_terraform.py", "test_health_diag.py", "test_pov_*.py",
                    "test_vendor_migrate.py", "test_policy_exports.py", "test_qa6_*.py", "test_c6_zia_baseline_aiguard.py",
-                   "test_c6_zcc_zdx.py"),
+                   "test_c6_zcc_zdx.py", "test_rank_inherit.py", "test_compliance_profiles.py", "test_zcc_fleet_plus*.py", "test_w8_zia_threat_saas.py", "test_shadow_it.py", "test_w8_zwa_aiguard.py", "test_w8_zdx_zid_zcc.py",
+                   "test_compliance_profiles_browser.py", "test_panos_migrate.py", "test_net_files*.py", "test_w9_zia_activation.py", "test_w9_url_category_admin.py",
+                   "test_w9_ip_groups.py", "test_w9_dlp_objects.py", "test_w9_zid_user.py", "test_w9_service_edge_toggle.py",
+                   "test_rehearsal_simulation.py", "test_simulation_ui.py", "test_editions.py", "test_baseline_selection.py",
+                   "test_tf_providers_w9.py", "test_fix_flow_browser.py"),
          "controls": ("ASVS V4.1.3", "ASVS V5.1.3", "ASVS V11.1.4", "CWE-20", "CWE-841", "CWE-1188")},
         {"key": "ui_a11y", "name": "UI and accessibility", "slugs": ("ui", "c6-ui-core", "c6-ui-ops", "c6-tooltips", "glass", "review-ui"),
          "tests": ("test_accessibility.py", "test_*reflow*.py", "test_page_layout.py", "test_polish.py", "test_icons.py",
                    "test_explain.py", "test_safety_banner.py", "test_static_js_parses.py", "test_simple_mode.py",
                    "test_navigation.py", "test_sidebar_*.py", "test_c6_ui_core.py", "test_c6_ui_ops.py", "test_c6_tooltips.py", "test_new_marks.py",
-                   "test_glass*.py"),
+                   "test_glass*.py", "test_tui.py", "test_w8_zdx_zcc_browser.py"),
          "controls": ("WCAG SC 1.1.1", "WCAG SC 1.3.1", "WCAG SC 1.4.3", "WCAG SC 1.4.10", "WCAG SC 1.4.11", "WCAG SC 2.1.1",
                       "WCAG SC 2.4.7", "WCAG SC 2.5.8", "WCAG SC 3.3.2", "WCAG SC 4.1.2", "WCAG SC 4.1.3")},
     )},
@@ -186,7 +199,7 @@ MATRIX_PREFIX = {"OWASP ASVS 4.0.3": "ASVS ", "CWE": "", "OWASP Top 10 2021": ""
 # ── Untrusted input: the findings records and the test run ───────────
 
 MAX_FILE_BYTES = 256 * 1024
-MAX_FILES = 64
+MAX_FILES = 256              # findings records (one per QA wave branch; wave 7 brought the count past 64)
 MAX_DEPTH = 6                 # {root: {"findings": [ {finding} ]}} is 3 deep
 MAX_FINDINGS = 500
 MAX_CHECKS = 1000
@@ -695,7 +708,7 @@ def _n(v: Any) -> str:
 
 def render_md(r: Dict[str, Any]) -> str:
     o, run = r["overall"], r["run"]
-    out = ["# Quality and security score", "",
+    out = ["# Quality and security score", "", NOTE_MD, "",
            "Generated by `python tools/quality_score.py` from `docs/qa/findings/*.json`, `docs/qa/test_run.json` and the",
            "standards mapping in `docs/SECURITY_TESTING.md`; CI fails when this file or `docs/quality_score.json` is stale.",
            "It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced settings page shows the same data.", ""]
@@ -847,7 +860,7 @@ def run_from_junit(xml_path: str, commit: Optional[str] = None, date: Optional[s
     data = _read_capped(xml_path, MAX_JUNIT_BYTES, "JUnit file")
     _refuse_dtd(data)
     try:
-        root = ET.fromstring(data)
+        root = ET.fromstring(data)  # nosec B314 # _refuse_dtd above refused any DOCTYPE/ENTITY; read capped at MAX_JUNIT_BYTES
     except ET.ParseError as e:
         raise InputError(f"JUnit file: not well-formed XML ({e})") from None
     suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))

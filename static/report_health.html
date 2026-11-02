@@ -8,6 +8,16 @@
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
 <link rel="stylesheet" href="/static/hover_help.css">
+<style>
+  .zwa-panel { margin-top: 1.5rem; }
+  .zwa-panel .op-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; margin: 0.5rem 0; }
+  .zwa-panel .df-ctl { min-width: 0; max-width: 100%; }
+  .zwa-panel input, .zwa-panel select { max-width: 100%; min-width: 0; }
+  .zwa-dl { display: grid; grid-template-columns: minmax(130px, max-content) 1fr; gap: 0.25rem 0.9rem; font-size: 0.9rem; }
+  .zwa-dl dt { font-weight: 600; } .zwa-dl dd { margin: 0; overflow-wrap: anywhere; }
+  .zwa-hist { font-size: 0.88rem; overflow-wrap: anywhere; }
+  @media (max-width: 600px) { .zwa-dl { grid-template-columns: 1fr; } }
+</style>
 <script src="/static/glass.js"></script>
 </head>
 <body class="report-page df-page">
@@ -28,6 +38,20 @@
         <a class="rp-btn" id="expJson">JSON</a>
       </span>
     </nav>
+    <section class="rp-card th-card" id="th" aria-labelledby="thH">
+      <h2 class="df-h" id="thH">Tenant health</h2>
+      <p class="th-lead">The quiet problems: ZIA changes saved but not activated, an SSL inspection rule order that stops rules from applying, certificates close to expiry (ZIA SSL inspection, ZPA enrollment, web server and client signing) and App Connector groups with no connector. Read-only, and only what the Scope page ticks.</p>
+      <div class="th-ctl">
+        <label class="df-ctl"><span class="lbl">Warn at</span><input type="number" id="thWarn" min="1" max="365" inputmode="numeric" placeholder="30" aria-describedby="thDaysHint"><span class="lbl">days</span></label>
+        <label class="df-ctl"><span class="lbl">Critical at</span><input type="number" id="thCrit" min="1" max="365" inputmode="numeric" placeholder="7" aria-describedby="thDaysHint"><span class="lbl">days</span></label>
+        <button type="button" class="rp-btn primary" id="thRun">Check tenant health</button>
+        <a class="rp-btn" id="thCalls" href="/report/advanced#apicalls" target="_blank" rel="noopener" hidden>API calls of this check</a>
+      </div>
+      <p class="df-hint" id="thDaysHint">A certificate is flagged when it expires within the warning days, and as critical within the critical days. Empty: the server's setting (30 and 7 days unless changed).</p>
+      <p class="th-err" id="thErr" role="alert" hidden></p>
+      <div id="thLive" class="sr-only" role="status" aria-live="polite"></div>
+      <div id="thBody"><p class="dim">Loading…</p></div>
+    </section>
     <main class="rp-card">
       <section id="dhProposals" class="dh-props" aria-label="Proposals" hidden></section>
       <div id="rpBody" class="bp-body" style="padding:0;">
@@ -43,6 +67,8 @@
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
   <script src="/static/detection_health.js"></script>
+  <script src="/static/tenant_health.js"></script>
+  <script src="/static/zwa_drilldown.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>
@@ -81,7 +107,10 @@
     document.getElementById('dhDays').addEventListener('change', refresh);
     if (q.get('error')) { fail('The report could not be generated', q.get('error')); return; }
     const id = q.get('id');
-    if (!id) return;
+    if (!id) {
+      if (!q.get('pending')) body.innerHTML = '<p class="dim" style="padding:1rem;">No FP/TP detection ratio report is open. Run FP/TP detection ratio from the assessment page to fill this part; Tenant health above works on its own.</p>';
+      return;
+    }
     load(id).catch(e => fail('This report is no longer available', `${e.message}. Reports are kept in memory while the server runs; generate it again from the assessment page.`));
   })();
   </script>

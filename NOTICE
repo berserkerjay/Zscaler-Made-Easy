@@ -1,0 +1,19 @@
+Zscaler Made Easy
+Copyright 2026 the repository owner
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Open source. Zscaler Made Easy is open-source software under the Apache
+License 2.0 (see LICENSE). It is built entirely from information provided
+by Zscaler (its public documentation, public API and open-source SDKs and
+Terraform providers) and by third parties. It is an independent project,
+not an official Zscaler product; Zscaler and related marks belong to
+Zscaler, Inc.
+
+Third-party components keep their own licences. THIRD_PARTY_NOTICES.md
+lists every one (the Python packages pinned in requirements.lock and the
+Zscaler Terraform provider pinned in the Terraform lockfiles) with its SPDX
+licence and what its licence means for redistributing this app, and
+third_party_licenses/ holds the full texts of the copyleft licences among
+them. The same data, machine-readable, is in the CycloneDX SBOM
+docs/sbom.cdx.json.

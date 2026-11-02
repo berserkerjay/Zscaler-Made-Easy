@@ -2,7 +2,8 @@
 Z-Insights GraphQL API (POST /zins/graphql) as the installed
 zscaler-sdk-python exposes it (`client.zins`, zscaler/zins/*.py).
 
-What the SDK can ask (verified in zscaler-sdk-python 1.9.44, each query
+What the SDK can ask (verified in zscaler-sdk-python 1.9.44 and again in
+1.11.3, each query
 takes start_time / end_time in epoch milliseconds and returns entries of
 {name, total} unless said otherwise):
 
@@ -16,14 +17,20 @@ takes start_time / end_time in epoch milliseconds and returns entries of
   ZERO_TRUST_FIREWALL action, location_firewall, network_service
   CYBER_SECURITY     incidents (categorize_by THREAT_CATEGORY_ID, APP_ID,
                      USER_ID, TIME, SRC_COUNTRY), cyber_security_location
-  IOT                device_stats (no time window)
+  IOT                device_stats (no time window): devices_count,
+                     user_devices_count, iot_devices_count,
+                     server_devices_count, un_classified_devices_count and
+                     entries of {classifications, classification_uuid,
+                     category, total}
 
 What it cannot ask, so this module never pretends to (UNAVAILABLE):
 traffic by URL category, traffic per user, traffic per policy rule (no
 query returns a rule or policy name for traffic) and traffic to one host
 or domain (the only filters match the grouped entry's own name).
 
-Only aggregated numbers are read. User names appear only
+Only aggregated numbers are read (location, protocol, threat, network
+service, application and device-class names with their totals; never a
+host, a device or a person). User names appear only
 in the "users with the most security incidents" table, which is shown on
 screen and is never logged or exported (`exportable` drops it).
 Z-Insights needs a OneAPI (ZIdentity) API client: the SDK refuses the
@@ -208,6 +215,28 @@ def summary_of(raw: Any) -> Dict[str, Any]:
     return {"totals": {k: _num(raw.get(k)) for k in _SUMMARY_TOTALS}, "groups": groups}
 
 
+_IOT_TOTALS = ("devices_count", "iot_devices_count", "user_devices_count", "server_devices_count", "un_classified_devices_count")
+
+
+def iot_of(raw: Any) -> Dict[str, Any]:
+    """IOT.device_stats: the five device counts and the device classes
+    ({classifications, category, total}) as rows. Counts only: no device,
+    address or owner is in the answer or kept."""
+    raw = raw if isinstance(raw, Mapping) else {}
+    rows: List[Dict[str, Any]] = []
+    for e in raw.get("entries") if isinstance(raw.get("entries"), list) else []:
+        if not isinstance(e, Mapping):
+            continue
+        total = _num(e.get("total"))
+        if total is None:
+            continue
+        rows.append({"name": _text(e.get("classifications")) or "(unclassified)", "category": _text(e.get("category")), "total": total})
+        if len(rows) >= ROW_LIMIT:
+            break
+    groups = [{"key": "classes", "title": "Devices by class", "rows": rows, "obfuscated": False}] if rows else []
+    return {"totals": {k: _num(raw.get(k)) for k in _IOT_TOTALS}, "groups": groups}
+
+
 def _dig(body: Any, path: Iterable[str]) -> Any:
     cur = body
     for k in path:
@@ -248,6 +277,25 @@ SECTIONS: List[Dict[str, Any]] = [
     {"key": "fw_action", "title": "Firewall traffic by action", "source": "ZERO_TRUST_FIREWALL.action",
      "path": ("ZERO_TRUST_FIREWALL", "action"),
      "call": lambda z, s, e, u: z.firewall.get_traffic_by_action(start_time=s, end_time=e, limit=ROW_LIMIT)},
+    {"key": "threat_class", "title": "Web threats by class", "source": "WEB_TRAFFIC.threat_class",
+     "path": ("WEB_TRAFFIC", "threat_class"),
+     "call": lambda z, s, e, u: z.web_traffic.get_threat_class(start_time=s, end_time=e, traffic_unit=u, limit=ROW_LIMIT)},
+    {"key": "threat_super", "title": "Web threats by super-category", "source": "WEB_TRAFFIC.threat_super_categories",
+     "path": ("WEB_TRAFFIC", "threat_super_categories"),
+     "call": lambda z, s, e, u: z.web_traffic.get_threat_super_categories(start_time=s, end_time=e, traffic_unit=u, limit=ROW_LIMIT)},
+    {"key": "fw_location", "title": "Firewall traffic by location", "source": "ZERO_TRUST_FIREWALL.location_firewall",
+     "path": ("ZERO_TRUST_FIREWALL", "location_firewall"),
+     "call": lambda z, s, e, u: z.firewall.get_traffic_by_location(start_time=s, end_time=e, limit=ROW_LIMIT)},
+    {"key": "fw_service", "title": "Firewall traffic by network service", "source": "ZERO_TRUST_FIREWALL.network_service",
+     "path": ("ZERO_TRUST_FIREWALL", "network_service"),
+     "call": lambda z, s, e, u: z.firewall.get_network_services(start_time=s, end_time=e, limit=ROW_LIMIT)},
+    {"key": "incident_location", "title": "Security incidents by location", "source": "CYBER_SECURITY.cyber_security_location (LOCATION_ID)",
+     "path": ("CYBER_SECURITY", "cyber_security_location"),
+     "call": lambda z, s, e, u: z.cyber_security.get_incidents_by_location(start_time=s, end_time=e, categorize_by="LOCATION_ID", limit=ROW_LIMIT)},
+    {"key": "iot", "title": "IoT and unmanaged devices", "source": "IOT.device_stats (counts now, no time window)", "summary": True,
+     "summarize": iot_of, "path": ("IOT", "device_stats"),
+     "note": "Device counts as Zscaler classifies them now: IoT device statistics take no time window, so they do not follow the window above.",
+     "call": lambda z, s, e, u: z.iot.get_device_stats(limit=ROW_LIMIT)},
     {"key": "top_users", "title": "Users with the most security incidents", "source": "CYBER_SECURITY.incidents (USER_ID)",
      "users": True, "path": ("CYBER_SECURITY", "incidents"),
      "call": lambda z, s, e, u: z.cyber_security.get_incidents(start_time=s, end_time=e, categorize_by=["USER_ID"], limit=USER_LIMIT)},
@@ -257,7 +305,7 @@ USER_SECTIONS = tuple(x["key"] for x in SECTIONS if x.get("users"))
 
 
 def _ask(fn: Callable[[], Any], path: Tuple[str, str], scrub: Callable[[str], str], *, summary: bool = False,
-         parse: Callable[[Any], Any] = rows_of) -> Dict[str, Any]:
+         parse: Callable[[Any], Any] = rows_of, summarize: Callable[[Any], Dict[str, Any]] = None) -> Dict[str, Any]:
     """One query through the SDK, read defensively. Returns {status:
     ok | empty | partial | error, rows | summary, error, classification,
     obfuscated}. A GraphQL error that still carries data is `partial`:
@@ -269,6 +317,7 @@ def _ask(fn: Callable[[], Any], path: Tuple[str, str], scrub: Callable[[str], st
     if not isinstance(res, tuple) or len(res) != 3:
         return {"status": "error", "error": "The SDK gave an answer of an unexpected shape.", "classification": None}
     data, resp, err = res
+    summarize = summarize or summary_of
     out: Dict[str, Any] = {"classification": None, "error": None}
     body = None
     try:
@@ -286,7 +335,7 @@ def _ask(fn: Callable[[], Any], path: Tuple[str, str], scrub: Callable[[str], st
         if isinstance(partial, Mapping) and isinstance(partial.get("obfuscated"), bool):
             out["obfuscated"] = partial["obfuscated"]
         if summary and isinstance(partial, Mapping) and partial:
-            out.update(status="partial", summary=summary_of(partial))
+            out.update(status="partial", summary=summarize(partial))
         elif not summary and isinstance(partial, Mapping) and isinstance(partial.get("entries"), list):
             out.update(status="partial", rows=parse(partial.get("entries")))
         else:
@@ -294,8 +343,8 @@ def _ask(fn: Callable[[], Any], path: Tuple[str, str], scrub: Callable[[str], st
         return out
     if summary:
         if not isinstance(data, Mapping):
-            return dict(out, status="error", error="The answer had no Shadow IT summary.")
-        sm = summary_of(data)
+            return dict(out, status="error", error="The answer had no summary.")
+        sm = summarize(data)
         empty = not any(v for v in sm["totals"].values()) and not any(g["rows"] for g in sm["groups"])
         return dict(out, status="empty" if empty else "ok", summary=sm)
     if data is None:
@@ -384,7 +433,10 @@ def read(client: Any, start_ms: int, end_ms: int, *, traffic_unit: str = "TRANSA
             _turn()
             _log(f"Asking Insights for {spec['title'].lower()}" + (" (shown on screen only)…" if spec.get("users") else "…"))
             sec = _ask(lambda sp=spec: sp["call"](zins, s, e, unit), spec["path"], _scrub, summary=bool(spec.get("summary")),
-                       parse=spec.get("parse") or (lambda x: rows_of(x, USER_LIMIT if spec.get("users") else ROW_LIMIT)))
+                       parse=spec.get("parse") or (lambda x: rows_of(x, USER_LIMIT if spec.get("users") else ROW_LIMIT)),
+                       summarize=spec.get("summarize"))
+            if spec.get("note"):
+                sec["note"] = spec["note"]
             if spec.get("users"):
                 sec["note"] = ("Security incidents per user (CYBER_SECURITY), not traffic. Shown on this screen only: "
                                "never logged, kept in a report or exported.")
@@ -446,17 +498,18 @@ def to_csv(result: Mapping[str, Any]) -> str:
         if sec.get("summary"):
             sm = sec["summary"]
             for k, v in (sm.get("totals") or {}).items():
-                w.writerow([title, k, v, "bytes" if "bytes" in k else "apps", "", "", "", "", "", "", st])
+                w.writerow([title, k, v, "bytes" if "bytes" in k else "devices" if key == "iot" else "apps", "", "", "", "", "", "", st])
             for g in sm.get("groups") or []:
                 for r in g.get("rows") or []:
-                    w.writerow([f"{title}: {g.get('title')}", r.get("name"), r.get("total"), "", "", "", "", "", "", "", st])
+                    w.writerow([f"{title}: {g.get('title')}", r.get("name"), r.get("total"), "devices" if key == "iot" else "",
+                                r.get("category") or "", "", "", "", "", "", st])
             continue
         for r in sec.get("rows") or []:
             if key == "cloud_apps":
                 w.writerow([title, r.get("application"), r.get("data_consumed"), "bytes", r.get("application_category"), r.get("risk_index"),
                             r.get("sanctioned_state"), r.get("data_uploaded"), r.get("data_downloaded"), r.get("authenticated_users"), st])
             else:
-                w.writerow([title, r.get("name"), r.get("total"), unit if key.startswith("web_") else "", "", "", "", "", "", "", st])
+                w.writerow([title, r.get("name"), r.get("total"), unit if key.startswith(("web_", "threat_")) else "", "", "", "", "", "", "", st])
         if not sec.get("rows"):
             w.writerow([title, "", "", "", "", "", "", "", "", "", st or "empty"])
     return buf.getvalue()
@@ -511,3 +564,115 @@ def recent_traffic_for_host(host: str, in_scope: bool) -> Dict[str, Any]:
     return {"in_scope": True, "available": False, "host": _text(host), "days": 7,
             "reason": UNAVAILABLE["host"] + " Recent traffic to this destination by action is therefore not shown; "
                                             "the Traffic insights page has tenant-wide traffic by action, location and application."}
+
+
+# ── Insights through the app's raw-HTTP client (assessment checks, snapshots) ──
+# The assessment checks and the snapshot read get the raw client (`cl.get`,
+# `cl.post`), not the SDK client. RawExecutor gives the SDK's own ZInsService
+# that client as its request executor, so the GraphQL queries, variables and
+# error handling stay the SDK's (zscaler/zins/*.py), and each one is a POST
+# to /zins/graphql through the raw client's pacing, Stop and sign-in (a read:
+# Z-Insights asks every question with a POST). The classic ZIA API sign-in has
+# no Z-Insights path, so the raw client refuses it before anything is sent.
+class InsightsRefused(Exception):
+    """Z-Insights did not answer a query (HTTP status, or 0 when nothing was sent)."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = int(status or 0)
+        self.all_error_messages = [message]
+        self.classification = {401: "UNAUTHORIZED", 403: "FORBIDDEN", 429: "TOO_MANY_REQUESTS"}.get(self.status)
+
+
+class _RawBody:
+    """The SDK response object as zins reads it: get_body() and _response."""
+
+    def __init__(self, body: Any, status: int = 200):
+        from types import SimpleNamespace
+        self._body = body
+        self._response = SimpleNamespace(status_code=status, headers={"Content-Type": "application/json"}, url="/zins/graphql")
+
+    def get_body(self) -> Any:
+        return self._body
+
+
+class RawExecutor:
+    """zscaler.request_executor.RequestExecutor's create_request / execute
+    over the raw client's post(). `record(operation, status, body)` sees
+    every answer (the snapshot keeps them)."""
+
+    def __init__(self, cl: Any, record: Optional[Callable[[str, int, Any], None]] = None):
+        self._cl = cl
+        self._record = record
+
+    def create_request(self, method: str, url: str, body: Any = None, headers: Any = None, params: Any = None, **_: Any):
+        return {"method": str(method or "POST").upper(), "url": str(url or ""), "body": body}, None
+
+    def execute(self, request: Dict[str, Any], *_: Any, **__: Any):
+        body = request.get("body") if isinstance(request.get("body"), dict) else {}
+        try:
+            data, code = self._cl.post(request.get("url") or "/zins/graphql", body)
+        except Exception as ex:  # noqa: BLE001 — a failed query is reported, never crashes the caller
+            return None, InsightsRefused(0, f"{type(ex).__name__}: {_text(ex)}")
+        op = _text(body.get("operationName"))[:64]
+        if self._record is not None:
+            self._record(op, int(code or 0), data)
+        if code != 200 or not isinstance(data, Mapping):
+            msg = _text(data.get("message") or data.get("error")) if isinstance(data, Mapping) else _text(data)
+            return None, InsightsRefused(int(code or 0), msg or f"Z-Insights answered HTTP {code}")
+        return _RawBody(dict(data)), None
+
+
+def zins_over(cl: Any, record: Optional[Callable[[str, int, Any], None]] = None) -> Any:
+    """The SDK's Z-Insights service over the raw client `cl`."""
+    from zscaler.zins.zins_service import ZInsService
+    return ZInsService(RawExecutor(cl, record))
+
+
+OP_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{1,63}$")
+SNAPSHOT_WINDOW = "30d"
+
+
+def capture(cl: Any, log: Callable[[str], None], cancel: Any = None, now_ms: Optional[int] = None) -> Dict[str, Dict[str, Any]]:
+    """Every Traffic insights query (and the app list's sanction states)
+    asked once for the last 30 days, kept per GraphQL operation as
+    {"/zins/graphql/<operation>": {status, body}} for a snapshot. Only
+    aggregates: the per-user incidents query is never asked. Stop ends it."""
+    from data_flow import stop_requested
+    kept: Dict[str, Dict[str, Any]] = {}
+
+    def record(op: str, status: int, body: Any) -> None:
+        if status == 200 and isinstance(body, Mapping) and OP_RE.match(op or ""):
+            kept[f"/zins/graphql/{op}"] = {"status": 200, "body": body}
+
+    w = window(SNAPSHOT_WINDOW, now_ms=now_ms)
+    zins = zins_over(cl, record)
+    for spec in SECTIONS:
+        if spec.get("users") or "call" not in spec:
+            continue
+        if stop_requested(cancel):
+            return kept
+        spec["call"](zins, w["start_ms"], w["end_ms"], "TRANSACTIONS")
+    for code in (None, "ALLOW", "BLOCK"):
+        if stop_requested(cancel):
+            return kept
+        _web_action(zins, w["start_ms"], w["end_ms"], "TRANSACTIONS", code)
+    log(f"Saving a snapshot: kept {len(kept)} Insights answers (aggregates only, last 30 days).")
+    return kept
+
+
+# ── Sanction state, as Shadow IT reports it ─────────────────────────────
+SANCTIONED, UNSANCTIONED = "sanctioned", "unsanctioned"
+
+
+def sanction_of(v: Any) -> Optional[str]:
+    """"sanctioned", "unsanctioned" or None (not stated, ANY, anything else).
+    ASSUMED: Shadow IT's sanctioned_state spells the two states as
+    SANCTIONED / UN_SANCTIONED (the ZIA bulk update's values) or in words
+    ("Sanctioned", "Unsanctioned"); the SDK does not list them."""
+    s = re.sub(r"[^A-Z]", "", str(v or "").upper())
+    if s in ("UNSANCTIONED", "NOTSANCTIONED"):
+        return UNSANCTIONED
+    if s == "SANCTIONED":
+        return SANCTIONED
+    return None

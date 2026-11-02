@@ -5,6 +5,8 @@ description: Review or repair end-to-end Zscaler flow analysis and API integrati
 
 # Zscaler flow review
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 Review the entire relevant flow, and trace every displayed decision back to an API response and a linked configuration object. Read [references/coverage.md](references/coverage.md) when building the coverage matrix or changing integrations.
 
 ## Establish the source and coverage

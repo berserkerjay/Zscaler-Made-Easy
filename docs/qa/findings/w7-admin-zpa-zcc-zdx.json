@@ -1,0 +1,164 @@
+{
+ "area": "w7-admin-zpa-zcc-zdx",
+ "title": "Day-to-day admin for ZPA (connectors, Service Edges, PRA and user portals, provisioning keys, Browser Access certificates), Client Connector (device removal single and bulk, bypass apps, entitlements) and ZDX (deep trace, read-only views)",
+ "files": [
+  "ops_zpa_admin.py",
+  "ops_zcc_admin.py",
+  "ops_zdx_trace.py",
+  "static/ops_admin.js",
+  "dlp_api_server.py"
+ ],
+ "standards": [
+  "ASVS 4.0.3 L2 V4.1.3",
+  "ASVS V1.4.1",
+  "ASVS V3.3.1",
+  "ASVS V5.1.3",
+  "ASVS V5.3.3",
+  "ASVS V6.4.1",
+  "ASVS V7.1.1",
+  "ASVS V7.4.1",
+  "ASVS V8.3.4",
+  "ASVS V9.2.1",
+  "ASVS V11.1.4",
+  "ASVS V12.1.1",
+  "ASVS V13.4.1",
+  "OWASP Top 10 2021 A01 A02 A04 A09",
+  "OWASP WSTG v4.2",
+  "CISA Secure by Design"
+ ],
+ "checks": [
+  {
+   "id": "adm-scope",
+   "what": "Each family refuses before any read when its product is not ticked (engine, picker, lookup, follow route)",
+   "standard": "ASVS V4.1.3 \u00b7 CWE-863",
+   "result": "pass"
+  },
+  {
+   "id": "adm-payload",
+   "what": "Payload oracles: connector, group, Service Edge group, PRA console, segment, provisioning key, certificate, ZCC removal, bypass app, entitlement and deep trace bodies",
+   "standard": "ASVS V1.4.1 \u00b7 CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "adm-delete-phrase",
+   "what": "Every delete or removal asks the typed phrase whatever the count, naming the object or the count and kind",
+   "standard": "ASVS V4.1.3 \u00b7 CWE-352",
+   "result": "pass"
+  },
+  {
+   "id": "adm-in-use",
+   "what": "Connected, used or renamed ZPA objects and bypass apps a profile uses are kept and named",
+   "standard": "ASVS V4.1.3 \u00b7 CWE-284",
+   "result": "pass"
+  },
+  {
+   "id": "adm-toctou",
+   "what": "A change made after the preview is a plan_changed or a conflict, never overwritten",
+   "standard": "ASVS V11.1.4 \u00b7 CWE-367",
+   "result": "pass"
+  },
+  {
+   "id": "adm-undo",
+   "what": "Undo for updates, key creates, certificate rotations, bypass create/edit, entitlements and trace starts; deletes say they have none",
+   "standard": "ASVS V1.4.1 \u00b7 CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "adm-secrets",
+   "what": "Provisioning key, certificate private key and device OTP canaries reach no plan, result, record, log, audit entry or job poll",
+   "standard": "ASVS V8.3.4 \u00b7 CWE-532",
+   "result": "pass"
+  },
+  {
+   "id": "adm-poll-bound",
+   "what": "The deep trace follow reads at most MAX_POLLS times, at least MIN_INTERVAL apart, Stop ends it",
+   "standard": "ASVS V13.4.1 \u00b7 CWE-835",
+   "result": "pass"
+  },
+  {
+   "id": "adm-rate",
+   "what": "Deep trace starts per tenant and per device, and the Client Connector hourly call budget, are enforced",
+   "standard": "ASVS V13.4.1 \u00b7 CWE-770",
+   "result": "pass"
+  },
+  {
+   "id": "adm-csv",
+   "what": "The device removal plan and result CSV are spreadsheet-safe and offer counts only",
+   "standard": "ASVS V5.3.3 \u00b7 CWE-1236",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-ADMIN-01",
+   "title": "The Browser Access private key would have been written to the audit log's request record (the field name key_pem is not secret-named)",
+   "severity": "high",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "The upload field is private_key, which audit.redact redacts; a route test reads every file, answer and log.",
+   "test": "tests/test_ops_admin_routes.py::test_a_certificate_rotation_through_the_routes_and_its_undo",
+   "commit": ""
+  },
+  {
+   "id": "W7-ADMIN-02",
+   "title": "An error answer that quotes the refused request would carry the certificate and key into results, logs and the audit log",
+   "severity": "high",
+   "cwe": "CWE-209",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Errors of the upload are scrubbed of PEM blocks, every key line and long base64 runs before pack_ops sees them.",
+   "test": "tests/test_ops_admin_zpa.py::test_an_error_that_echoes_the_request_never_carries_the_key",
+   "commit": ""
+  },
+  {
+   "id": "W7-ADMIN-03",
+   "title": "The Undo of a schedule change could not be planned: ZPA's default update time (66600 s, 18:30) is not a whole hour",
+   "severity": "medium",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "The undo form accepts whole minutes; the page still offers whole hours.",
+   "test": "tests/test_ops_admin_zpa.py::test_rename_move_and_schedule_send_the_object_as_read_with_the_changes",
+   "commit": ""
+  },
+  {
+   "id": "W7-ADMIN-04",
+   "title": "A portal was refused as in use by a console deleted earlier in the same run",
+   "severity": "low",
+   "cwe": "CWE-841",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "Objects deleted earlier in the run no longer count as users; the later delete depends on the earlier one.",
+   "test": "tests/test_ops_admin_zpa.py::test_users_deleted_first_in_the_same_run_free_what_they_used",
+   "commit": ""
+  },
+  {
+   "id": "W7-ADMIN-05",
+   "title": "The upload held for one person could not be used by the synchronous preview (no actor in its audit scope)",
+   "severity": "low",
+   "cwe": "CWE-639",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "The waited-for preview runs as the requesting actor, as the job route does.",
+   "test": "tests/test_ops_admin_routes.py::test_a_certificate_rotation_through_the_routes_and_its_undo",
+   "commit": ""
+  },
+  {
+   "id": "W7-ADMIN-06",
+   "title": "The pasted device list did not reach the matcher (the lookup body had no text field)",
+   "severity": "medium",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "The lookup request carries text, mode and domain; a route test matches a list.",
+   "test": "tests/test_ops_admin_routes.py::test_a_list_is_matched_through_the_lookup_route",
+   "commit": ""
+  }
+ ],
+ "notes": [
+  "ASSUMED and marked in code and in every plan's notes: moving an App Connector by PUT /connector/{id} with appConnectorGroupId; certBlob as the upload field; the ZCC custom IP-based app create/edit/delete paths and the entitlement update body (the SDK has no usable write); device state words; ZDX trace status words; ZDX user search by q.",
+  "Verified in zscaler-sdk-python 1.11.3: every other path, method and model field; Client Connector's 100 calls an hour (zcc/legacy.py); the version profile ids (utils.pick_version_profile); the deep trace options and lengths."
+ ],
+ "tests_added": 94
+}

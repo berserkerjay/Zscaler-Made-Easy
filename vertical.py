@@ -30,12 +30,25 @@ INDUSTRY_FRAMEWORKS: Dict[str, List[str]] = {
 INDUSTRY_PACKS: Dict[str, List[str]] = {
     "Healthcare": ["healthcare_phi_baseline", "zbp_enterprise_baseline"],
     "Federal": ["fed_policy_pack"],
-    "State & local government": ["fed_policy_pack", "cjis_policy_pack"],
+    "State & local government": ["fed_policy_pack", "cjis_policy_pack", "irs_fti_pack"],
     "Law enforcement (CJIS)": ["cjis_policy_pack"],
     "Financial services": ["global_banking_baseline", "zbp_enterprise_baseline"],
     "Education": ["zbp_enterprise_baseline"],
     "Manufacturing": ["zbp_enterprise_baseline", "zbp_source_code_baseline"],
     "Technology": ["zbp_enterprise_baseline", "zbp_source_code_baseline"],
+}
+
+# The compliance profiles (compliance_profiles.py) suggested per industry,
+# the one to start with first: the one compliance choice offered as a preset.
+INDUSTRY_COMPLIANCE: Dict[str, List[str]] = {
+    "Healthcare": ["HIPAA", "HITRUST"],
+    "Federal": ["FEDRAMP_MOD", "FEDRAMP_HIGH", "CMMC_L2", "FED_ZT", "IRS_1075"],
+    "State & local government": ["GOVRAMP", "IRS_1075", "CJIS"],
+    "Law enforcement (CJIS)": ["CJIS"],
+    "Financial services": ["PCI", "SOX"],
+    "Education": ["FERPA"],
+    "Manufacturing": ["CMMC_L2", "NIST_800_171"],
+    "Technology": ["NIST_800_53", "GDPR"],
 }
 
 REASON = {
@@ -89,4 +102,5 @@ def scope_for(profile: Optional[Dict[str, Any]], *, all_frameworks: Optional[Lis
         packs = [p for p in packs if p in all_packs] or (list(all_packs) if not industry or industry == "Other" else packs)
     scoped = bool(industry and industry != "Other")
     return {"industry": industry, "frameworks": frameworks, "packs": packs, "packs_from": "profile" if chosen_packs else ("industry" if scoped else "all"),
-            "reason": REASON.get(industry, "No industry on the profile: every framework and pack is shown."), "scoped": scoped}
+            "reason": REASON.get(industry, "No industry on the profile: every framework and pack is shown."), "scoped": scoped,
+            "compliance_profiles": list(INDUSTRY_COMPLIANCE.get(industry) or [])}

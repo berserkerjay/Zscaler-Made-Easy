@@ -70,9 +70,9 @@
               <td>
                 <div class="ex-fields">
                   <label class="df-ctl"><span class="lbl">Categories</span><input type="text" id="exCats" placeholder="All custom categories" aria-describedby="exCatsHint" autocomplete="off"></label>
-                  <label class="df-ctl"><span class="lbl">At most</span><input type="number" id="exMax" min="1" max="2000" step="100" value="2000" aria-describedby="exCatsHint"><span class="lbl">URLs</span></label>
+                  <label class="df-ctl"><span class="lbl">At most</span><input type="number" id="exMax" min="1" max="20000" step="100" value="20000" aria-describedby="exCatsHint"><span class="lbl">URLs</span></label>
                 </div>
-                <div class="df-hint" id="exCatsHint">Names or ids, separated by commas. Uses ZIA's URL lookup, the same one the portal's URL Lookup uses: a POST request that changes nothing in the tenant, 100 URLs per request, one request a second, retried when ZIA asks to slow down. At most 2000 URLs per run; the rest are listed as not looked up. Needs DLP or ZIA platform ticked.</div>
+                <div class="df-hint" id="exCatsHint">Names or ids, separated by commas. Uses ZIA's URL lookup, the same one the portal's URL Lookup uses: a POST request that changes nothing in the tenant, 100 URLs per request, one request a second, retried when ZIA asks to slow down. At most 20000 URLs per run (about four minutes); when more are left, or ZIA keeps asking to slow down, or you click Stop, what was looked up is kept in the app's memory for a few hours and Continue looks up the rest. One analysis covers up to 100000 URLs. Needs DLP or ZIA platform ticked.</div>
               </td>
               <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exAnalyze">Analyze (Excel)</button></td>
             </tr>
@@ -85,6 +85,36 @@
               <th scope="row"><div class="adv-pname">Export from tenant</div><div class="adv-pdesc">The DLP rules as a policy pack, with the engines and dictionaries they use, as JSON or as a Terraform workspace.</div></th>
               <td><div class="df-hint">Every DLP rule on the channels in scope. Pick individual rules in Deploy policy packs on the assessment tab.</div></td>
               <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exPackJson">JSON</button><button type="button" class="rp-btn" data-run id="exPackTf">Terraform</button></td>
+            </tr>
+            <tr>
+              <th scope="row"><div class="adv-pname">Export from tenant as Terraform (whole tenant)</div><div class="adv-pdesc">Every object in scope (rules, URL categories, IP and network groups, labels, settings, ZPA segments, groups, servers, connector groups and policies, Cloud &amp; Branch Connector rules and groups, Client Connector trusted networks, forwarding profiles, fail-open policy, device cleanup and web privacy) as one Terraform workspace per product for the official zscaler providers.</div></th>
+              <td>
+                <fieldset class="ex-pick"><legend>Products</legend>
+                  <label><input type="checkbox" name="exTfProduct" value="zia" checked> ZIA</label>
+                  <label><input type="checkbox" name="exTfProduct" value="zpa" checked> ZPA</label>
+                  <label><input type="checkbox" name="exTfProduct" value="ztc" checked> Cloud &amp; Branch Connector</label>
+                  <label><input type="checkbox" name="exTfProduct" value="zcc" checked> Client Connector <span class="df-by" id="exTfZccBeta">(beta provider)</span></label>
+                </fieldset>
+                <fieldset class="ex-pick"><legend>Use</legend>
+                  <label><input type="radio" name="exTfMode" value="adopt" checked> Adopt this tenant: import blocks, every object keeps its state</label>
+                  <label><input type="radio" name="exTfMode" value="clone"> Clone for another tenant: no import blocks, every rule disabled</label>
+                </fieldset>
+                <details class="ex-cols" id="exTfMore">
+                  <summary>More options <span class="df-by" id="exTfCount">every object type in scope</span></summary>
+                  <div class="ex-fields">
+                    <label class="df-ctl"><span class="lbl">Resource-label prefix</span><input type="text" id="exTfPrefix" maxlength="20" placeholder="none" autocomplete="off" spellcheck="false"></label>
+                    <label class="df-ctl"><span class="lbl">Provider namespace</span><input type="text" id="exTfNs" maxlength="200" placeholder="zscaler" autocomplete="off" spellcheck="false"></label>
+                    <label class="df-ctl"><span class="lbl">ZPA microtenant ID</span><input type="text" id="exTfMt" maxlength="20" inputmode="numeric" placeholder="parent tenant" autocomplete="off"></label>
+                  </div>
+                  <fieldset class="ex-pick"><legend class="sr-only">Clone and personal data</legend>
+                    <label><input type="checkbox" id="exTfKeep"> Clone: keep each rule's state (on or off) instead of disabling it</label>
+                    <label><input type="checkbox" id="exTfPersonal"> Include objects that hold email addresses (alert subscriptions, PRA approvals)</label>
+                  </fieldset>
+                  <div id="exTfTypes"><p class="df-hint">Object types: untick one to leave it out.</p><span class="df-hint" id="exTfTypesNote">Loading the object types…</span></div>
+                </details>
+                <div class="df-hint">Read-only. Only what the Scope page ticks is read: DLP or ZIA platform for ZIA, ZPA, Cloud &amp; Branch Connector, ZCC. No secret is ever written: pre-shared keys, passwords and private keys become sensitive variables you fill in. Users are not exported; predefined objects are looked up by name. Each workspace's README lists what was not exported and why. The Client Connector provider (zscaler/zcc) is a beta, pinned to 0.1.2-beta.3: it signs in with a ZIdentity OneAPI client only, so its workspace is skipped, with the reason, for a classic ZIA sign-in and on zscalergov or zscalerten.</div>
+              </td>
+              <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exTenantTf">Terraform (zip)</button></td>
             </tr>
           </tbody>
         </table></div>
@@ -145,6 +175,49 @@
           </tbody>
         </table></div>
       </section>
+
+      <section aria-labelledby="exRgH" id="exRanges" class="ex-ranges">
+        <h2 class="df-h" id="exRgH">Zscaler IP ranges and allowlists</h2>
+        <p class="df-hint">For the firewall in front of Client Connector, Branch and App Connectors or tunnels: Zscaler's published ranges and host names for one cloud, aggregated per region and in all, with ranges you leave out or add, as a plain list, CSV, Palo Alto external dynamic lists, JSON or a Microsoft 365-style list. Nothing is sent to any firewall: you download the file. This does not read your tenant.</p>
+        <p class="df-hint">The ranges come from Zscaler's config portal, <code>config.zscaler.com</code>. Fetching it is off until you turn it on here, and then happens only when you click Fetch now; nothing about your tenant is sent. Without internet access, save each feed's JSON from the address shown on another machine and import it. Every feed is checked: private, reserved or over-broad ranges and host names outside Zscaler's domains are dropped and counted. A feed not fetched or imported is unknown, never empty; one older than 30 days is marked stale.</p>
+        <div id="exRgBox" class="df-hint ex-rg-box" role="status" aria-live="polite">Loading…</div>
+        <div class="ex-fields">
+          <label class="df-ctl"><span class="lbl">ZIA cloud</span><select id="exRgCloud" aria-label="ZIA cloud whose ranges to use"></select></label>
+          <label class="df-ctl"><span class="lbl">ZPA cloud</span><select id="exRgZpa" aria-label="ZPA cloud for the ZPA allow list"><option value="">None</option></select></label>
+        </div>
+        <fieldset class="ex-pick" id="exRgFeeds"><legend>Feeds</legend></fieldset>
+        <div class="ex-row">
+          <label class="adv-switch" for="exRgFetchOn"><input type="checkbox" id="exRgFetchOn" role="switch" aria-describedby="exRgBox"><span>Fetch from config.zscaler.com</span></label>
+          <button type="button" class="rp-btn" id="exRgFetch" disabled aria-disabled="true">Fetch now</button>
+          <button type="button" class="rp-btn danger" id="exRgRemove">Forget the kept feeds</button>
+        </div>
+        <div class="ex-row ex-rg-import">
+          <label class="df-ctl"><span class="lbl">Import</span><select id="exRgImpFeed" aria-label="Feed the file holds"></select></label>
+          <label class="df-ctl"><span class="lbl">File</span><input type="file" id="exRgFile" accept=".json,application/json" aria-label="Feed file saved from config.zscaler.com"></label>
+          <button type="button" class="rp-btn" id="exRgImport">Import</button>
+        </div>
+        <div class="ex-rg-opts">
+          <fieldset class="ex-pick" id="exRgRegions"><legend>Regions <span class="df-by">(none ticked: every region)</span></legend></fieldset>
+          <fieldset class="ex-pick"><legend>Addresses</legend>
+            <label><input type="checkbox" id="exRgV4" checked> IPv4</label>
+            <label><input type="checkbox" id="exRgV6" checked> IPv6</label>
+          </fieldset>
+          <div class="ex-rg-cell"><label class="ex-rg-text" for="exRgExclude"><span>Ranges to leave out <small>(optional, one per line)</small></span><textarea id="exRgExclude" rows="3" maxlength="60000" spellcheck="false" placeholder="165.225.240.0/23"></textarea></label></div>
+          <div class="ex-rg-cell"><label class="ex-rg-text" for="exRgExtra"><span>Ranges to add <small>(optional, for example certificate validation)</small></span><textarea id="exRgExtra" rows="3" maxlength="60000" spellcheck="false" placeholder="192.0.2.10/32"></textarea></label></div>
+        </div>
+        <div class="ex-row">
+          <button type="button" class="rp-btn primary" id="exRgBuild">Build the allowlist</button>
+          <span role="group" aria-label="Allowlist downloads" class="ex-row">
+            <button type="button" class="rp-btn" data-rg-fmt="txt" id="exRgTxt" disabled aria-disabled="true">Plain list</button>
+            <button type="button" class="rp-btn" data-rg-fmt="csv" id="exRgCsv" disabled aria-disabled="true">CSV</button>
+            <button type="button" class="rp-btn" data-rg-fmt="edl_ip" id="exRgEdlIp" disabled aria-disabled="true">Palo Alto EDL (IP)</button>
+            <button type="button" class="rp-btn" data-rg-fmt="edl_url" id="exRgEdlUrl" disabled aria-disabled="true">Palo Alto EDL (URL)</button>
+            <button type="button" class="rp-btn" data-rg-fmt="json" id="exRgJson" disabled aria-disabled="true">JSON</button>
+            <button type="button" class="rp-btn" data-rg-fmt="m365" id="exRgM365" disabled aria-disabled="true">Microsoft 365-style</button>
+          </span>
+        </div>
+        <div id="exRgOut" class="ex-rg-out"></div>
+      </section>
     </main>
   </div>
   <script src="/static/icons.js"></script>
@@ -153,6 +226,7 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/net_ranges.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>
@@ -162,7 +236,7 @@
     const live = $('liveRegion'), result = $('exResult');
     const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
     const SCOPE_LABELS = { dlp: 'DLP', zia_extras: 'ZIA platform', zpa: 'ZPA', zcc: 'ZCC', genai: 'GenAI & prompts', automation: 'Automation readiness',
-      zdx: 'ZDX', zidentity: 'ZIdentity', rbac: 'RBAC' };
+      zdx: 'ZDX', zidentity: 'ZIdentity', rbac: 'RBAC', ztw: 'Cloud & Branch Connector' };
     let running = false, job = null, startToken = null, stopAsked = false;
     function newStartToken() {
       try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
@@ -290,7 +364,8 @@
     }
     // Start a job, follow it live and download its file. `summary(result)`
     // returns HTML shown under the download line.
-    async function runJob(title, url, payload, summary) {
+    async function runJob(title, url, payload, summary, onEnd) {
+      let res = null;
       if (running) return;
       running = true; stopAsked = false; startToken = newStartToken(); job = null; setBusy(true);
       result.innerHTML = '';
@@ -308,7 +383,7 @@
         job = d.job_id;
         if (stopAsked) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ } }
         const snap = await follow(job);
-        const res = snap.result || {};
+        res = snap.result || {};
         if (snap.status === 'cancelled' || res.status === 'stopped') throw new Error(res.stopped || 'You clicked Stop before the export finished: no file was made.');
         if (snap.status !== 'done' || !snap.download) throw new Error(res.error || snap.error || 'The export did not produce a file.');
         const name = await save(snap.download, snap.filename || 'export');
@@ -324,6 +399,7 @@
       } finally {
         clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; setBusy(false);
         $('exLiveSec').hidden = true;
+        if (onEnd) onEnd(res);
       }
     }
     function listHtml(title, obj) {
@@ -442,16 +518,77 @@
         + listHtml('Could not be read:', res.errors) + listHtml('Not in scope, not read:', res.not_in_scope));
     }
     const VERDICTS = [['redundant', 'Redundant'], ['different', 'Categorised differently'], ['uncategorised', 'Not categorised'], ['categorised', 'Categorised (not compared)'], ['not_looked_up', 'Not looked up']];
-    function analyze() {
-      const cats = $('exCats').value.split(',').map(s => s.trim()).filter(Boolean);
+    // Continue: the next run of the same analysis (same categories), from what the last run looked up (kept on the server).
+    let analyzeNext = null;
+    function continueBox(res) {
+      const r = res && res.resume;
+      if (!r || !r.token || !analyzeNext) return;
+      const box = document.createElement('div');
+      box.className = 'op-row ex-continue';
+      box.innerHTML = `<span class="df-hint">${E(Number(r.remaining || 0).toLocaleString())} URL${r.remaining === 1 ? '' : 's'} not looked up yet. The workbook of the next run covers everything so far.</span>
+        <button type="button" class="rp-btn primary" id="exContinue">Continue: look up the next ${E(Number(r.next || r.remaining || 0).toLocaleString())}</button>`;
+      result.appendChild(box);
+      const cats = analyzeNext;
+      $('exContinue').addEventListener('click', () => analyze(cats, r.token));
+    }
+    function analyze(again, token) {
+      const cats = Array.isArray(again) ? again : $('exCats').value.split(',').map(s => s.trim()).filter(Boolean);
       const max = parseInt($('exMax').value, 10);
-      runJob('Custom URL category analyzer', '/api/exports/url-categories/analyze/start', { categories: cats, max_urls: Number.isFinite(max) && max > 0 ? max : 0 }, res => {
+      analyzeNext = cats;
+      const payload = { categories: cats, max_urls: Number.isFinite(max) && max > 0 ? max : 0 };
+      if (typeof token === 'string' && token) payload.resume = token;
+      runJob('Custom URL category analyzer', '/api/exports/url-categories/analyze/start', payload, res => {
         const rows = (res.per_category || []).map(p => `<tr><th scope="row">${E(p.category)}</th><td>${E(p.urls)}</td>${VERDICTS.map(([k]) => `<td>${E(p[k] || 0)}</td>`).join('')}</tr>`).join('');
         return `<div class="df-tablewrap"><table class="df-table ex-sum"><caption class="sr-only">Verdicts per custom category</caption><thead><tr><th scope="col">Category</th><th scope="col">URLs</th>${VERDICTS.map(([, l]) => `<th scope="col">${E(l)}</th>`).join('')}</tr></thead><tbody>${rows || '<tr><td colspan="7">No custom category was analysed.</td></tr>'}</tbody></table></div>`
           + `<ul class="ex-list">${(res.notes || []).map(n => `<li>${E(n)}</li>`).join('')}</ul>`;
-      });
+      }, continueBox);
     }
     function inventory() { runJob('DLP inventory', '/api/dlp-packs/inventory/start', {}); }
+    // ── whole tenant as Terraform (tenant_terraform.py) ─────────────
+    const TF_PRODUCTS = { zia: 'ZIA', zpa: 'ZPA', ztc: 'Cloud & Branch Connector', zcc: 'Client Connector' };
+    function tfCount() {
+      const all = document.querySelectorAll('#exTfTypes input[name="exTfType"]'), off = Array.from(all).filter(x => !x.checked).length;
+      $('exTfCount').textContent = off ? `${off} object type${off === 1 ? '' : 's'} left out` : 'every object type in scope';
+    }
+    async function tfTypes() {
+      const box = $('exTfTypes'), note = $('exTfTypesNote');
+      try {
+        const r = await fetch('/api/tenant-terraform/catalogue', { cache: 'no-store' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        note.remove();
+        Object.entries(d.products || {}).forEach(([p, types]) => {
+          const fs = document.createElement('fieldset'); fs.className = 'ex-colgrid';
+          const beta = ((d.providers || {})[p] || {}).beta;
+          const lg = document.createElement('legend'); lg.textContent = (TF_PRODUCTS[p] || p) + (beta ? ' (beta provider)' : ''); fs.appendChild(lg); box.appendChild(fs);
+          types.forEach(t => {
+            const lab = document.createElement('label');
+            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.name = 'exTfType'; cb.value = t.key; cb.checked = true;
+            const sp = document.createElement('span'); sp.textContent = `${t.label} (needs ${t.needs})`;
+            lab.appendChild(cb); lab.appendChild(sp); fs.appendChild(lab);
+          });
+        });
+      } catch (e) {
+        note.textContent = `The object types could not be listed (${e.message}), so every type in scope is exported.`;
+      }
+    }
+    $('exTfTypes').addEventListener('change', tfCount);
+    function tenantTf() {
+      const products = Array.from(document.querySelectorAll('input[name="exTfProduct"]:checked')).map(x => x.value);
+      if (!products.length) { card('risk', 'Pick a product', 'Tick at least one product to export.'); say('Tick at least one product to export.'); return; }
+      const mode = (document.querySelector('input[name="exTfMode"]:checked') || {}).value || 'adopt';
+      const exclude = Array.from(document.querySelectorAll('#exTfTypes input[name="exTfType"]')).filter(x => !x.checked).map(x => x.value);
+      const payload = { products, mode, exclude, prefix: $('exTfPrefix').value.trim(), provider_namespace: $('exTfNs').value.trim(),
+        microtenant_id: $('exTfMt').value.trim(), keep_rule_state: $('exTfKeep').checked, include_personal_data: $('exTfPersonal').checked };
+      runJob(mode === 'clone' ? 'Whole tenant as Terraform (clone)' : 'Whole tenant as Terraform', '/api/tenant-terraform/start', payload, res => {
+        const rows = Object.entries(res.products || {}).map(([p, v]) => `<tr><th scope="row">${E(TF_PRODUCTS[p] || p)}</th><td>${E(v.resources)}</td><td>${E(v.imports)}</td><td>${E(v.data_sources)}</td><td>${E((v.secret_variables || []).join(', ') || 'none')}</td></tr>`).join('');
+        const nx = (res.not_exported || []).slice(0, 40).map(x => `<li><strong>${E(x.what)}</strong>: ${E(x.why)}</li>`).join('');
+        const inc = (res.may_be_incomplete || []).slice(0, 20).map(x => `<li><strong>${E(x.what)}</strong>: ${E(x.why)}</li>`).join('');
+        return (inc ? `<p class="df-hint"><strong>May be incomplete</strong> (what was read is exported; do not treat these lists as the whole tenant):</p><ul class="ex-list">${inc}</ul>` : '')
+          + (rows ? `<div class="df-tablewrap"><table class="df-table ex-sum"><caption class="sr-only">Objects per workspace</caption><thead><tr><th scope="col">Workspace</th><th scope="col">Resources</th><th scope="col">Import blocks</th><th scope="col">Lookups by name</th><th scope="col">Secret variables</th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
+          + (nx ? `<p class="df-hint">Not exported (the workspace README lists every one):</p><ul class="ex-list">${nx}</ul>` : '');
+      });
+    }
     function packExport(fmt) { runJob(`Export from tenant (${fmt === 'json' ? 'JSON' : 'Terraform'})`, '/api/dlp-packs/export/start', { format: fmt }); }
 
     async function assessment(fmt) {
@@ -499,10 +636,11 @@
     $('exLocations').addEventListener('click', locationsExport);
     $('exZcc').addEventListener('click', zccExport);
     $('exUrls').addEventListener('click', urlsExport);
-    $('exAnalyze').addEventListener('click', analyze);
+    $('exAnalyze').addEventListener('click', () => analyze());
     $('exInventory').addEventListener('click', inventory);
     $('exPackJson').addEventListener('click', () => packExport('json'));
     $('exPackTf').addEventListener('click', () => packExport('terraform'));
+    $('exTenantTf').addEventListener('click', tenantTf);
     $('exAssessXlsx').addEventListener('click', () => assessment('xlsx'));
     $('exAssessDocx').addEventListener('click', () => assessment('docx'));
     $('exPlansRefresh').addEventListener('click', plans);
@@ -512,6 +650,7 @@
     showScope();
     plans();
     loadOptions();
+    tfTypes();
   })();
   </script>
 </body>

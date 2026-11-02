@@ -1,5 +1,7 @@
 # Getting Started — a walkthrough for your first engagement
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 This guide assumes you have never used Zscaler Made Easy and know only the basics
 of Zscaler. It takes a tenant from "we don't know our DLP posture" to
 "gaps identified and a policy pack ready to deploy" in about an hour.
@@ -54,7 +56,7 @@ shows each step. Hand-edited files are kept: proxy or CA-bundle lines
 that older instructions had you put into the start script are moved into
 `local_settings.bat`, and any other edit is set aside and re-applied after
 the pull. `UPDATE_Zscaler_Made_Easy.bat` does the same from a command
-prompt. The repository is private, so git on the laptop must be signed in
+prompt. While the repository is private, git on the laptop must be signed in
 to GitHub once (`git fetch` in the app folder prompts for it). A copy that
 was installed from a ZIP (not with git) cannot update in place: stop it,
 download a fresh ZIP, replace the folder keeping `local_settings.bat` or

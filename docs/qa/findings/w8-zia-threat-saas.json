@@ -1,0 +1,139 @@
+{
+ "area": "Functionality and security: ZIA threat protection and SaaS Security hygiene checks (zscaler_full_checks THR.1-11, UF.5-7, SAAS.1-4), their scope and channel gating, sample tenant and snapshot reads, and the Cloud Sandbox file hash builder on Bulk changes (ops_zia_sandbox, static/ops_zia_sandbox.js)",
+ "title": "Eighteen new scored checks and one write builder checked against the installed SDK 1.11.3, the Scope rule, the four write gates, untrusted input and Undo, offline on the sample tenant",
+ "standards": [
+  "ASVS V1.14.1",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.3.1",
+  "ASVS V5.3.3",
+  "ASVS V7.4.1",
+  "ASVS V8.3.4",
+  "ASVS V11.1.1",
+  "ASVS V11.1.4",
+  "CWE-20",
+  "CWE-79",
+  "CWE-117",
+  "CWE-200",
+  "CWE-280",
+  "CWE-362",
+  "CWE-367",
+  "CWE-754",
+  "CWE-841",
+  "CWE-863",
+  "CWE-1188",
+  "CWE-1287",
+  "WSTG-ATHZ-02",
+  "WSTG-INPV-01",
+  "WSTG-BUSL-06",
+  "WCAG 2.2 SC 1.3.1",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 4.1.3",
+  "SSDF PW.4.1"
+ ],
+ "checks": [
+  {
+   "id": "W8-TS-C01",
+   "what": "Every path, method and model field the checks read and the builder writes exists in zscaler-sdk-python 1.11.3 (zscaler/zia/<module>.py, models/); fields the SDK does not model are marked assumed in code comments (fileHashCount fields, EUN camelCase names, quarantine action names, alert status values)",
+   "standard": "SSDF PW.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C02",
+   "what": "The checks run only under ZIA platform; the SaaS Security malware rules, tenant scan state and quarantine templates are read only when SaaS Security is marked Zscaler (channel_scope ENDPOINT_CHANNELS / CHANNEL_READS); tests/test_no_implicit_reads.py passes with them",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C03",
+   "what": "A 404 (feature not licensed) is INFO outside the score; a 401/403 is Not permitted through guard_registry; an error, empty or odd-shaped answer never crashes a check or makes it pass",
+   "standard": "CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C04",
+   "what": "Lists that hold secrets are never read: the cloud-to-cloud receivers come from the lite list (the full one carries tenantAuthorizationInfo) and the UEBA webhooks (passwords, tokens) are not read; the support e-mail in the notification settings is counted, not shown",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C05",
+   "what": "Tenant names in findings are stripped of control characters and capped at 60 characters",
+   "standard": "CWE-117",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C06",
+   "what": "Every new read has a sample tenant answer whose fields the SDK model knows, and is saved in a snapshot only when ZIA platform is ticked",
+   "standard": "CWE-1287",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C07",
+   "what": "Sandbox hash builder: only an MD5 (32 hex) is accepted, SHA-1/SHA-256, full-width digits, NUL and junk refused naming the line; at most 100 per operation; comments cleaned and capped",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C08",
+   "what": "Sandbox hash builder goes through the engine: out of scope is a 400 before sign-in; write mode, writer, named assessor and an always-on typed phrase; plan hash; re-read right before the PUT with a conflict instead of an overwrite; read-back after activation; Undo removes exactly the hashes added and is accepted only as the Undo of the record; a snapshot refuses the write",
+   "standard": "ASVS V11.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C09",
+   "what": "The PUT replaces the whole list, so the list is sent back as re-read with every other entry untouched; an allow-listed hash is excluded, never turned into a block",
+   "standard": "CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C10",
+   "what": "The form escapes every value it draws, labels the field and announces the check result in a live region; the field has a help-catalogue entry and the builder and checks carry What's new marks",
+   "standard": "WCAG 2.2 SC 3.3.2",
+   "result": "pass"
+  },
+  {
+   "id": "W8-TS-C11",
+   "what": "Mutation proof: removing the not-licensed answer, accepting SHA-256, dropping the re-read conflict, the SaaS channel gate or the typed phrase each makes tests in tests/test_w8_zia_threat_saas.py fail (12, 1, 1, 1 and 4 failures)",
+   "standard": "SSDF PW.8.2",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W8-TS-01",
+   "title": "The SDK's end_user_notification.get_eun_settings names a class it never imports (EndUserNotification), so reading /eun through the SDK client fails; the checks read it through the raw client's path instead",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V1.14.1",
+   "status": "accepted",
+   "fix": "zscaler_full_checks.thr_5 reads /zia/eun (raw path); the camelCase field names are marked assumed",
+   "test": "tests/test_w8_zia_threat_saas.py::test_oracle_passes_the_good_tenant_and_flags_the_bad_one",
+   "commit": "da9a3c2"
+  },
+  {
+   "id": "W8-TS-02",
+   "title": "The sample tenant refused every PUT to a settings object (NOT_MODELLED), so the Cloud Sandbox hash builder could not be tried offline",
+   "severity": "low",
+   "cwe": "CWE-754",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "offline_tenant: a PUT to the Sandbox hash list (_SETTINGS_PUT) replaces it in the sample's memory and updates the quota; a snapshot still refuses it",
+   "test": "tests/test_w8_zia_threat_saas.py::test_apply_keeps_every_other_entry_reads_back_and_undo_removes_only_what_was_added",
+   "commit": "2e163fc"
+  },
+  {
+   "id": "W8-TS-03",
+   "title": "tests/test_new_marks.py hard-coded the 2026-10-28 marks (Test a list, the protocol field), so adding any newer release broke it",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "the browser checks target the releases still marked (live motion, the ZIA platform scope box) and compute the next release date from the manifest",
+   "test": "tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out",
+   "commit": "2e163fc"
+  }
+ ],
+ "tests_added": 130
+}

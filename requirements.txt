@@ -7,6 +7,16 @@ zscaler-sdk-python>=1.9.0
 mcp[cli]>=1.2.0
 python-docx>=1.0.0
 pyjwt[crypto]>=2.15.0  # 2.15.0 fixes CVE-2026-101918 (nested-payload RecursionError)
+# A hardened XML parser for untrusted uploads (the PAN-OS configuration export
+# the firewall migration reads): no DTDs, no entities, no external references.
+defusedxml>=0.7.1
+# Team server SAML 2.0 sign-in (sso_saml.py): XML signature verification in
+# pure Python on lxml and cryptography (no xmlsec binary). Only what the
+# signature covers is read from an assertion (signature wrapping defence).
+signxml>=5.1.0
+# Team server passkeys (team_passkeys.py): WebAuthn registration and sign-in
+# verification (attestation, assertion signature, RP ID, origin, counter).
+webauthn>=3.0.1
 # Transitive pins raised for the image scan (Trivy HIGH):
 msgpack>=1.2.3  # 1.2.3 fixes CVE-2026-114613 (GHSA-j586-36cw-2gc2)
 setuptools>=78.1.1

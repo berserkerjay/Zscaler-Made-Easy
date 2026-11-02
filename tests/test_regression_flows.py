@@ -234,6 +234,8 @@ def test_remediation_live_needs_write_mode_and_then_sends_the_planned_call(raw_t
     assert raw_tenant.writes == [] and raw_tenant.signed_in == 0
     write_mode(True)
     plan = c.post("/api/remediation/plan", json=dict(CREDS, check_id=recipe["check_id"], criteria=recipe["criteria"])).json()
+    assert c.post("/api/remediation/execute", json=body).status_code == 400, "a live fix needs the previewed plan_hash"
+    body["plan_hash"] = plan["plan_hash"]
     r = c.post("/api/remediation/execute", json=body)
     assert r.status_code == 200 and r.json()["status"] == "completed", r.text
     method = "PUT" if plan["method"] == "PATCH" else plan["method"]
@@ -309,7 +311,7 @@ def test_pack_removal_preview_then_apply_through_the_gates(sdk_tenant, write_mod
     pre = c.post("/api/dlp-packs/removal/preflight", json=dict(CREDS, pack_ids=[PACK]))
     assert pre.status_code == 200, pre.text
     plan_hash = pre.json()["plan_hash"]
-    body = dict(CREDS, pack_ids=[PACK], plan_hash=plan_hash, confirm=True, assessor=ASSESSOR)
+    body = dict(CREDS, pack_ids=[PACK], plan_hash=plan_hash, confirm=True, assessor=ASSESSOR, confirm_phrase=pre.json()["confirm_phrase"])
     assert c.post("/api/dlp-packs/removal/apply", json=dict(body, confirm=False)).status_code == 400
     r = c.post("/api/dlp-packs/removal/apply", json=body)
     assert r.status_code == 200, r.text
@@ -340,7 +342,7 @@ class _McpTenant:
 
 
 def test_the_mcp_server_tools_answer_over_the_tool_api(monkeypatch):
-    """SSDF PW.8.2 · CWE-440: the MCP server's four tools are listed and answer (list, health, one section) with credentials from the environment only."""
+    """SSDF PW.8.2 · CWE-440: the MCP server's four assessment tools are listed and answer (list, health, one section) with credentials from the environment only."""
     import dlp_mcp_server as m
     monkeypatch.setenv("ZSCALER_VANITY_DOMAIN", "acme")
     monkeypatch.setenv("ZSCALER_CLIENT_ID", "cid-mcp")
@@ -355,7 +357,7 @@ def test_the_mcp_server_tools_answer_over_the_tool_api(monkeypatch):
         return names, checks, health, section
 
     names, checks, health, section = asyncio.run(run())
-    assert names == ["get_health", "list_checks", "run_assessment", "run_section"]
+    assert {"get_health", "list_checks", "run_assessment", "run_section"} <= set(names)   # plus the read-only analysis tools (test_mcp_tools)
     as_json = [json.loads(r.content[0].text) for r in (checks, health, section)]
     assert as_json[0]["total_checks"] > 100 and as_json[0]["sections"]
     assert as_json[1]["credentials_configured"] is True and as_json[1]["missing_environment_variables"] == []
@@ -534,7 +536,9 @@ def test_with_no_source_naming_a_cloud_the_models_default_still_applies(monkeypa
     """ASVS V4.2.1 · CWE-440: with no profile and no environment or file naming a cloud, an unsent cloud is the model's default, as before."""
     monkeypatch.setattr(srv, "_APP_DIR", str(tmp_path))
     cls = getattr(srv, model)
-    default = cls.model_fields["cloud"].default or ""
+    # These families always resolved an unnamed cloud to production (their old field default; now blank so a profile's cloud wins).
+    families = (srv.AssessRequest, srv.MigrateRequest, srv.RemediationPlanRequest, srv.RemediationExecuteRequest)
+    default = "production" if issubclass(cls, families) else (cls.model_fields["cloud"].default or "")
     creds = srv._tenant_creds(cls.model_validate({"vanity_domain": "acme", "client_id": "cid-typed", "client_secret": "typed-secret-not-real"}))
     assert creds["cloud"] == default and creds["vanity_domain"] == "acme" and creds["client_id"] == "cid-typed"
 

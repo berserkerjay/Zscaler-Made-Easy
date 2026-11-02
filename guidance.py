@@ -96,7 +96,7 @@ def _registries() -> List[Sequence[Any]]:
     out: List[Sequence[Any]] = []
     for mod, attr in (("dlp_assessment_full_auto", "REG"), ("zscaler_full_checks", "PLATFORM_REG"), ("zscaler_genai_checks", "GENAI_REG"),
                       ("zscaler_automation_checks", "AUTOMATION_REG"), ("zscaler_rbac_checks", "RBAC_REG"), ("zscaler_zdx_checks", "ZDX_REG"),
-                      ("zscaler_zidentity_checks", "ZID_REG")):
+                      ("zscaler_zidentity_checks", "ZID_REG"), ("zscaler_full_checks", "DLP_EXTRA_REG"), ("zscaler_genai_checks", "AIGUARD_REG")):
         try:
             out.extend(getattr(__import__(mod), attr))
         except Exception:  # noqa: BLE001
@@ -289,8 +289,10 @@ def evaluate(entries: Sequence[Dict[str, Any]], *, now: Optional[float] = None) 
 
 
 def _slug(url: str) -> str:
+    """A short, stable key for a URL (not a security use: on a FIPS-mode
+    OpenSSL a plain sha1() is refused, usedforsecurity=False is allowed)."""
     import hashlib
-    return hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha1(url.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
 
 
 # ── Approval: record the reference in the shipped config ─────────────

@@ -26,6 +26,7 @@ import os
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+import store_crypto
 
 STORE_FILE = "proposals.json"
 DISMISS_DAYS = 30
@@ -74,7 +75,7 @@ def _read() -> Dict[str, Any]:
     p = store_path()
     try:
         with open(p, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = store_crypto.load_json(f)
         if isinstance(data, dict) and isinstance(data.get("tenants"), dict):
             return data
     except (OSError, ValueError):
@@ -134,7 +135,7 @@ def _write(data: Dict[str, Any]) -> None:
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), 0o600)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=1)
+            store_crypto.dump_json(data, f, indent=1)
             f.flush()
             os.fsync(f.fileno())
         with contextlib.suppress(OSError):

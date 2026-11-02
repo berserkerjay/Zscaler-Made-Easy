@@ -102,7 +102,9 @@ def test_a_channel_widens_only_its_own_checks():
     assert {"/zia/webDlpRules", "/zia/webDlpGlobalOptions"} <= web - base
     platform = set(bs.select(["zia_extras"], {})["endpoints"])
     cac = set(bs.select(["zia_extras"], {"cloud_app_control": "zscaler"})["endpoints"])
-    assert {"/zia/cloudApplicationRules", "/zia/tenancyRestrictionProfile", "/zia/advancedSettings"} <= cac - platform,         "ZIA platform's Cloud Apps checks are in scope only with Cloud App Control on Zscaler"
+    # /zia/advancedSettings is read under ZIA platform alone too (domain fronting THR.9, Microsoft 365 one-click UF.7).
+    assert "/zia/advancedSettings" in platform
+    assert {"/zia/cloudApplicationRules", "/zia/tenancyRestrictionProfile"} <= cac - platform,         "ZIA platform's Cloud Apps checks are in scope only with Cloud App Control on Zscaler"
     assert set(bs.select(["zia_extras"], {"cloud_app_control": "alternative"})["endpoints"]) == platform,         "alternative and gap are both out of scope, as the assessment does"
 
 
@@ -182,7 +184,7 @@ def test_the_map_gives_each_check_every_endpoint_it_really_reads():
 def test_summary_names_scopes_and_zscaler_channels():
     sel = bs.select(["dlp", "zcc"], WEB_EMAIL)
     assert sel["summary"].endswith("endpoints for DLP (Web, Email, SSL), ZCC")
-    assert bs.select(["zdx"], {})["summary"] == "6 endpoints for ZDX"
+    assert bs.select(["zdx"], {})["summary"] == "7 endpoints for ZDX"
     assert bs.select(["nonsense"], {})["scopes"] == []
 
 
@@ -202,7 +204,7 @@ def test_out_of_scope_endpoints_are_never_read():
 
 def test_only_zdx_reads_six_endpoints():
     sel, t, _ = _watch(["zdx"], {})
-    assert sorted(t.calls) == sorted(sel["endpoints"]) and len(t.calls) == 6
+    assert sorted(t.calls) == sorted(sel["endpoints"]) and len(t.calls) == 7   # 7 with the ZDX alert history (cloud8/zdx-zid-zcc)
 
 
 def test_nothing_in_scope_is_refused_and_never_falls_back_to_everything():
@@ -220,7 +222,7 @@ def test_a_changed_scope_compares_only_the_shared_endpoints_and_says_so():
     sel, _, snap = _watch(["zdx", "zidentity"], {}, client=t2)
     tenant_changes = [c for c in snap["diff"]["changes"] if c["watcher"] == "tenant"]
     scope = [c for c in tenant_changes if c["kind"] == "scope_changed"]
-    assert len(scope) == 1 and "scope changed" in scope[0]["text"] and "6 endpoints read both times" in scope[0]["text"]
+    assert len(scope) == 1 and "scope changed" in scope[0]["text"] and "7 endpoints read both times" in scope[0]["text"]
     assert "3 newly in scope" in scope[0]["text"]
     assert not [c for c in tenant_changes if c["kind"] == "endpoint_status"]
     # The same scope again: nothing to say about it.
@@ -269,10 +271,10 @@ def test_the_run_reads_only_the_scope_the_page_sent(server):
     r = c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, "scopes": ["zdx"], "channels": {}})
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["endpoints"] == 6 and body["scope"]["summary"] == "6 endpoints for ZDX" and body["scope"]["source"] == "the Scope page"
+    assert body["endpoints"] == 7 and body["scope"]["summary"] == "7 endpoints for ZDX" and body["scope"]["source"] == "the Scope page"
     d = _wait_idle(c)
     assert sorted(tenant.calls) == sorted(bs.select(["zdx"], {})["endpoints"]) and tenant.closed
-    assert d["latest"]["tenant"]["scope"]["summary"] == "6 endpoints for ZDX"
+    assert d["latest"]["tenant"]["scope"]["summary"] == "7 endpoints for ZDX"
 
 
 def test_nothing_in_scope_is_a_400_before_signing_in(server):
@@ -569,7 +571,7 @@ def test_channels_in_another_order_are_the_same_scope():
 
 def test_a_channel_that_brings_nothing_in_is_not_named_and_is_not_a_scope_change():
     a = bs.select(["zcc"], {"web_dlp": "zscaler", "email_dlp": "zscaler"})
-    assert a["summary"] == bs.select(["zcc"], {})["summary"] == "23 endpoints for ZCC"
+    assert a["summary"] == bs.select(["zcc"], {})["summary"] == "25 endpoints for ZCC"   # 25 with the process- and custom IP-based bypass apps (cloud8/zdx-zid-zcc)
     _watch(["zcc"], {})
     _, _, snap = _watch(["zcc"], {"web_dlp": "zscaler"})
     assert not [c for c in snap["diff"]["changes"] if c["kind"] == "scope_changed"]
@@ -640,7 +642,7 @@ def test_an_unreachable_or_partial_watch_is_said_in_the_run_status(server, monke
     monkeypatch.setattr(beacon, "probe_tenant", lambda cl, endpoints=None, **k: _partial(endpoints))
     assert c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, "scopes": ["zdx"]}).status_code == 200
     d = _wait_idle(c)
-    assert d["timer"]["last_status"] == "partial" and "4 of 6 endpoints in scope were not read" in d["timer"]["last_error"], d["timer"]
+    assert d["timer"]["last_status"] == "partial" and "5 of 7 endpoints in scope were not read" in d["timer"]["last_error"], d["timer"]
 
 
 def test_the_get_count_includes_gets_that_timed_out():

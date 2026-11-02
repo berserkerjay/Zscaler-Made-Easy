@@ -1,0 +1,126 @@
+{
+  "area": "zpa-policy",
+  "title": "ZPA policy completeness: every ZPA policy type, AppProtection and the infrastructure behind the diagnostics",
+  "files": [
+    "zpa_reader.py",
+    "zpa_analysis.py",
+    "zscaler_full_checks.py",
+    "offline_tenant.py",
+    "sample_tenant.py",
+    "scope_permissions.py"
+  ],
+  "standards": [
+    "ASVS 4.0.3 L2 V1.4, V1.14, V4.1, V5.1, V7.1, V7.4, V8.3",
+    "OWASP Top 10 2021 A01, A04, A05",
+    "WSTG ATHZ-02, ATHZ-03, CONF-01, CONF-05, ERRH-01, INFO-05, INPV-12",
+    "CWE-200, CWE-284, CWE-312, CWE-693, CWE-754, CWE-778, CWE-1164, CWE-1188"
+  ],
+  "coverage": {
+    "before": 89.0,
+    "after": 91.0
+  },
+  "checks": [
+    {
+      "id": "policy-types",
+      "what": "redirection, credential, capabilities and browser protection (clientless) policies read with list_rules; policy_group* not read",
+      "standard": "ASVS V1.4.1",
+      "result": "pass"
+    },
+    {
+      "id": "infrastructure-reads",
+      "what": "servers, business continuity (one call, no paging), Private Cloud sites, groups and controllers, Branch and Cloud Connector groups and connectors read with list methods only",
+      "standard": "WSTG-CONF-05",
+      "result": "pass"
+    },
+    {
+      "id": "bc-secrets",
+      "what": "business continuity SAML private keys, certificates and metadata, and connector fingerprints never kept; snapshot scrub masks them",
+      "standard": "ASVS V8.3.4",
+      "result": "pass"
+    },
+    {
+      "id": "inspection",
+      "what": "web segments with no INSPECT rule, monitor-only profiles, unattached custom controls",
+      "standard": "CWE-693",
+      "result": "pass"
+    },
+    {
+      "id": "forwarding-bypass",
+      "what": "client forwarding BYPASS deciding for a sensitive segment (high unconditional, medium conditional, clean under an earlier Intercept)",
+      "standard": "ASVS V1.4.4",
+      "result": "pass"
+    },
+    {
+      "id": "pra",
+      "what": "clipboard copy and uninspected file transfer, unrecorded PRA sessions, credentials with no user condition",
+      "standard": "CWE-200",
+      "result": "pass"
+    },
+    {
+      "id": "unmanaged-isolation",
+      "what": "Browser Access allowed with no isolation (high when sensitive), no browser protection MONITOR rule",
+      "standard": "ASVS V1.4.4",
+      "result": "pass"
+    },
+    {
+      "id": "not-assessed",
+      "what": "a list that fails to read leaves its templates not assessed; a 404 is N/A (not licensed) in the assessment",
+      "standard": "ASVS V7.4.1",
+      "result": "pass"
+    },
+    {
+      "id": "scope",
+      "what": "new reads only under the ZPA Scope key; ZPA not ticked is refused before sign-in; snapshot plan adds the lists under ZPA only",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "offline",
+      "what": "every new read is in the sample tenant and the snapshot capture; no network in tests",
+      "standard": "WSTG-CONF-05",
+      "result": "pass"
+    },
+    {
+      "id": "read-cost",
+      "what": "the Path analyzer and Device posture read only what they use (extended=False): no extra ZPA call per analysis",
+      "standard": "CWE-400",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "W8-ZPA-01",
+      "title": "Only five of the SDK's ZPA policy types were read: redirection, privileged credential and capabilities, and browser protection policies were never assessed",
+      "severity": "medium",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "status": "fixed",
+      "fix": "zpa_reader reads every policy type the SDK's PolicySetControllerAPI.POLICY_MAP lists except the portal, VPN and SIEM policies; ten templates and six assessment checks judge them.",
+      "test": "tests/test_zpa_policy_completeness.py::test_every_policy_type_and_new_list_is_read_with_list_methods_only",
+      "commit": "ac75d3f"
+    },
+    {
+      "id": "W8-ZPA-02",
+      "title": "A server group listing its servers only through the application server list was called empty (ZPA-SV-01) and served by 0 servers in a diagnosis",
+      "severity": "low",
+      "cwe": "CWE-754",
+      "asvs": "V11.1.4",
+      "status": "fixed",
+      "fix": "Servers are counted from the group, else from the application server list (each server names its groups).",
+      "test": "tests/test_zpa_policy_completeness.py::test_a_server_group_listing_no_servers_counts_them_from_the_server_list",
+      "commit": "ac75d3f"
+    },
+    {
+      "id": "W8-ZPA-03",
+      "title": "The policy-group model (policy_group, policy_group_rule, policy_group_set) is not read",
+      "severity": "info",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "status": "accepted",
+      "fix": "Left out on purpose until the model is documented; the reader's docstring and a test say so.",
+      "test": "tests/test_zpa_policy_completeness.py::test_every_policy_type_and_new_list_is_read_with_list_methods_only",
+      "commit": "ac75d3f"
+    }
+  ],
+  "tests_added": 23
+}

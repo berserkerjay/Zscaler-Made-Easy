@@ -97,3 +97,19 @@ self_heal.json
 .fingerprint-*
 .deployments-*
 .posture-*
+# Local settings of update notifications and local plugins (update_notify.py, local_plugins.py)
+update_notify.json
+plugins.json
+# Their atomic-write temporaries (a crash between the write and the rename leaves one behind)
+.update-notify-*
+.plugins-*
+# Scheduled sync jobs (sync_jobs.py): jobs and history, its lock file and atomic-write temporaries
+sync_jobs.json
+sync_jobs.json.lock
+.sync_jobs.*.tmp
+# Configuration backups, the configuration cache and templates (config_backup.py): tenant configuration, beside the profiles
+config_backups/
+
+# Agent workspace run outputs (agent-workspace/output/README.md explains them)
+agent-workspace/output/*
+!agent-workspace/output/README.md

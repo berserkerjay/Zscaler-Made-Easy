@@ -244,6 +244,8 @@ jobs:
           {
             echo "## Zscaler Made Easy $GITHUB_REF_NAME, standalone edition"
             echo
+            echo "**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc."
+            echo
             echo "No installation: download the archive for your system, check it, unpack it and double-click **ZscalerMadeEasy**."
             echo "INSTALL.md, section \"Download and run\", has every step."
             echo

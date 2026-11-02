@@ -1,0 +1,116 @@
+{
+ "area": "Functional correctness and write safety of the POV build (pov_build.py, /api/pov/build/*, the POV planner's Build tab) and of rehearsal on the sample tenant and snapshots (sample_tenant.py, offline_tenant.py, the apply refusals in dlp_api_server.py)",
+ "title": "One combined plan across the Build new plugins with one hash, applied in a safe order with one typed confirmation, stopping at the first failure with a reverse Undo; every builder planned on the sample and on a snapshot with no network and no client built, apply refused there",
+ "standards": [
+  "ASVS V11.1.1",
+  "ASVS V11.1.6",
+  "ASVS V4.1.1",
+  "ASVS V4.1.3",
+  "ASVS V1.14.1",
+  "ASVS V5.1.3",
+  "CWE-841",
+  "CWE-367",
+  "CWE-284",
+  "CWE-653",
+  "CWE-440",
+  "CWE-754",
+  "CWE-1188",
+  "WSTG-BUSL-06",
+  "WSTG-ATHZ-02",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 2.1.1",
+  "WCAG 2.2 SC 3.3.4"
+ ],
+ "checks": [
+  {
+   "id": "W7-POV-C01",
+   "what": "The combined plan lists every part in dependency order whatever order the request gives, every object with before and after, under one sha256 that moves with any part's options or the tenant",
+   "standard": "ASVS V11.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-POV-C02",
+   "what": "A part that needs an earlier part's object (segments: the connector group; policy rules: the segments) is planned against the earlier part's stand-in instead of being blocked; outside a POV build the builders behave exactly as before",
+   "standard": "CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "W7-POV-C03",
+   "what": "One typed confirmation applies every part in order through admin_ops.execute (its own hash and phrase, re-read before each write, read-back, audit, record); the wire log shows ZIA before ZPA before ZCC and the connector group before segment groups before segments before policy rules",
+   "standard": "WSTG-BUSL-06",
+   "result": "pass"
+  },
+  {
+   "id": "W7-POV-C04",
+   "what": "A part ZCC refuses stops the run there: later parts are not attempted, the report names the failure; Undo plans the recorded inverses latest first and restores the tenant exactly",
+   "standard": "CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W7-POV-C05",
+   "what": "The whole plan is re-read first (a moved tenant writes nothing); each part is re-read right before it is written and must equal the preview modulo the ids just created",
+   "standard": "CWE-367",
+   "result": "pass"
+  },
+  {
+   "id": "W7-POV-C06",
+   "what": "Gates: writer, confirm, plan hash, assessor, write mode refused before sign-in; a part out of scope is a 400 naming it before any client is built; a live build needs the profile's POV; both apply routes are in the write-safety table",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W7-POV-C07",
+   "what": "Every Build new type, the classic Bulk changes types, the POV build and pack deploy and removal previews plan on the sample and on a snapshot saved through offline_tenant.capture, labelled a rehearsal, with no socket and no tenant client built",
+   "standard": "ASVS V1.14.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-POV-C08",
+   "what": "Bulk change, builder, POV build, pack deploy and pack removal applies on the sample or a snapshot answer 409 'Rehearsal only … nothing was written' with write mode on and every gate held; the offline tenant is unchanged",
+   "standard": "ASVS V4.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-POV-C09",
+   "what": "The Build tab in Chrome: dry run reached by keyboard, a section per product, apply with one phrase and Undo offered, rehearsal on the sample with no Apply, no sideways scroll at 320px and 768px",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-POV-01",
+   "title": "Guided POV with one dry run and one apply was missing: each builder was previewed and applied on its own from Bulk changes",
+   "severity": "medium",
+   "cwe": "CWE-841",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "pov_build.py (STEPS order, combined plan and hash, execute with stop-at-first-failure, undo_parts), admin_ops pending_plan, ops_zpa stand-ins, /api/pov/build/* routes, the Build tab in static/pov.js",
+   "test": "tests/test_pov_build.py::test_one_apply_builds_every_part_in_order_and_undo_reverses_it_exactly",
+   "commit": "87aa42a"
+  },
+  {
+   "id": "W7-POV-02",
+   "title": "Most Build new types could not plan on the sample tenant (no network apps, DNS gateways, cloud app catalogue, certificates, ZPA enrollment certificates or OWASP controls, ZDX configuration, AI Guard lists, no AI Guard service on the offline client) and a snapshot never carried those lists",
+   "severity": "low",
+   "cwe": "CWE-440",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "sample_tenant.builder_catalogues and an Inspect rule; OfflineSdkClient.aiguard; snapshot capture of the builder lists per scope (aiguard paths allowed); a per-class cloud app read still answers no data",
+   "test": "tests/test_pov_rehearsal.py::test_every_builder_plans_offline_as_a_rehearsal",
+   "commit": "87aa42a"
+  },
+  {
+   "id": "W7-POV-03",
+   "title": "An apply on the sample tenant was carried out against its in-memory copy instead of being refused, and plans made offline were not labelled as rehearsals",
+   "severity": "low",
+   "cwe": "CWE-284",
+   "asvs": "V4.1.1",
+   "status": "fixed",
+   "fix": "dlp_api_server._refuse_offline_apply on every bulk change, builder, POV build, pack deploy, removal and deployment Undo apply; _mark_rehearsal on previews; banners in Bulk changes, Deploy policy packs and the Build tab",
+   "test": "tests/test_pov_rehearsal.py::test_an_apply_offline_is_refused_with_a_clear_message_and_writes_nothing",
+   "commit": "87aa42a"
+  }
+ ],
+ "tests_added": 77
+}

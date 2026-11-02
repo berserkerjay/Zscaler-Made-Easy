@@ -1,0 +1,157 @@
+{
+  "area": "zia-forwarding",
+  "title": "ZIA forwarding and traffic path: FWD.* checks and the Path analyzer's Forwarding control step",
+  "files": [
+    "zia_forwarding.py",
+    "zscaler_full_checks.py",
+    "zia_path_modules.py",
+    "sample_tenant.py",
+    "offline_tenant.py",
+    "scope_permissions.py",
+    "plain_english.py",
+    "report_docx.py",
+    "static/flow_anim.js",
+    "static/whats_new.js",
+    "static/help_catalog.js",
+    "static/index.html",
+    "static/report_path.html"
+  ],
+  "standards": [
+    "ASVS 4.0.3 L2 V1.1, V1.14, V4.1, V5.1, V7.4, V8.3",
+    "CWE-20, CWE-200, CWE-285, CWE-400, CWE-636, CWE-670, CWE-693, CWE-754, CWE-1188",
+    "WSTG ATHZ-02, CONF-01, INPV-01, BUSL-01",
+    "WCAG 2.2 SC 1.3.1, SC 3.3.2"
+  ],
+  "coverage": {
+    "before": 89.0,
+    "after": 89.0
+  },
+  "checks": [
+    {
+      "id": "fwd-direct",
+      "what": "connector DIRECT rules around ZIA: broad fail, named review; ZIA DIRECT and the default rule are not bypasses",
+      "standard": "CWE-693",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-proxy-fallback",
+      "what": "proxy chaining: no gateway, missing gateway, no secondary (fail open fails, fail closed reviewed), secondary passes",
+      "standard": "CWE-636",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-zpa-gateway",
+      "what": "ZPA gateways: server group, segments, rules without a gateway, unused gateways",
+      "standard": "CWE-1188",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-dc-exclusions",
+      "what": "only exclusions in force count; open-ended or over 30 days named; seconds or milliseconds",
+      "standard": "CWE-1188",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-gre-diversity",
+      "what": "secondary VIP missing, shared, same data centre; VIPs placed from the tunnel or the public VIP list",
+      "standard": "CWE-1188",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-ipv6",
+      "what": "IPv6 off with IPv6 locations, off with locations, on without NAT64",
+      "standard": "CWE-693",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-failover",
+      "what": "dedicated IP gateways, NAT control scope, Virtual Service Edge nodes, DNS gateway secondary",
+      "standard": "CWE-636",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-not-licensed",
+      "what": "404 on every list is not applicable (INFO) and leaves the score alone",
+      "standard": "CWE-754",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-refused",
+      "what": "a 401/403 read is never judged pass or fail",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-read-only-scope",
+      "what": "checks only GET their own endpoints; snapshot and Path analyzer read them only with ZIA platform; Stop ends the read",
+      "standard": "CWE-285",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-untrusted",
+      "what": "junk shapes, very long names, many rows: no crash, names capped at 120, five per list",
+      "standard": "CWE-20",
+      "result": "pass"
+    },
+    {
+      "id": "fwd-no-secret",
+      "what": "certificate, key and password fields on gateways never reach a finding or the path result",
+      "standard": "CWE-200",
+      "result": "pass"
+    },
+    {
+      "id": "path-fwdctl",
+      "what": "deciding forwarding rule with criteria, weak point and fix, DROP blocks, scoped earlier rule conditional, connector rules ignored, NAT/IPv6/exclusion/DNS gateway notes, 404 not applicable, 403 unknown",
+      "standard": "CWE-670",
+      "result": "pass"
+    },
+    {
+      "id": "sample-snapshot",
+      "what": "sample tenant answers every new read with gaps; a snapshot saves and reopens them with the same results",
+      "standard": "CWE-502",
+      "result": "pass"
+    },
+    {
+      "id": "sdk-verified",
+      "what": "every path, service, method and field against zscaler-sdk-python 1.11.3; assumptions marked in zia_forwarding",
+      "standard": "SSDF PW.4.1",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "W8-FWD-01",
+      "title": "The app read none of the ZIA forwarding and traffic path resources (forwarding control, proxy, ZPA and dedicated IP gateways, data centres, GRE VIPs, IPv6, NAT control, Virtual Service Edges, DNS gateways) and assessed none of them",
+      "severity": "medium",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "Ten FWD checks in the ZIA platform scope, a Forwarding control step in the Path analyzer, the reads in the sample tenant and snapshots.",
+      "test": "tests/test_zia_forwarding.py::test_the_sample_tenant_answers_every_forwarding_read_and_shows_its_gaps",
+      "commit": "e7a9677, 7acddc3"
+    },
+    {
+      "id": "W8-FWD-02",
+      "title": "The Scope page's ZIA platform count said 33 checks while the registry had 37",
+      "severity": "info",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "The count and its help text now say 47 (37 plus the ten FWD checks).",
+      "test": "tests/test_zia_forwarding.py::test_the_checks_are_registered_under_zia_platform_with_plain_titles",
+      "commit": "88facab"
+    },
+    {
+      "id": "W8-FWD-03",
+      "title": "The new-marks browser tour and the 320px test were tied to the 2026-10-28 marks, so any new release broke them",
+      "severity": "low",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "The * then ? probe is found from the current marks; the 320px pages are those carrying a mark; the rotation probes the newest two releases.",
+      "test": "tests/test_new_marks.py::test_an_item_with_both_marks_has_the_star_then_the_help",
+      "commit": "88facab"
+    }
+  ],
+  "tests_added": 42
+}

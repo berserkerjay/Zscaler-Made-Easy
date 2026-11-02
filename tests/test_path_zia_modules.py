@@ -251,7 +251,7 @@ def test_every_module_has_the_shared_shape_and_only_three_criterion_states(dest,
     """ASVS V1.1.2 · CWE-20: each hop is {module, verdict, rule, overlaps, criteria, notes}; criteria are match, no match or unknown."""
     r = run(dest, protocol, port)
     hops = [r["zia_modules"]["modifier"]] + r["zia_modules"]["modules"]
-    assert [m["key"] for m in r["zia_modules"]["modules"]] == ["atp", "firewall", "dns", "cac", "url", "sandbox", "ftc", "dlp"]
+    assert [m["key"] for m in r["zia_modules"]["modules"]] == ["atp", "firewall", "dns", "cac", "url", "sandbox", "ftc", "dlp", "fwdctl"]
     for m in hops:
         assert {"module", "verdict", "rule", "overlaps", "criteria", "notes"} <= set(m)
         assert m["rule"] is None or {"name", "order"} <= set(m["rule"])

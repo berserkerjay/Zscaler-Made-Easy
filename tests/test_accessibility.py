@@ -304,7 +304,8 @@ Azure AWS Teams Zoom ChatGPT Copilot Firefox Safari Opera Internet Explorer Mobi
 Firewall Browser Isolation Private Access Remote Privileged Evaluate All Rules Made Easy Simple Find Review Scope
 Symantec Broadcom Forcepoint Netskope Skyhigh Purview Ansible SDK Ctrl Cmd Enter Esc Tab Shift Letter Git Jira
 Data Security Architect Portfolio Framework Inline Web Endpoint Email Advanced Settings Secure Design CISA I Shadow
-Heal Accept English Guard Branch""".split())   # Guard: the product name AI Guard
+Heal Accept English Guard Branch Palo Alto Networks Bulk Zero Trust Business Cellular Microsegmentation""".split())   # Guard: the product name AI Guard; Palo Alto Networks; Bulk: the Bulk changes page
+# Zero Trust Branch, Business Insights, Zero Trust Cellular, Microsegmentation: product names.
 _LABEL_TAGS = "h1|h2|h3|h4|h5|h6|button|th|title|legend|summary"
 _START_TAG = r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*"
 
@@ -410,9 +411,10 @@ def _browser_routes():
 BROWSER_ROUTES = _browser_routes()
 BROWSER_THEMES = ("dark", "light")
 # Pages that start a job or a read: their progress and result are announced.
-JOB_PAGES = {"/report/audit", "/report/browser", "/report/device-posture", "/report/digest", "/report/fleet", "/report/insights",
+JOB_PAGES = {"/report/audit", "/report/browser", "/report/ztw", "/report/device-posture", "/report/digest", "/report/fleet", "/report/insights",
              "/report/live", "/report/logs", "/report/operations", "/report/path", "/report/pov", "/report/shadow",
-             "/report/sslcoverage", "/report/zpa", "/report/exports", "/report/self-heal", "/report/posture", "/simple"}
+             "/report/sslcoverage", "/report/zpa", "/report/exports", "/report/self-heal", "/report/posture", "/simple",
+             "/report/traffic-logs", "/report/other-products"}
 
 PAGE_AUDIT = r"""(() => {
   // Inside a closed <details> only the summary is shown (Chrome still gives the hidden content a box).
@@ -605,6 +607,7 @@ RESULT_STATES = [
     ("ssl-coverage", "/report/sslcoverage", "document.getElementById('scRun').click() === undefined", "!!document.querySelector('#scBody table, main table')"),
     ("device-posture", "/report/device-posture", "document.getElementById('dvRun').click() === undefined", "!document.getElementById('expXlsx').hidden"),
     ("browser-security", "/report/browser", "document.getElementById('bwRun').click() === undefined", "!document.getElementById('expXlsx').hidden"),
+    ("cloud-connector", "/report/ztw", "document.getElementById('ztRun').click() === undefined", "!document.getElementById('expXlsx').hidden"),
     ("fleet", "/report/fleet", "document.getElementById('zfRun').click() === undefined", "!!document.querySelector('main table')"),
     ("operations-objects", "/report/operations", "document.getElementById('opRead').click() === undefined", "document.querySelectorAll('#opObjects input[type=checkbox]').length > 0"),
 ]
@@ -766,3 +769,15 @@ def test_faded_path_steps_keep_their_text_at_aa_contrast(faded_boxes, theme, ton
     """WCAG 2.2 SC 1.4.3 (Contrast, Minimum) · SC 1.4.11: a path step drawn as not reached, not in scope or pending fades its shape only; its title and line stay at 4.5:1 or better."""
     got = faded_boxes[theme][tone]
     assert got["fa-t"] >= 4.5 and got["fa-s"] >= 4.5, (theme, tone, got, faded_boxes[theme]["pass"])
+
+
+def test_the_focus_ring_appears_at_once_and_is_never_animated():
+    """WCAG 2.2 SC 2.4.7, 2.4.11 · CWE-1021: buttons do not transition outline or box-shadow (or `all`), so the focus ring is drawn the moment focus lands, not faded in."""
+    # Arrange
+    import re as _re
+    css = open(os.path.join(ROOT, "static", "reports.css"), encoding="utf-8").read()
+    # Act
+    rule = _re.search(r"^\.rp-btn \{[^}]*\}", css, _re.M).group(0)
+    transition = (_re.search(r"transition:\s*([^;]+)", rule) or [None, ""])[1]
+    # Assert
+    assert transition and not _re.search(r"\b(all|outline|box-shadow)\b", transition), transition

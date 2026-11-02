@@ -661,6 +661,18 @@
                 title="Reads the Zero Trust Browser isolation profiles and the rules that use them, ZIA Browser Control and the ZPA browser side (Browser Access, managed browsers, Privileged Remote Access), only what the Scope page puts in scope, and names each data protection gap with a fix. Read-only. Opens in a new tab.">
           <span aria-hidden="true">🛡️</span> Browser security
         </button>
+        <button class="btn btn-ghost" onclick="openCloudConnectorTab()"
+                aria-label="Open Cloud &amp; Branch Connector: connector groups and versions, forwarding rules that send workload traffic DIRECT, gateways, locations, activation, admins and API keys, with a fix for each gap (opens in a new tab)">
+          <span aria-hidden="true">☁️</span> Cloud &amp; Branch Connector
+        </button>
+        <button class="btn btn-ghost" onclick="openOtherProductsTab()"
+                aria-label="Open other Zscaler products: what the tenant has in Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation, with best-practice findings (opens in a new tab)">
+          <span aria-hidden="true">🔌</span> Other Zscaler products
+        </button>
+        <button class="btn btn-ghost" onclick="openAiGuardTab()"
+                aria-label="Open AI Guard: its detection policies, match rules, LLM applications and credential names, and a test with made-up prompts (opens in a new tab)">
+          <span aria-hidden="true">🔏</span> AI Guard
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -807,6 +819,10 @@
                 aria-label="Open the Log analyzer: upload Client Connector log bundles or PAC files and get what happened, what it means and what to do next (opens in a new tab)"
                 title="Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Says what happened, what it means for the user and what to do next. Opens in a new tab.">
           <span aria-hidden="true">🧾</span> Log analyzer
+        </button>
+        <button class="btn btn-ghost" onclick="openTrafficLogsTab()"
+                aria-label="Open Traffic and session logs: upload ZPA LSS and ZIA NSS logs and see sessions, failures and their reasons, connector health, anomalies, blocks, rules hit, DLP, threats and SSL inspection (opens in a new tab)">
+          <span aria-hidden="true">📉</span> Traffic and session logs
         </button>
       </div>
     </div>
@@ -1053,9 +1069,9 @@
             <input type="checkbox" class="scope-cb" value="dlp" checked style="width:auto;cursor:pointer;">
             DLP assessment <span style="color:var(--dim);font-size:0.75rem;">(188 checks)</span>
           </label>
-          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="ZIA platform checks, and what the Path analyzer reads beyond DLP: URL filtering, File Type Control, Advanced Threat Protection, Cloud Firewall (with its network services and IP groups), DNS Control and Sandbox rules.">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="ZIA platform checks, and what the Path analyzer reads beyond DLP: URL filtering, File Type Control, Advanced Threat Protection, Cloud Firewall (with its network services and IP groups), DNS Control and Sandbox rules, and forwarding control (proxy, ZPA, dedicated IP and DNS gateways, NAT control, IPv6, data centre exclusions); governance: Zscaler's configuration audit, alert subscriptions and NSS log streaming; and threat protection and SaaS Security hygiene.">
             <input type="checkbox" class="scope-cb" value="zia_extras" checked style="width:auto;cursor:pointer;">
-            ZIA platform <span style="color:var(--dim);font-size:0.75rem;">(33 checks)</span>
+            ZIA platform <span style="color:var(--dim);font-size:0.75rem;">(75 checks)</span>
           </label>
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="scope-cb" value="zpa" style="width:auto;cursor:pointer;">
@@ -1081,13 +1097,13 @@
             <input type="checkbox" class="scope-cb" value="zidentity" style="width:auto;cursor:pointer;">
             ZIdentity <span style="color:var(--dim);font-size:0.75rem;">(5 checks — users/groups/entitlements)</span>
           </label>
-          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Role-Based Access Control hygiene: admin counts, SSO federation, MFA, group-bound policies, stale accounts.">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Role-Based Access Control hygiene: admin counts, SSO federation, MFA, admin password expiry, Zscaler Support access, group-bound policies, stale accounts, and ZPA administration (with ZPA ticked).">
             <input type="checkbox" class="scope-cb" value="rbac" style="width:auto;cursor:pointer;">
-            RBAC <span style="color:var(--dim);font-size:0.75rem;">(12 checks — admin/role/MFA hygiene)</span>
+            RBAC <span style="color:var(--dim);font-size:0.75rem;">(25 checks — admin/role/MFA hygiene, ZPA admins and keys)</span>
           </label>
-          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Traffic insights: web, firewall, Shadow IT and SaaS security traffic numbers from ZIA Insights (Z-Insights API). Reads traffic data, not configuration; needs a OneAPI API client whose role includes Z-Insights read access. Not part of the assessment's checks.">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Traffic insights: web, threat, firewall, incident, IoT, Shadow IT and SaaS security traffic numbers from ZIA Insights (Z-Insights API), the 3 Shadow IT and SaaS checks, and the cloud app sanction change in Bulk changes. Reads traffic data, not configuration; needs a OneAPI API client whose role includes Z-Insights read access.">
             <input type="checkbox" class="scope-cb" value="insights" style="width:auto;cursor:pointer;">
-            ZIA Insights (traffic data) <span style="color:var(--dim);font-size:0.75rem;">(Traffic insights page — needs Z-Insights API access)</span>
+            ZIA Insights (traffic data) <span style="color:var(--dim);font-size:0.75rem;">(3 checks — Shadow IT and SaaS; Traffic insights page — needs Z-Insights API access)</span>
           </label>
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Zscaler AI Guard: whether it is licensed and reachable, and the Bulk changes builders that route GenAI apps through it and build its detection policy. Needs a OneAPI API client with AI Guard access. Not part of the assessment's checks.">
             <input type="checkbox" class="scope-cb" value="aiguard" style="width:auto;cursor:pointer;">
@@ -1096,6 +1112,26 @@
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Cloud & Branch Connector: the traffic forwarding rules and workload groups, read only by the Path analyzer for traffic from a workload. Needs a OneAPI API client with a Cloud & Branch Connector role.">
             <input type="checkbox" class="scope-cb" value="ztw" style="width:auto;cursor:pointer;">
             Cloud &amp; Branch Connector <span style="color:var(--dim);font-size:0.75rem;">(Path analyzer, workload traffic)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="ztb" style="width:auto;cursor:pointer;">
+            Zero Trust Branch <span style="color:var(--dim);font-size:0.75rem;">(5 checks — sites, alarms, API keys; Other products page)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="easm" style="width:auto;cursor:pointer;">
+            External attack surface (EASM) <span style="color:var(--dim);font-size:0.75rem;">(4 checks — findings, lookalike domains)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="zbi" style="width:auto;cursor:pointer;">
+            Business Insights <span style="color:var(--dim);font-size:0.75rem;">(2 checks — custom apps, scheduled reports)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="zcell" style="width:auto;cursor:pointer;">
+            Zero Trust Cellular <span style="color:var(--dim);font-size:0.75rem;">(3 checks — needs the ZCell customer ID)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="zms" style="width:auto;cursor:pointer;">
+            Microsegmentation <span style="color:var(--dim);font-size:0.75rem;">(6 checks — agents, tamper protection, default deny)</span>
           </label>
         </div>
         <div class="helper">Pick any combination of Zscaler scopes. Automation checks validate IaC/SDK compatibility with <a href="https://github.com/zscaler" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/zscaler</a>.</div>
@@ -2187,8 +2223,16 @@ function reorderReset() {
 }
 
 async function step3bDeleteAll(dryRun) {
+  let typedPhrase = '';
   if (!dryRun) {
-    if (!confirm('⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON backup).\n\nThis cannot be undone via API. Continue?')) return;
+    // The typed phrase names how many rules go (from the dry run); the server
+    // checks it against the rules it reads again right before deleting.
+    const phrase = window._step3bPhrase || '';
+    if (!phrase) { alert('Run the deletion preview (dry run) first: it shows what would be deleted and the phrase to type.'); return; }
+    const msg = `⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON backup).\n\nThis cannot be undone via API.`;
+    if (window.dlpDialog && window.dlpDialog.phrase) typedPhrase = await window.dlpDialog.phrase({ title: 'Delete every Inline Web DLP rule?', body: msg, phrase, okLabel: 'Delete now', tone: 'bad' });
+    else { try { typedPhrase = window.prompt(`${msg}\n\nType ${phrase} to continue:`, ''); } catch (e) { typedPhrase = null; } }
+    if (!typedPhrase) return;
     const n = (typeof migrateRules !== 'undefined' && Array.isArray(migrateRules) && migrateRules.length) || 1;
     if (window.zdRateGate && !(await window.zdRateGate({ delete: n, activate: 1 }, migrateCredBody(), `Delete ${n} Inline Web DLP rule(s).`))) return;
   }
@@ -2197,7 +2241,7 @@ async function step3bDeleteAll(dryRun) {
   // banner accurate when the user re-runs the preview.
   clearPendingAction('step3b');
   body.dry_run = dryRun;
-  if (!dryRun) { tenantWriteBody(body); body.plan_hash = window._step3bPlanHash || ''; }   // deletes only what the dry run listed
+  if (!dryRun) { tenantWriteBody(body); body.plan_hash = window._step3bPlanHash || ''; body.confirm_phrase = String(typedPhrase).trim(); }   // deletes only what the dry run listed
   const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
   try {
@@ -2206,6 +2250,7 @@ async function step3bDeleteAll(dryRun) {
     const r = await resp.json();
     if (r.status === 'dry_run') {
       window._step3bPlanHash = r.plan_hash || '';
+      window._step3bPhrase = r.confirm_phrase || '';
       const list = (r.would_delete || []).slice(0, 30).map(x => `<li><code style="color:var(--dim);">${escapeHtml(String(x.rule_id ?? ''))}</code> · ${escapeHtml(x.rule_name)} (${escapeHtml(String(x.action ?? ''))})</li>`).join('');
       el.innerHTML = `
         <div style="color:#dc2626;font-weight:600;">DRY-RUN: would delete ${r.would_delete_count} rule(s).</div>
@@ -2387,6 +2432,13 @@ async function step4EnablePlan() {
       el.innerHTML = `<div style="color:var(--pass);font-weight:600;">✓ Already enabled — no activation needed.</div><div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || '')}</div>`;
       return;
     }
+    if (r.status !== 'dry_run' || !r.plan_hash) {
+      // No setting found to write (this app never writes a guessed field or endpoint): nothing to activate.
+      _step4Plan = null;
+      clearPendingAction('step4');
+      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Nothing to activate from here.</div><div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || '')}</div>`;
+      return;
+    }
     // Plan exists → offer inline activate prompt
     const planSrc = r.plan_source ? `<div style="margin-bottom:0.4rem;font-size:0.78rem;color:var(--dim);">Plan source: <code style="color:var(--accent);">${escapeHtml(r.plan_source)}</code></div>` : '';
     el.innerHTML = `
@@ -2409,13 +2461,14 @@ async function step4Activate() {
     alert('⚠  No plan staged\n\nRun ② Enable (dry run) first to build the activation plan.');
     return;
   }
-  if (!confirm('This will attempt to enable "Evaluate All DLP Rules" via API write.\n\nThe tool will try the exact field it detected first, then blind-probe candidate endpoints/fields. Every attempt is logged.\n\nContinue?')) return;
-  if (window.zdRateGate && !(await window.zdRateGate({ write: 1, activate: 1 }, migrateCredBody(), 'Enable "Evaluate All DLP Rules" (one write, or a few if the field has to be probed).'))) return;
+  if (!confirm(`This will enable "Evaluate All DLP Rules" with one API write:\n\n${_step4Plan.endpoint} → ${_step4Plan.field} = ${JSON.stringify(_step4Plan.value)}\n\nThe setting is read again first; if it changed since the dry run, nothing is written. Continue?`)) return;
+  if (window.zdRateGate && !(await window.zdRateGate({ write: 1, activate: 1 }, migrateCredBody(), 'Enable "Evaluate All DLP Rules" (one write).'))) return;
   const body = migrateValidateCreds(); if (!body) return;
   body.dry_run = false;
+  body.plan_hash = _step4Plan.plan_hash || '';   // writes only what the dry run showed
   tenantWriteBody(body);
   const el = document.getElementById('step4Result'); el.style.display = 'block';
-  el.innerHTML = '<span style="color:var(--dim);">③ Activating via API... (trying found field, then candidate combinations)</span>';
+  el.innerHTML = '<span style="color:var(--dim);">③ Activating via API... (re-reading the setting, then one write and a read-back)</span>';
   try {
     const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
@@ -2436,6 +2489,12 @@ async function step4Activate() {
           Wrote: <code>${escapeHtml(r.via || '')}</code> → <code>${escapeHtml(r.field || '')}</code> = <code>true</code> (verified by re-GET).
         </div>
         ${attemptsHtml}`;
+      return;
+    }
+    if (r.status === 'plan_changed') {
+      _step4Plan = null;
+      clearPendingAction('step4');
+      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">The setting changed since the dry run: nothing was written.</div><div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>`;
       return;
     }
     if (r.status === 'blocked') {
@@ -3458,6 +3517,7 @@ function renderChecks(checks, filter) {
 
 window._remediationCatalog = null;
 let _currentRemediationCheckId = null;
+let _remediationPlanHash = '';   // the previewed plan's hash: a live apply sends it back (the server re-plans and compares)
 
 async function _loadRemediationCatalog() {
   if (window._remediationCatalog) return window._remediationCatalog;
@@ -3584,6 +3644,7 @@ async function remediationPreview() {
         <div style="font-size:0.82rem;margin-top:0.4rem;"><strong>Body:</strong></div>
         <pre style="background:var(--well);padding:0.5rem;border-radius:4px;font-size:0.75rem;overflow-x:auto;margin-top:0.2rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
       </div>`;
+    _remediationPlanHash = data.plan_hash || '';
     document.getElementById('remediationActivateBtn').style.display = 'inline-flex';
   } catch(e) {
     resultEl.innerHTML = `<div style="color:var(--fail);">Preview failed: ${escapeHtml(e.message)}</div>`;
@@ -3604,6 +3665,7 @@ async function remediationActivate() {
   body.check_id = check_id;
   body.criteria = criteria;
   body.dry_run = false;
+  body.plan_hash = _remediationPlanHash;
   Object.assign(body, scopePageSelection());   // a live fix writes only a rule policy in scope on the Scope page
   tenantWriteBody(body);
   const resultEl = document.getElementById('remediationResult');
@@ -3611,7 +3673,7 @@ async function remediationActivate() {
   try {
     const r = await fetch('/api/remediation/execute', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(data.detail || data.message || `HTTP ${r.status}`);
     if (data.status === 'completed') {
       resultEl.innerHTML = `<div style="padding:0.6rem 0.8rem;background:rgba(16,185,129,0.08);border-left:3px solid var(--pass);border-radius:4px;">
         <strong style="color:var(--pass);">✓ Applied (HTTP ${data.http_status})</strong>
@@ -3870,6 +3932,7 @@ async function wizardPreview() {
         ${data.note ? `<div style="margin-top:0.3rem;">${escapeHtml(data.note)}</div>` : ''}
         <pre style="background:var(--well);padding:0.4rem;border-radius:4px;font-size:0.72rem;overflow-x:auto;margin-top:0.3rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
       </div>`;
+    _remediationPlanHash = data.plan_hash || '';
     _wizardPlanReady(true);
   } catch(e) {
     resultEl.innerHTML = `<div style="color:var(--fail);">Preview failed: ${escapeHtml(e.message)}</div>`;
@@ -3887,6 +3950,7 @@ async function wizardApply() {
   body.check_id = check_id;
   body.criteria = _collectWizardCriteria();
   body.dry_run = false;
+  body.plan_hash = _remediationPlanHash;
   Object.assign(body, scopePageSelection());   // a live fix writes only a rule policy in scope on the Scope page
   tenantWriteBody(body);
   const resultEl = document.getElementById('wizardResult');
@@ -3894,7 +3958,7 @@ async function wizardApply() {
   try {
     const r = await fetch('/api/remediation/execute', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(data.detail || data.message || `HTTP ${r.status}`);
     let outcome;
     if (data.status === 'completed') {
       outcome = {check_id, label: recipe.label, status: 'applied', message: data.message || '', http: data.http_status};
@@ -5301,6 +5365,10 @@ function openLogAnalyzerTab() {
   const w = window.open('/report/logs', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
+function openTrafficLogsTab() {
+  const w = window.open('/report/traffic-logs', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
 function openQueueTab() {
   // The tab reads the credentials from this page through window.opener
   // only when an approved request is applied there.
@@ -5395,11 +5463,31 @@ function openShadowRulesTab() {
   const w = window.open('/report/shadow', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
+function openAiGuardTab() {
+  // Like Browser security: the tab reads the credentials and the Scope
+  // page's selection from this page through window.opener when Read is clicked.
+  const w = window.open('/report/aiguard', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
 function openBrowserSecurityTab() {
   // Like Shadowed rules: the tab reads the credentials (with the ZPA
   // customer ID) and the Scope page's selection from this page through
   // window.opener when Read is clicked, so nothing is read until then.
   const w = window.open('/report/browser', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openCloudConnectorTab() {
+  // Like Browser security: the tab reads the credentials and the Scope
+  // page's selection from this page through window.opener when Read is
+  // clicked, so nothing is read until then.
+  const w = window.open('/report/ztw', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openOtherProductsTab() {
+  // Like Browser security: the tab reads the credentials (with the ZPA
+  // customer ID) and the Scope page's selection from this page through
+  // window.opener when Read is clicked, so nothing is read until then.
+  const w = window.open('/report/other-products', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openAuditTimelineTab() {

@@ -12,7 +12,7 @@
   const PROBLEM = ['blocked', 'not_licensed', 'read_only', 'partial'];
   const GREY = ['blocked', 'not_licensed'];
   const WORDS = { ok: 'Will work', partial: 'Works in part', read_only: 'Can read, cannot change', blocked: 'Will not work',
-                  not_licensed: 'Not licensed', unknown: 'Not checked', not_in_scope: 'Not in scope' };
+                  not_licensed: 'Not licensed', unknown: 'Not checked', not_in_scope: 'Not in scope', attention: 'Needs attention' };
   const ACCESS = { write: 'can read and change', read: 'can read', none: 'no access', unknown: 'not checked' };
   const RD = { ident: '', access: null, result: null, running: false, error: '' };
 
@@ -123,7 +123,11 @@
       const r = RD.result;
       const gaps = [...(r.scopes || []), ...(r.writes || [])].filter(f => PROBLEM.includes(f.status));
       const prods = (r.products || []).filter(p => p.access !== 'not_in_scope' && (p.in_token || p.responds !== null));
-      body = `<ul class="rd-prods">${prods.map(p => `<li><strong>${E(p.label)}</strong>: ${E(ACCESS[p.access] || p.access)}${p.role ? ` <span class="rd-dim">(role ${E(p.role)})</span>` : ''}</li>`).join('')}</ul>`
+      // The tenant checks (tenant_health): ZIA changes waiting for activation, the SSL rule order.
+      const checks = (r.checks || []).filter(c => c.status === 'attention');
+      const checksHtml = checks.length ? `<p class="rd-line"><strong>In the tenant, ${checks.length === 1 ? 'one thing needs' : `${checks.length} things need`} attention first:</strong></p><ul class="rd-gaps rd-checks">${checks.map(c =>
+          `<li><strong>${E(c.label)}</strong> <span class="rd-chip ${E(c.severity || c.status)}">${E(WORDS[c.status] || c.status)}</span> <span class="rd-dim">${E(c.why)}</span>${stepsHtml(c.steps)}</li>`).join('')}</ul>` : '';
+      body = checksHtml + `<ul class="rd-prods">${prods.map(p => `<li><strong>${E(p.label)}</strong>: ${E(ACCESS[p.access] || p.access)}${p.role ? ` <span class="rd-dim">(role ${E(p.role)})</span>` : ''}</li>`).join('')}</ul>`
         + (gaps.length ? `<p class="rd-line"><strong>${gaps.length} thing${gaps.length === 1 ? '' : 's'} will not fully work:</strong></p><ul class="rd-gaps">${gaps.slice(0, 6).map(f =>
             `<li><strong>${E(f.label)}</strong> <span class="rd-chip ${E(f.status)}">${E(WORDS[f.status] || f.status)}</span> <span class="rd-dim">${E(f.why)}</span>${stepsHtml(f.steps)}</li>`).join('')}</ul>${gaps.length > 6 ? `<p class="rd-line rd-dim">And ${gaps.length - 6} more on Required API access.</p>` : ''}`
           : '<p class="rd-line">Everything that was checked will work.</p>')

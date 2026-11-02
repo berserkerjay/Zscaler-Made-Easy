@@ -1,0 +1,125 @@
+{
+ "area": "Builders and checks: Shadow IT sanction (Bulk changes cloud_app_sanction), the ZIA Insights assessment checks INS.1-INS.3 and the new Traffic insights sections, with the sample tenant and snapshots answering Insights offline",
+ "title": "Shadow IT sanction and Insights checks: scope before sign-in, four write gates, typed phrase always, re-read conflict, read-back, exact Undo from the prior state, aggregates only",
+ "standards": [
+  "ASVS V1.14.1",
+  "ASVS V1.14.6",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.3.3",
+  "ASVS V7.1.3",
+  "ASVS V7.4.1",
+  "ASVS V8.3.4",
+  "WSTG-ATHZ-02",
+  "WSTG-BUSL-01",
+  "WSTG-BUSL-06",
+  "WSTG-INPV-01",
+  "CWE-20",
+  "CWE-79",
+  "CWE-209",
+  "CWE-285",
+  "CWE-359",
+  "CWE-367",
+  "CWE-754",
+  "CWE-778",
+  "CWE-841",
+  "CWE-863",
+  "WCAG 2.2 SC 1.3.1",
+  "WCAG 2.2 SC 3.2.4",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 4.1.2"
+ ],
+ "checks": [
+  {
+   "id": "W8-SIT-C01",
+   "what": "Scope: cloud_app_sanction and its picker need ZIA platform and ZIA Insights; anything less is refused (400 on the route) before sign-in and reads nothing",
+   "standard": "ASVS V4.1.3 · CWE-863 · WSTG-ATHZ-02",
+   "result": "pass"
+  },
+  {
+   "id": "W8-SIT-C02",
+   "what": "Four gates on the sanction write: write mode, writer, named assessor and the typed phrase, which is always asked (tenant-wide change) whatever the count",
+   "standard": "ASVS V4.1.3 · CWE-841 · WSTG-BUSL-06",
+   "result": "pass"
+  },
+  {
+   "id": "W8-SIT-C03",
+   "what": "Prior state read for each app (list_apps id and name, state from the raw row when present, else Z-Insights Shadow IT by name); an app with no readable state is excluded so every change has an exact Undo",
+   "standard": "ASVS V1.14.6 · CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W8-SIT-C04",
+   "what": "Re-read right before the one bulk_update per state: an app changed, renamed or removed since the preview is a conflict and is not sent; the rest are",
+   "standard": "ASVS V1.14.6 · CWE-367 · WSTG-BUSL-01",
+   "result": "pass"
+  },
+  {
+   "id": "W8-SIT-C05",
+   "what": "Read-back of every applied app, the inverse (each app back to its prior state) previewed and applied through the same gates, an object_write audit entry with the ids, names and actor, no secret in the preview, the record or the log, and no custom tags sent",
+   "standard": "ASVS V7.1.3 · CWE-778 · CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "W8-SIT-C06",
+   "what": "INS.1-INS.3: plain finding with the fix, N/A without traffic or a CASB subscription, Not permitted on a refused Insights read, N/A on the classic sign-in (nothing sent), selected only for the insights Scope key (never by ZIA platform or the legacy full scope)",
+   "standard": "ASVS V1.14.1 · ASVS V4.1.3 · CWE-285 · CWE-863",
+   "result": "pass"
+  },
+  {
+   "id": "W8-SIT-C07",
+   "what": "Aggregates only: the checks ask only the Shadow IT application query; a snapshot keeps each aggregate Insights answer and never asks the per-user incidents query; the new sections' CSV carries no user",
+   "standard": "ASVS V8.3.4 · CWE-359",
+   "result": "pass"
+  },
+  {
+   "id": "W8-SIT-C08",
+   "what": "Untrusted answers: the raw executor turns refusals and malformed answers into errors with the status, the IoT parser skips junk and trims names, the offline Insights answer looks up plain operation names only, the sample bulk update validates state and ids",
+   "standard": "ASVS V5.1.4 · CWE-20 · CWE-209",
+   "result": "pass"
+  },
+  {
+   "id": "W8-SIT-C09",
+   "what": "The sanction form labels every control, escapes every tenant value before HTML and has a help entry per control; the What's new marks follow the two newest releases",
+   "standard": "WCAG 2.2 SC 1.3.1 · SC 3.3.2 · SC 4.1.2 · ASVS V5.3.3 · CWE-79",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W8-SHADOW-01",
+   "title": "Cloud application sanction was refused outright (admin_ops.SANCTION_NOTE) because list_apps carries no state, so Shadow IT decisions had to be made one by one in the portal",
+   "severity": "info",
+   "cwe": "CWE-754",
+   "asvs": "V1.14.6",
+   "status": "fixed",
+   "fix": "ops_sanction.py: the prior state is read from Z-Insights Shadow IT (by name, or the list's raw row when it carries one); an app with no readable state is excluded, so preview, conflict guard and exact Undo hold. SANCTION_NOTE now points to the operation",
+   "test": "tests/test_shadow_it.py::test_apply_sends_one_bulk_update_per_state_reads_back_and_undo_restores_each_app",
+   "commit": "3fd8661"
+  },
+  {
+   "id": "W8-SHADOW-02",
+   "title": "The marks browser test probed 2026-10-28 items (#tab-list, #paProto) by name, so any new release (which rotates 2026-10-28 out, as designed) broke the tour with a script error instead of a finding",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "tests/test_new_marks.py probes items of the two releases marked now (2026-10-31 #tiRun, 2026-10-29 #paFlowRefH) and requires marks at 320px only on pages the manifest marks",
+   "test": "tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out",
+   "commit": "8c076b4"
+  },
+  {
+   "id": "W8-SHADOW-03",
+   "title": "The sample tenant and snapshots had no answer for any Insights question, so Traffic insights showed every section as an error offline",
+   "severity": "info",
+   "cwe": "CWE-754",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "offline_tenant answers POST /zins/graphql per operation from /zins/graphql/<operation> (sample data and snapshot capture), honouring the Shadow IT application filter",
+   "test": "tests/test_shadow_it.py::test_a_snapshot_keeps_the_insights_answers_per_question_without_the_per_user_one",
+   "commit": "8e39e76"
+  }
+ ],
+ "tests_added": 36
+}

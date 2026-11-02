@@ -100,7 +100,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#dlpSafetyBanner .sb-leave": {
-    "what": "Leaves the sample tenant or the offline snapshot in this browser, then reloads the page on the live tenant.",
+    "what": "Leaves the sample tenant or the offline snapshot in this browser, then reloads the page on the live tenant. In a simulation, it drops the simulation's copy and goes back to the sample tenant or the snapshot it was made from.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
@@ -183,6 +183,11 @@ window.HELP_CATALOG = {
     "what": "Signs you out of this app in this browser.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#dlpTeamLink": {
+    "what": "Opens the Team server page: who you are, what you may do on each tenant profile, and for an administrator the accounts and access.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    },
    "#dlpSsoBar a": {
     "what": "Opens your company sign-in page to sign in to this app again.",
@@ -671,6 +676,11 @@ window.HELP_CATALOG = {
    }
   },
   "/": {
+   "#tfNs": {
+    "what": "Points the Terraform files at your own copy of the Zscaler provider (a private registry mirror). Blank uses the public one.",
+    "input": "Optional. A registry host and namespace, like registry.example.com/zscaler.",
+    "effect": "local"
+   },
    ".tool-group button[onclick=\"openSimpleMode()\"]": {
     "what": "Seven big tasks in plain words (connect, check, fix, protect, why was something blocked, what changed, a report for your boss), one question per screen. Nothing changes your Zscaler without your yes.",
     "input": "Nothing to type. Just click it. It opens in this tab.",
@@ -728,6 +738,16 @@ window.HELP_CATALOG = {
    },
    ".tool-group button[onclick=\"openBrowserSecurityTab()\"]": {
     "what": "Reads the Zero Trust Browser isolation profiles and the rules that use them, ZIA Browser Control and the ZPA browser side (Browser Access, managed browsers, Privileged Remote Access), only what the Scope page puts in scope, and names each data protection gap with a fix. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
+    "effect": "nav"
+   },
+   ".tool-group button[onclick=\"openCloudConnectorTab()\"]": {
+    "what": "Reads the Cloud & Branch Connector set-up: connector groups, forwarding rules, gateways, locations and admins. Names each gap with a fix. Needs Cloud & Branch Connector ticked on the Scope page. Never reads a key value or a provisioning URL. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
+    "effect": "nav"
+   },
+   ".tool-group button[onclick=\"openOtherProductsTab()\"]": {
+    "what": "Reads Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation. Only the ones ticked on the Scope page are read. Lists what the tenant has and checks it. Read-only. Opens in a new tab.",
     "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
     "effect": "nav"
    },
@@ -866,6 +886,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Reads only when ZCC is ticked on the Scope page.",
     "effect": "nav"
    },
+   ".tool-group button[onclick=\"openTrafficLogsTab()\"]": {
+    "what": "Upload ZPA LSS and ZIA NSS logs and see sessions, failures and their reasons, connector health, anomalies, blocks, rules hit, DLP, threats and SSL inspection. Read on this computer; only counts are kept. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. You drop the log files in the new tab.",
+    "effect": "nav"
+   },
    ".tool-group button[onclick=\"openLogAnalyzerTab()\"]": {
     "what": "Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Says what happened, what it means for the user and what to do next. Opens in a new tab.",
     "input": "Nothing to type. Just click it. You drop the files in the new tab.",
@@ -982,7 +1007,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"zia_extras\"]": {
-    "what": "Adds the ZIA platform checks (33). It also lets the Path analyzer read URL filtering, File Type Control, threat protection, Cloud Firewall, DNS Control and Sandbox rules.",
+    "what": "Adds the ZIA platform checks (75). They cover threat protection and SaaS Security hygiene, governance and forwarding. Governance is the configuration audit, alerts and NSS log streaming (N/A without NSS). Forwarding is proxy chaining, gateways, GRE tunnels, IPv6, NAT and DNS gateways. Tenant health is in there too. It also lets the Path analyzer read URL filtering, File Type Control, threat protection, Cloud Firewall, DNS Control, Sandbox and forwarding control rules.",
     "input": "Tick it to check the ZIA platform. Ticked at first.",
     "effect": "local"
    },
@@ -1017,23 +1042,49 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"rbac\"]": {
-    "what": "Adds the RBAC checks (12). Role-Based Access Control hygiene: admin counts, SSO federation, MFA, group-bound policies, stale accounts.",
+    "what": "Adds the RBAC checks (14). Role-Based Access Control hygiene: admin counts, SSO federation, MFA, admin password expiry, Zscaler Support remote access, group-bound policies, stale accounts.",
+    "what": "Adds the RBAC checks (23). Role-Based Access Control hygiene: admin counts, SSO federation, MFA, group-bound policies, stale accounts. With ZPA ticked too, it also checks ZPA admins, roles, API keys, break-glass accounts, microtenants, provisioning keys and remote access. It never reads key or password values.",
     "input": "Tick it to check admin and role hygiene.",
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"insights\"]": {
-    "what": "Lets the Traffic insights page read traffic numbers from ZIA Insights. It reads traffic data, not configuration, and is not part of the checks.",
+    "what": "Lets the app read traffic numbers from ZIA Insights: the Traffic insights page, 3 Shadow IT and SaaS checks, and the cloud app sanction change in Bulk changes. It reads traffic data, not configuration.",
     "input": "Tick it to allow Traffic insights. Needs a OneAPI API client with Z-Insights read access.",
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"aiguard\"]": {
-    "what": "Lets the app read Zscaler AI Guard: is it licensed and reachable. The Bulk changes builders use it. Not part of the checks.",
+    "what": "Adds the AI Guard checks (AIG.1 to AIG.7) and lets the app read Zscaler AI Guard: is it licensed and reachable. The Bulk changes builders use it. Provider credentials are read as names and dates only.",
     "input": "Tick it to allow AI Guard. Needs a OneAPI API client with AI Guard access.",
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"ztw\"]": {
     "what": "Lets the Path analyzer read Cloud & Branch Connector forwarding rules and workload groups, for traffic from a workload.",
     "input": "Tick it to allow it. Needs a OneAPI API client with a Cloud & Branch Connector role.",
+    "effect": "local"
+   },
+   "#scopeField input.scope-cb[value=\"ztb\"]": {
+    "what": "Lets the app read Zero Trust Branch: sites, templates, alarms, API key names and ages, hubs. Five checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with Zero Trust Branch read access. Off by default.",
+    "effect": "local"
+   },
+   "#scopeField input.scope-cb[value=\"easm\"]": {
+    "what": "Lets the app read External Attack Surface Management: organizations, findings and lookalike domains. Four checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with EASM read access. Off by default.",
+    "effect": "local"
+   },
+   "#scopeField input.scope-cb[value=\"zbi\"]": {
+    "what": "Lets the app read Business Insights: custom applications and scheduled reports. Two checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with Business Insights read access. Off by default.",
+    "effect": "local"
+   },
+   "#scopeField input.scope-cb[value=\"zcell\"]": {
+    "what": "Lets the app read Zero Trust Cellular: account, regions, anomaly policies and SIM counts. Three checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with Zero Trust Cellular access and the ZCell customer ID. Off by default.",
+    "effect": "local"
+   },
+   "#scopeField input.scope-cb[value=\"zms\"]": {
+    "what": "Lets the app read Microsegmentation: agents, agent groups, provisioning key names, policy and default rules. Six checks and the Other products page.",
+    "input": "Tick it to allow it. Needs a OneAPI API client with Microsegmentation access; uses the ZPA customer ID unless you give another. Off by default.",
     "effect": "local"
    },
    "#scopeField a[href*=\"github.com/zscaler\"]": {
@@ -1902,7 +1953,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#gdOffline .zo-row button.gd-btn.primary": {
-    "what": "Opens the sample tenant, a made-up company, in this browser. When one is open, it leaves the sample or closes the snapshot.",
+    "what": "Opens the sample tenant, a made-up company, in this browser. When one is open, it leaves the sample, closes the snapshot or leaves the simulation (back to the sample or the snapshot it was made from).",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
@@ -2044,6 +2095,11 @@ window.HELP_CATALOG = {
    "#postureSummary button": {
     "what": "Opens Improve my score in a new tab, at the part this button names.",
     "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   ".tool-group button[onclick=\"openAiGuardTab()\"]": {
+    "what": "Opens AI Guard: the detection policies, match rules, LLM applications and credential names, and Test a prompt with made-up prompts. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab. Tick AI Guard on the Scope page first.",
     "effect": "nav"
    }
   },
@@ -2233,6 +2289,11 @@ window.HELP_CATALOG = {
     "input": "Pick one. Ticking this shows the rule sets that fit that kind of work.",
     "effect": "local"
    },
+   "#smWizard input[name=\"smProfile\"]": {
+    "what": "Picks the compliance rules your company must follow, like FedRAMP or HIPAA. It picks the rule sets on the next step.",
+    "input": "Pick one, or None of these.",
+    "effect": "local"
+   },
    "#smWizard input[name=\"smPack\"]": {
     "what": "Picks a ready-made rule set, called a policy pack. The first one is the best first pick.",
     "input": "Pick one. Ticking this shows what that rule set would add, on the next step.",
@@ -2340,6 +2401,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   ".rp-bar a[href=\"#about\"]": {
+    "what": "Jumps to About this app: it is open source under the Apache License 2.0, and what it is built from.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#hpFirst a": {
     "what": "Jumps to the help for this step on this page.",
     "input": "Nothing to type. Just click it.",
@@ -2362,6 +2428,56 @@ window.HELP_CATALOG = {
    }
   },
   "/report/advanced": {
+   "#advUpdNotify": {
+    "what": "Sends one notice per new version, by the e-mail or webhook the digests use, when the update check finds a newer version.",
+    "input": "Optional. Ticked turns it on. Needs the digests' e-mail or webhook set up; a writer may change it.",
+    "effect": "local"
+   },
+   "#advPlugOn": {
+    "what": "Allows approved local plugins to load when the app starts. Off, no plugin loads, approved or not.",
+    "input": "Optional. Ticked turns it on. Needs the plugins folder set (DLP_CHECK_PLUGINS_DIR); a writer on this computer may change it.",
+    "effect": "local"
+   },
+   "#advPlugins button[data-approve]": {
+    "what": "Puts this exact plugin hash on the allow-list after you have read its code. It loads when the app next starts; a changed file is refused.",
+    "input": "Type the plugin's name to confirm, then optionally the people allowed to use it.",
+    "effect": "confirm"
+   },
+   "#advPlugins button[data-revoke]": {
+    "what": "Takes this plugin off the allow-list and unloads it at once.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#advApiJob": {
+    "what": "Shows only the API calls one run made, like a deploy, a builder or a readiness check. Every call shows all of them.",
+    "input": "Optional. Pick a run from the list; each says its kind, its id and how many calls it made.",
+    "effect": "local"
+   },
+   "#advApiProduct": {
+    "what": "Shows only the API calls made to one Zscaler product, like ZIA or ZPA.",
+    "input": "Optional. Pick a product. Every product shows all of them.",
+    "effect": "local"
+   },
+   "#advApiFailed": {
+    "what": "Shows only the calls that failed or had to be sent again, for example after a rate limit.",
+    "input": "Tick it to show only those. Clear it to show every call.",
+    "effect": "local"
+   },
+   "#advApiReload": {
+    "what": "Reads the list of API calls again from this server. It calls nothing at Zscaler.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#advApiCsv": {
+    "what": "Saves the API calls shown, with the same filters, as a CSV spreadsheet file. No body, token, secret or tenant name is in it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#advApiJson": {
+    "what": "Saves the API calls shown, with the same filters, as a JSON data file. No body, token, secret or tenant name is in it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
    "#advRefresh": {
     "what": "Re-read the library from disk. The pack list then shows the packs saved on this computer now.",
     "input": "Nothing to type. Just click it.",
@@ -2375,6 +2491,66 @@ window.HELP_CATALOG = {
    "#advGlass": {
     "what": "Turns the glass effect on or off. On, bars, cards and buttons are see-through like frosted glass. Off, they are solid.",
     "input": "Tick it or clear it. The choice is kept in this browser only and every open tab follows it.",
+    "effect": "local"
+   },
+   "#advM365On": {
+    "what": "Lets this app fetch Microsoft's list of Microsoft 365 sites and addresses from endpoints.office.com. It sends nothing about your tenant.",
+    "input": "Tick it or clear it. Off by default. On, the app checks for a new version at most once a day when you analyze.",
+    "effect": "local"
+   },
+   "#advM365Fetch": {
+    "what": "Fetches Microsoft's Microsoft 365 list now. The Path analyzer, Test a list and Shadowed rules then match the OFFICE365 app service group with it.",
+    "input": "Nothing to type. Turn on fetching first. A list that fails the checks is refused and the old one stays.",
+    "effect": "local"
+   },
+   "#advM365Remove": {
+    "what": "Forgets the Microsoft 365 list. Rules on Microsoft 365 app service groups show as unknown again.",
+    "input": "Nothing to type. Just click it, then confirm.",
+    "effect": "local"
+   },
+   "#advM365File": {
+    "what": "Picks a saved copy of Microsoft's Microsoft 365 list, for a machine that cannot reach endpoints.office.com.",
+    "input": "Required to import. The JSON file that endpoints.office.com/endpoints/worldwide gives, up to 2 MB.",
+    "effect": "local"
+   },
+   "#advM365Ver": {
+    "what": "Names the version of the list you import, so results can say which list they used.",
+    "input": "Optional. Ten digits, like 2026100100, as endpoints.office.com/version/worldwide gives it.",
+    "effect": "local"
+   },
+   "#advM365Import": {
+    "what": "Checks the chosen file and keeps it as the Microsoft 365 list. A file that is not Microsoft's list is refused whole.",
+    "input": "Choose the file first. The version is optional. Nothing touches the tenant.",
+    "effect": "local"
+   },
+   "#advVendZoomOn": {
+    "what": "Lets this app fetch Zoom's published IP ranges from assets.zoom.us, for the ZOOM app service group. It sends nothing about your tenant.",
+    "input": "Tick it or clear it. Off by default. On, nothing is fetched until you click Fetch Zoom's list now.",
+    "effect": "local"
+   },
+   "#advVendFetch": {
+    "what": "Fetches Zoom's IP ranges now. The Path analyzer and Test a list then match the ZOOM app service group with them.",
+    "input": "Nothing to type. Turn on fetching first. A list that fails the checks is refused and the old one stays.",
+    "effect": "local"
+   },
+   "#advVendProv": {
+    "what": "Picks the provider whose list you import or remove: Zoom, Webex, RingCentral, GoTo or Talkdesk.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#advVendFile": {
+    "what": "Picks a text file with the provider's address ranges and host names, copied from its network requirements page.",
+    "input": "Required to import. Plain text, one entry per line, like 203.0.113.0/24 or *.webex.com, up to 1 MB. A # starts a comment.",
+    "effect": "local"
+   },
+   "#advVendImport": {
+    "what": "Checks the chosen file and keeps it as the picked provider's list. A file with a line that is not a public range or a host name is refused whole.",
+    "input": "Pick the provider and choose the file first. Nothing touches the tenant.",
+    "effect": "local"
+   },
+   "#advVendRemove": {
+    "what": "Forgets the picked provider's list. Rules on its app service group show as unknown again.",
+    "input": "Nothing to type. Pick the provider, click it, then confirm.",
     "effect": "local"
    },
    "#advAssessor": {
@@ -2657,6 +2833,53 @@ window.HELP_CATALOG = {
     "effect": "local"
    }
   },
+  "/report/other-products": {
+   "#opTenant": {
+    "what": "Picks which tenant sign-in the read uses.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or what is saved on this computer. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   "#opZcell": {
+    "what": "The Zero Trust Cellular customer ID. Every Zero Trust Cellular read carries it.",
+    "input": "Optional; needed only when Zero Trust Cellular is ticked. Letters, digits, - and _, at most 64, for example gi754cvqb07r0. The ZCell admin portal shows it.",
+    "effect": "local"
+   },
+   "#opZms": {
+    "what": "The Microsegmentation customer ID. Every Microsegmentation query carries it.",
+    "input": "Optional. Leave it empty to use the ZPA customer ID from Connect to the tenant. Letters, digits, - and _, at most 64.",
+    "effect": "local"
+   },
+   "#opRun": {
+    "what": "Reads the other Zscaler products ticked on the Scope page once and checks them: Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation.",
+    "input": "Nothing to type. Just click it. Tick at least one of these products on the Scope page first.",
+    "effect": "read"
+   },
+   "#opStop": {
+    "what": "Stops the read at once. Nothing more is read and nothing is kept.",
+    "input": "Nothing to type. Just click it while a read is running.",
+    "effect": "local"
+   },
+   "#expXlsx": {
+    "what": "Saves the findings and every table of this read as an Excel workbook.",
+    "input": "Nothing to type. Just click it. Click Read first.",
+    "effect": "download"
+   },
+   "#expJson": {
+    "what": "Saves the findings and every table of this read as a JSON file.",
+    "input": "Nothing to type. Just click it. Click Read first.",
+    "effect": "download"
+   },
+   "#opBody .op-filter button[data-sev]": {
+    "what": "Shows only the findings of this severity. All shows every finding.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opBody details.pa-details > summary": {
+    "what": "Shows or hides this list: the assumptions, or the log of what was read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   }
+  },
   "/report/browser": {
    "#bwTenant": {
     "what": "Picks which tenant sign-in the browser security read uses.",
@@ -2689,6 +2912,48 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#bwBody details.pa-details > summary": {
+    "what": "Shows or hides this list: the assumptions, or the log of what was read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   }
+  },
+  "/report/ztw": {
+   "#ztTenant": {
+    "what": "Picks which tenant sign-in the Cloud & Branch Connector read uses.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or what is saved on this computer. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   "#ztRun": {
+    "what": "Reads the Cloud & Branch Connector configuration once and checks it: connector groups, forwarding rules, gateways, locations, activation, admins, roles, API keys and cloud accounts. It never reads an API key value or a provisioning URL.",
+    "input": "Nothing to type. Just click it. Tick Cloud & Branch Connector on the Scope page first, and sign in with a OneAPI API client.",
+    "effect": "read"
+   },
+   "#ztStop": {
+    "what": "Stops the read at once. Nothing more is read and nothing is kept.",
+    "input": "Nothing to type. Just click it while a read is running.",
+    "effect": "local"
+   },
+   "#expXlsx": {
+    "what": "Saves the findings and the tables of this read as an Excel workbook. Admins are counted and key values are never in it.",
+    "input": "Nothing to type. Just click it. Click Read first.",
+    "effect": "download"
+   },
+   "#expJson": {
+    "what": "Saves the findings and the tables of this read as a JSON file. Admins are counted and key values are never in it.",
+    "input": "Nothing to type. Just click it. Click Read first.",
+    "effect": "download"
+   },
+   "#ztBody .zt-filter button[data-st]": {
+    "what": "Shows only the findings with this result. All shows every finding.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#ztBody a.zt-trace": {
+    "what": "Opens the Path analyzer for traffic from a workload, with this connector group (and the rule's workload group and destination) filled in, reusing this read. Nothing is read until you click Analyze there.",
+    "input": "Nothing to type. Just click it. You can add the workload's source IP and tags there.",
+    "effect": "nav"
+   },
+   "#ztBody details.pa-details > summary": {
     "what": "Shows or hides this list: the assumptions, or the log of what was read.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
@@ -2742,6 +3007,16 @@ window.HELP_CATALOG = {
    }
   },
   "/report/compliance": {
+   "#cpProfilePick": {
+    "what": "Reads this assessment's checks against a compliance profile, like FedRAMP High. Each control shows met, partly met, not met or not tested.",
+    "input": "Optional. Pick a profile. It reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "#cpProfileCsv": {
+    "what": "Saves the assessment read against the picked compliance profile as a CSV file.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
    "#cpScope": {
     "what": "Picks which frameworks to show as cards.",
     "input": "Pick Selected in the assessment, or All frameworks.",
@@ -3096,8 +3371,13 @@ window.HELP_CATALOG = {
    },
    "#exMax": {
     "what": "Sets the most URLs the analyzer looks up in one run. The rest are listed as not looked up.",
-    "input": "Optional. A whole number from 1 to 2000. The default is 2000.",
+    "input": "Optional. A whole number from 1 to 20000. The default is 20000.",
     "effect": "local"
+   },
+   "#exContinue": {
+    "what": "Looks up the URLs the last analyzer run did not reach, keeping what it already looked up, and saves an Excel file that covers everything so far.",
+    "input": "Nothing to type. Just click it. It continues the same categories; the lookup changes nothing in the tenant.",
+    "effect": "download"
    },
    "#exAnalyze": {
     "what": "Looks up each URL of your custom categories with ZIA's URL lookup and saves an Excel file. It says if Zscaler already sorts it the same way, differently, or not at all.",
@@ -3117,6 +3397,56 @@ window.HELP_CATALOG = {
    "#exPackTf": {
     "what": "Reads the DLP rules on the channels in scope, with the engines and dictionaries they use, and saves them as a Terraform workspace (a zip file).",
     "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "input[name=\"exTfProduct\"]": {
+    "what": "Picks a product to put in the whole-tenant Terraform export. Each ticked product gets its own workspace.",
+    "input": "Tick at least one: ZIA, ZPA, Cloud & Branch Connector or Client Connector. Only what the Scope page ticks is read.",
+    "effect": "local"
+   },
+   "input[name=\"exTfMode\"]": {
+    "what": "Picks how the Terraform is meant to be used. Adopt brings this tenant's objects into Terraform as they are, with import blocks. Clone makes new objects for another tenant, every rule disabled.",
+    "input": "Pick one. Adopt is the default and changes nothing in the tenant.",
+    "effect": "local"
+   },
+   "#exTfMore summary": {
+    "what": "Opens or closes the extra options of the whole-tenant Terraform export.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#exTfPrefix": {
+    "what": "Puts a short word in front of every resource name in the Terraform files, so they do not clash with names you already use.",
+    "input": "Optional. A lowercase letter first, then lowercase letters, digits or _, at most 20, like acme.",
+    "effect": "local"
+   },
+   "#exTfNs": {
+    "what": "Sets where Terraform downloads the Zscaler providers from, for a private registry mirror.",
+    "input": "Optional. Leave empty for zscaler, or type a mirror like registry.example.com/zscaler.",
+    "effect": "local"
+   },
+   "#exTfMt": {
+    "what": "Reads the ZPA objects of one microtenant instead of the parent tenant.",
+    "input": "Optional. The microtenant's ID, digits only, like 216196257331285825.",
+    "effect": "local"
+   },
+   "#exTfKeep": {
+    "what": "In clone mode, keeps each rule on or off as it is in this tenant, instead of writing every rule disabled.",
+    "input": "Optional. Unticked (the default) writes every rule disabled. Has no effect in adopt mode.",
+    "effect": "local"
+   },
+   "#exTfPersonal": {
+    "what": "Also exports the objects that hold email addresses: alert subscriptions and PRA approvals.",
+    "input": "Optional. Unticked by default. Users are never exported.",
+    "effect": "local"
+   },
+   "#exTfTypes input[type=\"checkbox\"]": {
+    "what": "Keeps this object type in the whole-tenant Terraform export. Untick it to leave it out.",
+    "input": "Tick to export it. Types that are not in scope on the Scope page are left out anyway.",
+    "effect": "local"
+   },
+   "#exTenantTf": {
+    "what": "Reads every object in scope from the tenant, read-only, and saves them as Terraform workspaces for the official Zscaler providers (a zip file). No secret is written.",
+    "input": "Tick the products and pick Adopt or Clone first. Needs the products' scope ticked on the Scope page.",
     "effect": "download"
    },
    "#exStop": {
@@ -3193,6 +3523,111 @@ window.HELP_CATALOG = {
     "what": "Saves this kept preflight as an Excel deployment plan, with a sign-off block for change approval.",
     "input": "Nothing to type. Just click it.",
     "effect": "download"
+   },
+   "#exRgCloud": {
+    "what": "The ZIA cloud whose published ranges to use. It is the cloud in your ZIA admin address.",
+    "input": "Pick a cloud, like zscaler.net.",
+    "effect": "local"
+   },
+   "#exRgZpa": {
+    "what": "The ZPA cloud for the ZPA allow list. None leaves ZPA out.",
+    "input": "Pick a ZPA cloud, like private.zscaler.com, or None.",
+    "effect": "local"
+   },
+   "input[name=\"exRgFeed\"]": {
+    "what": "Which of Zscaler's published lists to fetch and use.",
+    "input": "Tick one or more feeds. All are ticked to start.",
+    "effect": "local"
+   },
+   "#exRgFetchOn": {
+    "what": "Lets this app fetch Zscaler's published ranges from config.zscaler.com. It is off to start.",
+    "input": "Ticked allows a fetch, but only when you click Fetch now. Unticked keeps the app offline for this.",
+    "effect": "local"
+   },
+   "#exRgFetch": {
+    "what": "Fetches the ticked feeds from config.zscaler.com now and keeps them with today's date.",
+    "input": "Nothing to type. Turn on the fetch switch first.",
+    "effect": "local"
+   },
+   "#exRgRemove": {
+    "what": "Removes every kept feed from this computer.",
+    "input": "Nothing to type. You confirm it first.",
+    "effect": "local"
+   },
+   "#exRgImpFeed": {
+    "what": "Which feed the file you import holds.",
+    "input": "Pick the feed that matches the file.",
+    "effect": "local"
+   },
+   "#exRgFile": {
+    "what": "A feed saved by hand from config.zscaler.com, for a computer without internet access.",
+    "input": "A JSON file of at most 4 MB.",
+    "effect": "local"
+   },
+   "#exRgImport": {
+    "what": "Checks the chosen file and keeps it as that feed. A file that is not that feed is refused.",
+    "input": "Nothing to type. Pick the feed and the file first.",
+    "effect": "local"
+   },
+   "input[name=\"exRgRegion\"]": {
+    "what": "Keeps only the ranges of the ticked regions.",
+    "input": "Optional. Tick regions. None ticked keeps every region.",
+    "effect": "local"
+   },
+   "#exRgV4": {
+    "what": "Puts the IPv4 ranges in the allowlist.",
+    "input": "Ticked includes them.",
+    "effect": "local"
+   },
+   "#exRgV6": {
+    "what": "Puts the IPv6 ranges in the allowlist.",
+    "input": "Ticked includes them.",
+    "effect": "local"
+   },
+   "#exRgExclude": {
+    "what": "Ranges to take out of the allowlist. A larger range is split around them.",
+    "input": "Optional. One CIDR or address per line, like 165.225.240.0/23.",
+    "effect": "local"
+   },
+   "#exRgExtra": {
+    "what": "Ranges to add to the allowlist, such as certificate checks your firewall must allow.",
+    "input": "Optional. One CIDR or address per line, like 192.0.2.10/32.",
+    "effect": "local"
+   },
+   "#exRgBuild": {
+    "what": "Builds the allowlist from the kept feeds, joined into the fewest ranges. It fetches nothing.",
+    "input": "Nothing to type. Fetch or import the feeds first.",
+    "effect": "local"
+   },
+   "#exRgTxt": {
+    "what": "Saves the ranges as a plain list, one per line.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgCsv": {
+    "what": "Saves the ranges per region and the host names as a CSV file.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgEdlIp": {
+    "what": "Saves the ranges as a Palo Alto external dynamic list of IP addresses.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgEdlUrl": {
+    "what": "Saves the host names as a Palo Alto external dynamic list of URLs.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgJson": {
+    "what": "Saves the allowlist, its sources and their dates as a JSON file.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgM365": {
+    "what": "Saves the allowlist in the shape of Microsoft's 365 endpoint list, one set per region.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
    }
   },
   "/report/fleet": {
@@ -3234,6 +3669,86 @@ window.HELP_CATALOG = {
    "#zfCounts": {
     "what": "Leaves every user and device name out of the exports.",
     "input": "Tick it to export counts only. Untick it to include names.",
+    "effect": "local"
+   },
+   "#zfExpPdf": {
+    "what": "Saves the page as a PDF report: the tiles, alerts, versions, profiles, last seen, sites, history and the plan. It never names a user or a device.",
+    "input": "Nothing to type. Read the fleet or import the files first.",
+    "effect": "download"
+   },
+   "#zfImpDev": {
+    "what": "Picks the Device Details file you exported from the Client Connector Portal, under Enrolled Devices.",
+    "input": "Optional. A CSV file of up to 48 MB. Pick this one, the Service Status file, or both.",
+    "effect": "local"
+   },
+   "#zfImpSvc": {
+    "what": "Picks the Service Status file you exported from the Client Connector Portal. It says if ZIA, ZPA and ZDX are on.",
+    "input": "Optional. A CSV file of up to 48 MB. Export it at the same time as Device Details.",
+    "effect": "local"
+   },
+   "#zfImpLabel": {
+    "what": "Names this import in the history, so you can follow the same customer over time.",
+    "input": "Optional. Up to 80 letters, digits or spaces, like Acme Corp. Empty is Imported CSV.",
+    "effect": "local"
+   },
+   "#zfImpGo": {
+    "what": "Reads the files you picked and shows the fleet from them. Nothing is sent to a tenant.",
+    "input": "Nothing to type. Pick at least one file first.",
+    "effect": "local"
+   },
+   "#zfSiteMode": {
+    "what": "Picks how a host name names its site, so devices are counted per site.",
+    "input": "Pick No grouping, First characters, Part before a separator, or A list of site prefixes.",
+    "effect": "local"
+   },
+   "#zfSiteLen": {
+    "what": "How many first letters of the host name are the site. With 3, LON-LT-001 is site LON.",
+    "input": "A whole number from 1 to 12.",
+    "effect": "local"
+   },
+   "#zfSiteDelim": {
+    "what": "The character that ends the site part of a host name. With a hyphen, LON-LT-001 is site LON.",
+    "input": "Pick a hyphen, an underscore or a dot.",
+    "effect": "local"
+   },
+   "#zfSiteSeg": {
+    "what": "How many parts before the separator make the site. With 2, LON-HQ-001 is site LON-HQ.",
+    "input": "A whole number from 1 to 4.",
+    "effect": "local"
+   },
+   "#zfSiteList": {
+    "what": "The site prefixes to look for. The longest one a host name starts with is its site. Others go to Other.",
+    "input": "Prefixes split by commas or spaces, like LON, NYC, PAR. Letters, digits, dots, hyphens. Up to 200.",
+    "effect": "local"
+   },
+   "#zfSiteApply": {
+    "what": "Counts the devices per site with your choice. It uses the fleet already read and keeps the choice in this browser.",
+    "input": "Nothing to type. Pick how to group first.",
+    "effect": "local"
+   },
+   "#zfHistSave": {
+    "what": "Keeps the counts of this read on this computer, so you can see the trend later. No user or device name is kept.",
+    "input": "Nothing to type. Saving the same read twice keeps it once.",
+    "effect": "local"
+   },
+   "#zfHistForget": {
+    "what": "Removes every saved read of this tenant from this computer. It asks first.",
+    "input": "Nothing to type. Click OK in the question to remove them.",
+    "effect": "local"
+   },
+   "#zfHistA": {
+    "what": "Picks the older saved read to compare.",
+    "input": "Pick a date from the list.",
+    "effect": "local"
+   },
+   "#zfHistB": {
+    "what": "Picks the newer saved read to compare.",
+    "input": "Pick a date from the list.",
+    "effect": "local"
+   },
+   "#zfHistCompare": {
+    "what": "Shows what changed between the two saved reads: devices, ZIA, ZPA and ZDX, alerts, last seen and versions.",
+    "input": "Nothing to type. Pick two different reads first.",
     "effect": "local"
    },
    "#zfA": {
@@ -3376,6 +3891,41 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Build the command first.",
     "effect": "download"
    },
+   "#zfOtpUser": {
+    "what": "The user the device is enrolled to, as the fleet lists it. Used to find the device for its one-time passwords.",
+    "input": "Required. The enrolled user name, like jdoe@acme.example.",
+    "effect": "local"
+   },
+   "#zfOtpDevice": {
+    "what": "The device whose one-time passwords you need: its host name or its UDID.",
+    "input": "Required. A host name, like LT-0042, or the UDID. Type the UDID when the user has two devices with the same name.",
+    "effect": "local"
+   },
+   "#zfOtpAssessor": {
+    "what": "Your name, for the audit log entry that records who asked for the one-time passwords.",
+    "input": "Required. A person's name, like Jane Doe.",
+    "effect": "local"
+   },
+   "#zfOtpPhrase": {
+    "what": "Confirms you mean to show this device's one-time passwords.",
+    "input": "Required. Type SHOW OTP and the device exactly as you typed it above, like SHOW OTP LT-0042.",
+    "effect": "local"
+   },
+   "#zfOtpShow": {
+    "what": "Reads the device's Client Connector one-time passwords from the tenant and shows them here for 60 seconds. Nothing is changed in the tenant, and the passwords are never kept. Needs ZCC on the Scope page and permission to change the tenant; at most 5 requests in 10 minutes.",
+    "input": "Fill in the user, the device, your name and the confirmation first.",
+    "effect": "read"
+   },
+   "#zfOtpHide": {
+    "what": "Hides the one-time passwords now. They are not kept anywhere.",
+    "input": "Nothing to type. Just click it. They hide on their own after 60 seconds.",
+    "effect": "local"
+   },
+   "#zfOtpOut button[data-otp]": {
+    "what": "Copies this one-time password to the clipboard, for the user who needs it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "a.rp-btn[href=\"/help#fleet\"]": {
     "what": "Opens the help for this page in a new tab.",
     "input": "Nothing to type. Just click it.",
@@ -3385,6 +3935,106 @@ window.HELP_CATALOG = {
     "what": "Shows or hides the rest of the page introduction.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#zfDnsDomain": {
+    "what": "The DNS domain the client names go under. Each device gets the name hostname.domain.",
+    "input": "Required. A DNS name, like corp.example.com.",
+    "effect": "local"
+   },
+   "#zfDnsResolvers": {
+    "what": "The resolver that answers for the client names, such as a Branch Connector. Every name is sent to it.",
+    "input": "Required. One to eight IPv4 or IPv6 addresses, separated by commas, like 10.0.0.12, 10.0.0.13.",
+    "effect": "local"
+   },
+   "input[name=\"zfDnsPlat\"]": {
+    "what": "Which kinds of device get a name. Phones are left out unless you tick them.",
+    "input": "Tick one or more platforms. Windows, macOS and Linux are ticked to start.",
+    "effect": "local"
+   },
+   "#zfDnsRegistered": {
+    "what": "Leaves out devices that are not registered now, such as removed ones.",
+    "input": "Ticked uses registered devices only. Unticked uses every device in the read.",
+    "effect": "local"
+   },
+   "#zfDnsSeen": {
+    "what": "Leaves out devices not seen for this many days.",
+    "input": "Optional. A whole number of days from 1 to 3650, like 30. Empty means any.",
+    "effect": "local"
+   },
+   "#zfDnsMap": {
+    "what": "Gives a device a second name under another domain when its user's e-mail domain matches.",
+    "input": "Optional. One line per mapping: e-mail domain, a colon, DNS domain. Like subsidiary.com: subsidiary.corp.example.",
+    "effect": "local"
+   },
+   "#zfDnsLocalZone": {
+    "what": "Adds a local-zone transparent line for each name in the Unbound file. Keep it when the parent domain is a local zone on that server.",
+    "input": "Ticked adds the lines. It does no harm otherwise.",
+    "effect": "local"
+   },
+   "#zfDnsInsecure": {
+    "what": "Adds a domain-insecure line for each name in the Unbound file. The resolver's answers are not signed, so DNSSEC would refuse them.",
+    "input": "Ticked adds the lines. Untick it when DNSSEC is off on that server.",
+    "effect": "local"
+   },
+   "#zfDnsTtl": {
+    "what": "How long other servers may keep the zone file's records.",
+    "input": "A whole number of seconds from 30 to 86400. 300 is five minutes.",
+    "effect": "local"
+   },
+   "#zfDnsBuild": {
+    "what": "Builds the DNS records from the fleet read. It does not read the tenant again and sends nothing to a DNS server.",
+    "input": "Nothing to type. Read the fleet first, then fill in the domain and the resolver addresses.",
+    "effect": "local"
+   },
+   "#zfDnsWinPs": {
+    "what": "Saves the records as a PowerShell script for Windows DNS Server. You run it on your DNS server yourself.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDnsWinCmd": {
+    "what": "Saves the records as dnscmd commands for Windows DNS Server. You run them on your DNS server yourself.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDnsUnbound": {
+    "what": "Saves the Unbound forward zones as a file. You load it on your DNS server yourself.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDnsNamed": {
+    "what": "Saves the BIND forward zones for named.conf as a file.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDnsZone": {
+    "what": "Saves a BIND zone file part that hands each name to the resolver.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDnsCsv": {
+    "what": "Saves every device's hostname, its DNS name and what happened to it as a CSV file.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDevUdid": {
+    "what": "The device to look at, by its device id (UDID).",
+    "input": "Required. The id as the Client Connector Portal shows it: letters, digits and . _ : - { }.",
+    "effect": "local"
+   },
+   "#zfDevShow": {
+    "what": "Reads one device's service state: services on and healthy, versions, strict enforcement, anti-tampering and trust. Ids stay hidden.",
+    "input": "Type the device id first. It only reads. Needs ZCC ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#zfDisShow": {
+    "what": "Reads the disable-reason report and shows how often Client Connector was switched off, per reason. No person is listed.",
+    "input": "Nothing to type. It only reads. Needs ZCC ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#zfDisCsv": {
+    "what": "Downloads the same counts as a CSV file: reason, device type, service, times and people. No names.",
+    "input": "Nothing to type. It reads the report first.",
+    "effect": "download"
    }
   },
   "/report/flow": {
@@ -3405,6 +4055,26 @@ window.HELP_CATALOG = {
    }
   },
   "/report/health": {
+   "#thWarn": {
+    "what": "Sets how many days before expiry a certificate is flagged as needing attention soon.",
+    "input": "Optional. A whole number of days from 1 to 365, like 30. Empty uses the server's setting (30 unless changed). It must be more than the critical days.",
+    "effect": "local"
+   },
+   "#thCrit": {
+    "what": "Sets how many days before expiry a certificate is flagged as needing attention now.",
+    "input": "Optional. A whole number of days from 1 to 365, like 7. Empty uses the server's setting (7 unless changed). It must be fewer than the warning days.",
+    "effect": "local"
+   },
+   "#thRun": {
+    "what": "Checks the tenant's health: changes waiting for activation, the SSL inspection rule order, certificates close to expiry and App Connector groups with no connector. It only reads.",
+    "input": "Nothing to type. Just click it. Sign in on the assessment page first; only what the Scope page ticks is read.",
+    "effect": "read"
+   },
+   "#thCalls": {
+    "what": "Opens the list of API calls this check made, in Advanced settings.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#dhDays": {
     "what": "Picks how many days of incidents the report looks back over. Changing it reads the tenant again.",
     "input": "Pick one: 7, 14, 30, 60 or 90 days. 30 days is the usual choice. Needs the assessment tab that opened this page.",
@@ -3494,9 +4164,44 @@ window.HELP_CATALOG = {
     "what": "Goes back to the assessment page.",
     "input": "Nothing to type. Just click it.",
     "effect": "nav"
+   },
+   "#zwaIncId": {
+    "what": "The id of one Workflow Automation incident to read in depth.",
+    "input": "Required for Read the incident. The id as Workflow Automation shows it, letters, digits and - _ . : only, up to 80 characters, like 1-152-DFZG-17410647793298599936. Details beside a latest transaction fills it in.",
+    "effect": "local"
+   },
+   "#zwaIncRead": {
+    "what": "Reads one incident's details, what triggered it (rule, engine and dictionary names with match counts), its change history and its tickets. Metadata only: the evidence is never fetched, and the user, file name and client IP are not shown.",
+    "input": "Nothing to type here. Type the incident id first. Needs DLP ticked on the Scope page and Workflow Automation not marked as another product.",
+    "effect": "read"
+   },
+   "#zwaAuditDays": {
+    "what": "Picks how many days of the Workflow Automation audit log to read.",
+    "input": "Pick one: 1, 7, 30 or 90 days. 7 days is the usual choice.",
+    "effect": "local"
+   },
+   "#zwaAuditRead": {
+    "what": "Reads the Workflow Automation admin audit log: who did what to which incident, workflow or integration, newest first.",
+    "input": "Nothing to type. Just click it. Needs DLP ticked on the Scope page and Workflow Automation not marked as another product.",
+    "effect": "read"
+   },
+   "button.dh-inc": {
+    "what": "Reads this incident in depth below the report: details, triggers, change history and tickets (metadata only).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "a.dh-close": {
+    "what": "Opens Bulk changes with the open incidents of this rule or destination ready to close as false positives. Nothing is changed until you preview, turn on write mode, name the assessor and type the phrase.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    }
   },
   "/report/insights": {
+   "#tiLogsLink": {
+    "what": "Opens Traffic and session logs, where uploaded NSS logs answer what Insights cannot: per rule, per category, per user and per host.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#tiTenant": {
     "what": "Picks which tenant to read: the one signed in on the assessment tab, a saved tenant profile, or the one saved on this computer.",
     "input": "Pick one from the list. It shows only when there is more than one choice.",
@@ -3528,7 +4233,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#tiRun": {
-    "what": "Reads ZIA Insights for the chosen window: web traffic by action and location, cloud apps, SaaS security, firewall actions and top users. Read-only.",
+    "what": "Reads ZIA Insights for the chosen window: web traffic by action and location, web threats, cloud apps, SaaS security, firewall traffic, incidents by location, IoT device counts and top users. Read-only.",
     "input": "Pick a time window first. ZIA Insights must be ticked on the Scope page.",
     "effect": "read"
    },
@@ -3920,6 +4625,21 @@ window.HELP_CATALOG = {
    }
   },
   "/report/operations": {
+   "#fwiFile": {
+    "what": "Loads a migration plan saved from Migrate from another vendor (Palo Alto Networks). The server checks it again before the preview.",
+    "input": "Optional when the plan was handed over from that page. One .json plan file under 4 MB.",
+    "effect": "local"
+   },
+   "#fwiEnable": {
+    "what": "Creates the imported rules enabled instead of disabled, so they decide traffic as soon as ZIA activates. Applying still needs write mode and the typed phrase.",
+    "input": "Optional. Leave it unticked to create every rule disabled.",
+    "effect": "local"
+   },
+   "#opPlugJson": {
+    "what": "The operation for a local plugin, as JSON. The preview shows exactly what it would change; applying needs write mode and the same gates.",
+    "input": "Required. A JSON object with the fields the plugin's documentation names, like {\"name_prefix\": \"tmp-\"}.",
+    "effect": "local"
+   },
    "#opTenant": {
     "what": "Picks which tenant sign-in this page reads and changes.",
     "input": "Optional. Pick one from the list: the assessment tab, a saved tenant profile, or what is saved on this computer.",
@@ -3941,8 +4661,243 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "input[name=\"opKind\"][value=\"zpa_domains\"]": {
-    "what": "Picks \"ZPA segment domains\". It moves or copies domains between application segments, or clones a segment.",
+    "what": "Picks \"ZPA segment domains\". It adds typed domains to an application segment, removes them, moves or copies domains between segments, or clones a segment. Fix selected picks it for rows ZPA carries.",
     "input": "Tick it to pick this operation. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"list_fix\"]": {
+    "what": "Picks \"Fix rows from Test a list\". It turns rows of the Path analyzer's Test a list that did not do what was expected into group, rule and ATP list changes.",
+    "input": "Tick it to pick this operation. Fix selected on the Path analyzer picks it for you. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"ip_group_edit\"]": {
+    "what": "Picks \"IP destination group change\". It adds or removes addresses or host names on one IP destination group, or makes a new group.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"atp_list_edit\"]": {
+    "what": "Picks \"ATP allow and deny lists\". It adds or removes URLs on the security policy lists Advanced Threat Protection applies to every user.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "#lfArea": {
+    "what": "Picks the area the pasted destinations are fixed in.",
+    "input": "Pick one: Cloud Firewall, DNS Control, Advanced Threat Protection lists or URL filtering.",
+    "effect": "local"
+   },
+   "#lfPurpose": {
+    "what": "Says whether the pasted destinations should be blocked or allowed.",
+    "input": "Pick one: Blocked or Allowed.",
+    "effect": "local"
+   },
+   "#lfDests": {
+    "what": "The destinations to fix, when you did not come from Fix selected.",
+    "input": "Optional. One per line: an IPv4 address, CIDR block, range (a.b.c.d-e.f.g.h), host name or URL. At most 5,000. Example: 203.0.113.9",
+    "effect": "local"
+   },
+   "#lfUse": {
+    "what": "Turns the pasted destinations into a fix section below.",
+    "input": "Nothing to type. Paste the destinations first.",
+    "effect": "local"
+   },
+   "input[id^=\"lfInc\"]": {
+    "what": "Keeps this fix in the change, or leaves it out.",
+    "input": "Ticked includes it. Unticked leaves it out of the preview.",
+    "effect": "local"
+   },
+   "select[id^=\"lfAct\"]": {
+    "what": "Says whether the destinations are added, or taken out (of a group, or of the other ATP list).",
+    "input": "Pick one. Taking out works on an existing group only and changes no rule.",
+    "effect": "local"
+   },
+   "select[id^=\"lfIp\"]": {
+    "what": "Picks the IP destination group the addresses go into or come out of.",
+    "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).",
+    "effect": "local"
+   },
+   "input[id^=\"lfIpName\"]": {
+    "what": "Names the new group for the addresses.",
+    "input": "Required for a new group. At most 128 characters. Over the limit, it is split into numbered groups.",
+    "effect": "local"
+   },
+   "select[id^=\"lfHost\"]": {
+    "what": "Picks the IP destination group the host names go into or come out of.",
+    "input": "Pick a group of type FQDN or domain, or A new group.",
+    "effect": "local"
+   },
+   "input[id^=\"lfHostName\"]": {
+    "what": "Names the new group for the host names.",
+    "input": "Required for a new group. At most 128 characters.",
+    "effect": "local"
+   },
+   "select[id^=\"lfRuleId\"]": {
+    "what": "Picks the existing rule the group is added to.",
+    "input": "Required. Only rules whose action matches (Block for rows to block, Allow for rows to allow) are listed.",
+    "effect": "local"
+   },
+   "input[id^=\"lfRuleName\"]": {
+    "what": "Names the new rule.",
+    "input": "Required. At most 31 characters, as ZIA allows. It must not be the name of another rule.",
+    "effect": "local"
+   },
+   "select[id^=\"lfRule\"]": {
+    "what": "Says which rule uses the group (or, for URL filtering, the category): none, a new rule, or an existing rule.",
+    "input": "Pick one. A new rule is created disabled unless you tick it on.",
+    "effect": "local"
+   },
+   "select[id^=\"lfAbove\"]": {
+    "what": "Picks where the new rule goes: above this rule. The rule that decided the rows is suggested.",
+    "input": "Optional. Leave it to put the rule last, above the Default rule.",
+    "effect": "local"
+   },
+   "input[id^=\"lfCatName\"]": {
+    "what": "Names the new custom URL category the URL filtering rows go into.",
+    "input": "Required for a new category. At most 255 characters, not the name of another category. Example: Fix allow partner sites",
+    "effect": "local"
+   },
+   "select[id^=\"lfCat\"]": {
+    "what": "Picks the custom URL category the URL filtering rows go into, or a new one. Alone it changes nothing: a URL filtering rule with the right action must name it, above the rule that decided the rows (pick it under Then).",
+    "input": "Pick an existing custom category or A new custom URL category.",
+    "effect": "local"
+   },
+   "input[id^=\"lfOn\"]": {
+    "what": "Creates the new rule enabled instead of disabled. It then acts on traffic as soon as ZIA activates the change.",
+    "input": "Optional. Off by default. When ticked, applying needs the typed phrase.",
+    "effect": "local"
+   },
+   "select[id^=\"lfSvc\"]": {
+    "what": "Adds network services to the rule, so it applies to those ports and protocols only.",
+    "input": "Optional. Hold Ctrl or Cmd to pick several. Leave it empty to keep the rule as it is.",
+    "effect": "local"
+   },
+   "#opObjects a[href^=\"#lf-row-\"]": {
+    "what": "Jumps to this row in the table of rows this fixes.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#opPlan a[href^=\"#lf-row-\"]": {
+    "what": "Jumps to this row in the table of rows this fixes.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#lfProve": {
+    "what": "Tests the same rows again, as Test a list did, and says which now do what was expected. It only reads.",
+    "input": "Nothing to type. Only what is in scope is read.",
+    "effect": "read"
+   },
+   "#lfProof a[href^=\"#lf-row-\"]": {
+    "what": "Jumps to this row in the table of rows this fixes.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#lgGroup": {
+    "what": "Picks the IP destination group to change, or A new group.",
+    "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).",
+    "effect": "local"
+   },
+   "#lgName": {
+    "what": "Names the new group.",
+    "input": "Required for a new group. At most 128 characters.",
+    "effect": "local"
+   },
+   "#lgType": {
+    "what": "Says what the new group holds: IPv4 addresses, CIDR blocks and ranges, or host names.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#lgAdd": {
+    "what": "The entries to add to the group.",
+    "input": "Optional. One per line: an IPv4 address, CIDR block, range or host name. IPv6 is refused: ZIA has no user-defined IPv6 group.",
+    "effect": "local"
+   },
+   "#lgRemove": {
+    "what": "The entries to take out of the group.",
+    "input": "Optional. One per line, written as the group lists them.",
+    "effect": "local"
+   },
+   "#laList": {
+    "what": "Picks the security policy list to change: the denylist blocks, the allowlist exempts.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#laAdd": {
+    "what": "The URLs to add to the list.",
+    "input": "Optional. One per line, like example.com or example.com/path, with no scheme in front.",
+    "effect": "local"
+   },
+   "#laRemove": {
+    "what": "The URLs to take off the list.",
+    "input": "Optional. One per line, written as the list holds them.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"zpa_segment_fields\"]": {
+    "what": "Picks \"ZPA segment settings in bulk\". It sets the same fields on many application segments at once, Browser Access, PRA and inspection segments too.",
+    "input": "Tick it, then click Read from the tenant to show the form. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#zfFilter": {
+    "what": "Shows only the segments whose name or kind contains what you type.",
+    "input": "Optional. Type part of a name, or Browser Access, PRA or inspection.",
+    "effect": "local"
+   },
+   "#zfAll": {
+    "what": "Picks every segment the list shows, up to the most one operation takes.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#zfNone": {
+    "what": "Clears the segments you picked.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "input[data-zf-seg]": {
+    "what": "Picks this segment for the change. A read-only segment cannot be picked.",
+    "input": "Tick it to pick it.",
+    "effect": "local"
+   },
+   "select[data-zf-field]": {
+    "what": "Sets this field on every picked segment, or leaves it as it is.",
+    "input": "Optional. Pick a value, or Leave as it is.",
+    "effect": "local"
+   },
+   "#zfSegGroup": {
+    "what": "Moves every picked segment to this segment group, or leaves them where they are.",
+    "input": "Optional. Pick a segment group, or Leave as it is.",
+    "effect": "local"
+   },
+   "#zfSgMode": {
+    "what": "Says what to do with the server groups you tick: add them, remove them, or make them the only ones.",
+    "input": "Optional. Pick one, then tick the server groups.",
+    "effect": "local"
+   },
+   "input[data-zf-sg]": {
+    "what": "A server group to add, remove or replace with, on every picked segment.",
+    "input": "Tick it to use it.",
+    "effect": "local"
+   },
+   "#zfTcpAdd": {
+    "what": "TCP ports or ranges to add to every picked segment.",
+    "input": "Optional. Ports from 1 to 65535 and ranges, separated by commas, like 443, 8000-8080.",
+    "effect": "local"
+   },
+   "#zfTcpRemove": {
+    "what": "TCP ranges to remove from every picked segment. A range is removed whole.",
+    "input": "Optional. The ranges as the segment lists them, like 8080 or 8000-8100.",
+    "effect": "local"
+   },
+   "#zfUdpAdd": {
+    "what": "UDP ports or ranges to add to every picked segment.",
+    "input": "Optional. Ports from 1 to 65535 and ranges, separated by commas, like 53, 5000-5100.",
+    "effect": "local"
+   },
+   "#zfUdpRemove": {
+    "what": "UDP ranges to remove from every picked segment. A range is removed whole.",
+    "input": "Optional. The ranges as the segment lists them, like 53.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"cloud_app_sanction\"]": {
+    "what": "Picks \"Sanction or unsanction cloud apps\". It marks up to 100 cloud apps Sanctioned or Unsanctioned for the whole tenant.",
+    "input": "Tick it, then click Read from the tenant to list the apps. Needs ZIA platform and ZIA Insights ticked on the Scope page.",
     "effect": "local"
    },
    "#opBuildKinds input[name=\"opKind\"][value=\"aiguard_detection_policy\"]": {
@@ -4010,6 +4965,56 @@ window.HELP_CATALOG = {
     "input": "Tick it, then click Read from the tenant to list what the prefix matches. Needs ZPA ticked on the Scope page.",
     "effect": "local"
    },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zpa_infra_update\"]": {
+    "what": "Picks \"Change ZPA App Connectors, Service Edges and portals\". It shows each one's health, then renames, turns on or off, moves App Connectors and sets update schedules. Undo puts it back.",
+    "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zpa_infra_delete\"]": {
+    "what": "Picks \"Delete ZPA connectors, groups, portals, certificates or keys\". Anything connected or still used is kept. This cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zpa_provisioning_key_new\"]": {
+    "what": "Picks \"New ZPA provisioning key\". It makes a key for an App Connector group or a Service Edge group, shown once.",
+    "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zpa_ba_certificate\"]": {
+    "what": "Picks \"ZPA Browser Access certificate\". It uploads a certificate with its key, or picks one, and points Browser Access applications at it.",
+    "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zcc_device_remove\"]": {
+    "what": "Picks \"Remove Client Connector devices\". It removes or force removes one user's devices. This cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zcc_device_bulk_remove\"]": {
+    "what": "Picks \"Remove Client Connector devices from a list\". It matches a list of users, host names or device ids and removes them in batches. This cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zcc_bypass_app\"]": {
+    "what": "Picks \"Client Connector custom bypass apps\". It lists, creates, edits or deletes the apps whose traffic skips the Zscaler tunnel.",
+    "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zcc_entitlements\"]": {
+    "what": "Picks \"ZPA and ZDX entitlements\". It sets who gets ZPA and ZDX in Client Connector.",
+    "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zdx_deeptrace_start\"]": {
+    "what": "Picks \"Start a ZDX deep trace\". It shows application scores, a user's devices and their health, and starts a deep trace on one device.",
+    "input": "Tick it, then click Read from the tenant. Needs ZDX ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zdx_deeptrace_stop\"]": {
+    "what": "Picks \"Stop a ZDX deep trace\". ZDX deletes the trace and what it collected. This cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. Needs ZDX ticked on the Scope page.",
+    "effect": "local"
+   },
    "#opBuildKinds input[name=\"opKind\"]": {
     "what": "Picks this \"Build new\" builder. Its form shows after you read the tenant.",
     "input": "Tick it, then click Read from the tenant.",
@@ -4024,6 +5029,11 @@ window.HELP_CATALOG = {
     "what": "Reads the tenant again and lists every item with its value before and after. Nothing is written.",
     "input": "Read from the tenant and pick the objects first. Then click it.",
     "effect": "read"
+   },
+   "#opApiCalls": {
+    "what": "Opens the API calls this run made, in Advanced settings: each call's path, answer, time taken, retries and waits.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    },
    "#opPdf": {
     "what": "Saves the previewed plan as a PDF, for a change ticket or the customer.",
@@ -4136,8 +5146,8 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#opZAct": {
-    "what": "Picks what to do: move domains, copy domains, or clone a segment.",
-    "input": "Required. Pick Move domains, Copy domains or Clone a segment.",
+    "what": "Picks what to do: add typed domains to a segment, remove domains from one, move or copy domains, or clone a segment.",
+    "input": "Required. Pick one. Fix selected picks Remove for ZPA rows that should be blocked, Add for rows that should be reachable.",
     "effect": "local"
    },
    "#opZSrc": {
@@ -4168,6 +5178,16 @@ window.HELP_CATALOG = {
    "#opZNew": {
     "what": "Adds more domains to the clone, besides the ones picked above.",
     "input": "Optional. One domain per line, like app.example.com.",
+    "effect": "local"
+   },
+   "#opZAdd": {
+    "what": "The domains to add to the segment. They take the segment's ports; one already in another segment on overlapping ports is left out, with where it is.",
+    "input": "Required for Add. One host name or wildcard domain per line, at most 500. Example: app.corp.example or *.corp.example",
+    "effect": "local"
+   },
+   "#opZHand": {
+    "what": "Picks which segment from Test a list to fix now. A row to block opens ZPA segment domains; a row to allow opens ZPA policy rules.",
+    "input": "Pick one. Fix one segment, then pick the next here.",
     "effect": "local"
    },
    "input[data-aig-app]": {
@@ -4225,9 +5245,14 @@ window.HELP_CATALOG = {
     "input": "Optional. Up to 12 letters, digits, - or _, starting with a letter or digit, like ACME.",
     "effect": "local"
    },
+   "#zsbHashes": {
+    "what": "The files to block in Cloud Sandbox, by their MD5 hash. A blocked hash stops that file for every user once the change is activated.",
+    "input": "Required. One MD5 hash per line (32 characters, 0-9 and a-f), up to 100; anything after the hash on the line is its comment. SHA-256 is not accepted.",
+    "effect": "local"
+   },
    "#aigProfile": {
-    "what": "Picks the compliance profile the detection policy looks for.",
-    "input": "Required. HIPAA, HITRUST, PCI DSS, GDPR, CJIS, FERPA, SOX or General.",
+    "what": "Picks the compliance profile the detection policy looks for. It follows the compliance profile picked in the ZIA security baseline, until you change it here.",
+    "input": "Required. HIPAA, HITRUST, PCI DSS, GDPR, CJIS, FERPA, SOX, NIST SP 800-53, NIST SP 800-171 / CMMC, IRS Publication 1075 or General.",
     "effect": "local"
    },
    "input[name=\"aigMode\"][value=\"monitor\"]": {
@@ -4238,6 +5263,36 @@ window.HELP_CATALOG = {
    "input[name=\"aigMode\"][value=\"block\"]": {
     "what": "Sets the policy to Block: it stops prompts with the profile's identifiers and prompt attacks.",
     "input": "Tick it to block.",
+    "effect": "local"
+   },
+   "input[name=\"rcPolicy\"]": {
+    "what": "Picks the policy whose rules you export and import: Cloud Firewall, URL filtering or the ZPA access policy.",
+    "input": "Tick one. Only policies in scope on the Scope page are offered.",
+    "effect": "local"
+   },
+   "#rcExport": {
+    "what": "Saves the policy's rules as a CSV file: names, not ids, with the order and the admin rank. Every cell is safe to open in a spreadsheet.",
+    "input": "Nothing to type. Just click it. Read from the tenant first.",
+    "effect": "download"
+   },
+   "#rcCols > summary": {
+    "what": "Shows or hides the columns a file for this policy may have and what each holds.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#rcFile": {
+    "what": "Chooses the edited CSV file. Choosing it only checks the file; nothing is read from or written to the tenant.",
+    "input": "Required to preview. A UTF-8 CSV with a header row, at most 1000 kB and 2000 rules; lists separated by a semicolon, like QUIC; DNS.",
+    "effect": "local"
+   },
+   "#rcRemove": {
+    "what": "Deletes every rule of the policy that is not in the file (never the Default, predefined or read-only rules). Applying then needs DELETE and the count typed, like DELETE 3 RULES.",
+    "input": "Optional. Off by default. Tick it only when the file lists every rule you want to keep.",
+    "effect": "local"
+   },
+   "#rcEnabled": {
+    "what": "Creates new rules from the file enabled. Off, new ZIA rules are created disabled; new ZPA access rules are left out, because ZPA cannot create them disabled.",
+    "input": "Optional. Off by default.",
     "effect": "local"
    },
    "#opObjects details.pa-details > summary": {
@@ -4295,9 +5350,184 @@ window.HELP_CATALOG = {
     "input": "Tick it to make them on.",
     "effect": "local"
    },
+   "input[data-zpw]": {
+    "what": "A tamper protection password for the new app profile: users need it to uninstall Client Connector, turn off Internet security or log out. It is sent once, when the profile is made, and never kept; the preview shows set (hidden).",
+    "input": "Optional. Up to 128 characters. Leave it empty to set no password. You type it again before you apply.",
+    "effect": "local"
+   },
    "input[name=\"zcDel\"]": {
     "what": "Picks this profile to delete. A profile in use cannot be picked.",
     "input": "Pick one. You type the profile's name to confirm when you apply.",
+    "effect": "local"
+   },
+   "#reType": {
+    "what": "Picks the kind of rule to create, edit, copy or delete. The form below shows only the fields that kind of rule has.",
+    "input": "Pick one. The number is how many rules of that kind the tenant has.",
+    "effect": "local"
+   },
+   "input[name=\"reMode\"]": {
+    "what": "Picks what to do: create a new rule, edit one, make a copy of one, or delete one.",
+    "input": "Tick one. Nothing is written until you preview and apply.",
+    "effect": "local"
+   },
+   "#reFilter": {
+    "what": "Narrows the rule list below to rules whose name has these words.",
+    "input": "Optional. Type part of a rule's name.",
+    "effect": "local"
+   },
+   "#reRule": {
+    "what": "Picks the rule to edit, copy or delete. The Default rule, predefined rules and read-only rules are listed but not changed here.",
+    "input": "Pick one rule from the list.",
+    "effect": "local"
+   },
+   "#reCacType": {
+    "what": "Picks the Cloud App Control application type the new rule belongs to, such as Webmail or File sharing.",
+    "input": "Required for Cloud App Control. Pick one.",
+    "effect": "local"
+   },
+   "#rePlace": {
+    "what": "Picks where the new rule goes in the policy: the top, the bottom (above the Default rule), an order number, or right below a rule. The preview shows the order and the admin rank it gets.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#rePlaceOrder": {
+    "what": "The order number the new rule takes; 1 is the top. A number past the end puts it last.",
+    "input": "A whole number from 1.",
+    "effect": "local"
+   },
+   "#rePlaceBelow": {
+    "what": "Picks the rule the new rule goes right below.",
+    "input": "Pick one rule from the list.",
+    "effect": "local"
+   },
+   "#reEnabled": {
+    "what": "Creates the rule enabled, so it applies to users as soon as ZIA activates. It is off by default: the rule then changes nothing until you enable it.",
+    "input": "Tick it to create the rule enabled; you then type a confirmation when you apply.",
+    "effect": "local"
+   },
+   "#reState": {
+    "what": "Keeps the rule's state, or enables or disables it with the edit.",
+    "input": "Pick one. Enabling needs a typed confirmation when you apply.",
+    "effect": "local"
+   },
+   "#reDupName": {
+    "what": "Names the copy. The copy keeps every other setting, sits right below the rule and is created disabled.",
+    "input": "Required. Up to 31 characters (127 for Web DLP), no angle brackets or control characters.",
+    "effect": "local"
+   },
+   "input[name=\"reObj\"]": {
+    "what": "Picks which objects to list and change: cloud application instances or tenancy restriction profiles.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"reObjMode\"]": {
+    "what": "Picks whether to create a new object or edit one the tenant has.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#reObjPick": {
+    "what": "Picks the object to edit. Its current values fill the form below.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"text\"]": {
+    "what": "Names the rule or object (the label in the first column says which).",
+    "input": "Required. Up to the length the third column gives, no angle brackets or control characters.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"longtext\"]": {
+    "what": "A description kept with the rule or object, shown in the ZIA Admin Portal.",
+    "input": "Optional. Up to 255 bytes of plain text.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"enum\"]": {
+    "what": "Picks one value for the field named in the first column, such as the rule's action.",
+    "input": "Pick one. The values are the ones the Zscaler SDK accepts.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"ssl_action\"]": {
+    "what": "Picks what SSL inspection does: inspect (decrypt), do not inspect, or block.",
+    "input": "Pick one. Inspect uses TLS 1.2 or later; an edit that keeps the action keeps its other settings.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"enums\"]": {
+    "what": "Ticks the values the rule applies to for the field named in the first column; none ticked means every one.",
+    "input": "Tick any.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"refs\"]": {
+    "what": "Picks, by name, the tenant's objects the rule applies to for the field named in the first column; none picked means any.",
+    "input": "Optional unless marked required. Ctrl or Cmd picks several.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"names\"]": {
+    "what": "Picks, by name, the categories or applications the rule applies to for the field named in the first column.",
+    "input": "Optional unless marked required. Ctrl or Cmd picks several.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"ref\"]": {
+    "what": "Picks one of the tenant's objects by name, such as the gateway a forwarding rule uses.",
+    "input": "Pick one, or none.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"addrs\"]": {
+    "what": "Lists the addresses the rule applies to: IP addresses, ranges, CIDR blocks or (for destinations) domains.",
+    "input": "One per line, such as 10.0.0.0/8, 10.0.0.1-10.0.0.9 or *.example.com.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"countries\"]": {
+    "what": "Lists the destination countries the rule applies to.",
+    "input": "One per line: a two-letter code such as US, or COUNTRY_US.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"enums_free\"]": {
+    "what": "Lists the Zscaler file types the rule applies to.",
+    "input": "One per line, such as FTCATEGORY_ZIP.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"cac_actions\"]": {
+    "what": "Lists the Cloud App Control actions the rule takes, such as blocking uploads.",
+    "input": "One per line, such as BLOCK_FILE_SHARE_UPLOAD. ZIA refuses an action the application does not support.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"bool\"]": {
+    "what": "Turns the setting named in the first column on or off.",
+    "input": "Tick for yes.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"flag01\"]": {
+    "what": "Turns the setting named in the first column on or off.",
+    "input": "Tick for yes.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"int\"]": {
+    "what": "A number for the field named in the first column, such as a port or a size.",
+    "input": "A whole number in the range the third column gives.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"ports\"]": {
+    "what": "The segment's ports for this protocol. A port taken away cuts access on it.",
+    "input": "Ports and ranges, separated by commas, such as 443, 8000-8080.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"lines\"]": {
+    "what": "Lists the items of the tenancy restriction, such as tenant IDs or domains.",
+    "input": "One per line, no spaces.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"identifiers\"]": {
+    "what": "Lists what identifies this cloud application instance: a URL, a referring URL or a keyword.",
+    "input": "One per line: URL, REFURL or KEYWORD, a space, then the value.",
+    "effect": "local"
+   },
+   "[data-re-kind=\"host\"]": {
+    "what": "The proxy's address: where ZIA forwards the traffic it chains.",
+    "input": "An IP address or a host name such as proxy.example.com.",
+    "effect": "local"
+   },
+   "input[name=\"zdxTier\"]": {
+    "what": "Picks how closely ZDX watches: Strict monitors the most apps every 5 minutes, Balanced the Microsoft 365 core every 10, Permissive sign-in only every 15, Healthcare adds Zoom every 5. It fills in the apps, the interval and the CloudPath probes below.",
+    "input": "Tick one: Strict, Balanced, Permissive or Healthcare. It starts on the tier picked for the ZIA security baseline, else Balanced.",
     "effect": "local"
    },
    "input[name=\"zdxTpl\"]": {
@@ -4375,6 +5605,36 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "input[name=\"sanTo\"][value=\"unsanctioned\"]": {
+    "what": "Marks the picked cloud apps Unsanctioned when you apply. That labels them for the whole tenant; it does not block them.",
+    "input": "Tick it to mark them Unsanctioned. Block or isolate them in Cloud App Control too.",
+    "effect": "local"
+   },
+   "input[name=\"sanTo\"][value=\"sanctioned\"]": {
+    "what": "Marks the picked cloud apps Sanctioned when you apply: approved for business use, for the whole tenant.",
+    "input": "Tick it to mark them Sanctioned.",
+    "effect": "local"
+   },
+   "#sanFilter": {
+    "what": "Shows only the cloud apps whose name or category contains these words.",
+    "input": "Optional. Some words, like box or file share. Up to 80 characters.",
+    "effect": "local"
+   },
+   "#sanRisky": {
+    "what": "Ticked: shows only the cloud apps with a risk index of 4 or 5 (high risk).",
+    "input": "Optional. Tick it to see the high-risk apps only.",
+    "effect": "local"
+   },
+   "#sanNone": {
+    "what": "Clears every pick.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opObjects:has(input[name=\"sanTo\"]) input[data-id]": {
+    "what": "Picks this cloud app to change. Its state now, risk and traffic come from ZIA Insights.",
+    "input": "Tick it to include it. At most 100 per change.",
+    "effect": "local"
+   },
    "#opObjects:has(input[name=\"zdxTo\"]) input[data-k]": {
     "what": "Picks this ZDX app or probe to turn on or off.",
     "input": "Tick it to include it. At most 100 per change.",
@@ -4394,6 +5654,26 @@ window.HELP_CATALOG = {
     "what": "Picks the tier the baseline is built from.",
     "input": "Tick one: Strict, Balanced, Permissive or Healthcare zero trust.",
     "effect": "local"
+   },
+   "#zbCompliance": {
+    "what": "Picks the one compliance profile, like FedRAMP High or CMMC Level 2. It sets the tier and the rules its source asks for. It also picks the policy packs, the AI Guard profile and the compliance pack.",
+    "input": "Optional. Pick a profile, or None. With a saved tenant profile picked above, the choice is remembered for that tenant.",
+    "effect": "local"
+   },
+   "button[data-zb-cp-file]": {
+    "what": "Saves one file of the compliance pack, made from the build on screen. Pick the control mapping, the policy export, the test plan, or all of them with the DLP test files.",
+    "input": "Nothing to type. Pick a compliance profile first. Local files only: nothing is written to the tenant.",
+    "effect": "download"
+   },
+   "#zbCpCheck": {
+    "what": "Checks that every rule of the build maps to a control of the profile, or has a reason code.",
+    "input": "Nothing to type. Pick a compliance profile first. It reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "#zbCpSummary a.rp-btn[href*=\"simple=deploy\"]": {
+    "what": "Opens Deploy policy packs with this policy pack picked. Nothing is deployed until you preview and confirm there.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    },
    "#zbFile": {
     "what": "Loads a framework file saved from another tenant, instead of a tier.",
@@ -4448,6 +5728,26 @@ window.HELP_CATALOG = {
    "#zbEnable": {
     "what": "Makes the new rules enabled. Off: every new rule arrives disabled, to turn on after review.",
     "input": "Tick it to make them enabled.",
+    "effect": "local"
+   },
+   "#zbSearch": {
+    "what": "Finds rules in the review below by name, title or area. It only hides the rules that do not match; it changes nothing in the build.",
+    "input": "Optional. A few letters or words, like gambling or Cloud Firewall, at most 80 characters. Empty shows every rule.",
+    "effect": "local"
+   },
+   "#zbChanged": {
+    "what": "Shows only the rules you changed from the tier default: another action, or turned on or off.",
+    "input": "Tick it to see only your changes. Untick it to see every rule again.",
+    "effect": "local"
+   },
+   "#zbSelSave": {
+    "what": "Saves your choices in this review (tier, areas, overlays, each rule's action and on or off) as a file, to load again later or on another tenant.",
+    "input": "Nothing to type. Just click it. It saves a local .json file; nothing is read from or written to the tenant.",
+    "effect": "download"
+   },
+   "#zbSelLoad": {
+    "what": "Loads a file saved with Download selection and puts its choices back in this review. The file is checked first; rule choices this version does not know are left out.",
+    "input": "Optional. A .json file from Download selection, at most 256 KB. Nothing is written to the tenant.",
     "effect": "local"
    },
    "input[data-zb-on]": {
@@ -4580,6 +5880,21 @@ window.HELP_CATALOG = {
     "input": "Tick it to add the rule.",
     "effect": "local"
    },
+   "#zbAbove": {
+    "what": "Puts the access rule just above this rule of the access policy. ZPA uses the first rule that matches, top down, so a rule above it that denies these users would win otherwise.",
+    "input": "Optional. Leave it to keep the rule at the end. The preview shows the move; Undo puts the order back.",
+    "effect": "local"
+   },
+   "input[name=\"zbApps\"]": {
+    "what": "Says which segments the access rule covers: every segment named with the prefix, or one segment that is already in ZPA.",
+    "input": "Pick one. Fix selected picks An existing segment for a Test a list row ZPA denies.",
+    "effect": "local"
+   },
+   "#zbSeg": {
+    "what": "The existing application segment the access rule allows. The rule only names it; the segment is not changed. The rule allows access as soon as it is applied, and Undo deletes it.",
+    "input": "Required for An existing segment. Pick it from the list read from ZPA. Fix selected picks the segment that already holds the row.",
+    "effect": "local"
+   },
    "#zbTimeout": {
     "what": "Adds a timeout rule that makes users sign in again.",
     "input": "Tick it to add the rule, then pick the times.",
@@ -4603,6 +5918,46 @@ window.HELP_CATALOG = {
    "#zbIso": {
     "what": "Picks an isolation profile for an isolation rule.",
     "input": "Optional. Pick a profile, or No isolation rule.",
+    "effect": "local"
+   },
+   "#zbWhoAll": {
+    "what": "Lets the access rule allow every user of the applications.",
+    "input": "Nothing to type. Just pick it.",
+    "effect": "local"
+   },
+   "#zbWhoSome": {
+    "what": "Limits the access rule to users in the SCIM groups or with the SAML values you pick from the tenant.",
+    "input": "Nothing to type. Pick it, then pick SCIM groups or add SAML values below.",
+    "effect": "local"
+   },
+   "#zbScimFind": {
+    "what": "Narrows the SCIM group list to names that contain what you type.",
+    "input": "Optional. Part of a group name, like Fin.",
+    "effect": "local"
+   },
+   "#zbScimList input[data-scim]": {
+    "what": "Picks this SCIM group for the access rule. A user in any picked group matches.",
+    "input": "Nothing to type. Tick it. At most 20 groups.",
+    "effect": "local"
+   },
+   "#zbSamlAttr": {
+    "what": "Picks a SAML attribute the tenant has, for a value the access rule requires.",
+    "input": "Pick an attribute, then type its value.",
+    "effect": "local"
+   },
+   "#zbSamlVal": {
+    "what": "Sets the SAML attribute value a user must have.",
+    "input": "Required to add. 1 to 200 characters, like Finance.",
+    "effect": "local"
+   },
+   "#zbSamlAdd": {
+    "what": "Adds this SAML attribute and value to the access rule. A user with any added value matches.",
+    "input": "Pick the attribute and type the value first. At most 20.",
+    "effect": "local"
+   },
+   "#zbSamlList button[data-saml-del]": {
+    "what": "Removes this SAML value from the access rule.",
+    "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
    "#zbAll": {
@@ -4650,6 +6005,21 @@ window.HELP_CATALOG = {
     "input": "Needs write mode on, your permission to change the tenant, the assessor's name, the box ticked and any phrase typed.",
     "effect": "write"
    },
+   "#opSimulate": {
+    "what": "Applies the rehearsed change to a simulation: a copy of the sample tenant or the opened snapshot kept in this app's memory. Then the Path analyzer and Test a list show what the change would do.",
+    "input": "Nothing to type here. Preview the change on the sample tenant or a snapshot first, and type the phrase above when one is asked. Nothing reaches a tenant, the sample tenant or a saved snapshot.",
+    "effect": "local"
+   },
+   "#opSimLeave": {
+    "what": "Leaves the simulation: its copy is dropped and this browser goes back to the sample tenant or the snapshot it was made from. The rehearsed changes are gone.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opSimPath": {
+    "what": "Opens the Path analyzer, which now reads the simulation, so you can see what the rehearsed change does to a destination.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#opResult details.pa-details > summary": {
     "what": "Shows or hides the log of what was done.",
     "input": "Nothing to type. Just click it.",
@@ -4659,6 +6029,1051 @@ window.HELP_CATALOG = {
     "what": "Starts an Undo of this change. It previews the Undo first. Nothing is written until you apply it.",
     "input": "Nothing to type. Just click it.",
     "effect": "read"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"config_restore_zia\"]": {
+    "what": "Picks restore or clone for ZIA. It restores this tenant from a backup, clones another tenant's backup into it, or applies a template.",
+    "input": "Tick it, then click Read from the tenant to show the form. It lists the saved backups and reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"config_restore_zpa\"]": {
+    "what": "Picks restore or clone for ZPA. It restores this tenant from a backup, clones another tenant's backup into it, or applies a template.",
+    "input": "Tick it, then click Read from the tenant to show the form. It lists the saved backups and reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"config_restore_zcc\"]": {
+    "what": "Picks restore or clone for Client Connector. It restores this tenant from a backup, clones another tenant's backup into it, or applies a template.",
+    "input": "Tick it, then click Read from the tenant to show the form. It lists the saved backups and reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"crSrc\"]": {
+    "what": "Picks where the objects come from: a saved backup or a template.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"crBackup\"]": {
+    "what": "Picks the backup to restore or clone from.",
+    "input": "Tick one row. Each row says when it was saved and which tenant it is of.",
+    "effect": "local"
+   },
+   "button[data-crdel]": {
+    "what": "Deletes this backup file from this computer. The tenant is not changed.",
+    "input": "Click it, then confirm. This cannot be undone.",
+    "effect": "local"
+   },
+   "#opObjects a[href^=\"/api/config-backups/\"]": {
+    "what": "Downloads this backup as a file. It holds no secret.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#crTemplate": {
+    "what": "Picks the template to apply.",
+    "input": "Pick one from the list. Make or import one under the tools below.",
+    "effect": "local"
+   },
+   "#crPrefix": {
+    "what": "Sets the text put in front of the name of each object the template makes.",
+    "input": "Optional. Up to 20 letters, digits, spaces and . _ -, like ACME-.",
+    "effect": "local"
+   },
+   "input[name=\"crTarget\"]": {
+    "what": "Says whether this tenant is the backup's own tenant or another one. Another tenant means a clone: objects are matched by name.",
+    "input": "Tick one. A clone works only on the saved profile picked in the Tenant list.",
+    "effect": "local"
+   },
+   "input[name=\"crMode\"]": {
+    "what": "Picks how far the plan goes: add what is missing, also update what differs, or match the source exactly. Matching exactly also deletes.",
+    "input": "Tick one. Deletes need DELETE and the count typed to confirm.",
+    "effect": "local"
+   },
+   "input[data-crtype]": {
+    "what": "Includes this kind of object in the restore.",
+    "input": "Tick or untick it. All are ticked to start with.",
+    "effect": "local"
+   },
+   "input[data-crkeys]": {
+    "what": "Limits a settings restore to the keys you name. The other keys keep the target's value.",
+    "input": "Optional. Key names split by commas, like enable_office365. Blank means all keys.",
+    "effect": "local"
+   },
+   "#crKeep": {
+    "what": "Keeps each rule on or off as it is in the source. When it is off, new rules are made turned off.",
+    "input": "Tick it to keep the source's state.",
+    "effect": "local"
+   },
+   "#crActivate": {
+    "what": "Activates the ZIA changes as the last step of the plan. When it is off, they wait in ZIA.",
+    "input": "Untick it to activate later in the portal.",
+    "effect": "local"
+   },
+   "#crAck": {
+    "what": "Says you checked the licences. A clone is blocked while the target lacks a subscription the source has.",
+    "input": "Tick it only after you checked the two tenants' licences.",
+    "effect": "local"
+   },
+   "#crRollback": {
+    "what": "Undoes what a run applied at once if the run stops or fails. Without it, Undo is offered.",
+    "input": "Tick it before you apply.",
+    "effect": "local"
+   },
+   "#crPskName": {
+    "what": "Names the VPN credential whose key you type next.",
+    "input": "Its FQDN or IP address, like branch@corp.example.",
+    "effect": "local"
+   },
+   "#crPskValue": {
+    "what": "Takes the pre-shared key of that VPN credential. No backup holds one. It is sent with the apply only and never kept.",
+    "input": "The key, as the branch device has it.",
+    "effect": "local"
+   },
+   "#crPskAdd": {
+    "what": "Keeps the typed key in this page until the apply.",
+    "input": "Type the name and the key first. Then click it.",
+    "effect": "local"
+   },
+   "#crSave": {
+    "what": "Saves a backup of this tenant now. It reads only what is in scope on the Scope page. Nothing is written to the tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#crFromSample": {
+    "what": "Keeps the made-up sample tenant as a backup, to rehearse with. No tenant is read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#crCache": {
+    "what": "Reads this tenant into its local cache and says what changed since the last time. Nothing is written to the tenant.",
+    "input": "Pick a saved profile in the Tenant list first. Then click it.",
+    "effect": "read"
+   },
+   "#crDiffOld": {
+    "what": "Picks the older side of the compare.",
+    "input": "Pick a backup from the list.",
+    "effect": "local"
+   },
+   "#crDiffNew": {
+    "what": "Picks the newer side of the compare: another backup or the live tenant.",
+    "input": "Pick one from the list. The live tenant is read when you compare.",
+    "effect": "local"
+   },
+   "#crIgnore": {
+    "what": "Leaves more fields out of the compare. Ids, change times and counters are always left out.",
+    "input": "Optional. Field names split by commas. A * matches any text.",
+    "effect": "local"
+   },
+   "#crDiff": {
+    "what": "Compares the two sides field by field. With the live tenant, it reads only what is in scope.",
+    "input": "Pick both sides first. Then click it.",
+    "effect": "read"
+   },
+   "#crEvery": {
+    "what": "Sets how often the scheduled backup runs.",
+    "input": "A whole number of hours from 1 to 168, like 24.",
+    "effect": "local"
+   },
+   "#crKeepN": {
+    "what": "Sets how many backups of this profile are kept. Older ones are deleted.",
+    "input": "A whole number from 1 to 100, like 10.",
+    "effect": "local"
+   },
+   "#crSchedOn": {
+    "what": "Turns the scheduled backup on or off. It only reads, so it may run on its own.",
+    "input": "Tick it to turn it on.",
+    "effect": "local"
+   },
+   "#crSched": {
+    "what": "Saves the schedule for the saved profile picked in the Tenant list.",
+    "input": "Set the hours and the count first. Then click it.",
+    "effect": "local"
+   },
+   "#crTplType": {
+    "what": "Picks the kind of object to put in the template.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#crTplNames": {
+    "what": "Names the objects of that kind to put in the template. What they use comes with them.",
+    "input": "One name per line, as in the backup.",
+    "effect": "local"
+   },
+   "#crTplName": {
+    "what": "Names the template.",
+    "input": "Required. Up to 80 characters, like Starter policy.",
+    "effect": "local"
+   },
+   "#crTplStrip": {
+    "what": "Replaces this text at the start of names with the template's prefix.",
+    "input": "Optional. Up to 20 letters, digits, spaces and . _ -, like OLD-.",
+    "effect": "local"
+   },
+   "#crTplMake": {
+    "what": "Makes a template from the picked backup. Ids are removed and no secret is kept.",
+    "input": "Pick the backup in step 1 and name the objects first. Then click it.",
+    "effect": "local"
+   },
+   "#crTplFile": {
+    "what": "Imports a template file. It is checked before it is kept.",
+    "input": "Choose a template JSON file of at most 2 MB.",
+    "effect": "local"
+   },
+   "#crRehearseOn": {
+    "what": "Picks what the rehearsal plans against: the sample tenant or a saved backup.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#crRehearse": {
+    "what": "Makes the plan against a saved copy instead of a tenant. Nothing can be applied from it.",
+    "input": "Fill in the form above first. Then click it.",
+    "effect": "local"
+   },
+   "#crRepush": {
+    "what": "Previews a new plan for what did not arrive in the tenant. It writes nothing until you apply it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#admFilter": {
+    "what": "Shows only the objects whose name, group or health has these words.",
+    "input": "Optional. Any words, like disconnected.",
+    "effect": "local"
+   },
+   "input[data-admpick]": {
+    "what": "Picks this object to change.",
+    "input": "Tick it to include it. At most 50 per change.",
+    "effect": "local"
+   },
+   "input[name=\"admOn\"]": {
+    "what": "Turns the picked objects on or off, or leaves them as they are.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admName": {
+    "what": "Renames the one picked object.",
+    "input": "Optional. 1 to 128 characters, like hq-connector-1. Pick only one object.",
+    "effect": "local"
+   },
+   "#admMoveTo": {
+    "what": "Moves the picked App Connectors to this App Connector group.",
+    "input": "Optional. Pick a group, or Do not move.",
+    "effect": "local"
+   },
+   "#admDay": {
+    "what": "Sets the day the picked groups take software updates.",
+    "input": "Optional. A day of the week.",
+    "effect": "local"
+   },
+   "#admHour": {
+    "what": "Sets the hour the picked groups take software updates.",
+    "input": "Optional. A whole hour, 00:00 to 23:00.",
+    "effect": "local"
+   },
+   "#admVer": {
+    "what": "Sets the software version profile of the picked groups.",
+    "input": "Optional. Default, Previous default or New release.",
+    "effect": "local"
+   },
+   "input[data-admdel]": {
+    "what": "Picks this object to delete. Deleting cannot be undone.",
+    "input": "Tick it. You type the confirmation when you apply.",
+    "effect": "local"
+   },
+   "input[name=\"admKeyType\"]": {
+    "what": "Picks whether the key enrolls App Connectors or Service Edges.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admKeyGroup": {
+    "what": "Picks the group the new key enrolls into.",
+    "input": "Required. Pick one from the list.",
+    "effect": "local"
+   },
+   "#admKeyName": {
+    "what": "Names the new provisioning key.",
+    "input": "Required. 1 to 128 characters, like branch-key.",
+    "effect": "local"
+   },
+   "#admKeyMax": {
+    "what": "Sets how many App Connectors or Service Edges may enroll with the key.",
+    "input": "Required. A number from 1 to 500.",
+    "effect": "local"
+   },
+   "#admKeyOn": {
+    "what": "Turns the new key on. Off: nothing can enroll with it until it is on.",
+    "input": "Tick it to turn it on.",
+    "effect": "local"
+   },
+   "#admKeyValue": {
+    "what": "Shows the new provisioning key, this once.",
+    "input": "Nothing to type. Copy it now: it is not kept.",
+    "effect": "local"
+   },
+   "#admKeyCopy": {
+    "what": "Copies the new provisioning key.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "input[name=\"admCertMode\"]": {
+    "what": "Picks whether to upload a new certificate or use one ZPA has.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admCertName": {
+    "what": "Names the uploaded certificate in ZPA.",
+    "input": "Required for an upload. 1 to 128 characters, like wiki-2027.",
+    "effect": "local"
+   },
+   "#admCertDesc": {
+    "what": "Describes the uploaded certificate in ZPA.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#admCertPem": {
+    "what": "Takes the certificate, the server certificate first, then its chain.",
+    "input": "Required for an upload. PEM text starting -----BEGIN CERTIFICATE-----.",
+    "effect": "local"
+   },
+   "#admCertFile": {
+    "what": "Loads the certificate from a file.",
+    "input": "Optional. A .pem, .crt or .cer file, at most 64 KB.",
+    "effect": "local"
+   },
+   "#admKeyPem": {
+    "what": "Takes the certificate's private key. It is sent to this app once and never kept, logged or shown.",
+    "input": "Required for an upload. An unencrypted PEM key.",
+    "effect": "local"
+   },
+   "#admKeyFile": {
+    "what": "Loads the private key from a file.",
+    "input": "Optional. A .pem or .key file, at most 16 KB.",
+    "effect": "local"
+   },
+   "#admCertUpload": {
+    "what": "Checks the certificate and its key and holds them for ten minutes for your change. It does not touch the tenant.",
+    "input": "Nothing to type. Needs write mode on.",
+    "effect": "local"
+   },
+   "#admCertPick": {
+    "what": "Picks a certificate ZPA already has.",
+    "input": "Required. Pick one from the list.",
+    "effect": "local"
+   },
+   "input[data-admba]": {
+    "what": "Picks this Browser Access application to point at the certificate.",
+    "input": "Tick it to include it. At most 20.",
+    "effect": "local"
+   },
+   "#admUser": {
+    "what": "Gives the user whose Client Connector devices to list.",
+    "input": "Required. The user's email, like jdoe@acme.com.",
+    "effect": "local"
+   },
+   "#admFind": {
+    "what": "Lists the user's enrolled devices. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "input[name=\"admMode\"]": {
+    "what": "Picks Remove (unenrolls at its next check-in) or Force remove (dropped at once).",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[data-admdev]": {
+    "what": "Picks this device to remove. This cannot be undone.",
+    "input": "Tick it. At most 25; use the list removal for more.",
+    "effect": "local"
+   },
+   "#admList": {
+    "what": "Takes the users, host names, device ids or @domains to remove, one a line.",
+    "input": "Required. Like jdoe@acme.com, LAPTOP-12, or @old-domain.com. At most 5000 lines.",
+    "effect": "local"
+   },
+   "#admListFile": {
+    "what": "Loads the list from a file. An Excel file is read on the server, safely.",
+    "input": "Optional. A .txt or .csv file (at most 1 MB), or an Excel .xlsx file such as the portal's device export (at most 8 MB).",
+    "effect": "local"
+   },
+   "#admListDomain": {
+    "what": "Keeps only devices of users in this domain.",
+    "input": "Optional. A domain, like acme.com.",
+    "effect": "local"
+   },
+   "#admBatch": {
+    "what": "Sets how many devices go in one call to Client Connector.",
+    "input": "Required. 1 to 100. Larger batches use fewer of the 100 calls an hour.",
+    "effect": "local"
+   },
+   "input[name=\"admBulkMode\"]": {
+    "what": "Picks Remove or Force remove for the whole list.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admUsersOk": {
+    "what": "Says you need the user names of the domain. The file lists people, so it is personal data.",
+    "input": "Tick it before you download.",
+    "effect": "local"
+   },
+   "#admDomainUsers": {
+    "what": "Downloads the user names of the domain in Only users of this domain, with their device counts, as a CSV file. It only reads.",
+    "input": "Type the domain and tick the box first.",
+    "effect": "download"
+   },
+   "#admMatch": {
+    "what": "Matches the list against the enrolled devices. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "select[data-admamb]": {
+    "what": "Picks which device this ambiguous entry means.",
+    "input": "Optional. Pick one, or leave it out.",
+    "effect": "local"
+   },
+   "a[data-admcsv=\"full\"]": {
+    "what": "Downloads the plan or the result as a CSV file. It holds user and host names.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "a[data-admcsv=\"counts\"]": {
+    "what": "Downloads only the counts per status and user domain, without names.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "input[name=\"admApp\"]": {
+    "what": "Picks this custom bypass app to edit or delete.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"admAppAct\"]": {
+    "what": "Picks whether to create, edit or delete a custom bypass app.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admAppName": {
+    "what": "Names the custom bypass app.",
+    "input": "Required. 1 to 64 letters, digits, spaces or . _ ( ) -, like Teams media.",
+    "effect": "local"
+   },
+   "#admAppOn": {
+    "what": "Turns the app on. New apps start off.",
+    "input": "Tick it to turn it on.",
+    "effect": "local"
+   },
+   "#admAppEntries": {
+    "what": "Lists what the app bypasses: protocol, port and address, one a line.",
+    "input": "Required. Like TCP 443 10.0.0.0/8 or UDP 3478-3481 52.112.0.0/14. At most 100.",
+    "effect": "local"
+   },
+   "input[name=\"admSvc\"]": {
+    "what": "Picks the ZPA or the ZDX entitlement to change.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"admAll\"]": {
+    "what": "Turns the service on for every user, or only for the listed groups.",
+    "input": "Tick one. Off narrows who gets it.",
+    "effect": "local"
+   },
+   "#admAddGroups": {
+    "what": "Adds these groups to the entitlement.",
+    "input": "Optional. One group name a line, like Engineering.",
+    "effect": "local"
+   },
+   "input[data-admgrp]": {
+    "what": "Takes this group out of the entitlement.",
+    "input": "Tick it to take it out.",
+    "effect": "local"
+   },
+   "button[data-admscore]": {
+    "what": "Shows this application's ZDX score over the last day. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#admZUser": {
+    "what": "Gives the user whose ZDX devices to find.",
+    "input": "Required. An email, like jdoe@acme.com, or part of a name.",
+    "effect": "local"
+   },
+   "#admZFind": {
+    "what": "Finds the user's ZDX devices. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#admZDev": {
+    "what": "Picks the device to look at or trace.",
+    "input": "Required. Pick one from the list.",
+    "effect": "local"
+   },
+   "#admZHealthView": {
+    "what": "Shows the device's details and health metrics. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "button[data-admperf]": {
+    "what": "Shows how this application performs on this device. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "button[data-admfollow]": {
+    "what": "Follows this deep trace until it ends, a limited number of reads, then shows its results.",
+    "input": "Nothing to type. Stop ends it.",
+    "effect": "read"
+   },
+   "input[name=\"admTrace\"]": {
+    "what": "Picks the deep trace to stop. Stopping deletes it and its results.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admZName": {
+    "what": "Names the deep trace session.",
+    "input": "Required. 1 to 64 letters, digits, spaces or _ . -, like slow teams.",
+    "effect": "local"
+   },
+   "#admZLen": {
+    "what": "Sets how long the deep trace runs.",
+    "input": "Required. 5, 15, 30 or 60 minutes.",
+    "effect": "local"
+   },
+   "#admZApp": {
+    "what": "Picks the application the deep trace measures.",
+    "input": "Optional. Pick one, or None.",
+    "effect": "local"
+   },
+   "#admZWeb": {
+    "what": "Picks the application's Web probe the trace runs.",
+    "input": "Optional. Pick one, or None.",
+    "effect": "local"
+   },
+   "#admZPath": {
+    "what": "Picks the application's CloudPath probe the trace runs.",
+    "input": "Optional. Pick one, or None.",
+    "effect": "local"
+   },
+   "#admZHealth": {
+    "what": "Collects the device's own health (CPU, memory, network) during the trace.",
+    "input": "Tick it to collect it.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zia_directory\"]": {
+    "what": "Picks \"ZIA users, groups and departments\". It finds users and adds, changes or deletes users, groups and departments.",
+    "input": "Tick it, then click Read from the tenant to show the form. Needs ZIA platform ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zia_pac\"]": {
+    "what": "Picks \"ZIA PAC files\". It shows each hosted PAC file and its versions, validates a PAC and adds, clones, switches or deletes versions and files.",
+    "input": "Tick it, then click Read from the tenant to list the PAC files. Needs ZIA platform ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zid_users\"]": {
+    "what": "Picks \"ZIdentity users\". It finds users and adds, disables, enables or deletes them.",
+    "input": "Tick it, then click Read from the tenant to list the users. Needs ZIdentity ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zid_api_clients\"]": {
+    "what": "Picks \"ZIdentity API clients\". It lists the API clients and their scopes, and creates, rotates, disables, enables or deletes one.",
+    "input": "Tick it, then click Read from the tenant to list them. Needs ZIdentity ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zia_activation\"]": {
+    "what": "Picks \"Activate pending ZIA changes\". ZIA keeps a saved change waiting until it is activated. This makes what waits live.",
+    "input": "Tick it, then click Read from the tenant to see the status. Preview, then type ACTIVATE. It cannot be undone. Needs DLP or ZIA platform ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zid_user_edit\"]": {
+    "what": "Picks \"Edit a ZIdentity user\". It changes one user's names, email, department and groups. Undo puts them back.",
+    "input": "Tick it, then click Read from the tenant to list the users. Needs ZIdentity ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zid_user_reset\"]": {
+    "what": "Picks \"Reset a ZIdentity user's password or MFA\". It is a raw call to ZIdentity's public API, as the SDK has none. It cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. You type RESET and the login. Needs ZIdentity ticked on the Scope page.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"url_category_manage\"]": {
+    "what": "Picks \"Rename or delete a URL category\". It renames one custom URL category, or deletes one no rule uses.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"ip_group_admin\"]": {
+    "what": "Picks \"IP source and destination groups\". It edits an IP source group, deletes a group no rule uses, or imports and exports groups as CSV.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"dlp_object_edit\"]": {
+    "what": "Picks \"DLP dictionaries and engines\". It creates, edits or deletes one custom dictionary or engine, and says what an engine finds in plain words.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "#zaStatus": {
+    "what": "Shows if ZIA has changes that wait to be activated. Pending means you can activate them.",
+    "input": "Nothing to type. Click Read from the tenant to read it again.",
+    "effect": "local"
+   },
+   "input[name=\"ucAct\"]": {
+    "what": "Picks what to do with the URL category: rename it or delete it.",
+    "input": "Tick one. A category a rule uses cannot be deleted.",
+    "effect": "local"
+   },
+   "input[name=\"ucPick\"]": {
+    "what": "Picks the custom URL category to change. The row shows the rules that use it.",
+    "input": "Tick one row.",
+    "effect": "local"
+   },
+   "#ucName": {
+    "what": "The new name for the URL category. Rules keep using it, as they name it by its id.",
+    "input": "Up to 255 characters, like Partner sites.",
+    "effect": "local"
+   },
+   "input[name=\"ipgAct\"]": {
+    "what": "Picks what to do: edit an IP source group, delete a group, or import or export CSV.",
+    "input": "Tick one. The form below changes to match.",
+    "effect": "local"
+   },
+   "input[name=\"ipgPick\"]": {
+    "what": "Picks the IP source group to edit, or a new group.",
+    "input": "Tick one row. Predefined groups cannot be picked.",
+    "effect": "local"
+   },
+   "input[name=\"ipgDel\"]": {
+    "what": "Picks the group to delete. A group a rule uses cannot be deleted.",
+    "input": "Tick one row. You type DELETE and its name to confirm.",
+    "effect": "local"
+   },
+   "input[name=\"ipgMode\"]": {
+    "what": "Says what an import does to a group that exists: add what is missing, or make its list just like the CSV.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#ipgAdd": {
+    "what": "The addresses to add to the group.",
+    "input": "IPv4 addresses, blocks like 10.1.0.0/16 or ranges like 10.1.1.1-10.1.1.9, one per line.",
+    "effect": "local"
+   },
+   "#ipgRemove": {
+    "what": "The addresses to take out of the group.",
+    "input": "Addresses as the group lists them, one per line.",
+    "effect": "local"
+   },
+   "#ipgNewName": {
+    "what": "The name of the new IP source group.",
+    "input": "Up to 128 characters, like Branch offices.",
+    "effect": "local"
+   },
+   "#ipgNewDesc": {
+    "what": "A note on what the new group is for.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#ipgCsv": {
+    "what": "The CSV of groups to import. Each row is checked before anything is sent.",
+    "input": "Paste the CSV, or open a file. Up to 1 MB.",
+    "effect": "local"
+   },
+   "#ipgFile": {
+    "what": "Opens a CSV file of groups from this computer. It is only read here.",
+    "input": "Pick a .csv file of up to 1 MB.",
+    "effect": "local"
+   },
+   "#ipgExport": {
+    "what": "Saves every IP group as a CSV file. Cells are made safe for spreadsheets.",
+    "input": "Nothing to type. Click it to save the file.",
+    "effect": "download"
+   },
+   "input[name=\"dloObj\"]": {
+    "what": "Picks what to change: a DLP engine or a dictionary.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"dloAct\"]": {
+    "what": "Picks what to do: edit, create or delete.",
+    "input": "Tick one. A delete is refused while something uses it.",
+    "effect": "local"
+   },
+   "input[name=\"dloPick\"]": {
+    "what": "Picks the dictionary or engine. Predefined ones cannot be picked, but a dictionary's confidence can be changed.",
+    "input": "Tick one row.",
+    "effect": "local"
+   },
+   "#dloName": {
+    "what": "The name of the dictionary or engine.",
+    "input": "Up to 255 characters, like Project names.",
+    "effect": "local"
+   },
+   "#dloDesc": {
+    "what": "A note on what it is for.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#dloExpr": {
+    "what": "The engine's rule for what it finds. The preview says it in plain words.",
+    "input": "Like (D:Project names > 2) AND (D:Credit cards > 0).",
+    "effect": "local"
+   },
+   "#dloMatch": {
+    "what": "How the dictionary's phrases and patterns must match.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#dloPhrases": {
+    "what": "The words the dictionary looks for.",
+    "input": "One per line. Start a line with all: or unique: to say how hits are counted.",
+    "effect": "local"
+   },
+   "#dloPatterns": {
+    "what": "The patterns the dictionary looks for. Each is checked so it cannot run for too long.",
+    "input": "One regular expression per line. Start a line with all: or unique: if you like.",
+    "effect": "local"
+   },
+   "#dloProx": {
+    "what": "How close, in bytes, the hits must be to each other.",
+    "input": "A number from 0 to 10000. 0 means no limit.",
+    "effect": "local"
+   },
+   "#dloConf": {
+    "what": "How sure ZIA must be before this dictionary counts a hit.",
+    "input": "Pick low, medium or high.",
+    "effect": "local"
+   },
+   "#zuuSearch": {
+    "what": "Finds ZIdentity users whose login name has what you type.",
+    "input": "Optional. Up to 100 characters, like sam. Then click Search.",
+    "effect": "local"
+   },
+   "#zuuSearchGo": {
+    "what": "Reads the users that match the search from the tenant. It only reads.",
+    "input": "Nothing to type here. Type in the box first.",
+    "effect": "read"
+   },
+   "input[name=\"zuuPick\"]": {
+    "what": "Picks the user to edit. Admins and users from SCIM cannot be picked.",
+    "input": "Tick one row.",
+    "effect": "local"
+   },
+   "#zuuDisplay": {
+    "what": "The user's display name.",
+    "input": "Up to 255 characters. It cannot be empty.",
+    "effect": "local"
+   },
+   "#zuuFirst": {
+    "what": "The user's first name.",
+    "input": "Up to 255 characters.",
+    "effect": "local"
+   },
+   "#zuuLast": {
+    "what": "The user's last name.",
+    "input": "Up to 255 characters.",
+    "effect": "local"
+   },
+   "#zuuEmail": {
+    "what": "The user's email.",
+    "input": "One address, like sam@example.com.",
+    "effect": "local"
+   },
+   "#zuuDept": {
+    "what": "The user's department, from the ones users already have.",
+    "input": "Pick one, or none to clear it.",
+    "effect": "local"
+   },
+   "input[data-zuu-add]": {
+    "what": "Adds the user to this group. That gives the user what the group may use.",
+    "input": "Tick it. You type EDIT and the login to confirm.",
+    "effect": "local"
+   },
+   "input[data-zuu-rem]": {
+    "what": "Takes the user out of this group.",
+    "input": "Tick it. You type EDIT and the login to confirm.",
+    "effect": "local"
+   },
+   "input[name=\"zurPick\"]": {
+    "what": "Picks the user whose password or MFA you reset.",
+    "input": "Tick one row.",
+    "effect": "local"
+   },
+   "input[name=\"zurAct\"]": {
+    "what": "Picks what to do: reset the password, or let the user skip MFA once. Both are a raw call to ZIdentity's public API.",
+    "input": "Tick one. It cannot be undone.",
+    "effect": "local"
+   },
+   "input[name=\"zdMode\"]": {
+    "what": "Picks what to do: change or delete users, add a user, or change groups and departments.",
+    "input": "Tick one. The form below changes to match.",
+    "effect": "local"
+   },
+   "#zdSearch": {
+    "what": "Finds ZIA users whose name starts with what you type.",
+    "input": "Optional. Up to 100 characters, like Sam. Empty lists the first users. Then click Search.",
+    "effect": "local"
+   },
+   "#zdSearchGo": {
+    "what": "Reads the users whose name starts with the search from the tenant. It only reads.",
+    "input": "Nothing to type here. Type the name in the box first.",
+    "effect": "read"
+   },
+   "input[data-zu]": {
+    "what": "Picks this user for the change below. Admin accounts cannot be picked.",
+    "input": "Tick it. Up to 100 changes per plan.",
+    "effect": "local"
+   },
+   "input[name=\"zdUserAct\"]": {
+    "what": "Picks what happens to the picked users: change their department or groups, or delete them.",
+    "input": "Tick one. A delete asks its name typed when you apply and cannot be undone.",
+    "effect": "local"
+   },
+   "#zdDept": {
+    "what": "Moves the picked users to this department.",
+    "input": "Optional. Pick one from the list, or leave No change.",
+    "effect": "local"
+   },
+   "#zdAdd": {
+    "what": "Adds the picked users to these groups.",
+    "input": "Optional. Pick one or more; hold Ctrl or Cmd to pick several.",
+    "effect": "local"
+   },
+   "#zdRemove": {
+    "what": "Takes the picked users out of these groups.",
+    "input": "Optional. Pick one or more; hold Ctrl or Cmd to pick several.",
+    "effect": "local"
+   },
+   "#zdNewName": {
+    "what": "Names the new ZIA user.",
+    "input": "Required. Up to 255 characters, like Sam Lee.",
+    "effect": "local"
+   },
+   "#zdNewEmail": {
+    "what": "The new user's email. It must be unique and its domain must belong to the organisation.",
+    "input": "Required. An address like sam.lee@example.com.",
+    "effect": "local"
+   },
+   "#zdNewDept": {
+    "what": "Puts the new user in this department.",
+    "input": "Required. Pick one from the list.",
+    "effect": "local"
+   },
+   "#zdNewGroups": {
+    "what": "Puts the new user in these groups.",
+    "input": "Optional. Pick one or more; hold Ctrl or Cmd to pick several.",
+    "effect": "local"
+   },
+   "input[name=\"zdGKind\"]": {
+    "what": "Picks whether to change groups or departments.",
+    "input": "Tick one. The list below changes to match.",
+    "effect": "local"
+   },
+   "#zdGName": {
+    "what": "Names a new group or department to add.",
+    "input": "Optional. Up to 255 characters, like Contractors.",
+    "effect": "local"
+   },
+   "#zdRename": {
+    "what": "Picks a group or department to rename.",
+    "input": "Optional. Pick one, then type its new name.",
+    "effect": "local"
+   },
+   "#zdRenameTo": {
+    "what": "The new name for the group or department picked to rename.",
+    "input": "Required when you pick one to rename. Up to 255 characters.",
+    "effect": "local"
+   },
+   "input[data-zg]": {
+    "what": "Deletes this group or department. It cannot be undone.",
+    "input": "Tick it. You type its name to confirm when you apply.",
+    "effect": "local"
+   },
+   "input[name=\"zpPick\"]": {
+    "what": "Picks this PAC file for the change below.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"zpAct\"]": {
+    "what": "Picks what to do with the PAC file: validate, add a staged version, switch the active version, clone, add a new file or delete it.",
+    "input": "Tick one. The fields below change to match.",
+    "effect": "local"
+   },
+   "#zpVer": {
+    "what": "Picks the PAC version to start from, or the one to make active.",
+    "input": "Required for this choice. Pick one from the list.",
+    "effect": "local"
+   },
+   "#zpText": {
+    "what": "The PAC text to check or save. It is parsed and checked, never run.",
+    "input": "Required for this choice. A PAC with FindProxyForURL(url, host), up to 256 KB.",
+    "effect": "local"
+   },
+   "#zpLoad": {
+    "what": "Copies the active version's text into the box, to edit it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#zpName": {
+    "what": "Names the new PAC file.",
+    "input": "Required for this choice. Up to 63 letters, digits, spaces and . _ ( ) -, like branch.pac.",
+    "effect": "local"
+   },
+   "#zpDomain": {
+    "what": "The organisation's domain the new PAC file applies to.",
+    "input": "Required for this choice. A domain like example.com.",
+    "effect": "local"
+   },
+   "#zpDesc": {
+    "what": "Describes the new PAC file.",
+    "input": "Optional. Up to 1024 characters.",
+    "effect": "local"
+   },
+   "#zpMsg": {
+    "what": "The commit message saved with the new version.",
+    "input": "Optional. Up to 255 characters, like Partner portal goes direct.",
+    "effect": "local"
+   },
+   "#opPlan .op-diff": {
+    "what": "The lines the change adds (+) and removes (-) in the PAC text.",
+    "input": "Nothing to type. Scroll it with the arrow keys.",
+    "effect": "local"
+   },
+   "input[name=\"zuMode\"]": {
+    "what": "Picks what to do: disable, enable or delete users, or add a user.",
+    "input": "Tick one. The form below changes to match.",
+    "effect": "local"
+   },
+   "#zuSearch": {
+    "what": "Finds ZIdentity users whose login name contains what you type.",
+    "input": "Optional. Up to 100 characters, like sam. Then click Search.",
+    "effect": "local"
+   },
+   "#zuSearchGo": {
+    "what": "Reads the users whose login name contains the search from the tenant. It only reads.",
+    "input": "Nothing to type here. Type the name in the box first.",
+    "effect": "read"
+   },
+   "input[data-zid-u]": {
+    "what": "Picks this user for the change below. Administrators and users from SCIM cannot be picked.",
+    "input": "Tick it. Up to 50 changes per plan.",
+    "effect": "local"
+   },
+   "input[name=\"zuAct\"]": {
+    "what": "Picks what happens to the picked users: disable, enable or delete.",
+    "input": "Tick one. A delete asks its name typed when you apply and cannot be undone.",
+    "effect": "local"
+   },
+   "#zuLogin": {
+    "what": "The new user's login name.",
+    "input": "Required. An address like sam.lee@example.com.",
+    "effect": "local"
+   },
+   "#zuDisplay": {
+    "what": "The new user's display name.",
+    "input": "Required. Up to 255 characters, like Sam Lee.",
+    "effect": "local"
+   },
+   "#zuFirst": {
+    "what": "The new user's first name.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#zuLast": {
+    "what": "The new user's last name.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#zuEnable": {
+    "what": "Turns the new user on when it is made. Off by default, so the user is created disabled.",
+    "input": "Tick it to enable the user at once.",
+    "effect": "local"
+   },
+   "input[name=\"zkAct\"]": {
+    "what": "Picks what to do: rotate a secret, disable, enable or delete an API client, or make a new one.",
+    "input": "Tick one. The form below changes to match.",
+    "effect": "local"
+   },
+   "input[name=\"zkPick\"]": {
+    "what": "Picks this API client. The client this app signs in with cannot be picked.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#zkKeepOld": {
+    "what": "Keeps the old secrets when the new one is made, so tools keep working until you delete them.",
+    "input": "Tick it to keep them. Off by default: the old secrets are deleted once the new one exists.",
+    "effect": "local"
+   },
+   "#zkName": {
+    "what": "Names the new API client.",
+    "input": "Required. Up to 128 letters, digits, spaces and . _ ( ) -, like Reporting export.",
+    "effect": "local"
+   },
+   "#zkDesc": {
+    "what": "Describes the new API client.",
+    "input": "Optional. Up to 500 characters.",
+    "effect": "local"
+   },
+   "#zkLife": {
+    "what": "How long each access token of the new client lasts, in seconds.",
+    "input": "Required. 300 to 86400 seconds; 3600 is one hour.",
+    "effect": "local"
+   },
+   "input[data-zk-scope]": {
+    "what": "Gives the new API client this scope. Tick only what the tool needs.",
+    "input": "Tick one or more. A full-access scope is flagged.",
+    "effect": "local"
+   },
+   "#zkEnable": {
+    "what": "Turns the new API client on when it is made. Off by default.",
+    "input": "Tick it to enable the client at once.",
+    "effect": "local"
+   },
+   ".zk-secret": {
+    "what": "Shows the new secret once. This app never keeps, logs or exports it.",
+    "input": "Nothing to type. Copy it now.",
+    "effect": "local"
+   },
+   ".zk-copy": {
+    "what": "Copies the new secret to the clipboard.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "input[name=\"zwaMode\"]": {
+    "what": "Chooses which incidents to close: every open incident of the rule or destination Detection health sent, or the ones you pick below.",
+    "input": "Pick one. The first choice shows only when you came from Detection health.",
+    "effect": "local"
+   },
+   "input[data-zwa]": {
+    "what": "Picks this open incident to close as a false positive.",
+    "input": "Tick it to include the incident, untick it to leave it out. At most 100 incidents per change.",
+    "effect": "local"
+   },
+   "#zwaNote": {
+    "what": "A reason added to the note on each closed incident, after your name as the assessor.",
+    "input": "Optional. Plain words, up to 300 characters, like Telemetry upload, not customer data.",
+    "effect": "local"
+   },
+   "#zidGroup": {
+    "what": "Picks the ZIdentity group to add people to or remove them from. A dynamic group cannot be picked.",
+    "input": "Pick one. Each shows its member count, never its members.",
+    "effect": "local"
+   },
+   "#zidAdd": {
+    "what": "The people to add to the group, by sign-in name.",
+    "input": "Optional. One per line or comma separated, at most 50, like jane.doe@example.com.",
+    "effect": "local"
+   },
+   "#zidRemove": {
+    "what": "The people to remove from the group, by sign-in name.",
+    "input": "Optional. One per line or comma separated, at most 50, like jane.doe@example.com.",
+    "effect": "local"
+   },
+   "select[data-zl]": {
+    "what": "Says whether to turn this app profile on or off. Devices get the change at once.",
+    "input": "Pick on, off, or leave as it is. You type the profile's name to confirm.",
+    "effect": "local"
+   },
+   "#zlProfile": {
+    "what": "Picks the app profile whose DNS and tunnel settings to change.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "select[data-zs]": {
+    "what": "Sets this DNS or tunnel setting of the app profile.",
+    "input": "Pick on, off, or leave as it is.",
+    "effect": "local"
+   },
+   "input[data-zs]": {
+    "what": "The packet tunnel exclusions: addresses that leave the device outside the tunnel, uninspected.",
+    "input": "Optional. Addresses, ranges or host names, comma separated, like 10.0.0.0/8. Leave empty to keep it.",
+    "effect": "local"
    }
   },
   "/report/path": {
@@ -4762,8 +7177,28 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Arrow keys move between the tabs.",
     "effect": "local"
    },
+   "#tab-cat": {
+    "what": "Shows the Category lookup view. See a destination's ZIA categories and every rule that names them.",
+    "input": "Nothing to type. Just click it. Arrow keys move between the tabs.",
+    "effect": "local"
+   },
+   "#clText": {
+    "what": "Sets what to look up: destinations or categories, one per line.",
+    "input": "Required. Up to 25 lines: a URL, host name or IP address (dropbox.com, 203.0.113.10), a category id (GAMBLING, CUSTOM_01) or category: and its name (category:Partner portals). Ctrl+Enter looks up.",
+    "effect": "local"
+   },
+   "#clRun": {
+    "what": "Asks ZIA's URL lookup for each destination's categories and lists every rule that names each category, in evaluation order, with order, rank and action.",
+    "input": "Type at least one entry first. The first lookup reads the policies in scope (a few seconds to a minute); later ones reuse that read. Nothing is written.",
+    "effect": "read"
+   },
+   "#clFresh": {
+    "what": "Read the tenant again before the next lookup (otherwise the last read is reused). Click again to turn it off.",
+    "input": "Nothing to type. Click it, then click Look up.",
+    "effect": "local"
+   },
    "#paWhatIf > summary": {
-    "what": "Opens or closes the what-if fields. Use them to check rules for one user, group, department or location.",
+    "what": "Opens or closes the what-if fields. Use them to check rules for one user, group, department or location, or a ZPA identity.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
@@ -4796,6 +7231,176 @@ window.HELP_CATALOG = {
     "what": "Picks this match and fills it in. A user also brings their department and groups.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#paWiZ_idp": {
+    "what": "Picks the IdP the user signs in with, for ZPA's access policy. Conditions of other IdPs are then not met.",
+    "input": "Optional. Click Load IdPs from ZPA first, then pick one, or leave Not given.",
+    "effect": "local"
+   },
+   "#paWiZ_load": {
+    "what": "Reads the tenant's IdPs and SAML attribute names from ZPA, to pick from. It only reads.",
+    "input": "Nothing to type. Needs ZPA ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#paWiZ_user": {
+    "what": "Sets the SCIM user name whose SCIM groups ZPA looks up during the analysis. They are kept only for that analysis.",
+    "input": "Optional. Usually the email, like jane@acme.com. Up to 128 characters. Needs the IdP.",
+    "effect": "local"
+   },
+   "#paWiZ_find": {
+    "what": "Shows the SCIM groups ZPA lists for this user in the IdP you picked, before you analyze. It only reads.",
+    "input": "Pick the IdP and type the SCIM user name first. Needs ZPA ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#paWiZ_attrs": {
+    "what": "Sets SAML or SCIM attribute values for ZPA's access policy, matched by attribute name. Attributes you leave out stay unknown.",
+    "input": "Optional. One Name=value per line, like Department=Finance. At most 20.",
+    "effect": "local"
+   },
+   "#paDevice > summary": {
+    "what": "Opens or closes the device fields. Use them to trace one user's enrolled device instead of a platform.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paManual > summary": {
+    "what": "Opens Manual inputs: a PAC file or bypass lists that are not in the tenant, to see what they would do for this destination.",
+    "input": "Nothing to type here. Click it to open or close the section. Everything in it is optional.",
+    "effect": "local"
+   },
+   "#paDevQ": {
+    "what": "Sets the user whose enrolled devices to look up in the Client Connector Portal.",
+    "input": "Optional. The user's sign-in name or part of it, like jane@acme.com or jane. 2 to 128 characters. Press Enter to find devices.",
+    "effect": "local"
+   },
+   "input[name=\"paManMode\"]": {
+    "what": "Says how to use the manual inputs: on their own, next to the tenant's answer, or added to every app profile read so the whole trace is a what-if.",
+    "input": "Pick one. Added to the profiles needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#paManPac": {
+    "what": "A PAC file to evaluate for this destination, such as one ZIA does not host. It is read, never run, and not kept.",
+    "input": "Optional. Paste the whole file; it must have FindProxyForURL. At most 256 KB.",
+    "effect": "local"
+   },
+   "#paManVpn": {
+    "what": "VPN gateways a Client Connector app profile would bypass, as a what-if.",
+    "input": "Optional. One host name or address per line, a port after a colon is allowed, like vpn.acme.com or 203.0.113.10:443. At most 500.",
+    "effect": "local"
+   },
+   "#paManIpInc": {
+    "what": "Addresses Z-Tunnel 2.0 would send to Zscaler, as a what-if.",
+    "input": "Optional. One address, CIDR block or range per line, like 10.0.0.0/8. At most 500.",
+    "effect": "local"
+   },
+   "#paManIpExc": {
+    "what": "Addresses Z-Tunnel 2.0 would send direct, never to Zscaler, as a what-if.",
+    "input": "Optional. One address, CIDR block or range per line, like 192.0.2.0/24. At most 500.",
+    "effect": "local"
+   },
+   "#paManDomInc": {
+    "what": "Domains whose DNS lookups Z-Tunnel 2.0 would send through the tunnel, as a what-if.",
+    "input": "Optional. One host name or domain per line, like .corp.example or *.corp.example. At most 500.",
+    "effect": "local"
+   },
+   "#paManDomExc": {
+    "what": "Domains whose DNS lookups Z-Tunnel 2.0 would resolve locally, as a what-if.",
+    "input": "Optional. One host name or domain per line, like .example.net or *.example.net. At most 500.",
+    "effect": "local"
+   },
+   "#paManClear": {
+    "what": "Empties every manual input, so the next analysis uses only the tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paDevFind": {
+    "what": "Asks the Client Connector Portal once for this user's enrolled devices, at most 20. Nothing else is read.",
+    "input": "Type at least 2 characters in the field beside it first. Needs Client Connector (ZCC) ticked on the Scope page and a OneAPI sign-in.",
+    "effect": "read"
+   },
+   "#paDevice button[data-dev-pick]": {
+    "what": "Uses this device for the trace: its platform, the app profile the Portal reports for it and its details. Reads this one device's details.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#paDevClear": {
+    "what": "Stops using the picked device. The Platform you choose applies again.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paCompare > summary": {
+    "what": "Opens or closes Compare two identities: the same destination for A and B, step by step.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paCmp_user": {
+    "what": "Sets the user of identity B. Rules for this user apply to B; rules for others are skipped.",
+    "input": "Optional. An email or display name, like sam@acme.com. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paCmp_group": {
+    "what": "Sets the groups of identity B. They are taken as B's only groups.",
+    "input": "Optional. One or more group names, separated by commas. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paCmp_department": {
+    "what": "Sets the department of identity B.",
+    "input": "Optional. A department name, like Engineering. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paCmp_location": {
+    "what": "Sets the location of identity B.",
+    "input": "Optional. A location name, like Branch office. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paCmpDevQ": {
+    "what": "Sets the user whose enrolled devices to look up for identity B.",
+    "input": "Optional. The user's sign-in name or part of it. 2 to 128 characters. Press Enter to find devices.",
+    "effect": "local"
+   },
+   "#paCmpDevFind": {
+    "what": "Asks the Client Connector Portal once for this user's enrolled devices, for identity B. At most 20; nothing else is read.",
+    "input": "Type at least 2 characters in the field beside it first. Needs Client Connector (ZCC) ticked on the Scope page and a OneAPI sign-in.",
+    "effect": "read"
+   },
+   "#paCompare button[data-dev-pick]": {
+    "what": "Uses this device for identity B. Reads this one device's details.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#paCmpDevClear": {
+    "what": "Stops using the picked device for identity B.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paCmpRun": {
+    "what": "Analyzes the destination for A (the what-if and device above) and B (this panel) on one tenant read and shows each step side by side. Nothing is written.",
+    "input": "Type a destination in the bar above first. Give B at least one name or a device to see a difference.",
+    "effect": "read"
+   },
+   "#paCmpStop": {
+    "what": "Stops the comparison. Nothing more is read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paCmpCsv": {
+    "what": "Saves the comparison, step by step for A and B, as a CSV file.",
+    "input": "Nothing to type. Compare first.",
+    "effect": "download"
+   },
+   "#paCmpJson": {
+    "what": "Saves the comparison, step by step for A and B, as a JSON file.",
+    "input": "Nothing to type. Compare first.",
+    "effect": "download"
+   },
+   "#paProbePort": {
+    "what": "Picks the port Test from here connects to. Only web and TLS ports are allowed.",
+    "input": "Pick one: From the URL (443, or 80 for http://), 443, 80 (connect only), 8443 or 8080.",
+    "effect": "local"
+   },
+   "#paProbeRun": {
+    "what": "Tests this destination from the computer running this app (in Docker, from the container). It looks the name up, connects and shakes hands over TLS. Then it compares the certificate with the prediction. It sends no request, data or credentials and keeps nothing.",
+    "input": "Nothing to type. Analyze a destination first. At most 6 tests a minute.",
+    "effect": "read"
    },
    "#paFramework > summary": {
     "what": "Opens or closes the framework: the order Zscaler checks a policy in, from the device to the incident.",
@@ -4978,14 +7583,19 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#plPurpose": {
-    "what": "Sets what the picked destinations should be.",
+    "what": "Sets what the picked rows should be when the list has no expected column. A row with an expected result is fixed for that.",
     "input": "Pick one: Blocked or Allowed.",
     "effect": "local"
    },
    "#plFix": {
-    "what": "Opens Bulk changes in a new tab with a URL category change filled in. Nothing is written until you preview it and apply it there in write mode.",
-    "input": "Pick at least one row first. Needs custom URL categories in scope on the Scope page.",
+    "what": "Opens Bulk changes in a new tab with the picked rows filled in. Each row is fixed for what it was expected to do: in a URL category, an IP destination group with a rule, or an ATP list. Nothing is written until you preview it and apply it there in write mode.",
+    "input": "Pick at least one row first. Needs what each row's fix changes in scope on the Scope page.",
     "effect": "nav"
+   },
+   "#plBody button.pl-cat": {
+    "what": "Opens Category lookup with this row's destination and looks it up: its ZIA categories and every rule that names them, in evaluation order.",
+    "input": "Nothing to type. Just click it. The first lookup reads the policies in scope; later ones reuse that read. Nothing is written.",
+    "effect": "read"
    },
    "#plBody button[data-list]": {
     "what": "Shows or hides this list of destinations, one per line, ready to copy.",
@@ -4998,8 +7608,8 @@ window.HELP_CATALOG = {
     "effect": "download"
    },
    "#plBody button[data-fixarea]": {
-    "what": "Opens Bulk changes in a new tab with this list filled in as a URL category change. Nothing is written there until you apply it.",
-    "input": "Nothing to type. Needs custom URL categories in scope on the Scope page.",
+    "what": "Opens Bulk changes in a new tab with this list filled in. It goes into a URL category, an IP destination group with a rule, or an ATP list. Nothing is written there until you apply it.",
+    "input": "Nothing to type. Needs that area in scope on the Scope page.",
     "effect": "nav"
    },
    "#plBody textarea[id^=\"plList\"]": {
@@ -5026,6 +7636,61 @@ window.HELP_CATALOG = {
     "what": "Shows or hides the rest of the page introduction.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#zdxCp > summary": {
+    "what": "Opens the ZDX panel: the cloud path ZDX measured to an application, and a score analysis that finds why it is slow.",
+    "input": "Nothing to type. Click it to open or close the panel.",
+    "effect": "local"
+   },
+   "#zdxCpLoad": {
+    "what": "Reads the applications ZDX monitored in the last day and picks the one that matches the destination. It only reads.",
+    "input": "Nothing to type. Needs ZDX ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#zdxCpApp": {
+    "what": "Picks the ZDX application whose measured path to show or to analyse.",
+    "input": "Pick one. Load the applications first.",
+    "effect": "local"
+   },
+   "#zdxCpShow": {
+    "what": "Reads the cloud path ZDX measured to the application, leg by leg: time, loss, hops and tunnel. No device or person is named.",
+    "input": "Pick an application first. It only reads.",
+    "effect": "read"
+   },
+   "#zdxRcaDev": {
+    "what": "The ZDX device to analyse. Leave it empty and the app picks a device that probes the application.",
+    "input": "Optional. Digits only, as the ZDX Admin Portal shows them, like 132559212.",
+    "effect": "local"
+   },
+   "#zdxRcaHours": {
+    "what": "How far back the score analysis looks.",
+    "input": "Pick 1, 2, 4, 8 or 24 hours. 2 hours is the default.",
+    "effect": "local"
+   },
+   "#zdxRcaWho": {
+    "what": "The assessor's name, kept with the start in the audit log.",
+    "input": "Required to start or stop. Your name, like Jane Doe.",
+    "effect": "local"
+   },
+   "#zdxRcaPhrase": {
+    "what": "Confirms that you mean to start a score analysis on the tenant.",
+    "input": "Required. Type START ANALYSIS.",
+    "effect": "local"
+   },
+   "#zdxRcaStart": {
+    "what": "Asks ZDX to analyse the application on one device. It changes no setting, but it is an action on the tenant.",
+    "input": "Needs write mode, your permission to change the tenant, the assessor's name and START ANALYSIS. One start per tenant every 5 minutes.",
+    "effect": "write"
+   },
+   "#zdxRcaStatus": {
+    "what": "Reads what ZDX found in the analysis so far.",
+    "input": "Nothing to type. Start an analysis first. It only reads.",
+    "effect": "read"
+   },
+   "#zdxRcaStop": {
+    "what": "Stops the running score analysis in ZDX.",
+    "input": "Needs write mode, your permission to change the tenant and the assessor's name.",
+    "effect": "write"
    }
   },
   "/report/posture": {
@@ -5100,6 +7765,13 @@ window.HELP_CATALOG = {
     "effect": "local"
    }
   },
+  "/report/plugin": {
+   "a.rp-btn[href=\"/report/advanced#plugins\"]": {
+    "what": "Opens Advanced settings at Local plugins, where plugins are switched on, approved and revoked.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   }
+  },
   "/report/pov": {
    "a.skip-link[href=\"#main-content\"]": {
     "what": "Skips straight to the POV planner. Handy if you use the keyboard.",
@@ -5118,6 +7790,11 @@ window.HELP_CATALOG = {
    },
    "#tab-plan": {
     "what": "Shows the plan: the intake, the status, the success criteria and the timeline.",
+    "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
+    "effect": "local"
+   },
+   "#tab-build": {
+    "what": "Shows the Build tab: one plan of the builders this POV needs, one dry run and one confirmed apply.",
     "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
     "effect": "local"
    },
@@ -5141,6 +7818,156 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
     "effect": "local"
    },
+   "#pvBuild form.pv-form input[maxlength=\"120\"]": {
+    "what": "Sets the customer name for the rehearsal. It is kept in this page only.",
+    "input": "Required. Up to 120 characters, like Contoso Health.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form input[placeholder=\"corp.example.com\"]": {
+    "what": "Sets the internal domain the ZPA segments and the ZDX intranet probe are made under.",
+    "input": "Optional. A domain name, like corp.example.com.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form input[placeholder=\"Made from the name\"]": {
+    "what": "Sets the short prefix every built object is named with.",
+    "input": "Optional. 2 to 8 letters or digits, like CH.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form select:has(+ p.pv-meta)": {
+    "what": "Picks the vertical preset. It decides the builders' defaults, like the ZIA tier and the compliance overlays.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form select": {
+    "what": "Starts the rehearsal from a saved template's vertical and products.",
+    "input": "Optional. Pick a template, or No template.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form fieldset.pv-checks input[type=\"checkbox\"]": {
+    "what": "Puts this product in the rehearsal. The build suggests the parts for the products ticked.",
+    "input": "Tick it to include the product.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form button[type=\"submit\"]": {
+    "what": "Uses this intake for the rehearsal and lists the parts it suggests. Nothing is read or written yet.",
+    "input": "Fill in the customer name first.",
+    "effect": "local"
+   },
+   "#pvBuild input.pb-on": {
+    "what": "Puts this part in the build. A part whose product is not ticked on the Scope page cannot be picked.",
+    "input": "Tick it to build the part. Untick it to leave it out.",
+    "effect": "local"
+   },
+   "#pvBuild select.pb-tier": {
+    "what": "Picks the ZIA security baseline tier: Strict, Balanced, Permissive or Healthcare zero trust.",
+    "input": "Pick one from the list. The vertical preset picks it first.",
+    "effect": "local"
+   },
+   "#pvBuild input.pb-enable": {
+    "what": "Creates the new rules or segments enabled instead of disabled. Off by default: nothing changes for users until you turn them on.",
+    "input": "Tick it only if the customer agreed to enforce now.",
+    "effect": "local"
+   },
+   "#pvBuild select.pb-platform": {
+    "what": "Picks the platform the Client Connector app profile is for.",
+    "input": "Pick Windows or macOS.",
+    "effect": "local"
+   },
+   "#pvBuild select.pb-mode": {
+    "what": "Picks what the AI Guard detection policy does: Monitor only detects, Block stops the prompt.",
+    "input": "Pick Monitor (the default) or Block.",
+    "effect": "local"
+   },
+   "#pvBuild button.pb-choices": {
+    "what": "Reads the certificates and rules this part can pick from. It changes nothing.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#pvBuild select.pb-cert": {
+    "what": "Picks the certificate this part uses.",
+    "input": "Pick one from the list. Load the choices from the tenant first.",
+    "effect": "local"
+   },
+   "#pvBuild input.pb-rule": {
+    "what": "Picks an SSL Inspect rule to move to the picked certificate.",
+    "input": "Tick each rule to move.",
+    "effect": "local"
+   },
+   "#pvBuild details.pb-json > summary": {
+    "what": "Shows the part exactly as it is sent, to change any option the form does not show.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#pvBuild textarea.pb-json-text": {
+    "what": "The part as it is sent to its builder. Every builder checks it again when it plans.",
+    "input": "Optional. A JSON object; leave it as it is unless you know the option.",
+    "effect": "local"
+   },
+   "#pbPreview": {
+    "what": "Plans every ticked part as one dry run: a section per product, every object before and after, one plan hash. Nothing is written.",
+    "input": "Tick at least one part first.",
+    "effect": "read"
+   },
+   "#pvBuild details.pb-prev-part > summary": {
+    "what": "Shows or hides every object this part changes, with its value before and after.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#pbAssessor": {
+    "what": "Names the assessor. Every change record and every object the build creates names them.",
+    "input": "Required to apply. A name, like Jane Doe, Zscaler DS Engineer.",
+    "effect": "local"
+   },
+   "#pbPhrase": {
+    "what": "Confirms the whole build with one phrase.",
+    "input": "Type the phrase shown, like APPLY 12 POV CHANGES.",
+    "effect": "confirm"
+   },
+   "#pbAgree": {
+    "what": "Says you reviewed the dry run and the customer agreed to it.",
+    "input": "Tick it to allow Apply.",
+    "effect": "local"
+   },
+   "#pbGo": {
+    "what": "Applies every part in order, each read again right before it is written, read back and recorded with its Undo. Stops at the first part that does not apply.",
+    "input": "Needs write mode on, a named assessor, the review box and the typed phrase.",
+    "effect": "write"
+   },
+   "#pbSimulate": {
+    "what": "Applies the rehearsed build to a simulation: a copy of the sample tenant or the opened snapshot kept in this app's memory. Every part runs in order, as a real apply would. Then the Path analyzer and Test a list show the result.",
+    "input": "Needs a dry run made on the sample tenant or a snapshot, and the phrase typed. Nothing reaches a tenant, the sample tenant or a saved snapshot.",
+    "effect": "local"
+   },
+   "#pbSimPhrase": {
+    "what": "Confirms that you want to apply this dry run to the simulation.",
+    "input": "Required. Type the phrase shown, like APPLY 12 CHANGES. Case does not matter.",
+    "effect": "local"
+   },
+   "#pbSimLeave": {
+    "what": "Leaves the simulation: its copy is dropped and this browser goes back to the sample tenant or the snapshot it was made from. The rehearsed build is gone.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#pbSimPath": {
+    "what": "Opens the Path analyzer, which now reads the simulation, so you can see what the rehearsed build does to a destination.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#pvBuild button.pb-key": {
+    "what": "Shows the provisioning key the build just created for the App Connectors. It is shown once and never kept by this app.",
+    "input": "Nothing to type. Just click it, then copy the key.",
+    "effect": "local"
+   },
+   "#pvBuild input.pb-key-value": {
+    "what": "The new provisioning key, to enroll the App Connectors with. Copy it now: it is not shown again.",
+    "input": "Read only. Select it and copy it.",
+    "effect": "local"
+   },
+   "#pvBuild button.pb-undo-build": {
+    "what": "Plans the Undo of what this build applied, latest part first, as one dry run. Nothing is written until you confirm it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
    "#pvPlan details.pv-sec > summary": {
     "what": "Shows or hides the intake form, so you can change it.",
     "input": "Nothing to type. Just click it.",
@@ -5159,6 +7986,11 @@ window.HELP_CATALOG = {
    "#pvPlan form.pv-form input[placeholder=\"Made from the name\"]": {
     "what": "Sets a short prefix that names the POV objects. It is made from the customer name until you change it.",
     "input": "Optional. 2 to 8 letters or digits, like CH.",
+    "effect": "local"
+   },
+   "#pvPlan form.pv-form select[data-pv-compliance]": {
+    "what": "Picks the POV's compliance profile, like FedRAMP Moderate. The vertical preset picks one. It drives the compliance pack on the Test kit tab.",
+    "input": "Optional. Pick a profile, or None.",
     "effect": "local"
    },
    "#pvPlan form.pv-form select:has(+ p.pv-meta)": {
@@ -5305,6 +8137,11 @@ window.HELP_CATALOG = {
     "what": "Adds the evidence to this test.",
     "input": "Type the evidence first.",
     "effect": "local"
+   },
+   "#pvKit a.rp-btn[href^=\"/api/compliance-pack/\"]": {
+    "what": "Saves a file of the compliance pack for this POV's compliance profile. Pick the control mapping, the test plan, the policy export, or all of them.",
+    "input": "Nothing to type. Just click it. Local files only: nothing is written to the tenant.",
+    "effect": "download"
    },
    "#pvKit a.rp-btn[download]": {
     "what": "Saves this test file on this computer. It is synthetic test data or a harmless test file, never real data.",
@@ -5510,6 +8347,81 @@ window.HELP_CATALOG = {
    },
    ".cq-job button": {
     "what": "Stops the apply that is running now.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#syNew > summary": {
+    "what": "Opens or closes the form for a new sync job.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#syName": {
+    "what": "Names the sync job.",
+    "input": "Required. Up to 80 characters, like Firewall baseline.",
+    "effect": "local"
+   },
+   "#sySource": {
+    "what": "Picks what the targets are kept in step with: a saved tenant profile (with its secret) or a saved snapshot.",
+    "input": "Required. Pick one.",
+    "effect": "local"
+   },
+   "#syTargets input": {
+    "what": "Adds this tenant profile as a target. Each run plans the change for it and files the plan for approval.",
+    "input": "Tick 1 to 10 profiles that remember their secret.",
+    "effect": "local"
+   },
+   "#syGroups input": {
+    "what": "Keeps these rules in step: ZIA Cloud Firewall, ZIA URL filtering or the ZPA access policy.",
+    "input": "Tick at least one. Each must be in scope on the Scope page.",
+    "effect": "local"
+   },
+   "#syLabel": {
+    "what": "Keeps only rules carrying this ZIA rule label in step.",
+    "input": "Optional. A rule label name, like Baseline. Not for ZPA.",
+    "effect": "local"
+   },
+   "#syPrefix": {
+    "what": "Keeps only rules whose name starts with this text in step.",
+    "input": "Optional. Up to 128 characters, like BASE-.",
+    "effect": "local"
+   },
+   "#syInterval": {
+    "what": "Sets how often the job runs on its own. Each run only reads and files plans; nothing is applied.",
+    "input": "Pick one: only when you click Run now, or every 1, 4, 12, 24 or 168 hours.",
+    "effect": "local"
+   },
+   "#syDeletes": {
+    "what": "Also plans deletes of target rules in the selection that the source does not have. Applying such a plan needs DELETE and the count typed, like DELETE 3 RULES.",
+    "input": "Optional. Off by default.",
+    "effect": "local"
+   },
+   "#syEnabled": {
+    "what": "Creates new rules in the targets enabled. Off, new ZIA rules arrive disabled and new ZPA rules are left out.",
+    "input": "Optional. Off by default.",
+    "effect": "local"
+   },
+   "#sySave": {
+    "what": "Saves the sync job. Nothing is read until it runs.",
+    "input": "Needs writer rights, a name, a source, targets and what to keep in step.",
+    "effect": "local"
+   },
+   "button[data-sy=\"run\"]": {
+    "what": "Runs the job now: reads the source and the targets and files one plan per target here for approval. Nothing is written to any tenant.",
+    "input": "Needs writer rights. Just click it.",
+    "effect": "read"
+   },
+   "button[data-sy=\"toggle\"]": {
+    "what": "Pauses or resumes the job's schedule.",
+    "input": "Needs writer rights. Just click it.",
+    "effect": "local"
+   },
+   "button[data-sy=\"delete\"]": {
+    "what": "Deletes the job and its history. Requests it filed stay in the queue.",
+    "input": "Needs writer rights. You confirm it.",
+    "effect": "local"
+   },
+   ".sy-job details > summary": {
+    "what": "Shows or hides the job's runs: when, who started them, each target and what was filed.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    }
@@ -5829,7 +8741,309 @@ window.HELP_CATALOG = {
     "effect": "nav"
    }
   },
+  "/report/traffic-logs": {
+   "#tlWatchBox > summary": {
+    "what": "Opens the daily report settings: a report made once a day from log files in a folder you name.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSyslogBox > summary": {
+    "what": "Opens the syslog listener: this app can take log lines sent to it, kept in memory only.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlwFolder": {
+    "what": "Names the folder the daily report reads log files from.",
+    "input": "Required to turn it on. A folder on this computer.",
+    "effect": "local"
+   },
+   "#tlwHour": {
+    "what": "Sets the hour of the day the report is made.",
+    "input": "0 to 23, in this computer's time.",
+    "effect": "local"
+   },
+   "#tlwKeep": {
+    "what": "Sets how many daily reports are kept.",
+    "input": "A whole number.",
+    "effect": "local"
+   },
+   "#tlwNames": {
+    "what": "Keeps user names in the saved reports. Off, people are only counted.",
+    "input": "Optional. Tick it only if you need the names.",
+    "effect": "local"
+   },
+   "#tlwOn": {
+    "what": "Turns the daily report on or off.",
+    "input": "Tick it to turn it on.",
+    "effect": "local"
+   },
+   "#tlwSave": {
+    "what": "Saves the daily report settings.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlwRun": {
+    "what": "Makes the report now from the files changed since the last run.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlsHost": {
+    "what": "Picks the network address the syslog listener listens on.",
+    "input": "Required. This computer's address, like 127.0.0.1.",
+    "effect": "local"
+   },
+   "#tlsPort": {
+    "what": "Picks the port the syslog listener listens on.",
+    "input": "Required. A high port, like 5514.",
+    "effect": "local"
+   },
+   "#tlsProto": {
+    "what": "Picks UDP or TCP for the syslog listener.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#tlsRemote": {
+    "what": "Lets other computers send logs to the listener.",
+    "input": "Optional. Leave it off unless a log server must send here.",
+    "effect": "local"
+   },
+   "#tlsStart": {
+    "what": "Starts the syslog listener. Lines are kept in memory only.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlsStop": {
+    "what": "Stops the syslog listener.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlsAnalyze": {
+    "what": "Makes a report from the lines that arrived.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlsClear": {
+    "what": "Forgets the lines that arrived.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlFiles": {
+    "what": "Picks the ZPA LSS or ZIA NSS log files to analyze. You can also drop them in this box.",
+    "input": "Required. JSON lines, a CSV or TSV with its header row, or the default NSS tab-separated feed, as .json, .log, .txt, .csv or .tsv, or packed in a .gz or .zip. Keep it under the upload limit shown.",
+    "effect": "local"
+   },
+   "#tlFormatBox > summary": {
+    "what": "Opens or closes the box for a custom NSS feed's output format.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlFormat": {
+    "what": "The feed output format of a custom NSS feed, so lines that are not JSON can be split into fields.",
+    "input": "Optional. Paste it from the NSS feed in the ZIA Admin Portal, like %s{time}\\t%s{login}\\t%s{url}\\t%s{action}. Up to 4,000 characters. Leave it empty for JSON, a CSV with a header or the default format.",
+    "effect": "local"
+   },
+   "#tlRun": {
+    "what": "Reads the chosen files on this computer and shows what the logs say. Nothing is sent to Zscaler and the lines are not kept.",
+    "input": "Choose one or more files first.",
+    "effect": "local"
+   },
+   "#tlSavedBox > summary": {
+    "what": "Opens or closes the list of reports saved on this computer.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSaved button.tl-act": {
+    "what": "Opens this saved report on the page, or deletes it from this computer after you confirm.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlCsv": {
+    "what": "Downloads the analysis as one CSV file, table by table. User names are replaced by user 1, user 2 unless you tick Include user names and addresses.",
+    "input": "Nothing to type. Run Analyze first.",
+    "effect": "download"
+   },
+   "#tlXlsx": {
+    "what": "Downloads the analysis as an Excel workbook, one sheet per table. User names are replaced unless you tick Include user names and addresses.",
+    "input": "Nothing to type. Run Analyze first.",
+    "effect": "download"
+   },
+   "#tlPdf": {
+    "what": "Downloads the analysis as a PDF report with the top rows of each table. User names are replaced unless you tick Include user names and addresses.",
+    "input": "Nothing to type. Run Analyze first.",
+    "effect": "download"
+   },
+   "#tlNames": {
+    "what": "Keeps user names, IP addresses, devices and the session list in downloads and in a saved report.",
+    "input": "Unticked: counts only, with users shown as user 1, user 2. Ticked: the names as they are in the logs.",
+    "effect": "local"
+   },
+   "#tlSave": {
+    "what": "Saves the analysis as a file only you can read on this computer, so you can open it again later. Counts only unless Include user names and addresses is ticked.",
+    "input": "Run Analyze first. You are asked for a name, up to 80 characters.",
+    "effect": "local"
+   },
+   "#tlForget": {
+    "what": "Forgets the analysis: it is removed from this page and from the server's memory. Saved reports stay.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlNav a": {
+    "what": "Jumps to that part of the results.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlResults a.tl-link[href^=\"/report/path\"]": {
+    "what": "Opens the Path analyzer in a new tab with this destination filled in. It reads the tenant only when you click Analyze there.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#tlInsights": {
+    "what": "Opens Traffic insights in a new tab with the same time window as these logs filled in. It reads the tenant only when you click Read Insights there.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#tlResults button.tl-act": {
+    "what": "Puts this user or destination in the SIEM query below, so the query asks only about it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSessFilter": {
+    "what": "Shows only the sessions whose user, device, address, country, platform or version contains what you type.",
+    "input": "Optional. A few letters, like a user name or a country code.",
+    "effect": "local"
+   },
+   "#tlResults details > summary": {
+    "what": "Opens or closes the extra detail: the values as a table, or the lines that could not be read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSiem": {
+    "what": "Picks the SIEM whose query language the query is written in.",
+    "input": "Pick Splunk (SPL), Microsoft Sentinel (KQL) or Elastic (ES|QL).",
+    "effect": "local"
+   },
+   "#tlQuestion": {
+    "what": "Picks the question the query asks, the same questions this page answers from the uploaded logs.",
+    "input": "Pick one from the list, grouped by ZPA and ZIA log type.",
+    "effect": "local"
+   },
+   "#tlHours": {
+    "what": "How far back the query looks.",
+    "input": "A whole number of hours from 1 to 2208 (92 days). Default 24.",
+    "effect": "local"
+   },
+   "#tlQUser": {
+    "what": "Limits the query to one user.",
+    "input": "Optional. A user name as it appears in the logs, like jdoe@example.com. It is escaped for the query language.",
+    "effect": "local"
+   },
+   "#tlQDest": {
+    "what": "Limits the query to one destination: a host, or for DNS a queried name.",
+    "input": "Optional. A host name or address, like intranet.example.com. It is escaped for the query language.",
+    "effect": "local"
+   },
+   "#tlSiemSec details > summary": {
+    "what": "Opens or closes where the logs are kept in your SIEM.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSrcZpa": {
+    "what": "Where the ZPA LSS logs are in your SIEM.",
+    "input": "Optional. Splunk: the index name. Sentinel: the table name. Elastic: the index pattern. Letters, digits, _ and - (Elastic also . * , :). Empty uses the placeholder shown.",
+    "effect": "local"
+   },
+   "#tlSrcWeb": {
+    "what": "Where the ZIA NSS web logs are in your SIEM.",
+    "input": "Optional. Splunk: the index name. Sentinel: the table name. Elastic: the index pattern. Empty uses the placeholder shown.",
+    "effect": "local"
+   },
+   "#tlSrcFw": {
+    "what": "Where the ZIA NSS firewall logs are in your SIEM.",
+    "input": "Optional. Splunk: the index name. Sentinel: the table name. Elastic: the index pattern. Empty uses the placeholder shown.",
+    "effect": "local"
+   },
+   "#tlSrcDns": {
+    "what": "Where the ZIA NSS DNS logs are in your SIEM.",
+    "input": "Optional. Splunk: the index name. Sentinel: the table name. Elastic: the index pattern. Empty uses the placeholder shown.",
+    "effect": "local"
+   },
+   "#tlQuery": {
+    "what": "The query text to copy into your SIEM. It only reads your SIEM's data; nothing here runs it.",
+    "input": "Nothing to type: it is written from your choices above.",
+    "effect": "local"
+   },
+   "#tlCopyQuery": {
+    "what": "Copies the query text to the clipboard.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "section[aria-labelledby=\"tlReadsH\"] summary": {
+    "what": "Opens or closes the list of log formats this page reads and the rules it uses to decide.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "a.rp-btn[href=\"/help\"]": {
+    "what": "Opens the page that explains every function of the app, in a new tab.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "a.rp-btn[href=\"/\"]": {
+    "what": "Goes back to the assessment page.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   }
+  },
   "/report/vendor": {
+   "a[href=\"#panos\"]": {
+    "what": "Jumps to the Firewall and private access section, which maps a Palo Alto Networks configuration export to Cloud Firewall rules and ZPA segments.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#panExport": {
+    "what": "Picks the Palo Alto Networks configuration export (the firewall's or Panorama's). It is read on this computer with a hardened XML reader.",
+    "input": "Required. One .xml configuration export, under the upload limit shown.",
+    "effect": "local"
+   },
+   "#panPrefix": {
+    "what": "Sets the prefix every object the import makes starts with, so a re-run finds them and Undo deletes only them.",
+    "input": "Optional. 1 to 10 letters, digits, - or _, like pan. The default is pan.",
+    "effect": "local"
+   },
+   "#panZones": {
+    "what": "Names the zones GlobalProtect users arrive in. Allow rules from these zones to internal addresses become ZPA application segments.",
+    "input": "Optional. Zone names separated by commas, like gp-users. Empty means zone names that say globalprotect, gp, vpn or remote access.",
+    "effect": "local"
+   },
+   "#panDisabled": {
+    "what": "Also carries rules that are disabled on the firewall. They still arrive disabled in ZIA.",
+    "input": "Optional. Ticked carries them; unticked lists them as not mapped.",
+    "effect": "local"
+   },
+   "#panBuild": {
+    "what": "Maps the export to Cloud Firewall rules, IP groups, network services and ZPA segments, and lists what cannot be carried and why. Nothing is written to the tenant.",
+    "input": "Choose the export file first.",
+    "effect": "local"
+   },
+   "#panDlPlan": {
+    "what": "Saves the migration plan as a JSON file, to load in Bulk changes or the terminal UI.",
+    "input": "Nothing to type. Build the plan first.",
+    "effect": "download"
+   },
+   "#panDlCsv": {
+    "what": "Saves the ZPA application segments as the CSV the ZPA application segments builder reads.",
+    "input": "Nothing to type. Build the plan first; it works when some rules went to ZPA.",
+    "effect": "download"
+   },
+   "#panOpen": {
+    "what": "Opens Bulk changes with this plan in the firewall import form. You still read the tenant, preview and confirm there; nothing is written here.",
+    "input": "Nothing to type. Build the plan first; it works when some rules went to ZIA.",
+    "effect": "nav"
+   },
+   "#panXref summary": {
+    "what": "Opens or closes where each Palo Alto Networks object lands in Zscaler, with the API call.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#vmTemplate": {
     "what": "Saves a decisions file to fill in. It lists every policy with nothing approved yet.",
     "input": "Nothing to type. Run Inventory the export first.",
@@ -6279,6 +9493,327 @@ window.HELP_CATALOG = {
     "what": "Opens the extension settings: the app address and the console badges.",
     "input": "Nothing to type. Just click it.",
     "effect": "nav"
+   }
+  },
+  "/login": {
+   "#lgUser": {
+    "what": "Your user name on this team server.",
+    "input": "Required. The name an administrator gave you, often your email address.",
+    "effect": "local"
+   },
+   "#lgPass": {
+    "what": "Your password on this team server. It is sent once to this server and never kept in the page.",
+    "input": "Required. At least 12 characters. Too many wrong ones lock the account for a while.",
+    "effect": "local"
+   },
+   "#lgGo": {
+    "what": "Signs you in to this team server with your user name and password. It does not touch any tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#lgSsoBtn": {
+    "what": "Signs you in through your organisation's identity provider instead of a password.",
+    "input": "Nothing to type. Just click it. Your identity provider may ask you to sign in there.",
+    "effect": "nav"
+   },
+   "#lgCur": {
+    "what": "The password you just signed in with, the one an administrator set for you. Nothing else is open to you until you choose your own.",
+    "input": "Required. Already filled in when you came here from signing in.",
+    "effect": "local"
+   },
+   "#lgNew": {
+    "what": "The password you want from now on, known only to you. Saving it ends your sessions, so you sign in again with it.",
+    "input": "Required. At least 12 characters, not your user name and not the password you signed in with.",
+    "effect": "local"
+   },
+   "#lgNew2": {
+    "what": "The new password once more, to catch a typing slip.",
+    "input": "Required. The same as the new password.",
+    "effect": "local"
+   },
+   "#lgChangeGo": {
+    "what": "Saves your new password on this team server. It does not touch any tenant.",
+    "input": "Nothing to type. Just click it once both new passwords match.",
+    "effect": "local"
+   },
+   "#lgSamlBtn": {
+    "what": "Signs you in through your organisation's identity provider with SAML. You come back here signed in to your own account.",
+    "input": "Nothing to type. Just click it. Your identity provider may ask you to sign in there.",
+    "effect": "nav"
+   },
+   "#lgPasskeyBtn": {
+    "what": "Signs you in with a passkey on this device: your PIN, fingerprint or face, no password. Add one first on the Team server page.",
+    "input": "Nothing to type. Just click it, then follow your device's prompt.",
+    "effect": "local"
+   },
+   "#lgPkGo": {
+    "what": "Finishes signing in with your passkey after your password. If the server asks for a passkey and you have none yet, it adds one on this device first.",
+    "input": "Nothing to type. Just click it, then follow your device's prompt for its PIN, fingerprint or face.",
+    "effect": "local"
+   }
+  },
+  "/report/team": {
+   "#tmRefresh": {
+    "what": "Loads the accounts, access and settings again.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmSignOut": {
+    "what": "Signs you out of this team server and ends your session.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmPwCur": {
+    "what": "Your current password, to prove it is you.",
+    "input": "Required to change your password.",
+    "effect": "local"
+   },
+   "#tmPwNew": {
+    "what": "The password you want from now on. Every session of yours ends, so you sign in again.",
+    "input": "Required. At least 12 characters; a few words work well. Not your user name.",
+    "effect": "local"
+   },
+   "#tmPwGo": {
+    "what": "Changes your own password on this server. It changes nothing in any tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmPkName": {
+    "what": "A name for the new passkey, so you can tell your devices apart.",
+    "input": "Optional. Up to 60 characters, like Work laptop.",
+    "effect": "local"
+   },
+   "#tmPkCur": {
+    "what": "Your current password, to prove it is you before a new way to sign in is added.",
+    "input": "Required when your account has a password.",
+    "effect": "local"
+   },
+   "#tmPkAdd": {
+    "what": "Adds a passkey to your account. Your device asks for its PIN, fingerprint or face. It changes nothing in any tenant.",
+    "input": "Type your current password first, then click it and follow your device's prompt.",
+    "effect": "local"
+   },
+   "button[data-pk-del]": {
+    "what": "Removes this passkey from your account. It stops signing you in.",
+    "input": "Nothing to type. Just click it. You are asked to confirm.",
+    "effect": "local"
+   },
+   "button[data-act=\"pkclear\"]": {
+    "what": "Removes every passkey of this account, for a lost or stolen device. A password or SSO still works.",
+    "input": "Nothing to type. Just click it. You are asked to confirm.",
+    "effect": "local"
+   },
+   "button[data-act=\"samllink\"]": {
+    "what": "Lets this administrator's next SAML sign-in, within 15 minutes, link to the account. Administrator accounts are never linked by email alone.",
+    "input": "Nothing to type. Just click it while the person is signing in. You are asked to confirm.",
+    "effect": "local"
+   },
+   "#tmSamlMeta": {
+    "what": "Your identity provider's SAML metadata. The server reads its entity ID, sign-on URL and signing certificate from it.",
+    "input": "Paste the XML from your identity provider's admin console, up to 256 KB. Files with a DTD or entities are refused.",
+    "effect": "local"
+   },
+   "#tmSamlFile": {
+    "what": "Reads your identity provider's metadata file into the box above, so you do not have to paste it.",
+    "input": "Pick the .xml metadata file, up to 256 KB.",
+    "effect": "local"
+   },
+   "#tmSamlIdp": {
+    "what": "The identity provider's entity ID: the name it signs its answers with.",
+    "input": "Copy it from your identity provider: the entity ID its metadata or settings page shows. Not needed when you give the metadata.",
+    "effect": "local"
+   },
+   "#tmSamlSso": {
+    "what": "Where the server sends people to sign in at the identity provider (the HTTP-Redirect sign-on URL).",
+    "input": "An https:// address from your identity provider. Not needed when you give the metadata.",
+    "effect": "local"
+   },
+   "#tmSamlCert": {
+    "what": "The identity provider's signing certificate. Only answers signed with it are trusted. Two are allowed while it is being changed.",
+    "input": "The certificate as PEM text, starting with -----BEGIN CERTIFICATE-----. Not needed when you give the metadata.",
+    "effect": "local"
+   },
+   "#tmSamlSp": {
+    "what": "This server's own entity ID. The identity provider must name it as the audience of every answer.",
+    "input": "Filled in for you with this server's metadata address. Enter the same value at your identity provider.",
+    "effect": "local"
+   },
+   "#tmSamlAcs": {
+    "what": "This server's ACS URL: where the identity provider sends people back, signed in.",
+    "input": "Filled in for you. It must end with /api/auth/saml/acs and match what your identity provider has.",
+    "effect": "local"
+   },
+   "#tmSamlGroups": {
+    "what": "Only people in one of these identity provider groups may sign in with SAML. Empty: everyone with an account here.",
+    "input": "Optional. Group names, separated by commas.",
+    "effect": "local"
+   },
+   "#tmSamlSave": {
+    "what": "Saves the SAML settings on this server. It changes nothing in any tenant.",
+    "input": "Give the metadata or the three identity provider values first, then click it.",
+    "effect": "local"
+   },
+   "#tmSamlTest": {
+    "what": "Checks the saved SAML settings on this server: every value there and safe, and the certificate in date. It signs nobody in and calls nothing outside.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmSamlOn": {
+    "what": "Turns SAML sign-in on or off for this server. It can only be turned on when every setting is there. Administrator accounts link only after Allow SAML link.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmReqPk": {
+    "what": "Asks every account that signs in with a password for its passkey too. An account without one adds one at its next sign-in. SAML and SSO sign-in are not affected.",
+    "input": "Tick it to require passkeys, clear it to make them optional. Passkeys must be set up on the server first.",
+    "effect": "local"
+   },
+   "select[data-role]": {
+    "what": "This person's role: the most they may ever do. Their sessions end so the new role applies at once.",
+    "input": "Pick one: viewer (read), operator (read, plan, apply), approver (read, approve) or administrator. You cannot demote yourself.",
+    "effect": "local"
+   },
+   "button[data-act=\"off\"]": {
+    "what": "Turns this account off: it cannot sign in, and its sessions end. Nothing is deleted.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "button[data-act=\"on\"]": {
+    "what": "Turns this account back on.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "button[data-act=\"unlock\"]": {
+    "what": "Unlocks an account locked after too many wrong passwords.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "button[data-act=\"pw\"]": {
+    "what": "Sets a new password for this account. Its sessions end; tell the person the new password in person.",
+    "input": "At least 12 characters.",
+    "effect": "local"
+   },
+   "button[data-act=\"del\"]": {
+    "what": "Deletes this account and the access it was given. Its sessions end. The audit log keeps what it did.",
+    "input": "Nothing to type. Just click it. You are asked to confirm.",
+    "effect": "local"
+   },
+   "#tmNuName": {
+    "what": "The new account's user name.",
+    "input": "Required. Letters, digits and . _ @ + -, up to 100 characters; an email address works and matches an SSO sign-in.",
+    "effect": "local"
+   },
+   "#tmNuEmail": {
+    "what": "The new account's email, used to match an SSO sign-in.",
+    "input": "Optional. An email address.",
+    "effect": "local"
+   },
+   "#tmNuRole": {
+    "what": "The new account's role: the most it may ever do.",
+    "input": "Pick one: viewer, operator, approver or administrator.",
+    "effect": "local"
+   },
+   "#tmNuPass": {
+    "what": "The new account's first password.",
+    "input": "Optional. At least 12 characters. Leave blank for someone who signs in through SSO only.",
+    "effect": "local"
+   },
+   "#tmNuGo": {
+    "what": "Adds the account. It may do nothing until you give it access below.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmGrWho": {
+    "what": "Who gets the access: one account, or a group (groups come from SCIM provisioning).",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#tmGrProf": {
+    "what": "Which tenant profile the access is for, or every tenant profile.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#tmGrActs input": {
+    "what": "What they may do there. Read sees the tenant and its reports; plan prepares changes; apply changes the tenant; approve decides on someone else's change. Their role still caps it.",
+    "input": "Tick any. Untick all to take the access away.",
+    "effect": "local"
+   },
+   "#tmGrGo": {
+    "what": "Saves this access. It takes effect on their next click.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmScimNew": {
+    "what": "Makes a new SCIM bearer token for your identity provider to add, change and remove accounts and groups. It is shown once; the one before stops working.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmScimRevoke": {
+    "what": "Revokes the SCIM token, so provisioning stops until you make a new one.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmShKind": {
+    "what": "Picks what to share: one of your POV templates or one of your saved deploy plans.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#tmShItem": {
+    "what": "Picks which template or saved plan to share. Only its owner or an administrator may change who it is shared with.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#tmShWho input": {
+    "what": "Ticks the people and groups it is shared with. A shared plan still opens only for people who may read its tenant profile.",
+    "input": "Tick any. Untick all to keep it to yourself.",
+    "effect": "local"
+   },
+   "#tmShGo": {
+    "what": "Saves who this template or plan is shared with. It changes nothing in any tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmStoreRotate": {
+    "what": "Makes a new key for the app's encrypted stores, encrypts every store again with it, then forgets the old key. Only when store encryption is on.",
+    "input": "Nothing to type. You are asked to confirm.",
+    "effect": "local"
+   }
+  },
+  "/report/aiguard": {
+   "#agTenant": {
+    "what": "Picks which tenant sign-in the AI Guard read and the prompt test use.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or what is saved on this computer. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   "#agRun": {
+    "what": "Reads AI Guard once: detection policies, policy match rules, LLM providers, LLM applications and credential names (never a key).",
+    "input": "Nothing to type. Just click it. Tick AI Guard on the Scope page first; it needs a OneAPI (ZIdentity) API client.",
+    "effect": "read"
+   },
+   "a.rp-btn[href=\"/report/operations?build=aiguard_detection_policy\"]": {
+    "what": "Opens Bulk changes with the AI Guard detection policy builder picked, to build a policy from a compliance profile.",
+    "input": "Nothing to type. Just click it. Nothing is changed until you preview and apply with write mode on.",
+    "effect": "nav"
+   },
+   "#agPrompt": {
+    "what": "Picks the made-up prompt to send. Only these prompts can be sent; nothing you type is ever sent.",
+    "input": "Pick one: an ordinary question, a prompt injection, a reserved test SSN, a published test card number, a link to a made-up malicious site, or internal source code.",
+    "effect": "local"
+   },
+   "#agDir": {
+    "what": "Says whether the text is checked as a prompt to the model or as the model's answer.",
+    "input": "Pick one: Prompt to the model (IN) or Model's answer (OUT). IN is the usual choice.",
+    "effect": "local"
+   },
+   "#agPolicy": {
+    "what": "Picks the detection policy to test against, or lets AI Guard pick it by its match rules.",
+    "input": "Optional. Click Read first to list the policies.",
+    "effect": "local"
+   },
+   "#agTest": {
+    "what": "Sends the made-up prompt to AI Guard's policy detection and shows the overall action and what each detector did. Changes no configuration.",
+    "input": "Nothing to type. Just click it. On a live tenant it needs the server's AI Guard API key (AIGUARD_API_KEY); the sample tenant answers with a made-up detector.",
+    "effect": "read"
    }
   }
  }

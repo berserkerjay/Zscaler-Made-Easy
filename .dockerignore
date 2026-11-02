@@ -55,6 +55,12 @@ change_requests.json.lock
 .change_requests.*.tmp
 .workspace_notes.*.tmp
 posture_settings.json
+update_notify.json
+plugins.json
+sync_jobs.json
+sync_jobs.json.lock
+.sync_jobs.*.tmp
+config_backups/
 self_heal.json
 **/*.last-good
 **/*.corrupt-*
@@ -66,6 +72,8 @@ self_heal.json
 .fingerprint-*
 .deployments-*
 .posture-*
+.update-notify-*
+.plugins-*
 # Editor, OS and build leftovers.
 *.py[cod]
 *$py.class
@@ -75,3 +83,5 @@ self_heal.json
 *.swo
 .DS_Store
 Thumbs.db
+
+agent-workspace/output/

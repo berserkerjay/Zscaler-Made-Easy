@@ -33,6 +33,7 @@ Design principles
    module's main entry point. Only dependency is the Client.
 """
 from __future__ import annotations
+import hashlib
 import json
 from typing import Any, Dict, List, Optional
 
@@ -57,6 +58,7 @@ from typing import Any, Dict, List, Optional
 REMEDIATIONS: List[Dict[str, Any]] = [
     {
         "check_id": "FW-01",
+        "reread": "collection",   # before the create: the policy is read, and a rule of the same name stops it
         "checks": [],   # the assessment has no Cloud Firewall check yet
         "label": "Add Cloud Firewall Rule",
         "summary": "Creates a new Cloud Firewall rule from the criteria you provide. Best for the common 'no firewall rules configured' finding.",
@@ -100,6 +102,7 @@ REMEDIATIONS: List[Dict[str, Any]] = [
 
     {
         "check_id": "URL-01",
+        "reread": "collection",   # before the create: the policy is read, and a rule of the same name stops it
         # E.1/E.8/E.9: no GenAI URL categories governed, shadow GenAI, no AUP enforcement.
         "checks": ["E.1", "E.8", "E.9"],
         "label": "Add URL Filtering Rule",
@@ -174,6 +177,7 @@ REMEDIATIONS: List[Dict[str, Any]] = [
 
     {
         "check_id": "SSL-01",
+        "reread": "collection",   # before the create: the policy is read, and a rule of the same name stops it
         # 4.1 inspection scope, A.2 SSL+DNI, E.2 SSL for GenAI, 6.4 inspect list, 7.3 no enabled SSL rules.
         "checks": ["4.1", "A.2", "E.2", "6.4", "7.3"],
         "label": "Add SSL Inspection Rule",
@@ -215,6 +219,7 @@ REMEDIATIONS: List[Dict[str, Any]] = [
 
     {
         "check_id": "DLP-01",
+        "reread": "collection",   # before the create: the policy is read, and a rule of the same name stops it
         # 5.3 / A.1 / MC.1 no active Web DLP rules, E.5 no source-code rule, E.6 no PII rule, 8.5 inline pilot.
         "checks": ["5.3", "A.1", "MC.1", "E.5", "E.6", "8.5"],
         "label": "Add Inline Web DLP Rule",
@@ -449,6 +454,7 @@ def plan(check_id: str, criteria: Dict[str, Any]) -> Dict[str, Any]:
         "body":         body,
         "success_msg":  recipe.get("success_msg", ""),
     }
+    out["plan_hash"] = plan_hash(recipe["check_id"], out)
     if recipe.get("merge"):
         # The body shown is only what changes: say so, or a reader who knows
         # that a PUT replaces the object would take it for a wipe.
@@ -457,17 +463,36 @@ def plan(check_id: str, criteria: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def plan_hash(check_id: str, p: Dict[str, Any]) -> str:
+    """The hash of a planned call: recipe, method, endpoint and body. The
+    preview shows it; a live run must send it back, and the call is
+    re-planned and compared before anything is read or written (the same
+    hash the change queue files: change_queue.recipe_plan_hash)."""
+    core = {"check_id": str(check_id), "method": p.get("method"), "endpoint": p.get("endpoint"), "body": p.get("body")}
+    return hashlib.sha256(json.dumps(core, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+PLAN_CHANGED = ("The planned call is not the one previewed (the recipe or its values changed since the preview): nothing was read "
+                "or written. Preview the plan again, then apply it.")
+
+
 MERGE_NOTE = ("Reads the rule and sends it back whole: the request is a PUT of the rule as the tenant has it now, "
               "with only the fields shown here changed.")
 
 
-def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = True) -> Dict[str, Any]:
+def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = True, plan_hash: Optional[str] = None) -> Dict[str, Any]:
     """Plan then (optionally) execute. Writes are gated on
     ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var, same as the
-    migration wizard."""
+    migration wizard. `plan_hash`: the previewed plan's hash; when given,
+    a live run whose re-made plan differs sends nothing (plan_changed).
+    Before a write the tenant is re-read: a merge recipe reads the object
+    it changes, a create recipe reads its policy and stops when a rule of
+    the same name is there already (never a blind write)."""
     p = plan(check_id, criteria)
     if not p.get("ok"):
         return {"status": "invalid", **p}
+    if not dry_run and plan_hash is not None and str(plan_hash) != p["plan_hash"]:
+        return {"status": "plan_changed", "message": PLAN_CHANGED, **{k: v for k, v in p.items() if k != "ok"}}
 
     if dry_run:
         would = (f"read {p['endpoint']} and send it back whole ({p['method']}) with only the fields shown changed" if p.get("merge")
@@ -496,6 +521,22 @@ def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = Tru
                     "error": f"The object could not be read before the change (HTTP {code}), so nothing was sent."}
         body = dict(cur)
         body.update(p["body"])
+    elif get_recipe(check_id).get("reread") == "collection" and method == "POST":
+        # Re-read before the create: the policy as the tenant has it now. A
+        # rule of the same name (a second click, or someone else's change
+        # since the preview) stops it; an unreadable policy sends nothing.
+        try:
+            rows, code = client.get(endpoint)
+        except Exception as e:
+            return {"status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}", **p}
+        if code != 200 or not isinstance(rows, list):
+            return {"status": "failed", "http_status": code, **p,
+                    "error": f"The rule policy could not be read before the change (HTTP {code}), so nothing was sent."}
+        want = str((body or {}).get("name") or "").strip().lower()
+        if want and any(isinstance(r, dict) and str(r.get("name") or "").strip().lower() == want for r in rows):
+            return {"status": "conflict", **p,
+                    "error": f"A rule named '{str(body.get('name'))[:128]}' is already in this policy, so nothing was sent. "
+                             "Pick another name, or change the rule that is there."}
 
     try:
         if method == "POST":

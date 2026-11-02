@@ -3,6 +3,7 @@ keyring-backed profile secrets, hash-pinned installs, container files."""
 from __future__ import annotations
 
 import json
+import pytest
 import os
 import sys
 import types
@@ -118,3 +119,50 @@ def test_installs_are_hash_pinned_and_container_files_are_present():
     for f in ("LICENSE", "CHANGELOG.md", "SECURITY.md"):
         assert os.path.exists(os.path.join(ROOT, f)), f
     assert not os.path.exists(os.path.join(ROOT, "dlp-assessment-automation.zip"))
+
+
+def _ping_server(tmp_path, tls):
+    """A loopback server answering /api/ping, over HTTPS (self-signed) or HTTP."""
+    import http.server
+    import ssl as _ssl
+    import threading
+    import server_tls
+
+    class Ping(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200 if self.path == "/api/ping" else 404)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    httpd = http.server.HTTPServer(("127.0.0.1", 0), Ping)
+    if tls:
+        paths = server_tls.generate_self_signed(str(tmp_path / "tls"))
+        ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(paths["cert"], paths["key"])
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
+
+
+@pytest.mark.parametrize("tls", [True, False])
+def test_the_container_healthcheck_speaks_https_when_tls_is_on(tmp_path, monkeypatch, tls):
+    """ASVS V14.1.1 · CWE-754 · WSTG-CONF-02: the image healthcheck probes the app over HTTPS when HTTPS is configured, so a TLS team server is not reported unhealthy forever."""
+    # Arrange
+    import docker_healthcheck
+    for name in ("ZSCALER_TLS", "ZSCALER_TLS_CERT", "ZSCALER_TLS_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    if tls:
+        monkeypatch.setenv("ZSCALER_TLS", "self-signed")
+    httpd = _ping_server(tmp_path, tls)
+    monkeypatch.setattr(docker_healthcheck, "PORT", httpd.server_address[1])
+    try:
+        # Act
+        rc = docker_healthcheck.main()
+    finally:
+        httpd.shutdown()
+    # Assert
+    assert docker_healthcheck.url().startswith("https://" if tls else "http://")
+    assert rc == 0
+    assert 'CMD ["python", "docker_healthcheck.py"]' in open(os.path.join(ROOT, "Dockerfile")).read()

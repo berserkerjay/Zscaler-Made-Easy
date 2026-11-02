@@ -65,7 +65,7 @@ ASSUMPTIONS = [
     "When no Client Forwarding Policy rule matches, Client Connector intercepts the traffic for ZPA (assumed: the SDK does not document the default).",
     "Intercept accessible sends the traffic to ZPA only when the access policy allows this user; otherwise it goes outside ZPA (to ZIA or direct).",
     "On VPN may or may not count as a trusted network for a segment's On-Net bypass; it is answered both ways.",
-    "Device posture is evaluated twice: with every posture profile passing and with every one failing. Identity (IdP, SCIM, SAML), country and machine group are left as any user.",
+    "Device posture is evaluated twice: with every posture profile passing and with every one failing. Identity (IdP, SCIM, SAML), country and machine group are left as any user: give a ZPA identity in What-if to evaluate them.",
 ]
 
 # ── the shared module-hop shape ─────────────────────────────────────────
@@ -118,21 +118,24 @@ def segment_hints(snap: Dict[str, Any], d: Dict[str, Any], sm: Dict[str, Any]) -
 
 
 # ── facts and rule evaluation ───────────────────────────────────────────
-def _facts(snap: Dict[str, Any], network: str, platform: str, source: str, posture: str) -> Dict[str, Any]:
+def _facts(snap: Dict[str, Any], network: str, platform: str, source: str, posture: str,
+           identity: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The user context zpa_analysis evaluates: what the Path analyzer knows
-    (platform, Client Connector, trusted network when off network) plus
-    one posture scenario ("pass": every profile passes; "fail": none)."""
+    (platform, Client Connector, trusted network when off network), the
+    ZPA identity when one was given (zpa_identity.resolve: IdP, SCIM
+    groups, attribute values) plus one posture scenario ("pass": every
+    profile passes; "fail": none)."""
     if source == "workload":
         # A workload has no Client Connector: posture and trusted networks
         # are Client Connector facts it never presents (assumed).
         return zpa_analysis._norm_user({"posture_pass": [], "trusted_networks": []})
     profiles = [p.get("posture_udid") or p.get("id") for p in snap.get("posture_profiles") or [] if p.get("posture_udid") or p.get("id")]
-    return zpa_analysis._norm_user({
+    return zpa_analysis._norm_user(dict((identity or {}).get("facts") or {}, **{
         "platform": PLATFORM_TO_ZPA.get(platform),
         "client_type": "zpn_client_type_zapp",
         "trusted_networks": [] if network == "off" else None,
         "posture_pass": profiles if posture == "pass" else [],
-    })
+    }))
 
 
 def _condition_words(cond: Dict[str, Any], names: device_posture.Names) -> str:
@@ -156,12 +159,16 @@ def _criteria(rule: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[str, A
         if c.get("negated") and v is not None:
             v = not v
         out.append({"name": _condition_words(c, names), "state": "unknown" if v is None else ("match" if v else "nomatch")})
+    for f in rule.get("unknown_fields") or []:   # rule_fields: a field outside the conditions this tool does not evaluate
+        out.append({"name": f"{f.get('label')}: {f.get('why')}", "state": "unknown"})
     return out
 
 
 def unknown_operands(rule: Dict[str, Any]) -> List[str]:
-    """Operand types in `rule` this tool cannot evaluate."""
-    return sorted({o["type"] for c in rule.get("conditions") or [] for o in c.get("operands") or [] if o["type"] not in KNOWN_OPERANDS})
+    """Operand types in `rule` this tool cannot evaluate, and the rule's
+    other fields it does not evaluate (rule_fields, by label)."""
+    return sorted({o["type"] for c in rule.get("conditions") or [] for o in c.get("operands") or [] if o["type"] not in KNOWN_OPERANDS}
+                  | {str(f.get("label")) for f in rule.get("unknown_fields") or [] if isinstance(f, dict)})
 
 
 def first_match(rules: List[Dict[str, Any]], u: Dict[str, Any], seg: Optional[Dict[str, Any]], ix: Any,
@@ -226,10 +233,16 @@ def not_read(reason: str, status: str = "unknown") -> Dict[str, Any]:
 
 
 def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", platform: str = "windows",
-          source: str = "device", profiles: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+          source: str = "device", profiles: Optional[List[Dict[str, Any]]] = None,
+          identity: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Whether ZPA carries destination `d` (destination()) for this
     network and platform. `profiles` are device_posture's classified
-    posture profiles (for the wording). See the module docstring."""
+    posture profiles (for the wording). `identity` is the ZPA identity of
+    the what-if (zpa_identity.resolve), for a user device only: its SCIM
+    group, SCIM and SAML attribute and IdP conditions are then evaluated
+    and the result says which one decided. See the module docstring."""
+    if source != "device":
+        identity = None   # a workload has no user: identity conditions are never met by it
     ix = zpa_analysis._Index(snap)
     names = device_posture.Names(snap, profiles if profiles is not None else
                                  [dict(p, **device_posture.classify(p.get("name") or "", "")) for p in snap.get("posture_profiles") or []])
@@ -296,7 +309,7 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
     pol = snap.get("policies") or {}
     fwd_rules, acc_rules = pol.get("client_forwarding"), pol.get("access")
     for posture in (("pass", "fail") if source == "device" else ("none",)):
-        u = _facts(snap, network, platform, source, posture)
+        u = _facts(snap, network, platform, source, posture, identity)
         if source == "workload" or fwd_rules is None:
             fwd = {"rule": None, "effect": "intercept", "possible": {"intercept"}, "conditional": [], "walked": [], "flagged": []}
         else:
@@ -367,12 +380,44 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
         out["reachable"] = serve["reachable"]
 
     out.update(modules=modules, hops=hops, posture_matters=posture_matters,
-               ends=sorted(all_ends), assumptions=list(ASSUMPTIONS),
+               ends=sorted(all_ends), assumptions=_assumptions(identity),
                scenarios={k: {"forwarding": v["fwd"]["effect"], "access": v["acc"]["effect"], "ends": sorted(v["ends"]),
                               "rule": (v["acc"]["rule"] or {}).get("name"), "conditional": [c["name"] for c in v["acc"]["conditional"]][:5]}
                           for k, v in scen.items()})
+    if identity is not None and acc_rules is not None:
+        _identity_words(out, identity, scen, seg, ix, acc_rules, acc_reached)
     _verdict(out, seg, dest_txt, bt, f, a, scen, source, network)
     return out
+
+
+def _assumptions(identity: Optional[Dict[str, Any]]) -> List[str]:
+    if identity is None:
+        return list(ASSUMPTIONS)
+    import zpa_identity
+    return ASSUMPTIONS[:4] + [zpa_identity.assumption(identity)]
+
+
+def _identity_words(out: Dict[str, Any], identity: Dict[str, Any], scen: Dict[str, Dict[str, Any]], seg: Dict[str, Any], ix: Any,
+                    rules: List[Dict[str, Any]], reached: bool) -> None:
+    """Which identity condition decided the access policy, on the access
+    hop and in out["identity"] (the page's ZPA identity block)."""
+    import zpa_identity
+    first = scen.get("pass") or scen.get("none")
+    ex = zpa_identity.explain(first, seg, ix, rules, identity)
+    fail = scen.get("fail")
+    if fail is not None and (fail["acc"].get("rule") or {}).get("id") != (first["acc"].get("rule") or {}).get("id"):
+        exf = zpa_identity.explain(fail, seg, ix, rules, identity)
+        if exf["sentence"]:
+            ex["sentence"] = (ex["sentence"] + " With device posture failing: " + exf["sentence"]).strip()
+    out["identity"] = zpa_identity.summary(identity, ex)
+    if not reached:
+        return
+    notes = [ex["sentence"]] if ex["sentence"] else []
+    notes += [f"“{m['rule']}” does not apply to this user: {m['why']}." for m in ex["missed"][:3]]
+    notes += [f"Still unknown: {u}." for u in ex["unknown"][:3]]
+    for m in out.get("modules") or []:
+        if m.get("key") == "zpa_access":
+            m["notes"] = notes + list(m.get("notes") or [])
 
 
 def _overlaps(fm: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -406,6 +451,12 @@ def _access_words(scen: Dict[str, Dict[str, Any]], source: str) -> Tuple[str, st
     return v, text
 
 
+def _because(out: Dict[str, Any]) -> str:
+    """The words ' because SCIM group “Finance” matched' when an identity condition decided, else ''."""
+    b = (out.get("identity") or {}).get("because") or []
+    return (" because " + " and ".join(b[:2])) if b else ""
+
+
 def _verdict(out: Dict[str, Any], seg: Dict[str, Any], dest_txt: str, bt: str, f: Dict[str, Any], a: Dict[str, Any],
              scen: Dict[str, Dict[str, Any]], source: str, network: str = "off") -> None:
     ends = set(out["ends"])
@@ -429,7 +480,7 @@ def _verdict(out: Dict[str, Any], seg: Dict[str, Any], dest_txt: str, bt: str, f
     elif ends == {"zpa_allow"}:
         out["carries"] = True
         r = a["rule"] or {}
-        out.update(outcome="zpa_allowed", headline=f"Carried by ZPA and allowed by access rule “{r.get('name')}”: ZIA does not apply.",
+        out.update(outcome="zpa_allowed", headline=f"Carried by ZPA and allowed by access rule “{r.get('name')}”{_because(out)}: ZIA does not apply.",
                    summary=f"Application segment “{name}” matches {dest_txt}; ZPA carries it to the App Connectors, so ZIA URL filtering, SSL inspection and Web DLP never see it.")
         if out.get("reachable") is False:
             impacts.append({"hop": "zpa_connectors", "label": "App Connectors", "status": "blocked", "rule": None, "severity": "high",
@@ -438,7 +489,9 @@ def _verdict(out: Dict[str, Any], seg: Dict[str, Any], dest_txt: str, bt: str, f
     elif ends == {"zpa_deny"}:
         out["carries"] = True
         r = a["rule"]
-        by = f"access rule “{r['name']}”" if r else "ZPA's default deny (no access rule allows it)"
+        by = (f"access rule “{r['name']}”{_because(out)}" if r else "ZPA's default deny (no access rule allows it)"
+              + (f": “{(out.get('identity') or {}).get('missed')[0]['rule']}” does not apply to this user"
+                 if (out.get("identity") or {}).get("missed") else ""))
         out.update(outcome="zpa_denied", headline=f"Blocked by ZPA: {by}. ZIA does not apply.",
                    summary=f"Application segment “{name}” matches {dest_txt}; ZPA carries it and the access policy denies it, so the user cannot reach it.")
         impacts.append({"hop": "zpa_access", "label": "ZPA access policy", "status": "blocked", "rule": r["name"] if r else None, "severity": "high",
