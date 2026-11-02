@@ -3,13 +3,17 @@
  "title": "Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s",
  "files": [
   "static/dashboard.js",
+  "static/flow_pages.js",
   "static/guide.js",
   "tests/js/flow_browser_acceptance.mjs",
-  "tests/js/flow_browser_harness_helpers.mjs"
+  "tests/js/flow_browser_harness_helpers.mjs",
+  "tests/test_c6_path.py"
  ],
  "standards": [
   "CWE-1188",
   "CWE-362",
+  "CWE-400",
+  "WCAG SC 2.2.2",
   "WCAG SC 2.3.3",
   "WCAG SC 2.4.3",
   "WCAG SC 3.2.1",
@@ -48,6 +52,18 @@
    "id": "scope-jump",
    "what": "from the dashboard, the Scope link shows the Scope page at its top at once, and it and Run assessment stay put over the next painted frames (they slid there smoothly, about 150 px)",
    "standard": "WCAG SC 2.3.3 · CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "stream-start",
+   "what": "the ZPA, Insights and Bypass stream pictures have packets on their links as soon as they are ready (they were empty until a slow link's random start came round; the CI failures on zpa and bypass, also on 536fe11 under taskset -c 0,1)",
+   "standard": "WCAG SC 2.2.2",
+   "result": "pass"
+  },
+  {
+   "id": "perf-measure",
+   "what": "the 5,000-rule firewall analysis keeps its 2 s CPU budget, measured as the best of three cold runs (fresh tenant, parse caches cleared); one noisy run passes, a regression on every run still fails; about 1.0 s here on two CPUs, unchanged from main",
+   "standard": "CWE-400",
    "result": "pass"
   }
  ],
@@ -93,6 +109,17 @@
    "status": "fixed",
    "fix": "tests/js/flow_browser_harness_helpers.mjs classifyMissedClick and clickUntilReceived; tests/js/flow_browser_acceptance.mjs click()",
    "test": "tests/test_flow_browser_acceptance.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-NC-05",
+   "title": "Stream pictures said motion was on but showed no packet until each link's random start phase came round (up to about 0.9 s on the Bypass trunk, 5 s on a slow link)",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "wcag": "WCAG 2.2 SC 2.2.2",
+   "status": "fixed",
+   "fix": "static/flow_pages.js mountStream seeds each moving link with its steady-state packets when motion starts",
+   "test": "tests/test_flow_pages.py",
    "commit": ""
   }
  ],
