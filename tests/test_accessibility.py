@@ -781,3 +781,42 @@ def test_the_focus_ring_appears_at_once_and_is_never_animated():
     transition = (_re.search(r"transition:\s*([^;]+)", rule) or [None, ""])[1]
     # Assert
     assert transition and not _re.search(r"\b(all|outline|box-shadow)\b", transition), transition
+
+
+# A report page is styled (drawn in the dark theme) before report_theme.js,
+# at the end of the page, applies a saved light theme. The driver makes that
+# happen every time: it holds report_theme.js and forces a style pass first.
+# Under reduced motion every transition lasts 0.01 ms but starts only on the
+# next frame, so each element kept its dark-theme (white) text until then:
+# CI read every text on /report/traffic-logs and /report/advanced as white on
+# the light page (1.04:1).
+_THEME_FLIP_DRIVER = r"""
+const [route] = args;
+let paused = 0;
+const _onmsg = ws.onmessage;
+ws.onmessage = async e => { _onmsg(e); const m = JSON.parse(e.data);
+  if (m.method !== 'Fetch.requestPaused') return;
+  if (/report_theme\.js/.test(m.params.request.url)) { paused++; await send('Runtime.evaluate', { expression: 'document.body && document.body.offsetWidth' }); }
+  await send('Fetch.continueRequest', { requestId: m.params.requestId }); };
+await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }, { name: 'prefers-color-scheme', value: 'light' }] });
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('zassess_theme', 'light'); } catch (e) {}
+  document.addEventListener('DOMContentLoaded', () => { const body = getComputedStyle(document.body).color;
+    window.__flip = { light: document.body.classList.contains('theme-light'), body,
+      colourTransitions: document.getAnimations().filter(a => a.transitionProperty === 'color' || a.transitionProperty === 'background-color').length,
+      offColour: [...document.querySelectorAll('main label, main summary, main dd, main h2')].filter(el => getComputedStyle(el).color === 'rgb(255, 255, 255)').length }; });` });
+await send('Fetch.enable', { patterns: [{ urlPattern: '*report_theme.js*', requestStage: 'Request' }] });
+await send('Page.navigate', { url: base + route });
+await until(() => ev(`document.readyState === 'complete' && !!window.__flip`), route);
+const out = await ev(`window.__flip`); out.paused = paused;
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+
+@pytest.mark.parametrize("route", ["/report/traffic-logs", "/report/advanced"])
+def test_a_saved_light_theme_applies_at_once_on_an_already_drawn_report_page(tmp_path, route):
+    """WCAG 2.2 SC 1.4.3, 2.3.3 · CWE-1188: under reduced motion, a light theme applied after the page was first styled starts no colour transition, so no text keeps the dark theme's white on the light page."""
+    out = run_in_browser(tmp_path, CDP_PRELUDE + _THEME_FLIP_DRIVER, route, timeout=120)
+    assert out["paused"] == 1 and out["light"], out   # the page really was styled before the theme script ran
+    assert out["colourTransitions"] == 0 and out["offColour"] == 0, out
+    assert out["body"] == "rgb(0, 0, 0)", out

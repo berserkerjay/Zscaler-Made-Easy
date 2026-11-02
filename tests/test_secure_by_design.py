@@ -157,3 +157,50 @@ def test_tls_hints_point_to_a_ca_bundle_and_state_the_risk_of_switching_off():
     finally:
         requests.get = orig
     assert "REQUESTS_CA_BUNDLE" in err and "any certificate" in err and err.index("REQUESTS_CA_BUNDLE") < err.index("ZSCALER_UPDATE_VERIFY_TLS=0")
+
+
+def test_a_source_file_is_tokenized_again_only_when_it_changes(tmp_path, monkeypatch):
+    """ASVS V11.1.4 · CWE-400 · WSTG-BUSL-05: the multi-second source scan runs once per file version, not on every request; an edited file is rescanned."""
+    calls = []
+    real = sbd._dangerous_lines
+    monkeypatch.setattr(sbd, "_dangerous_lines", lambda src: (calls.append(src), real(src))[1])
+    monkeypatch.setattr(sbd, "_FACTS", {})
+    f = tmp_path / "mod.py"
+    f.write_text("x = 1\n", encoding="utf-8")
+    assert sbd._file_facts(str(f)) == ([], 0)
+    assert sbd._file_facts(str(f)) == ([], 0)
+    assert len(calls) == 1, "an unchanged file is not tokenized again"
+    f.write_text("x = 1\nos.system('ls')\nclient.post('/x')\n", encoding="utf-8")
+    os.utime(f, ns=(os.stat(f).st_atime_ns, os.stat(f).st_mtime_ns + 1_000_000))
+    assert sbd._file_facts(str(f)) == ([2], 1)
+    assert len(calls) == 2, "a changed file is scanned again"
+    assert sbd._file_facts(str(tmp_path / "gone.py")) == ([], 0)
+
+
+def test_a_second_evaluation_rescans_no_unchanged_file(monkeypatch):
+    """ASVS V11.1.4 · CWE-400 · WSTG-BUSL-05: re-measuring (the Advanced page opened again) does not re-tokenize the app's unchanged sources."""
+    calls = []
+    real = sbd._dangerous_lines
+    monkeypatch.setattr(sbd, "_dangerous_lines", lambda src: (calls.append(1), real(src))[1])
+    first = sbd.evaluate(srv.app)
+    n = len(calls)
+    second = sbd.evaluate(srv.app)
+    assert len(calls) == n, "the second evaluation tokenized unchanged files again"
+    assert {c["id"]: c["status"] for c in first["checks"]} == {c["id"]: c["status"] for c in second["checks"]}
+
+
+def test_requests_that_arrive_while_a_measurement_runs_share_it(monkeypatch):
+    """ASVS V11.1.4 · CWE-400 · WSTG-BUSL-05: concurrent /api/secure-by-design requests run one evaluation, so reopening the page never piles up CPU-bound scans that stall the server."""
+    import asyncio
+    calls = []
+    monkeypatch.setattr(sbd, "evaluate", lambda app=None: (calls.append(1), {"score": 99, "checks": []})[1])
+    monkeypatch.setattr(srv, "_SBD_RUN", None)
+
+    async def both():
+        return await asyncio.gather(srv.secure_by_design_score(), srv.secure_by_design_score(), srv.secure_by_design_score())
+
+    out = asyncio.run(both())
+    assert len(calls) == 1 and all(o == {"score": 99, "checks": []} for o in out)
+    # Once it finished, the next request measures again (live, not a stale copy).
+    asyncio.run(both())
+    assert len(calls) == 2

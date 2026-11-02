@@ -8314,14 +8314,25 @@ async def report_beacon_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
+_SBD_RUN: Optional["asyncio.Future[Dict[str, Any]]"] = None
+
+
 @app.get("/api/secure-by-design")
 async def secure_by_design_score():
     """How this app measures against CISA's Secure by Design principles and
     pledge goals, read live from the running server and the app folder:
     a score, and every control with its status, evidence and next step."""
+    global _SBD_RUN
     try:
         import secure_by_design
-        return await asyncio.to_thread(secure_by_design.evaluate, app)
+        # One evaluation at a time: requests that arrive while one runs (the
+        # page opened again, another tab) share it instead of queueing more
+        # CPU-bound scans that would starve every other request, the page's
+        # own scripts included. Shielded: a reader who leaves does not cancel
+        # the run the others wait on.
+        if _SBD_RUN is None or _SBD_RUN.done():
+            _SBD_RUN = asyncio.ensure_future(asyncio.to_thread(secure_by_design.evaluate, app))
+        return await asyncio.shield(_SBD_RUN)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Secure by Design check failed: {e}")
 

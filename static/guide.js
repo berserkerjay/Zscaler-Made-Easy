@@ -420,11 +420,14 @@ function _gdIdent() {
 function _gdAuthStatus() {
   const st = document.getElementById('authStatus');
   if (!st) return;
+  // Called on every 2.5 s render: it is a live region, so it is written
+  // only when the status changes (a rewrite of the same words is announced
+  // again by some screen readers, and asks every page observer to rescan).
+  const put = (cls, text) => { if (st.className !== cls) st.className = cls; if (st.textContent !== text) st.textContent = text; };
   const c = GD.conn;
-  if (GD.testing) { st.textContent = 'Authenticating…'; st.className = 'auth-status'; return; }
-  if (!c || c.vd !== _gdIdent()) { st.textContent = ''; st.className = 'auth-status'; return; }
-  st.className = 'auth-status ' + (c.ok ? 'ok' : 'bad');
-  st.textContent = c.ok ? `Signed in to ${c.label || c.name || 'the tenant'}. The tenant's configuration was not read; the readiness check in Start here says what this API client can do. Choose what to assess on the Scope page, then click Run assessment.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
+  if (GD.testing) { put('auth-status', 'Authenticating…'); return; }
+  if (!c || c.vd !== _gdIdent()) { put('auth-status', ''); return; }
+  put('auth-status ' + (c.ok ? 'ok' : 'bad'), c.ok ? `Signed in to ${c.label || c.name || 'the tenant'}. The tenant's configuration was not read; the readiness check in Start here says what this API client can do. Choose what to assess on the Scope page, then click Run assessment.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`);
 }
 function _gdConnHtml() {
   const c = GD.conn;

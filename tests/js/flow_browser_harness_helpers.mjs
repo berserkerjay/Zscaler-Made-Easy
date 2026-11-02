@@ -40,7 +40,11 @@ export async function waitForStablePoint(sample, {now = Date.now, sleep, timeout
       previous = null;
       await reveal();
     } else if (last && last.ready && !last.offscreen && Number.isFinite(last.x) && Number.isFinite(last.y)) {
-      if (previous && last.targetId === previous.targetId && Math.abs(last.x - previous.x) <= .5 && Math.abs(last.y - previous.y) <= .5) return last;
+      // The same node with the same box (centre and, when measured, size)
+      // over consecutive samples: a control that is still growing, shrinking
+      // or moving is not clicked yet.
+      if (previous && last.targetId === previous.targetId && Math.abs(last.x - previous.x) <= .5 && Math.abs(last.y - previous.y) <= .5
+        && Math.abs((last.w ?? 0) - (previous.w ?? 0)) <= .5 && Math.abs((last.h ?? 0) - (previous.h ?? 0)) <= .5) return last;
       previous = last;
     } else previous = null;
     await sleep(75);
@@ -63,8 +67,12 @@ export function installNativeClickProbe(doc, store, selector, token) {
   store.actions = store.actions || {};
   store.receipts = store.receipts || {};
   const action = store.actions[token] = {token, selector, prepared: null, events: []};
+  // `interactive` says whether a stray click could have activated another
+  // control (null when unknown, which is treated as interactive).
+  const controls = 'a[href],button,input,select,textarea,summary,label,[onclick],[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="tab"],[contenteditable="true"]';
   const describe = node => ({targetId: store.identify(node), tag: node?.tagName || null,
-    id: node?.id || null, connected: !!node?.isConnected});
+    id: node?.id || null, connected: !!node?.isConnected,
+    interactive: typeof node?.closest === 'function' ? !!node.closest(controls) : null});
   const capture = event => {
     const intended = doc.querySelector(selector);
     const matches = !!intended && (event.target === intended || intended.contains(event.target));
@@ -87,4 +95,58 @@ export async function dispatchNativeClick(send, point) {
   const pressed = send('Input.dispatchMouseEvent', {type:'mousePressed',button:'left',buttons:1,clickCount:1,x:point.x,y:point.y});
   const released = send('Input.dispatchMouseEvent', {type:'mouseReleased',button:'left',buttons:0,clickCount:1,x:point.x,y:point.y});
   await Promise.all([pressed, released]);
+}
+
+// Why a dispatched native click produced no receipt, from the probe's events
+// for that one attempt. Only a miss that provably left every control's
+// handlers untouched may be pressed again: nothing reached the page, a press
+// whose click was cancelled (the pressed node was removed or replaced before
+// the release, as a re-render does), or a click that landed on an inert
+// element (the control moved). A click that reached the intended control, or
+// any other control, is never repeated.
+export function classifyMissedClick(events, preparedTargetId) {
+  const trusted = (events || []).filter(e => e && e.trusted);
+  const clicks = trusted.filter(e => e.type === 'click');
+  if (clicks.some(e => e.matches || (preparedTargetId != null && e.target?.targetId === preparedTargetId)))
+    return {reason: 'click-reached-target-without-receipt', retryable: false};
+  const stray = clicks.find(e => e.target?.interactive !== false);
+  if (stray) return {reason: 'click-landed-on-another-control', retryable: false, target: stray.target};
+  if (clicks.length) return {reason: 'click-landed-on-inert-element', retryable: true, target: clicks[0].target};
+  if (trusted.some(e => e.type === 'pointerdown' || e.type === 'mousedown')) return {reason: 'press-without-click', retryable: true};
+  return {reason: 'no-input-reached-page', retryable: true};
+}
+
+// One native click that the page must receive. Each attempt re-measures the
+// target until it is stable, enabled and hit-testable, hovers, re-measures,
+// then dispatches one press/release pair and waits the same bounded window
+// for the trusted receipt. A miss is retried only when classifyMissedClick
+// allows it, at most `attempts` times in all; the final error names every
+// attempt's reason and events.
+export async function clickUntilReceived({label, stablePoint, hover, dispatch, awaitReceipt, evidence, attempts = 3, onAttempt = () => {}}) {
+  const missed = [];
+  let seen = 0;
+  const report = () => JSON.stringify(missed);
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    let point;
+    try {
+      point = await stablePoint();
+      await hover(point);
+      point = await stablePoint();
+    } catch (error) {
+      if (missed.length) error.message += `; earlier missed native clicks on ${label}: ${report()}`;
+      throw error;
+    }
+    onAttempt({attempt, point});
+    await dispatch(point);
+    if (await awaitReceipt()) return {point, attempt, missed};
+    const state = await evidence() || {};
+    if (state.received) return {point, attempt, missed};
+    const events = state.events || [], fresh = events.slice(seen);
+    seen = events.length;
+    const verdict = classifyMissedClick(fresh, point.targetId);
+    missed.push({attempt, x: point.x, y: point.y, targetId: point.targetId ?? null, reason: verdict.reason, retryable: verdict.retryable,
+      events: fresh.map(e => `${e.type}${e.trusted ? '' : '(untrusted)'}>${e.target?.tag || '?'}${e.target?.id ? '#' + e.target.id : ''}${e.matches ? '(target)' : ''}`)});
+    if (!verdict.retryable) break;
+  }
+  throw new Error(`Native click on ${label} was not received after ${missed.length} of ${attempts} attempt(s): ${report()}`);
 }

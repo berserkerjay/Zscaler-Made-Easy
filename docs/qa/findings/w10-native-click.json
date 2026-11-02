@@ -1,0 +1,155 @@
+{
+ "area": "UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page",
+ "title": "Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s",
+ "files": [
+  "static/dashboard.js",
+  "static/flow_pages.js",
+  "static/guide.js",
+  "static/index.html",
+  "static/report_theme.js",
+  "tests/js/flow_browser_acceptance.mjs",
+  "tests/js/flow_browser_harness_helpers.mjs",
+  "tests/test_accessibility.py",
+  "tests/test_c6_path.py",
+  "tests/test_flow_pages.py"
+ ],
+ "standards": [
+  "CWE-1188",
+  "CWE-362",
+  "CWE-400",
+  "WCAG SC 1.4.3",
+  "WCAG SC 2.2.2",
+  "WCAG SC 2.3.3",
+  "WCAG SC 2.4.3",
+  "WCAG SC 3.2.1",
+  "WCAG SC 4.1.3"
+ ],
+ "checks": [
+  {
+   "id": "ci-breakdown",
+   "what": "last 20 Native local installs runs: 3 passed, 1 in progress; of 16 failed, 13 never started a job (no runner, 0 steps, about 2 s) and 3 failed the browser-verification step on a native click not received (#scenarioRun, the Save as new profile button, #dbScopeRun); locally, on two CPUs, the miss reproduced once in three runs: the click landed on a channel label because the Scope page was still sliding into place",
+   "result": "pass"
+  },
+  {
+   "id": "mechanism",
+   "what": "real Chrome: when the pressed button is replaced between press and release, pointerdown, mousedown, pointerup and mouseup arrive but no click, and the page's handler does not run, which is the CI signature (last=false)",
+   "standard": "CWE-362",
+   "result": "pass"
+  },
+  {
+   "id": "idle-refresh",
+   "what": "two ticks of each 2.5 s timer leave Run assessment, the last-run note's button and the sign-in status untouched (they were rewritten every tick)",
+   "standard": "WCAG SC 4.1.3 · CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "bounded-retry",
+   "what": "a native click that was not received is pressed again (3 attempts at most) only when nothing reached a control; a click that reached the target or another control is never repeated; the final error lists every attempt's reason and events; the 1.5 s receipt window is unchanged",
+   "standard": "CWE-362",
+   "result": "pass"
+  },
+  {
+   "id": "stable-box",
+   "what": "a target is clicked only after the same node keeps the same box (centre and size) over consecutive samples, each taken after two fresh animation frames, is enabled, and elementFromPoint hits it",
+   "result": "pass"
+  },
+  {
+   "id": "scope-jump",
+   "what": "from the dashboard, the Scope link shows the Scope page at its top at once, and it and Run assessment stay put over the next painted frames (they slid there smoothly, about 150 px)",
+   "standard": "WCAG SC 2.3.3 · CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "stream-start",
+   "what": "the ZPA, Insights and Bypass stream pictures have packets on their links as soon as they are ready (they were empty until a slow link's random start came round; the CI failures on zpa and bypass, also on 536fe11 under taskset -c 0,1)",
+   "standard": "WCAG SC 2.2.2",
+   "result": "pass"
+  },
+  {
+   "id": "perf-measure",
+   "what": "the 5,000-rule firewall analysis keeps its 2 s CPU budget, measured as the best of three cold runs (fresh tenant, parse caches cleared); one noisy run passes, a regression on every run still fails; about 1.0 s here on two CPUs, unchanged from main",
+   "standard": "CWE-400",
+   "result": "pass"
+  },
+  {
+   "id": "theme-flip",
+   "what": "on /report/traffic-logs and /report/advanced, drawn before report_theme.js applies a saved light theme, under reduced motion: no colour transition starts and no text keeps the dark theme's white (CI read 1.04:1 on both pages)",
+   "standard": "WCAG SC 1.4.3 · CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "stream-frames",
+   "what": "the stream motion check compares packet positions after at least 700 ms and three rendered frames (CI's zpa run had packets but no frame in the window); delaying the zpa page's frames to 800 ms apart fails the old sampling and passes the new",
+   "standard": "WCAG SC 2.2.2",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W10-NC-04",
+   "title": "Opening the Scope page (and the Dashboard from the sidebar) scrolled there smoothly after the content was swapped, so Run assessment and the channel ticks slid under a pointer already pressing them; a click meant for Run assessment ticked a channel instead",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "wcag": "WCAG 2.2 SC 2.3.3",
+   "status": "fixed",
+   "fix": "static/dashboard.js showScopeView and the sidebar's Dashboard link jump ('instant': the page's CSS makes 'auto' smooth)",
+   "test": "tests/test_dashboard.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-NC-01",
+   "title": "The assessment page's 2.5 s refresh rewrote Run assessment's label and attributes and rebuilt the last-run note (replacing its button) on every tick, unchanged; a press that straddled a tick lost its click",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "wcag": "WCAG 2.2 SC 2.4.3",
+   "status": "fixed",
+   "fix": "static/dashboard.js refreshCurrent and renderLastRunOrEmpty write only what changed",
+   "test": "tests/test_dashboard.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-NC-02",
+   "title": "The sign-in status, a polite live region, was rewritten with the same sentence on every 2.5 s render, so some screen readers announced it again and every page observer rescanned",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "wcag": "WCAG 2.2 SC 4.1.3",
+   "status": "fixed",
+   "fix": "static/guide.js _gdAuthStatus writes only a change",
+   "test": "tests/test_dashboard.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-NC-03",
+   "title": "The native-click acceptance dispatched one click and failed on any miss with only 'last=false', so a re-render landing between press and release failed the Native local installs workflow with no diagnosis",
+   "severity": "low",
+   "cwe": "CWE-362",
+   "status": "fixed",
+   "fix": "tests/js/flow_browser_harness_helpers.mjs classifyMissedClick and clickUntilReceived; tests/js/flow_browser_acceptance.mjs click()",
+   "test": "tests/test_flow_browser_acceptance.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-NC-05",
+   "title": "Stream pictures said motion was on but showed no packet until each link's random start phase came round (up to about 0.9 s on the Bypass trunk, 5 s on a slow link)",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "wcag": "WCAG 2.2 SC 2.2.2",
+   "status": "fixed",
+   "fix": "static/flow_pages.js mountStream seeds each moving link with its steady-state packets when motion starts",
+   "test": "tests/test_flow_pages.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-NC-06",
+   "title": "A report page drawn before report_theme.js applied a saved light theme started a colour transition on every element; under reduced motion each kept the dark theme's white text until the next frame, so on a slow machine the light page showed white text (1.04:1)",
+   "severity": "medium",
+   "cwe": "CWE-1188",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "static/report_theme.js applies the theme with transitions held off for one style pass (html.theme-switching in the shared stylesheet, static/index.html)",
+   "test": "tests/test_accessibility.py",
+   "commit": ""
+  }
+ ],
+ "tests_added": 13
+}

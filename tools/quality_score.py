@@ -138,7 +138,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
                    "test_rehearsal_simulation.py", "test_simulation_ui.py", "test_editions.py", "test_baseline_selection.py",
                    "test_tf_providers_w9.py", "test_fix_flow_browser.py"),
          "controls": ("ASVS V4.1.3", "ASVS V5.1.3", "ASVS V11.1.4", "CWE-20", "CWE-841", "CWE-1188")},
-        {"key": "ui_a11y", "name": "UI and accessibility", "slugs": ("ui", "c6-ui-core", "c6-ui-ops", "c6-tooltips", "glass", "review-ui"),
+        {"key": "ui_a11y", "name": "UI and accessibility", "slugs": ("ui", "c6-ui-core", "c6-ui-ops", "c6-tooltips", "glass", "review-ui", "w10-native-click"),
          "tests": ("test_accessibility.py", "test_*reflow*.py", "test_page_layout.py", "test_polish.py", "test_icons.py",
                    "test_explain.py", "test_safety_banner.py", "test_static_js_parses.py", "test_simple_mode.py",
                    "test_navigation.py", "test_sidebar_*.py", "test_c6_ui_core.py", "test_c6_ui_ops.py", "test_c6_tooltips.py", "test_new_marks.py",

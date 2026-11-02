@@ -141,7 +141,9 @@ def test_a_oneapi_failure_still_names_the_vanity_domain(tmp_path):
 
 def _dashboard(tmp_path, values, conn=None):
     js = _read("static/dashboard.js")
-    code = (_fn(js, "  function signedIn()", "  function note(")
+    # refreshCurrent writes through the file's own change-only helper.
+    code = (_fn(js, "  const setText = ", "  const setHtml = ")
+            + _fn(js, "  function signedIn()", "  function note(")
             + _fn(js, "  function refreshCurrent()", "  refreshCurrent(); setInterval"))
     guide = _read("static/guide.js")
     gcode = _fn(guide, "function _gdHash(", "function _gdAuthStatus(") + "const _gdVal = id => ((document.getElementById(id) || {}).value || '').trim();"
@@ -149,7 +151,7 @@ def _dashboard(tmp_path, values, conn=None):
 const vm = require('vm');
 const VALUES = __VALUES__;
 const els = {};
-const el = id => els[id] || (els[id] = {id, value: VALUES[id] || '', textContent: '', title: '', setAttribute(){}});
+const el = id => els[id] || (els[id] = {id, value: VALUES[id] || '', textContent: '', title: '', attrs: {}, setAttribute(k, v){ this.attrs[k] = String(v); }, getAttribute(k){ return k in this.attrs ? this.attrs[k] : null; }});
 const ctx = {document: {getElementById: el}, currentAuthMethod: () => VALUES.authMethod, renderLastRunOrEmpty(){}, console};
 ctx.window = ctx; ctx.GD = {profile: '', conn: __CONN__};
 vm.createContext(ctx);
