@@ -23,7 +23,7 @@ SETTING = "DLP_CHECK_NAME_PREFIX"
 def _pack(tmp_path):
     return write_pack(tmp_path, "alpha", dicts=[_dict("Alpha Dict")],
                       engines=[_engine("Alpha Engine", "((D:Alpha Dict > 0) AND (D:Social Security Numbers (US) > 0))")],
-                      policies=[_policy("Alpha-Monitor", ["Alpha Engine", "PCI"])],
+                      policies=[_policy("Alpha-Monitor", ["Alpha Engine"])],
                       meta={"name": "Alpha Pack", "version": "2", "confidence_tweaks": []})
 
 

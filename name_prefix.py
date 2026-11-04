@@ -32,7 +32,7 @@ MAX_LEN = 16
 # Letters, digits, space and - _ . : only; it starts with a letter or digit.
 # No brackets (a provenance tag is "[... pack ...]"), quotes, slashes or
 # control characters, so a prefix can never forge a tag or break a name.
-_ALLOWED = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.:\-]*$")
+_ALLOWED = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.:\-]*")
 
 
 class PrefixError(ValueError):
@@ -47,7 +47,7 @@ def problem(prefix: Any) -> Optional[str]:
         return "the managed-name prefix must be text"
     if len(prefix) > MAX_LEN:
         return f"the managed-name prefix is {len(prefix)} characters; at most {MAX_LEN} are allowed"
-    if not _ALLOWED.match(prefix):
+    if not _ALLOWED.fullmatch(prefix):
         return ("the managed-name prefix may hold only letters, digits, spaces and - _ . : and must start with a letter "
                 "or a digit")
     if "  " in prefix:
