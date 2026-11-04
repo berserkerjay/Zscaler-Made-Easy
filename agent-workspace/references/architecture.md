@@ -143,6 +143,7 @@ Find the files a change touches here, then read only those.
 | `siem_queries.py` | SIEM query templates for the questions the traffic and session log page answers. |
 | `ssl_coverage.py` | SSL coverage investigation: how much traffic is NOT inspected, why, and |
 | `ssl_flow.py` | SSL Inspection Flow — what is decrypted, what is not, and where inline |
+| `ssl_true_coverage.py` | True inspection coverage: one correlated answer to "how much of our web |
 | `sso.py` | Optional SSO (OpenID Connect, Authorization Code + PKCE) — off by |
 | `sso_saml.py` | Team server SAML 2.0 sign-in (SP-initiated Web Browser SSO profile, |
 | `standalone_main.py` | Entry point of the standalone (no-install) edition of Zscaler Made Easy. |

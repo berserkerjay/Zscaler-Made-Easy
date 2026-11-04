@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-519 markers.
+521 markers.
 
 | File:line | Note |
 |---|---|
@@ -115,7 +115,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `insights.py:670` | ASSUMED: Shadow IT's sanctioned_state spells the two states as |
 | `mcp_tools.py:1187` | ZDX_BANDS = (("poor", 0, 33), ("okay", 34, 65), ("good", 66, 100))   # assumed: the ZDX portal's score bands (not in the SDK) |
 | `offline_tenant.py:506` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
-| `offline_tenant.py:1361` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
+| `offline_tenant.py:1365` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
 | `ops_aiguard.py:33` | readiness check; what is verified against the SDK and what is assumed is |
 | `ops_aiguard.py:622` | _SSL_STOPPERS = {"DO_NOT_DECRYPT", "BLOCK"}   # SSL inspection action types (BLOCK: assumed, not enumerated in the SDK model) |
 | `ops_config_restore.py:79` | assumed: a rule created without it is active at once (the API's default). |
@@ -357,8 +357,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `sample_tenant.py:476` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
 | `sample_tenant.py:708` | not in the SDK: its shapes are ops_zdx's (assumed there). |
 | `sample_tenant.py:793` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
-| `sample_tenant.py:1037` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
-| `sample_tenant.py:1372` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
+| `sample_tenant.py:1051` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
+| `sample_tenant.py:1386` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
 | `scope_permissions.py:100` | "Reports (System Audit Report; assumed name)", |
 | `scope_permissions.py:101` | "Alerts (alert subscriptions; assumed name)", |
 | `scope_permissions.py:103` | "Organization (subscriptions; assumed name)", |
@@ -370,6 +370,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `shadow_rules.py:609` | one names (rules are assumed to be first match per application and |
 | `shadow_rules.py:926` | "The Inline Web DLP evaluation mode could not be read, so rule order (the default) is assumed; if the tenant runs Evaluate All " |
 | `siem_queries.py:17` | patterns are assumed placeholders the admin replaces. |
+| `ssl_true_coverage.py:66` | The policy estimate's typical traffic mix. assumed: a round, generic |
+| `ssl_true_coverage.py:374` | assumed: Client Connector sends ZPA application segments' traffic to |
 | `static/aiguard_page.js:75` | <div class="df-hint">LLM providers AI Guard knows: ${E((d.providers \|\| []).join(', ') \|\| 'none')}. The owners of the applications are cou… |
 | `static/compliance_choice.js:67` | <div class="df-hint">${E(s.reuses)}${s.assumed_profile ? ` Assumed: ${E(s.assumed_profile)}` : ''}</div> |
 | `static/compliance_choice.js:69` | ${(s.assumed_controls \|\| []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(s.assumed_cont… |

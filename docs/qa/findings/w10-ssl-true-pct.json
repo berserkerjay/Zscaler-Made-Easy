@@ -1,0 +1,27 @@
+{
+ "area": "Traffic analysis: SSL coverage's true inspection coverage (ssl_true_coverage.py over ssl_coverage.py, traffic_logs.py and the sample tenant)",
+ "title": "One true inspection figure: four parts adding up to 100% per unit, unknown never counted as inspected, each encrypted share tied to its cause, estimate always labelled",
+ "standards": [
+  "ASVS V1.4.4", "ASVS V5.1.3", "ASVS V5.1.4", "ASVS V5.3.3", "ASVS V7.4.1", "WSTG-BUSL-01", "WSTG-INPV-01", "WSTG-CLNT-01",
+  "CWE-20", "CWE-79", "CWE-369", "CWE-682", "CWE-697", "CWE-755", "CWE-1287", "WCAG 2.2 SC 1.4.1", "WCAG 2.2 SC 3.3.2"
+ ],
+ "checks": [
+  {"id": "W10-STP-C01", "what": "Plain HTTP, HTTPS decrypted, HTTPS not inspected and unknown add up to exactly 100.0% in each unit (largest-remainder tenths), for thirds, a tiny slice beside a huge one and one slice alone; zero, negative, non-finite, boolean or text amounts give no split", "standard": "ASVS V1.4.4 · CWE-682 · CWE-369", "result": "pass"},
+  {"id": "W10-STP-C02", "what": "Unknown (unmapped Insights protocols, NSS lines without the decrypted field) is never counted as inspected: the figure is a floor with a stated range, and the summary, headline and history use the same figure", "standard": "ASVS V1.4.4 · CWE-682 · WSTG-BUSL-01", "result": "pass"},
+  {"id": "W10-STP-C03", "what": "Bytes and transactions are split apart, each its own 100%; logs without sizes give no bytes split and say so", "standard": "ASVS V1.4.4 · CWE-682", "result": "pass"},
+  {"id": "W10-STP-C04", "what": "NSS web lines left encrypted are tied to the first SSL rule in order naming their category or application, then a catch-all, then Zscaler's pinned exemptions, else 'not explained'; shares add up to the not-inspected part; Insights app bytes count once, are capped to the part, and the rest is 'not split' with the likely rules", "standard": "ASVS V1.4.4 · CWE-697 · WSTG-BUSL-01", "result": "pass"},
+  {"id": "W10-STP-C05", "what": "The policy estimate is labelled 'Estimate, not measured', names the licence and permission for the measured figure, and never sets a measured share in the summary or headline", "standard": "ASVS V1.4.4 · CWE-1287", "result": "pass"},
+  {"id": "W10-STP-C06", "what": "Client Connector, forwarding and PAC bypasses and ZPA private apps are listed apart with fixes and change no percentage", "standard": "ASVS V1.4.4 · CWE-682", "result": "pass"},
+  {"id": "W10-STP-C07", "what": "The web logs reference is a 400 before any sign-in when malformed, of another kind, gone, not the caller's, or without ZIA web lines", "standard": "ASVS V5.1.3 · CWE-20 · WSTG-INPV-01", "result": "pass"},
+  {"id": "W10-STP-C08", "what": "The page builds the section with DOM calls only (tenant names via textContent), checks every fix link is the app's own page, and gives each part a word and a table, not colour alone; new controls have help in both catalogues", "standard": "ASVS V5.3.3 · CWE-79 · WCAG 2.2 SC 1.4.1 · SC 3.3.2", "result": "pass"}
+ ],
+ "findings": [
+  {"id": "W10-STP-01", "title": "Before: the SSL coverage headline's inspected share left unclassified traffic out of the denominator, so unknown traffic was in effect counted at the inspected rate", "severity": "medium", "cwe": "CWE-682", "asvs": "V1.4.4", "status": "fixed", "fix": "the summary, headline and history use the true figure, with unknown in the denominator and shown as a range", "test": "tests/test_ssl_true_coverage.py::test_unknown_is_never_counted_as_inspected"},
+  {"id": "W10-STP-02", "title": "During development: the run's own log list shadowed the web logs parameter in ssl_coverage.run, so a run with logs failed", "severity": "low", "cwe": "CWE-697", "asvs": "V7.4.1", "status": "fixed", "fix": "the parameter is web_logs", "test": "tests/test_ssl_true_coverage.py::test_the_job_uses_the_uploaded_logs_for_the_figure"}
+ ],
+ "notes": [
+  "Verified against zscaler-sdk-python 1.11.3 (as ssl_coverage.py already is): zins web_traffic.get_protocols with traffic_unit TRANSACTIONS and BYTES, shadow_it.get_apps.",
+  "Assumed (marked in the code): the typical traffic mix of the policy estimate (ASSUMED_MIX, about 5% plain HTTP); that ZPA application segments' traffic never reaches ZIA's SSL inspection; the NSS ssldecrypted, reqsize and respsize fields as traffic_logs.py already reads them."
+ ],
+ "tests_added": 33
+}
