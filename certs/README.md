@@ -11,7 +11,9 @@ ending in `.crt`, `.pem` or `.cer`, then build again (`./update_container.sh`,
 says `extra root certificates added: 1`; the image's trust store (pip,
 Python, the Zscaler SDK and the app) then trusts it at build and at run time.
 
-Export the Zscaler Root CA into this folder, from the app folder:
+Easiest: from the app folder run `./get_zscaler_cert.sh` (Mac/Linux) or
+`powershell -ExecutionPolicy Bypass -File .\get_zscaler_cert.ps1` (Windows).
+Or export the Zscaler Root CA into this folder by hand:
 
 - **Mac:** `security find-certificate -c "Zscaler Root CA" -p > certs/zscaler-root.crt`
 - **Windows (PowerShell):**
