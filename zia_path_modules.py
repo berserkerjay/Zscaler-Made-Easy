@@ -1173,7 +1173,7 @@ def _atp(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
 # providers' published lists when one is kept and current, else (Microsoft
 # 365 only) with the bundled, dated excerpt (endpoint_snapshots: a match,
 # never a no match);
-# Zscaler's own groups stay unknown (the API has no members for them).
+# Zscaler's own groups stay unknown (the API never returns their members).
 APP_SERVICE_FIELDS = ("appServices", "appServiceGroups")
 
 

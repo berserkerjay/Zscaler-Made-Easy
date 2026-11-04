@@ -4,9 +4,12 @@ groups beyond Microsoft 365 (app_services).
 ZIA's predefined "UCaaS One Click" Cloud Firewall rule names Zscaler-
 managed app service groups such as ZOOM, WEBEX, RINGCENTRAL, LOGMEIN or
 GOTO and TALKDESK (ucaas_oneclick.SERVICES). The ZIA API returns only a
-group's id and name, never its members (zscaler-sdk-python 1.11.3,
-zia/models/cloud_firewall_app_services.py: id, name, isNameL10nTag; the
-SDK has no endpoint that lists members), so without a list such a rule's
+group's id and name, never its members (GET /appServiceGroups/lite and
+/appServices/lite list the catalogue as {id, name, nameL10nTag}, as
+Zscaler's Go SDK and Terraform provider read them; zscaler-sdk-python
+1.11.3 has no call for either, and a rule carries each group as
+zia/models/cloud_firewall_app_services.py: id, name, isNameL10nTag), so
+without a list such a rule's
 app service criterion is "unknown". As for Microsoft 365
 (m365_endpoints), the provider's own published list settles it.
 
@@ -31,16 +34,23 @@ the One Click rule is seen to use, not published through the API):
   talkdesk     pages): no machine-readable list known (as last seen,
                2026-11-04): import by hand, or use the bundled excerpt.
 
-Out of the box, every provider (and Microsoft 365) has a bundled, dated
-excerpt of its published list (endpoint_snapshots), so its group matches
-offline with nothing fetched. An excerpt can say "match", never "no
-match", and expires (endpoint_snapshots.BUNDLED_MAX_AGE_DAYS); a list
-kept here (fetched or imported) replaces it for that provider.
+Out of the box no provider here has a bundled excerpt (only Microsoft
+365 does, endpoint_snapshots): none of these lists could be checked
+against its source, so nothing unverified ships. A provider's group
+matches once its list is fetched (zoom, goto) or imported. The mechanism
+stays: an excerpt added to endpoint_snapshots.VENDOR can say "match",
+never "no match", and expires (BUNDLED_MAX_AGE_DAYS); a list kept here
+replaces it for that provider.
 
-Zscaler's own app service groups (any other name) stay "unknown": the
-installed zscaler-sdk-python 1.11.3 has no call that lists app services
-or app service groups, or their members (ZSCALER_GROUPS_NOTE; a Cloud
-Firewall rule carries each one only as {id, name, isNameL10nTag}).
+Zscaler's own app service groups (any other name) stay "unknown"
+(ZSCALER_GROUPS_NOTE). What is and is not available: the ZIA API has
+GET /appServiceGroups/lite and GET /appServices/lite, which list the
+catalogue only as {id, name, nameL10nTag} (no full form, no members,
+ports or addresses; as Zscaler's Go SDK zia/services/firewallpolicies/
+appservicegroups and applicationservices read them). zscaler-sdk-python
+1.11.3 has no call for either, and this app does not read them: they
+would name the groups, never settle a destination. A Cloud Firewall rule
+carries each group only as {id, name, isNameL10nTag}.
 ZIA network application groups (cloud_firewall.list_network_app_groups,
 /networkApplicationGroups) are a different object: they name application
 signatures (networkApplications: id, parentCategory, description), not
@@ -110,10 +120,11 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
                  "source": "Talkdesk's network requirements",
                  "how": "Talkdesk publishes its ranges and domains on support pages, not as a machine-readable file: the bundled excerpt is used, or copy them into a text file, one per line, and import it."},
 }
-ZSCALER_GROUPS_NOTE = ("Zscaler's own app service groups stay unknown: Zscaler's API (zscaler-sdk-python 1.11.3) has no call that "
-                       "lists app services or app service groups, or their members. A Cloud Firewall rule carries each one only as "
-                       "an id and a name. Network application groups are a different object: they name application signatures, "
-                       "not addresses or host names.")
+ZSCALER_GROUPS_NOTE = ("Zscaler's own app service groups stay unknown: Zscaler's API lists them only by id and name "
+                       "(/appServiceGroups/lite, /appServices/lite; zscaler-sdk-python 1.11.3 has no call for either) and never "
+                       "returns their members, ports or addresses. A Cloud Firewall rule carries each one only as an id and a name. "
+                       "Network application groups are a different object: they name application signatures, not addresses or "
+                       "host names.")
 FETCH_HOSTS = frozenset(re.sub(r"^https://([^/]+)/.*$", r"\1", p["fetch"]) for p in PROVIDERS.values() if p["fetch"])
 _HOST = re.compile(r"\A(?:\*\.)?(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}\Z")
 

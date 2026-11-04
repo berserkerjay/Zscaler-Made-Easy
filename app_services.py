@@ -6,9 +6,11 @@ cloud_firewall_rules.py appServices, appServiceGroups) can name
 Zscaler-managed app services and app service groups, such as OFFICE365,
 the only criterion of the predefined "Office 365 One Click Rule". The ZIA
 API gives each one's id and name only (zia/models/
-cloud_firewall_app_services.py: id, name, isNameL10nTag), and the SDK has
-no endpoint that lists their members, so the tenant itself says nothing
-about which destinations they hold.
+cloud_firewall_app_services.py: id, name, isNameL10nTag). The API's
+GET /appServices/lite and /appServiceGroups/lite list them by id and name
+too (zscaler-sdk-python 1.11.3 has no call for either) and no call
+returns their members, ports or addresses, so the tenant itself says
+nothing about which destinations they hold.
 
 What else was considered and is not used: Client Connector's IP-based
 apps (zcc/predefined_ip_based_apps.py, zcc/web_app_service.py,
@@ -26,12 +28,13 @@ LOGMEIN, TALKDESK: vendor_endpoints, names assumed) the provider's list,
 fetched (Microsoft, Zoom, GoTo; off by default) or imported by hand.
 Zscaler builds those groups from those lists (assumed from its One Click
 documentation). Out of the box, with nothing fetched or imported, each
-provider's bundled, dated excerpt (endpoint_snapshots) is used: it can
-show a match, never a no match (an excerpt is not the whole list), and
-it expires after endpoint_snapshots.BUNDLED_MAX_AGE_DAYS. A list kept in
+provider's bundled, dated excerpt (endpoint_snapshots; only Microsoft 365
+ships one, the others match only after a fetch or an import) is used: it
+can show a match, never a no match (an excerpt is not the whole list),
+and it expires after endpoint_snapshots.BUNDLED_MAX_AGE_DAYS. A list kept in
 Advanced settings replaces it; a stale kept list older than the excerpt
 gives way to it. Every other app service (Zscaler's own groups among
-them: the SDK has no call that lists app service groups or their members,
+them: the API names them only by id and name, never their members,
 ZSCALER_OWN), a missing list and a stale one leave the criterion
 "unknown", as it always was. A provider's list names no ports, so its
 group is taken to hold its endpoints on any port (assumed).
@@ -78,12 +81,16 @@ _AREA_WORDS = (("EXCHANGE", "Exchange"), ("OUTLOOK", "Exchange"), ("SHAREP", "Sh
                ("SKYPE", "Skype"), ("TEAMS", "Skype"), ("LYNC", "Skype"), ("COMMON", "Common"))
 FIELDS = (("appServiceGroups", "group"), ("appServices", "service"))
 # Why Zscaler's own app service groups stay unknown, in the words every
-# result uses (verified against zscaler-sdk-python 1.11.3: zia/
-# cloud_firewall.py has no app service or app service group call; zia/
-# models/cloud_firewall_app_services.py holds only id, name, isNameL10nTag;
-# network application groups hold application signatures, not addresses).
-ZSCALER_OWN = ("Zscaler's API has no call that lists app service groups or their members: a rule carries each one only as an id "
-               "and a name, and no published list is used for it")
+# result uses. The ZIA API has GET /appServiceGroups/lite and
+# /appServices/lite, which return only {id, name, nameL10nTag} (Zscaler's Go
+# SDK zia/services/firewallpolicies/appservicegroups, applicationservices);
+# no call returns a group's members, ports or addresses.
+# zscaler-sdk-python 1.11.3 has no call for either (zia/cloud_firewall.py),
+# and a rule carries each one as zia/models/cloud_firewall_app_services.py:
+# id, name, isNameL10nTag. Network application groups hold application
+# signatures, not addresses.
+ZSCALER_OWN = ("Zscaler's API lists app services and app service groups only by id and name (appServices/lite, "
+               "appServiceGroups/lite), never their members, ports or addresses, so no published list settles them")
 
 
 def _norm(name: Any) -> str:

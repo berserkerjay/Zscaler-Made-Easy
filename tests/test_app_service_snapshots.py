@@ -205,9 +205,11 @@ def test_an_expired_excerpt_settles_nothing():
 
 
 def test_zscalers_own_groups_stay_unknown_with_the_exact_reason():
-    """ASVS V1.4.4 · CWE-1059: a Zscaler-managed group whose members the API never gives stays unknown, and says the SDK has no call for it."""
+    """ASVS V1.4.4 · CWE-1059: a Zscaler-managed group whose members the API never gives stays unknown, and says what the API does and does not give."""
     c = crit("170.114.5.5", ["ZSCALER_SERVICES"])
-    assert c["state"] == "unknown" and "no call that lists app service groups or their members" in c["detail"]
+    assert c["state"] == "unknown", c
+    assert "lists app services and app service groups only by id and name (appServices/lite, appServiceGroups/lite)" in c["detail"]
+    assert "never their members, ports or addresses" in c["detail"] and "no call" not in c["detail"]
     mixed = crit("8.8.8.8", ["ZOOM", "ZSCALER_SERVICES"])
     assert mixed["state"] == "unknown" and "members of ZSCALER_SERVICES are not known" in mixed["detail"]
     ve.import_file("zoom", "170.114.0.0/16\n", now=SOON)
@@ -215,7 +217,7 @@ def test_zscalers_own_groups_stay_unknown_with_the_exact_reason():
 
 
 def test_the_sdk_still_has_no_app_service_group_call():
-    """ASVS V14.2.1 · CWE-1059: the reason shown is still true of the installed SDK: ZIA's firewall service lists no app services or their groups."""
+    """ASVS V14.2.1 · CWE-1059: the SDK fact the notes state is still true of the installed SDK: its ZIA firewall service has no app service or app service group call (the API's lite lists exist; the SDK does not wrap them)."""
     from zscaler.zia import cloud_firewall
     names = [n.lower() for n in dir(cloud_firewall.FirewallResourcesAPI)]
     assert not [n for n in names if "app_service" in n or "appservice" in n]
@@ -277,7 +279,9 @@ def test_status_says_which_list_is_in_use_and_why_zscalers_groups_stay_unknown()
     rows = {p["id"]: p for p in st["providers"]}
     assert rows["webex"]["in_use"] == "kept" and rows["zoom"]["in_use"] is None and "bundled" not in rows["zoom"]
     assert rows["zoom"]["freshness"]["state"] == "none" and rows["webex"]["freshness"]["state"] == "fresh"
-    assert "never returns their members" in st["zscaler_groups"] and st["bundled_max_age_days"] == es.BUNDLED_MAX_AGE_DAYS
+    note = st["zscaler_groups"]
+    assert "/appServiceGroups/lite" in note and "/appServices/lite" in note and "never returns their members" in note
+    assert "has no call that lists" not in note and st["bundled_max_age_days"] == es.BUNDLED_MAX_AGE_DAYS
     ms = m365.status(SOON)
     assert ms["present"] is False and ms["in_use"] == "bundled" and ms["freshness"]["state"] == "bundled"
     assert (ms["bundled"]["date"], ms["bundled"]["checked"], ms["bundled"]["version"]) == ("2026-04-30", "2026-11-04", "2026043000")
@@ -424,5 +428,9 @@ def test_advanced_settings_has_gotos_switch_and_the_notes_with_help_and_new_mark
     cat = (ROOT / "static" / "help_catalog.js").read_text(encoding="utf-8")
     assert '"#advVendGotoOn"' in cat and '"#advVendGotoFetch"' in cat
     assert cat == (ROOT / "browser_extension" / "help_catalog.js").read_text(encoding="utf-8")
+    zs = html.split('id="advVendZs"')[1].split("</p>")[0]
+    assert "/appServiceGroups/lite" in zs and "never returns their members" in zs and "has no call that lists" not in zs
+    vb = html.split('id="advVendBundled"')[1].split("</p>")[0]
+    assert es.SNAPSHOT_VERSION in vb and "unknown until you fetch" in vb
     wn = (ROOT / "static" / "whats_new.js").read_text(encoding="utf-8")
     assert '"app-service-group-excerpts"' in wn and '"#advVendGotoOn"' in wn
