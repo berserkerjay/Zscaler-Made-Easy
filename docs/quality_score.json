@@ -488,7 +488,7 @@
     }
   ],
   "counts": {
-    "findings": 761,
+    "findings": 766,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -502,12 +502,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 194,
+        "fixed": 196,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 421,
+        "fixed": 424,
         "accepted": 3
       },
       "info": {
@@ -517,12 +517,12 @@
       }
     },
     "checks": {
-      "pass": 699,
+      "pass": 703,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11703
+    "tests_added": 11709
   },
   "findings": [
     {
@@ -4828,6 +4828,38 @@
       "slug": "w10-native-click",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W10-TF-01",
+      "title": "An object skipped for a missing required argument kept its address, so a resource rendered earlier referred to a resource the workspace never declared (terraform validate: Reference to undeclared resource)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1357",
+      "asvs": "V14.2.1",
+      "wcag": "",
+      "fix": "a dry run drops the address of every object that cannot be written before any resource is rendered; references fall back to a lookup by name or the id",
+      "test": "tests/test_tenant_terraform.py::test_every_reference_in_the_sample_export_names_a_resource_its_workspace_declares",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-tf-validate",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-TF-02",
+      "title": "Cloud Connector forwarding rules with forward method ZPA (or another the provider rejects) and IP pools with several ranges were written, making the ztc workspace invalid",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "kept only when the provider can express them; otherwise listed as not exported with the reason",
+      "test": "tests/test_tenant_terraform.py::test_a_cloud_connector_rule_the_provider_cannot_express_is_listed_not_written",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-tf-validate",
+      "area": "other",
+      "sub_area": "other"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -11566,6 +11598,54 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W10-TF-03",
+      "title": "The sample tenant held values the providers reject (HTTP header Host/CONTAINS, forward method ZPA on a connector rule, a two-range IP pool)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "sample values the API and the providers accept",
+      "test": "tests/test_tenant_terraform.py::test_the_sample_tenant_uses_values_the_providers_accept",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-tf-validate",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-TF-04",
+      "title": "The whole-tenant validate step was advisory and had never run",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1357",
+      "asvs": "V14.2.1",
+      "wcag": "",
+      "fix": "blocking, in its own terraform job, one line per diagnostic",
+      "test": "tests/test_tf_providers_w9.py::test_the_ci_sample_has_a_workspace_for_every_product_and_ci_validates_each",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-tf-validate",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-TF-05",
+      "title": "_cert_with_days_left used the real clock",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-298",
+      "asvs": "V9.1.2",
+      "wcag": "",
+      "fix": "server_acme._now injected; tests pin it",
+      "test": "tests/test_team_server_extras.py::test_acme_days_left_is_measured_against_the_injected_clock",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-tf-validate",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13619,6 +13699,25 @@
       "tests_added": 13
     },
     {
+      "slug": "w10-tf-validate",
+      "area": "Whole-tenant Terraform export: terraform validate against the zia, zpa, ztc and zcc providers in CI (blocking); ACME test clock",
+      "title": "Wave 10: the sample tenant's whole-tenant export validates against every provider, and the CI step that proves it is blocking",
+      "standards": [
+        "ASVS V1.14.6",
+        "ASVS V5.1.3",
+        "ASVS V9.1.2",
+        "ASVS V14.2.1",
+        "CWE-20",
+        "CWE-298",
+        "CWE-1357",
+        "WSTG-CONF-01",
+        "WSTG-INPV-01"
+      ],
+      "checks": 4,
+      "findings": 5,
+      "tests_added": 6
+    },
+    {
       "slug": "w7-admin-zia-zid",
       "area": "Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients)",
       "title": "Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once",
@@ -15261,5 +15360,7 @@
       }
     ]
   },
-  "warnings": []
+  "warnings": [
+    "Records with no area in the formula: w10-tf-validate. Their open findings still count toward the cap."
+  ]
 }

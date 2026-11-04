@@ -294,3 +294,14 @@ def test_the_sample_tenant_uses_the_apis_field_names_and_shapes(path, module, cl
     assert unknown == []
     if path == "/webDlpRules":
         assert all(isinstance(c, dict) and c.get("id") for r in body for c in r.get("urlCategories") or [])
+
+
+def test_two_reads_of_the_sample_compare_equal_when_the_clock_ticks(monkeypatch):
+    """ASVS V7.1.1 · CWE-440 · WSTG-BUSL-01: the sample's incident times are read from one anchored clock, so two snapshots taken a second apart compare equal."""
+    from datetime import datetime, timedelta, timezone
+    ticks = iter(datetime(2026, 11, 4, 12, 0, 0, 999_000, tzinfo=timezone.utc) + timedelta(seconds=s) for s in range(100))
+    monkeypatch.setattr(sample_tenant, "_clock", lambda: next(ticks))
+    monkeypatch.setattr(sample_tenant, "_ANCHOR", None)
+    old = {ot.normalize_path(p): {"status": 200, "body": b} for p, b in sample_tenant.zwa_answers().items()}
+    new = {ot.normalize_path(p): {"status": 200, "body": b} for p, b in sample_tenant.zwa_answers().items()}
+    assert ot.compare(old, new)["same"]

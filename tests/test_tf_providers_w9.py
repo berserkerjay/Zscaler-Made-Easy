@@ -12,7 +12,7 @@
   call for them); every zcc argument written is one the provider's
   0.1.2-beta.3 schema declares;
 * the CI sample export holds a workspace for every product and CI
-  validates each one (advisory until its first green run, then blocking);
+  validates each one, blocking (green since wave 10, in its own terraform job);
 * the API's ZIA posture profile list can be cut short silently, so the
   export says it may be incomplete;
 * policy packs take the same private-registry namespace option as the
@@ -336,12 +336,13 @@ def test_the_route_skips_the_zcc_workspace_on_zscalerten_and_says_why(monkeypatc
 
 
 def test_the_ci_sample_has_a_workspace_for_every_product_and_ci_validates_each(tmp_path):
-    """ASVS V14.2.1 · V1.14.6 · CWE-1357: tools/terraform_samples.py writes the whole-tenant sample with a zia, zpa, ztc and zcc workspace (zcc with notification templates and ZIA posture), and the CI step checks each one is there and validates every workspace folder; advisory (continue-on-error) until its first green run, with a note that it becomes blocking then."""
+    """ASVS V14.2.1 · V1.14.6 · CWE-1357: tools/terraform_samples.py writes the whole-tenant sample with a zia, zpa, ztc and zcc workspace (zcc with notification templates and ZIA posture), and the CI step checks each one is there and validates every workspace folder; blocking (no continue-on-error) since its first green run, in the terraform job."""
     # Act
     out = subprocess.run([sys.executable, str(ROOT / "tools" / "terraform_samples.py"), str(tmp_path)], capture_output=True, text=True,
                          timeout=300, env=dict(os.environ, PYTHONPATH=str(ROOT)))
     ci = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
-    step = ci.split("Validate the whole-tenant export of the sample tenant", 1)[1].split("- name:", 1)[0]
+    job = ci.split("\n  terraform:\n", 1)[1].split("\n  browser-acceptance:\n", 1)[0]
+    step = job.split("Validate the whole-tenant export of the sample tenant", 1)[1].split("- name:", 1)[0]
     # Assert
     assert out.returncode == 0, out.stderr[-800:]
     for p in tt.PRODUCTS:
@@ -349,10 +350,9 @@ def test_the_ci_sample_has_a_workspace_for_every_product_and_ci_validates_each(t
     zcc_tf = (tmp_path / "tenant" / tt.ROOT_DIR / "zcc" / "client_connector.tf").read_text(encoding="utf-8")
     assert 'resource "zcc_notification_template"' in zcc_tf and 'resource "zcc_zia_posture"' in zcc_tf
     assert "for p in zia zpa ztc zcc" in step and "tenant-terraform/*/" in step and "terraform -chdir=\"$d\" validate" in step
-    # Owner decision (wave 9): advisory until its first green run, then blocking. It has never run.
-    note = ci.split("Validate the whole-tenant export of the sample tenant", 1)[0].rsplit("\n\n", 1)[1]   # the comment over the step
-    assert "continue-on-error: true" in step and "(advisory)" in step and "blocking" in note and "first green run" in note, \
-        "the step stays advisory, with a note that it becomes blocking after its first green run"
+    # Owner decision (wave 9): blocking after its first green run (wave 10). A failed validation or init fails the job.
+    assert "continue-on-error" not in job and "(advisory)" not in job, "the Terraform checks are blocking"
+    assert "|| rc=1" in step and "exit $rc" in step and ".valid" in step
 
 
 def _pack():

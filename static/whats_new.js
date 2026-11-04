@@ -26,6 +26,7 @@ window.WHATS_NEW = {
     "2026-10-31": "Every comparison row green: a deeper Path analyzer, Category lookup and more builders"
   },
   "skipped": {
+    "2026-11-04": "Terraform validation in CI, export fixes and test tooling: nothing new to see; the integrator removes this line if another branch marks a 2026-11-04 feature",
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },

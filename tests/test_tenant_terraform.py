@@ -109,6 +109,8 @@ def fixture_row(t, n: int = 1):
         row["commonAppsDto"]["appsConfig"][0]["appTypes"] = ["INSPECT"]
     if t["key"] == "ztc.forwarding_gateways":
         row["type"] = "ZIA"
+    if t["key"] == "ztc.forwarding_rules":
+        row["forwardMethod"] = "ECZPA"   # one ztc_traffic_forwarding_rule takes
     if t["hook"] == "policy_v2":
         row["conditions"] = [{"operator": "OR", "operands": [{"objectType": "APP", "lhs": "id", "rhs": "777"},
                                                              {"objectType": "SAML", "lhs": "12", "rhs": "Finance"}]}]
@@ -519,3 +521,63 @@ def test_zpa_microtenant_is_read_as_asked_and_calls_without_a_query_still_work()
     assert not snap["unread"], snap["unread"]
     seg = [p for u, p in seen if u.endswith("/segmentGroup")]
     assert seg and seg[0].get("microtenantId") == "216196257331285825"
+
+
+# ---------------------------------------------------------------------------
+# terraform validate on the sample tenant (wave 10): what CI's blocking step proved
+# ---------------------------------------------------------------------------
+
+def _sample_export():
+    st = ot.sample_store(reset=True)
+    opts = tt.normalize_options(list(tt.PRODUCTS))
+    sel = tt.plan(["dlp", "zia_extras", "zpa", "ztw", "zcc"], dict.fromkeys(ALL_CHANNELS, "zscaler"), opts)
+    snap = tt.read_tenant(ot.OfflineSdkClient(st, ot.creds_for(st)), sel["read"])
+    return tt.generate(snap, opts, tenant_label="Sample tenant", plan_info=sel, generated_at="2026-10-31T00:00:00Z")
+
+
+def test_every_reference_in_the_sample_export_names_a_resource_its_workspace_declares():
+    """ASVS V14.2.1 · CWE-1357 · WSTG-CONF-01: no resource refers to one the export never writes (terraform validate: "Reference to undeclared resource"); an object skipped for a missing required argument is looked up by name instead."""
+    # Arrange
+    files, rep = _sample_export()
+    assert any("App Connector groups" in s["what"] for s in rep["products"]["zpa"]["skipped"]), "the sample skips a referenced object"
+    ref = re.compile(r"(?<![\w.\"])(data\.)?((?:zia|zpa|ztc|zcc)_[a-z0-9_]+)\.([a-z0-9_]+)\b")
+    for product in tt.PRODUCTS:
+        tf = {p: c for p, c in files.items() if p.startswith(f"{tt.ROOT_DIR}/{product}/") and p.endswith(".tf")}
+        text = "\n".join(re.sub(r'(?m)^\s*#.*$|"(?:[^"\\]|\\.)*"', '""', c) for c in tf.values())   # code only: no comments or strings
+        declared = set(re.findall(r'(?m)^resource "([a-z0-9_]+)" "([a-z0-9_]+)"', "\n".join(tf.values())))
+        data = set(re.findall(r'(?m)^data "([a-z0-9_]+)" "([a-z0-9_]+)"', "\n".join(tf.values())))
+        # Act
+        dangling = sorted({f"{'data.' if d else ''}{r}.{lab}" for d, r, lab in ref.findall(text)
+                           if (r, lab) not in (data if d else declared)})
+        # Assert
+        assert declared and not dangling, (product, dangling[:5])
+    assert 'data "zpa_app_connector_group" "portland_connectors"' in files[f"{tt.ROOT_DIR}/zpa/datasource.tf"]
+
+
+def test_a_cloud_connector_rule_the_provider_cannot_express_is_listed_not_written():
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: a forwarding rule with a forward method ztc_traffic_forwarding_rule rejects (ZPA) and an IP pool with two ranges (ztc_ip_pool_groups holds one) are not exported, each with its reason; ECZPA and a one-range pool are written."""
+    # Arrange
+    snap = {"types": {"ztc.forwarding_rules": [{"id": 1, "name": "To ZPA", "order": 1, "type": "EC_RDR", "forward_method": "ZPA"},
+                                               {"id": 2, "name": "To ZPA via connector", "order": 2, "type": "EC_RDR", "forward_method": "ECZPA"}],
+                      "ztc.ip_pool_groups": [{"id": 3, "name": "Two ranges", "ip_addresses": ["10.0.0.0/24", "10.0.1.0/24"]},
+                                             {"id": 4, "name": "One range", "ip_addresses": ["10.0.2.0/24"]}]}}
+    # Act
+    files, rep = tt.generate(snap, tt.normalize_options(["ztc"]), tenant_label="Fixture tenant", generated_at="2026-10-31T00:00:00Z")
+    # Assert
+    info = rep["products"]["ztc"]
+    assert info["resources"] == {"ztc_traffic_forwarding_rule": 1, "ztc_ip_pool_groups": 1}
+    why = {s["what"]: s["why"] for s in info["skipped"]}
+    assert "forward method ZPA" in why["Traffic forwarding rules: To ZPA"] and "ECZPA" in why["Traffic forwarding rules: To ZPA"]
+    assert why["IP pool groups: Two ranges"].startswith("2 address ranges")
+    tf = "\n".join(c for p, c in files.items() if p.endswith(".tf"))
+    assert 'forward_method = "ECZPA"' in tf and '"ZPA"' not in tf and "10.0.1.0/24" not in tf and '["10.0.2.0/24"]' in tf
+
+
+def test_the_sample_tenant_uses_values_the_providers_accept():
+    """ASVS V5.1.3 · CWE-20: the sample's HTTP header profile, Cloud Connector forwarding rule and IP pool hold values the zia and ztc providers' validators accept, so the blocking CI validate step proves the export."""
+    files, rep = _sample_export()
+    zia, ztc = files[f"{tt.ROOT_DIR}/zia/objects.tf"], files[f"{tt.ROOT_DIR}/ztc/forwarding.tf"]
+    header = re.search(r'http_header_profile_criteria \{(.*?)\}', zia, re.S).group(1)
+    assert re.search(r'header\s+= "(USERAGENT|REFERER|ORIGIN)"', header) and re.search(r'operator\s+= "UAVERSION(GT|LT|EQ|NEQ|ANY)"', header)
+    assert set(re.findall(r'forward_method = "([A-Z_]+)"', ztc)) <= set(tt._ZTC_FORWARD_METHODS)
+    assert re.search(r'ip_addresses = \["[^"]+"\]', files[f"{tt.ROOT_DIR}/ztc/objects.tf"])

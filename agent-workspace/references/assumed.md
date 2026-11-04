@@ -358,7 +358,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `sample_tenant.py:708` | not in the SDK: its shapes are ops_zdx's (assumed there). |
 | `sample_tenant.py:793` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
 | `sample_tenant.py:1037` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
-| `sample_tenant.py:1372` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
+| `sample_tenant.py:1390` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
 | `scope_permissions.py:100` | "Reports (System Audit Report; assumed name)", |
 | `scope_permissions.py:101` | "Alerts (alert subscriptions; assumed name)", |
 | `scope_permissions.py:103` | "Organization (subscriptions; assumed name)", |
@@ -400,9 +400,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `tenant_health.py:368` | object with a name, the SDK's service edge shape, or the name itself: assumed).""" |
 | `tenant_terraform.py:98` | Assumed, not verifiable without a tenant: |
 | `tenant_terraform.py:104` | posture profile's platform as 1..5). The posture list is NOT assumed |
-| `tenant_terraform.py:435` | descriptions). assumed: answered in one GET (no paging), as a JSON array or |
-| `tenant_terraform.py:436` | an envelope holding one. Not assumed complete for ZIA posture profiles: see |
-| `tenant_terraform.py:1170` | address), any other into `entry_values` {lhs, rhs} (assumed mapping, |
+| `tenant_terraform.py:463` | descriptions). assumed: answered in one GET (no paging), as a JSON array or |
+| `tenant_terraform.py:464` | an envelope holding one. Not assumed complete for ZIA posture profiles: see |
+| `tenant_terraform.py:1199` | address), any other into `entry_values` {lhs, rhs} (assumed mapping, |
 | `traffic_logs.py:18` | in the default order (assumed, see DEFAULT_ORDERS). |
 | `traffic_logs.py:91` | Zscaler's LSS documentation; the ones marked are assumed from field |
 | `traffic_logs.py:98` | "zpn_client_type_browser_isolation": "Cloud Browser Isolation",   # assumed |

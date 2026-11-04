@@ -10,6 +10,8 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17 skipped, 3071 s.
 
+- Records with no area in the formula: w10-tf-validate. Their open findings still count toward the cap.
+
 ## Scores by area
 
 | Area | Sub-area | Score | Tests | Findings (open) | Standards covered | Based on |
@@ -30,8 +32,8 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
 | high | 0 | 20 | 0 |
-| medium | 0 | 194 | 0 |
-| low | 2 | 421 | 3 |
+| medium | 0 | 196 | 0 |
+| low | 2 | 424 | 3 |
 | info | 0 | 71 | 50 |
 
 ### Regression
@@ -810,6 +812,16 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | W8-SHADOW-03 | The sample tenant and snapshots had no answer for any Insights question, so Traffic insights showed every section as an error offline | info | CWE-754 | V1.14.1 | fixed | Builders | offline_tenant answers POST /zins/graphql per operation from /zins/graphql/&lt;operation&gt; (sample data and snapshot capture), honouring the Shadow IT application filter | tests/test_shadow_it.py::test_a_snapshot_keeps_the_insights_answers_per_question_without_the_per_user_one |
 | W8-TS-03 | tests/test_new_marks.py hard-coded the 2026-10-28 marks (Test a list, the protocol field), so adding any newer release broke it | info | CWE-1164 | V1.14.1 | fixed | Builders | the browser checks target the releases still marked (live motion, the ZIA platform scope box) and compute the next release date from the manifest | tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out |
 
+### Other
+
+| Id | Title | Severity | CWE | ASVS | Status | Sub-area | Fix or reason | Test |
+|---|---|---|---|---|---|---|---|---|
+| W10-TF-01 | An object skipped for a missing required argument kept its address, so a resource rendered earlier referred to a resource the workspace never declared (terraform validate: Reference to undeclared resource) | medium | CWE-1357 | V14.2.1 | fixed | Other | a dry run drops the address of every object that cannot be written before any resource is rendered; references fall back to a lookup by name or the id | tests/test_tenant_terraform.py::test_every_reference_in_the_sample_export_names_a_resource_its_workspace_declares |
+| W10-TF-02 | Cloud Connector forwarding rules with forward method ZPA (or another the provider rejects) and IP pools with several ranges were written, making the ztc workspace invalid | medium | CWE-20 | V5.1.3 | fixed | Other | kept only when the provider can express them; otherwise listed as not exported with the reason | tests/test_tenant_terraform.py::test_a_cloud_connector_rule_the_provider_cannot_express_is_listed_not_written |
+| W10-TF-03 | The sample tenant held values the providers reject (HTTP header Host/CONTAINS, forward method ZPA on a connector rule, a two-range IP pool) | low | CWE-20 | V5.1.3 | fixed | Other | sample values the API and the providers accept | tests/test_tenant_terraform.py::test_the_sample_tenant_uses_values_the_providers_accept |
+| W10-TF-04 | The whole-tenant validate step was advisory and had never run | low | CWE-1357 | V14.2.1 | fixed | Other | blocking, in its own terraform job, one line per diagnostic | tests/test_tf_providers_w9.py::test_the_ci_sample_has_a_workspace_for_every_product_and_ci_validates_each |
+| W10-TF-05 | _cert_with_days_left used the real clock | low | CWE-298 | V9.1.2 | fixed | Other | server_acme._now injected; tests pin it | tests/test_team_server_extras.py::test_acme_days_left_is_measured_against_the_injected_clock |
+
 ### Records
 
 | Record | Area | Title | Checks | Findings | Tests added |
@@ -848,6 +860,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
 | w10-native-click | UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page | Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s | 10 | 6 | 13 |
+| w10-tf-validate | Whole-tenant Terraform export: terraform validate against the zia, zpa, ztc and zcc providers in CI (blocking); ACME test clock | Wave 10: the sample tenant's whole-tenant export validates against every provider, and the CI step that proves it is blocking | 4 | 5 | 6 |
 | w7-admin-zia-zid | Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients) | Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once | 9 | 2 | 67 |
 | w7-admin-zpa-zcc-zdx | w7-admin-zpa-zcc-zdx | Day-to-day admin for ZPA (connectors, Service Edges, PRA and user portals, provisioning keys, Browser Access certificates), Client Connector (device removal single and bulk, bypass apps, entitlements) and ZDX (deep trace, read-only views) | 10 | 6 | 94 |
 | w7-federal-compliance | Federal compliance profiles, one compliance choice and the compliance pack: ZIA security baseline, AI Guard detection policy, policy packs (IRS 1075 FTI Pack), the Compliance page, the POV planner and Simple mode | Six federal profiles with sourced control catalogues that change rules where the source justifies it, every created rule mapped to a control or a reason code, and local compliance pack exports with synthetic DLP test data | 7 | 2 | 114 |

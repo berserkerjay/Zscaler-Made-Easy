@@ -507,13 +507,18 @@ def start_renewal(*, interval: Optional[float] = None, stop: Optional[threading.
     return t
 
 
+def _now() -> _dt.datetime:
+    """The current time (UTC); tests replace it with a fixed instant."""
+    return _dt.datetime.now(_dt.timezone.utc)
+
+
 def _days_left(cert_path: str) -> Optional[float]:
     try:
         from cryptography import x509
         with open(cert_path, "rb") as f:
             c = x509.load_pem_x509_certificate(f.read())
         end = getattr(c, "not_valid_after_utc", None) or c.not_valid_after.replace(tzinfo=_dt.timezone.utc)
-        return (end - _dt.datetime.now(_dt.timezone.utc)).total_seconds() / 86400
+        return (end - _now()).total_seconds() / 86400
     except (OSError, ValueError):
         return None
 

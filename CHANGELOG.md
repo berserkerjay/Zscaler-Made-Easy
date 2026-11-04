@@ -7,6 +7,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-04
+
+### Whole-tenant Terraform export: proved valid for every provider
+- CI now runs `terraform validate` on the sample tenant's whole-tenant export for all four workspaces (zia, zpa, ztc and zcc, the beta zscaler/zcc provider pinned to 0.1.2-beta.3, OneAPI only), and the step is blocking: a failed validation fails the run. The Terraform checks run in their own CI job, and each validation problem is printed on one line.
+- An object the export cannot write (the tenant's answer lacks an argument the provider requires) is no longer referred to by another resource: a ZPA server group names such an App Connector group through a lookup by name, where it used to name a resource the workspace never declared.
+- Cloud & Branch Connector forwarding rules with a forward method the provider's resource does not take (ZPA, PROXYCHAIN, ECSELF and the like) and IP pools holding other than one address range are listed as not exported, each with the reason, instead of making the workspace invalid.
+- The sample tenant's HTTP header profile, Cloud Connector forwarding rule and IP pool now use values the API and the providers accept.
+- ACME renewal tests run on a fixed clock instead of the real one.
+
 ## 2026-11-01
 
 ### Pages stay quick: no piled-up scans, no "Rate limit exceeded" on your own pages

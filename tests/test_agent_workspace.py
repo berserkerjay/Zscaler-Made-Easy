@@ -53,3 +53,17 @@ def test_assumed_markers_are_found(marker):
     """SSDF PW.4.4 · CWE-1059 · ASVS V1.1.2: each style of assumption marker is picked up for the register."""
     # Arrange / Act / Assert
     assert agent_workspace.ASSUMED.search(marker)
+
+
+@pytest.mark.parametrize("path,rule", [
+    ("_config/testing.md", "Run the full suite under `taskset -c 0,1` (CI runners have 2 CPUs) before a branch goes to CI."),
+    ("stages/04-integrate/CONTEXT.md", "Archive child cloud sessions once their work is merged; answer their questions and blocked prompts "
+                                       "yourself (the coordinator), never leave them for the owner."),
+])
+def test_the_owner_rules_of_wave_10_are_in_the_workspace(path, rule):
+    """SSDF PO.3.2 · CWE-1059 · ASVS V1.1.2: the two-CPU full-suite rule (testing) and the child-session rule (integrate) are where the agents read them."""
+    # Arrange / Act
+    with open(os.path.join(ROOT, "agent-workspace", path), encoding="utf-8") as f:
+        text = f.read()
+    # Assert
+    assert rule in text, path
