@@ -703,7 +703,9 @@ EXPLICIT_PICKS = [
     ("/api/operations/objects", {"family": "aiguard_routing_setup"}, AIGUARD),
     ("/api/self-heal/tenant/scan", {"pack_ids": ["zbp_enterprise_baseline"], "include_who": True}, WEB),
     ("/api/audit-timeline/start", {"include_zia": True}, WEB),
-    ("/api/device-posture/start", {}, ZCC),
+    # Device posture reads Client Connector, ZPA or ZIA platform (any one: posture is defined in Client
+    # Connector and used by ZPA and ZIA); with none of them ticked it is refused.
+    ("/api/device-posture/start", {}, WEB),
     ("/api/zpa/diagnose", {"destination": "app.example.com", "port": "443", "report_id": "zpa-anything"}, ZCC),
 ]
 
