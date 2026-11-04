@@ -215,6 +215,11 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+    /* The focus ring is never a transition: with every property easing over
+       0.01 ms, a ring drawn while the page restyles (glass.js marks a scroll
+       on <html>, and focusing a control below the fold scrolls to it) kept
+       its old width, 0, until a later frame: no ring where focus landed. */
+    :focus-visible { transition-property: none !important; }
   }
 
   /* High-contrast mode — Windows High Contrast / forced-colors.

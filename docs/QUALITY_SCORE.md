@@ -10,7 +10,7 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17 skipped, 3071 s.
 
-- Records with no area in the formula: w10-device-posture, w10-pov-followups, w10-soc-review, w10-tf-validate. Their open findings still count toward the cap.
+- Records with no area in the formula: w10-app-service-groups, w10-device-posture, w10-pov-followups, w10-soc-review, w10-tf-validate. Their open findings still count toward the cap.
 
 ## Scores by area
 
@@ -32,8 +32,8 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
 | high | 0 | 20 | 0 |
-| medium | 0 | 200 | 0 |
-| low | 2 | 440 | 3 |
+| medium | 0 | 201 | 0 |
+| low | 2 | 443 | 3 |
 | info | 0 | 71 | 50 |
 
 ### Regression
@@ -829,10 +829,14 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 
 | Id | Title | Severity | CWE | ASVS | Status | Sub-area | Fix or reason | Test |
 |---|---|---|---|---|---|---|---|---|
+| W10-ASG-03 | A bundled excerpt entry not in the provider's published list gives a false match (13.107.64.0/18 in Teams media; unchecked Zoom, Webex, RingCentral, GoTo and Talkdesk entries) | medium | CWE-345 | V5.1.3 | fixed | Other | endpoint_snapshots.M365_SETS copied from Microsoft's version 2026043000; VENDOR emptied | tests/test_app_service_snapshots.py |
 | W10-DP-01 | Device posture refused to read unless ZPA was ticked and readable (400 'tick ZPA' or the customer ID error), although posture is defined in Client Connector and used by ZIA too: a tenant scoping Client Connector and ZIA saw only an error | medium | CWE-755 | V7.4.1 | fixed | Other | dlp_api_server.device_posture_start / _run_device_posture, posture_cross.read_all and statuses | tests/test_device_posture_cross.py |
 | W10-PF-06 | Glass pages: the drift re-drew every blurred layer about fifteen times a second at rest, and every scrolled frame re-blurred every in-flow card (14 times the glass-off drawing time on two cores) | medium | CWE-400 | V1.14.1 | fixed | Other | The drift steps once a second on both layers together; while scrolling, in-flow cards and chrome drop their blur and the drift holds | tests/test_glass_perf_browser.py |
 | W10-TF-01 | An object skipped for a missing required argument kept its address, so a resource rendered earlier referred to a resource the workspace never declared (terraform validate: Reference to undeclared resource) | medium | CWE-1357 | V14.2.1 | fixed | Other | a dry run drops the address of every object that cannot be written before any resource is rendered; references fall back to a lookup by name or the id | tests/test_tenant_terraform.py::test_every_reference_in_the_sample_export_names_a_resource_its_workspace_declares |
 | W10-TF-02 | Cloud Connector forwarding rules with forward method ZPA (or another the provider rejects) and IP pools with several ranges were written, making the ztc workspace invalid | medium | CWE-20 | V5.1.3 | fixed | Other | kept only when the provider can express them; otherwise listed as not exported with the reason | tests/test_tenant_terraform.py::test_a_cloud_connector_rule_the_provider_cannot_express_is_listed_not_written |
+| W10-ASG-01 | Microsoft 365 app service groups never matched out of the box (only after an opt-in fetch or an import); the other providers' groups still match only after a fetch (Zoom, GoTo) or an import, as no excerpt of their lists could be checked | low | CWE-1059 | V1.4.4 | fixed | Other | endpoint_snapshots.py (bundled dated Microsoft 365 excerpt, match only), app_services.criterion/current, m365_endpoints and vendor_endpoints status | tests/test_app_service_snapshots.py |
+| W10-ASG-02 | GoTo publishes a machine-readable list but could only be imported by hand | low | CWE-1059 | V12.6.1 | fixed | Other | vendor_endpoints PROVIDERS goto fetch, parse_json; Advanced settings switch advVendGotoOn; SECURITY.md and secure_by_design outbound line | tests/test_app_service_snapshots.py |
+| W10-ASG-04 | The reason shown for Zscaler's own groups said the API has no call that lists them; it has lite lists by id and name | low | CWE-1059 | V1.4.4 | fixed | Other | app_services.ZSCALER_OWN, vendor_endpoints.ZSCALER_GROUPS_NOTE, Advanced settings #advVendZs | tests/test_app_service_snapshots.py |
 | W10-PF-01 | A simulated POV build stopped at the ZIA baseline: Cloud App Control rules of different types got the same id on the copy, so the read-back compared the wrong rule | low | CWE-706 | V1.4.1 | fixed | Other | A Cloud App Control rule id is one number space across rule types on the offline tenant | tests/test_offline_tenant.py::test_cloud_app_control_rule_ids_are_one_space_across_rule_types |
 | W10-PF-02 | ZPA policy rules, Client Connector profiles, ZDX probes and ZIA settings could not be written to a simulation (no policy set, no edit routes) | low | CWE-754 | V1.14.1 | fixed | Other | The offline tenant answers policy sets, routes rule writes to the type's list, models the Client Connector edits, the ZDX configuration and settings PUTs | tests/test_rehearsal_simulation.py::test_a_rehearsed_pov_build_applies_to_the_simulation_end_to_end |
 | W10-PF-03 | A simulation of a snapshot answered URL lookups from the sample's table, so a plan rehearsed on the snapshot changed on its simulation (plan_changed) | low | CWE-441 | V1.14.1 | fixed | Other | A simulation answers a URL lookup as the tenant it copies did | tests/test_offline_tenant.py::test_a_simulation_of_a_snapshot_has_no_url_lookup_as_its_snapshot |
@@ -879,6 +883,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | sbd-input | Secure by Design: untrusted input | Everything a user, a file or a tenant can feed the app: PAC evaluator, Test a list, file imports, identity search, URL builders, tenant strings in every renderer | 21 | 11 | 250 |
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
+| w10-app-service-groups | Path analyzer: app service groups (endpoint_snapshots.py, vendor_endpoints.py, m365_endpoints.py, app_services.py, zia_path_modules.py, bulk_test.py, Advanced settings card) | App service groups out of the box: a dated excerpt of Microsoft's published Microsoft 365 list (version 2026043000, match only, expiring), no unchecked excerpts for other providers, GoTo's list fetchable, Zscaler's own groups unknown with the exact reason | 6 | 4 | 50 |
 | w10-dataflow-clarity | Traffic analysis: the Data Flow Map for first-time readers (simple numbered view, legend, walk-through, traffic-weighted motion) | Wave 10: the data flow map reads from the device to the destination in numbered steps, and its motion shows real upload shares or stays opt-in | 7 | 6 | 35 |
 | w10-device-posture | Device posture across products (posture_cross.py, device_posture.py, the /api/device-posture routes, static/report_device_posture.html) and the Path analyzer's device posture what-if (path_whatif.py, zpa_path.py) | Device posture reads Client Connector, ZPA and ZIA and shows one product that cannot be read as such, never as an error; one cross-product view with its gaps; the device's trust level and posture as Path analyzer conditions | 5 | 1 | 44 |
 | w10-native-click | UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page | Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s | 10 | 6 | 13 |

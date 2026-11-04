@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-04": "Sign in once on every page, clone breadth in restore and clone, a data flow map a newcomer can read, true SSL inspection coverage, device posture across products and in the Path analyzer, the whole POV build simulated, lighter glass on slow computers, and the SOC review",
+    "2026-11-04": "Sign in once on every page, clone breadth in restore and clone, a data flow map a newcomer can read, true SSL inspection coverage, device posture across products and in the Path analyzer, the whole POV build simulated, lighter glass on slow computers, the SOC review, and app service groups out of the box",
     "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin, rehearse then simulate, Fix selected that changes the answer (URL filtering and ZPA), manual what-if inputs, other providers' endpoint lists, outside-tool gaps closed, and more of the tenant read and scored"
   },
   "skipped": {
@@ -123,6 +123,16 @@ window.WHATS_NEW = {
         { "page": "/", "at": "button[onclick=\"openSocReviewTab()\"]" },
         { "page": "/report/soc-review", "at": ".rp-hero h1" },
         { "page": "/report/operations", "at": "#opSocReview" }
+      ]
+    },
+    {
+      "id": "app-service-group-excerpts", "release": "2026-11-04", "label": "App service groups out of the box",
+      "what": "Microsoft 365 app service groups now match out of the box from a dated excerpt of Microsoft's published list (version 2026043000) that comes with the app; the other providers' groups match once their list is fetched or imported, and GoTo's list can now be fetched too, on its own switch, off by default.",
+      "changelog": ["App service groups out of the box", "Fetch GoTo's list", "Zscaler's own app service groups"],
+      "marks": [
+        { "page": "/report/advanced", "at": "#advVendBundled" },
+        { "page": "/report/advanced", "at": "#advVendGotoOn" },
+        { "page": "/report/advanced", "at": "#advVendZs" }
       ]
     },
     {

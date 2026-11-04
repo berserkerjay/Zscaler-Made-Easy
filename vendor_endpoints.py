@@ -4,9 +4,12 @@ groups beyond Microsoft 365 (app_services).
 ZIA's predefined "UCaaS One Click" Cloud Firewall rule names Zscaler-
 managed app service groups such as ZOOM, WEBEX, RINGCENTRAL, LOGMEIN or
 GOTO and TALKDESK (ucaas_oneclick.SERVICES). The ZIA API returns only a
-group's id and name, never its members (zscaler-sdk-python 1.11.3,
-zia/models/cloud_firewall_app_services.py: id, name, isNameL10nTag; the
-SDK has no endpoint that lists members), so without a list such a rule's
+group's id and name, never its members (GET /appServiceGroups/lite and
+/appServices/lite list the catalogue as {id, name, nameL10nTag}, as
+Zscaler's Go SDK and Terraform provider read them; zscaler-sdk-python
+1.11.3 has no call for either, and a rule carries each group as
+zia/models/cloud_firewall_app_services.py: id, name, isNameL10nTag), so
+without a list such a rule's
 app service criterion is "unknown". As for Microsoft 365
 (m365_endpoints), the provider's own published list settles it.
 
@@ -14,22 +17,47 @@ The providers (PROVIDERS; the group names are ASSUMED: they are the names
 the One Click rule is seen to use, not published through the API):
 
   zoom         Zoom publishes its IP ranges as plain text, one CIDR block
-               per line. Fetchable (FETCH_URL, ASSUMED: the address named in
-               Zoom's "Zoom network firewall or proxy server settings"
-               support article; not reachable from here to verify), only
-               when an operator turns fetching on and clicks Fetch now.
+               per line (FETCH_URL, ASSUMED: the address named in Zoom's
+               "Zoom network firewall or proxy server settings" support
+               article; not reachable from the build machine to verify).
+  goto         GoTo publishes its data-centre ranges in JSON at the address
+               its "Allowlisting and firewall configuration" article names
+               (ASSUMED: the address as that article gives it; the JSON's
+               field names are not published, so every string value that
+               is an address range is taken, each one checked, and nothing
+               else is read: parse_json).
   webex        Cisco publishes Webex's ranges and domains in its "Network
-               Requirements for Webex Services" article, as a web page, not
-               as a machine-readable file (ASSUMED from the article as last
-               seen): import by hand only.
-  ringcentral  RingCentral's network requirements (a web page and PDF; no
-  goto         machine-readable list known, ASSUMED), GoTo's (a support web
-  talkdesk     page) and Talkdesk's (a support web page): import only.
+               Requirements for Webex Services" article, as a web page and
+               a PDF, not as a machine-readable file (as last seen,
+               2026-11-04): import by hand, or use the bundled excerpt.
+  ringcentral  RingCentral (a web page and PDF), and Talkdesk (support web
+  talkdesk     pages): no machine-readable list known (as last seen,
+               2026-11-04): import by hand, or use the bundled excerpt.
 
-Zscaler's own app service groups (any other name) stay "unknown": their
-members are not knowable from the tenant or the SDK, and Zscaler's
-published data-centre ranges (zscaler_ip_ranges) are not the members of
-any app service group, so taking them as such would be a guess.
+Out of the box no provider here has a bundled excerpt (only Microsoft
+365 does, endpoint_snapshots): none of these lists could be checked
+against its source, so nothing unverified ships. A provider's group
+matches once its list is fetched (zoom, goto) or imported. The mechanism
+stays: an excerpt added to endpoint_snapshots.VENDOR can say "match",
+never "no match", and expires (BUNDLED_MAX_AGE_DAYS); a list kept here
+replaces it for that provider.
+
+Zscaler's own app service groups (any other name) stay "unknown"
+(ZSCALER_GROUPS_NOTE). What is and is not available: the ZIA API has
+GET /appServiceGroups/lite and GET /appServices/lite, which list the
+catalogue only as {id, name, nameL10nTag} (no full form, no members,
+ports or addresses; as Zscaler's Go SDK zia/services/firewallpolicies/
+appservicegroups and applicationservices read them). zscaler-sdk-python
+1.11.3 has no call for either, and this app does not read them: they
+would name the groups, never settle a destination. A Cloud Firewall rule
+carries each group only as {id, name, isNameL10nTag}.
+ZIA network application groups (cloud_firewall.list_network_app_groups,
+/networkApplicationGroups) are a different object: they name application
+signatures (networkApplications: id, parentCategory, description), not
+addresses or host names, so they cannot settle a destination either.
+Zscaler's published data-centre ranges (zscaler_ip_ranges) are not the
+members of any app service group, so taking them as such would be a
+guess.
 
 The list format, fetched or imported: plain text, one entry per line, a
 '#' starts a comment. An entry is an IPv4 or IPv6 address or CIDR block
@@ -43,12 +71,14 @@ kept list is owner-only beside the Microsoft 365 list
 SHA-256; a list not confirmed for m365_endpoints.max_age_days() is stale
 and settles nothing.
 
-Fetching (zoom only): OFF by default (Advanced settings), and even when on
-only on an explicit Fetch now, never on a timer. GET only, https only, the
+Fetching (zoom and goto): OFF by default, one switch per provider
+(Advanced settings), and even when on only on an explicit Fetch now,
+never on a timer and never when a page loads. GET only, https only, the
 one allowlisted host, no redirect followed, a timeout, TLS verified, the
 answer capped at MAX_BYTES before it is parsed; nothing about the tenant
-is sent. The host is listed with the app's other outbound destinations
-in SECURITY.md.
+is sent. The hosts (FETCH_HOSTS) are listed with the app's other
+outbound destinations in SECURITY.md and in secure_by_design's
+outbound line.
 """
 from __future__ import annotations
 
@@ -61,11 +91,14 @@ import re
 import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import endpoint_snapshots
 import safe_files
 
 MAX_BYTES = 1024 * 1024            # a provider's list is a few KB; over 1 MB is refused, not read
 MAX_LINES = 50_000
 MAX_ENTRIES = 20_000
+MAX_JSON_DEPTH = 12                # a JSON list (GoTo's) nested deeper than this is refused
+MAX_JSON_VALUES = 200_000          # and so is one with more values than this
 FETCH_TIMEOUT = 10
 _LOCK = threading.RLock()
 
@@ -75,17 +108,23 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
              "how": "Zoom publishes its IP ranges as a text file (Zoom.txt, one CIDR block per line, linked from its firewall settings article)."},
     "webex": {"label": "Webex", "names": ("WEBEX", "CISCOWEBEX"), "fetch": None,
               "source": "Cisco's Network Requirements for Webex Services",
-              "how": "Cisco publishes Webex's ranges and domains on a web page, not as a file: copy them into a text file, one per line."},
+              "how": "Cisco publishes Webex's ranges and domains on a web page and a PDF, not as a machine-readable file: the bundled excerpt is used, or copy them into a text file, one per line, and import it."},
     "ringcentral": {"label": "RingCentral", "names": ("RINGCENTRAL",), "fetch": None,
                     "source": "RingCentral's network requirements",
-                    "how": "RingCentral publishes its network requirements as a web page and PDF: copy the ranges and domains into a text file."},
-    "goto": {"label": "GoTo", "names": ("GOTO", "LOGMEIN", "GOTOMEETING", "GOTOCONNECT"), "fetch": None,
-             "source": "GoTo's network requirements",
-             "how": "GoTo publishes its ranges and domains on a support page: copy them into a text file, one per line."},
+                    "how": "RingCentral publishes its network requirements as a web page and PDF, not as a machine-readable file: the bundled excerpt is used, or copy the ranges and domains into a text file and import it."},
+    "goto": {"label": "GoTo", "names": ("GOTO", "LOGMEIN", "GOTOMEETING", "GOTOCONNECT"),
+             "fetch": "https://goto-ipblocks.live.gtc.goto.com/",     # assumed: the JSON address GoTo's allowlisting article names
+             "source": "GoTo's published IP ranges (goto-ipblocks.live.gtc.goto.com)",
+             "how": "GoTo publishes its data-centre ranges as a JSON file (named in its allowlisting and firewall configuration article)."},
     "talkdesk": {"label": "Talkdesk", "names": ("TALKDESK",), "fetch": None,
                  "source": "Talkdesk's network requirements",
-                 "how": "Talkdesk publishes its ranges and domains on a support page: copy them into a text file, one per line."},
+                 "how": "Talkdesk publishes its ranges and domains on support pages, not as a machine-readable file: the bundled excerpt is used, or copy them into a text file, one per line, and import it."},
 }
+ZSCALER_GROUPS_NOTE = ("Zscaler's own app service groups stay unknown: Zscaler's API lists them only by id and name "
+                       "(/appServiceGroups/lite, /appServices/lite; zscaler-sdk-python 1.11.3 has no call for either) and never "
+                       "returns their members, ports or addresses. A Cloud Firewall rule carries each one only as an id and a name. "
+                       "Network application groups are a different object: they name application signatures, not addresses or "
+                       "host names.")
 FETCH_HOSTS = frozenset(re.sub(r"^https://([^/]+)/.*$", r"\1", p["fetch"]) for p in PROVIDERS.values() if p["fetch"])
 _HOST = re.compile(r"\A(?:\*\.)?(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}\Z")
 
@@ -164,6 +203,8 @@ def parse(data: Any) -> Dict[str, List[str]]:
         text = bytes(data).decode("utf-8-sig")
     except UnicodeDecodeError:
         raise ListError("The list is not text (UTF-8).") from None
+    if text.lstrip()[:1] in ("{", "["):
+        return parse_json(text)
     lines = text.splitlines()
     if len(lines) > MAX_LINES:
         raise ListError(f"The list has more than {MAX_LINES:,} lines.")
@@ -200,6 +241,59 @@ def parse(data: Any) -> Dict[str, List[str]]:
     return {"ips": ips, "hosts": hosts}
 
 
+_LOOKS_IP = re.compile(r"\A(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-fA-F:.]*:[0-9a-fA-F:.]*)(?:/\d{1,3})?\Z")
+
+
+def parse_json(text: str) -> Dict[str, List[str]]:
+    """A provider's JSON list (GoTo publishes one) -> {ips: [CIDR], hosts: []}.
+    assumed: the JSON's field names are not published, so this reads no
+    field by name: every string value that is shaped like an address or a
+    CIDR block is taken, and each must pass the same check as a text list
+    (public unicast, no wider than /8 or /16) or the whole list is
+    refused; other values (names, dates, notes) are ignored. Nesting
+    depth (MAX_JSON_DEPTH) and value count (MAX_JSON_VALUES) are capped,
+    and a list with no range at all is refused."""
+    import zscaler_ip_ranges
+    try:
+        doc = safe_files.strict_json_loads(text)
+    except ValueError:
+        raise ListError("The list is not valid JSON.") from None
+    ips: List[str] = []
+    seen = 0
+    stack: List[Tuple[Any, int, str]] = [(doc, 0, "$")]
+    while stack:
+        node, depth, where = stack.pop()
+        seen += 1
+        if seen > MAX_JSON_VALUES:
+            raise ListError(f"The list has more than {MAX_JSON_VALUES:,} values.")
+        if depth > MAX_JSON_DEPTH:
+            raise ListError(f"The list is nested more than {MAX_JSON_DEPTH} levels deep.")
+        if isinstance(node, dict):
+            stack.extend((v, depth + 1, f"{where}.{str(k)[:30]}") for k, v in reversed(list(node.items())))
+        elif isinstance(node, list):
+            stack.extend((v, depth + 1, f"{where}[{i}]") for i, v in reversed(list(enumerate(node))))
+        elif isinstance(node, str):
+            tok = node.strip()
+            if not tok or len(tok) > 64 or not _LOOKS_IP.match(tok):
+                continue
+            try:
+                ipaddress.ip_network(tok, strict=False)
+            except ValueError:
+                if ":" not in tok:               # shaped like an IPv4 address or block but not one: refused
+                    raise ListError(f"At {where[:80]}: '{tok[:60]}' is not an IP address or CIDR.") from None
+                continue                         # a time or another value with colons: not an address
+            cidr, why = zscaler_ip_ranges.check_cidr(tok, from_feed=True)
+            if cidr is None:
+                raise ListError(f"At {where[:80]}: '{tok[:60]}' {why or 'is not a public address range'}.")
+            if cidr not in ips:
+                ips.append(cidr)
+                if len(ips) > MAX_ENTRIES:
+                    raise ListError(f"The list has more than {MAX_ENTRIES:,} entries.")
+    if not ips:
+        raise ListError("The JSON list names no address range.")
+    return {"ips": ips, "hosts": []}
+
+
 # ── The kept list ────────────────────────────────────────────────────
 class VendorList:
     """One provider's checked list, with its address ranges and host names."""
@@ -223,15 +317,37 @@ class VendorList:
         c = self.checked()
         return None if c is None else max(0.0, ((now or _now()) - c).total_seconds() / 86400)
 
-    def stale(self, now: Optional[_dt.datetime] = None) -> bool:
+    @property
+    def bundled(self) -> bool:
+        """The excerpt shipped with the app (endpoint_snapshots), not a kept list."""
+        return self.meta.get("source") == "bundled"
+
+    @property
+    def partial(self) -> bool:
+        """An excerpt: an entry in it is a member, one not in it settles nothing (never a no match)."""
+        return self.meta.get("partial") is True
+
+    def max_age(self) -> int:
+        import endpoint_snapshots
         import m365_endpoints
+        return endpoint_snapshots.BUNDLED_MAX_AGE_DAYS if self.bundled else m365_endpoints.max_age_days()
+
+    def stale(self, now: Optional[_dt.datetime] = None) -> bool:
         age = self.age_days(now)
-        return age is None or age > m365_endpoints.max_age_days()
+        return age is None or age > self.max_age()
+
+    def freshness(self, now: Optional[_dt.datetime] = None) -> Dict[str, str]:
+        import endpoint_snapshots
+        return endpoint_snapshots.freshness(self.label, present=True, stale=self.stale(now), age=self.age_days(now),
+                                            source=self.meta.get("source"), max_age=self.max_age())
 
     def describe(self) -> str:
         when = self.obtained()
+        day = when.strftime('%Y-%m-%d') if when else 'on an unknown date'
+        if self.bundled:
+            return f"the bundled excerpt of {self.label}'s list from {day}"
         verb = "imported" if self.meta.get("source") == "imported" else "fetched"
-        return f"{self.label}'s list, {verb} {when.strftime('%Y-%m-%d') if when else 'on an unknown date'}"
+        return f"{self.label}'s list, {verb} {day}"
 
     def lookup_ip(self, ip: Any) -> Optional[str]:
         if getattr(ip, "version", None) == 6 and ip.ipv4_mapped is not None:
@@ -393,12 +509,29 @@ def status(now: Optional[_dt.datetime] = None) -> Dict[str, Any]:
             age = lst.age_days(now)
             row.update(source=lst.meta.get("source"), fetched_at=lst.meta.get("fetched_at"), checked_at=lst.meta.get("checked_at"),
                        age_days=None if age is None else round(age, 1), stale=lst.stale(now), counts=dict(lst.counts), describe=lst.describe())
+        b = bundled(pid)
+        if b is not None:
+            bage = b.age_days(now)
+            row["bundled"] = {"date": endpoint_snapshots.SNAPSHOT_DATE, "checked": endpoint_snapshots.CHECKED_DATE, "age_days": None if bage is None else round(bage, 1),
+                              "stale": b.stale(now), "counts": dict(b.counts), "source_url": b.meta.get("source_url"),
+                              "source_name": b.meta.get("source_name"), "describe": b.describe()}
+        use = lst if lst is not None else b
+        row["in_use"] = None if use is None else ("kept" if use is lst else "bundled")
+        row["freshness"] = use.freshness(now) if use is not None else endpoint_snapshots.freshness(
+            p["label"], present=False, stale=None, age=None, source=None, max_age=0)
         out.append(row)
     import m365_endpoints
-    return {"providers": out, "max_age_days": m365_endpoints.max_age_days(), "max_kb": MAX_BYTES // 1024}
+    return {"providers": out, "max_age_days": m365_endpoints.max_age_days(), "max_kb": MAX_BYTES // 1024,
+            "bundled_date": endpoint_snapshots.SNAPSHOT_DATE, "bundled_max_age_days": endpoint_snapshots.BUNDLED_MAX_AGE_DAYS,
+            "zscaler_groups": ZSCALER_GROUPS_NOTE}
 
 
-# ── Fetching (zoom only; off by default; only on Fetch now) ─────────────
+def bundled(pid: str) -> Optional[VendorList]:
+    """The bundled excerpt of one provider's list (endpoint_snapshots), or None."""
+    return endpoint_snapshots.vendor_list(pid)
+
+
+# ── Fetching (zoom and goto; off by default; only on Fetch now) ──────────
 def _allowed(url: str) -> bool:
     from urllib.parse import urlparse
     p = urlparse(url)
@@ -413,7 +546,7 @@ def _get(url: str, cap: int) -> bytes:
     host = re.sub(r"^https://([^/]+)/.*$", r"\1", url)
     try:
         r = requests.get(url, timeout=FETCH_TIMEOUT, allow_redirects=False, stream=True,
-                         headers={"Accept": "text/plain", "User-Agent": "Zscaler-Made-Easy (published endpoint list)"})
+                         headers={"Accept": "text/plain, application/json", "User-Agent": "Zscaler-Made-Easy (published endpoint list)"})
     except requests.exceptions.SSLError:
         raise ListError(f"TLS error reaching {host} (a TLS-inspecting proxy? point REQUESTS_CA_BUNDLE at its root certificate).") from None
     except requests.exceptions.Timeout:

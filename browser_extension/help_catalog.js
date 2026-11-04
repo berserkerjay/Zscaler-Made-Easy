@@ -2548,6 +2548,16 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Turn on fetching first. A list that fails the checks is refused and the old one stays.",
     "effect": "local"
    },
+   "#advVendGotoOn": {
+    "what": "Lets this app fetch GoTo's published IP ranges (a JSON file) from goto-ipblocks.live.gtc.goto.com, for the GOTO and LOGMEIN app service groups. It sends nothing about your tenant.",
+    "input": "Tick it or clear it. Off by default. On, nothing is fetched until you click Fetch GoTo's list now.",
+    "effect": "local"
+   },
+   "#advVendGotoFetch": {
+    "what": "Fetches GoTo's IP ranges now. The Path analyzer and Test a list match the GOTO and LOGMEIN app service groups with them. Until a list is fetched or imported, those groups show as unknown.",
+    "input": "Nothing to type. Turn on fetching GoTo's list first. A list that fails the checks is refused and the old one stays.",
+    "effect": "local"
+   },
    "#advVendProv": {
     "what": "Picks the provider whose list you import or remove: Zoom, Webex, RingCentral, GoTo or Talkdesk.",
     "input": "Pick one from the list.",
@@ -2555,7 +2565,7 @@ window.HELP_CATALOG = {
    },
    "#advVendFile": {
     "what": "Picks a text file with the provider's address ranges and host names, copied from its network requirements page.",
-    "input": "Required to import. Plain text, one entry per line, like 203.0.113.0/24 or *.webex.com, up to 1 MB. A # starts a comment.",
+    "input": "Required to import. Plain text, one entry per line, like 203.0.113.0/24 or *.webex.com, up to 1 MB. A # starts a comment. GoTo's JSON file works too.",
     "effect": "local"
    },
    "#advVendImport": {

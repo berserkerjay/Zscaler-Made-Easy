@@ -6,9 +6,11 @@ cloud_firewall_rules.py appServices, appServiceGroups) can name
 Zscaler-managed app services and app service groups, such as OFFICE365,
 the only criterion of the predefined "Office 365 One Click Rule". The ZIA
 API gives each one's id and name only (zia/models/
-cloud_firewall_app_services.py: id, name, isNameL10nTag), and the SDK has
-no endpoint that lists their members, so the tenant itself says nothing
-about which destinations they hold.
+cloud_firewall_app_services.py: id, name, isNameL10nTag). The API's
+GET /appServices/lite and /appServiceGroups/lite list them by id and name
+too (zscaler-sdk-python 1.11.3 has no call for either) and no call
+returns their members, ports or addresses, so the tenant itself says
+nothing about which destinations they hold.
 
 What else was considered and is not used: Client Connector's IP-based
 apps (zcc/predefined_ip_based_apps.py, zcc/web_app_service.py,
@@ -23,12 +25,19 @@ groups this module recognises as Microsoft 365 by name (M365_NAMES; the
 names are assumed, as Zscaler does not publish them through the API), and
 for the other UCaaS providers' groups (ZOOM, WEBEX, RINGCENTRAL, GOTO or
 LOGMEIN, TALKDESK: vendor_endpoints, names assumed) the provider's list,
-imported by hand or, for Zoom, fetched. Zscaler builds those groups from
-those lists (assumed from its One Click documentation). Every other app
-service (Zscaler's own groups among them: their members are not knowable
-from the tenant or the SDK), a missing list and a stale list leave the
-criterion "unknown", as it always was. A provider's list names no ports,
-so its group is taken to hold its endpoints on any port (assumed).
+fetched (Microsoft, Zoom, GoTo; off by default) or imported by hand.
+Zscaler builds those groups from those lists (assumed from its One Click
+documentation). Out of the box, with nothing fetched or imported, each
+provider's bundled, dated excerpt (endpoint_snapshots; only Microsoft 365
+ships one, the others match only after a fetch or an import) is used: it
+can show a match, never a no match (an excerpt is not the whole list),
+and it expires after endpoint_snapshots.BUNDLED_MAX_AGE_DAYS. A list kept in
+Advanced settings replaces it; a stale kept list older than the excerpt
+gives way to it. Every other app service (Zscaler's own groups among
+them: the API names them only by id and name, never their members,
+ZSCALER_OWN), a missing list and a stale one leave the criterion
+"unknown", as it always was. A provider's list names no ports, so its
+group is taken to hold its endpoints on any port (assumed).
 
 Within the criterion the app services and groups a rule names are
 alternatives (any one is enough, assumed: they are one field in the
@@ -38,12 +47,13 @@ console). A destination is:
              for that endpoint set (when it publishes ports);
   no match   an IP address in none of the published ranges of its
              family, when every app service the rule names is Microsoft
-             365 and the list is current;
+             365 and the list is current and whole (not an excerpt);
   unknown    otherwise: a host name not in the list (its address is
              not resolved here, and might be in a published range), a
              port Microsoft does not list for the set (whether Zscaler's
              group is limited to those ports is not published), an app
-             service that is not Microsoft 365, no list or a stale one.
+             service that is not Microsoft 365, no list, a stale one, or
+             a destination not in an excerpt.
 """
 from __future__ import annotations
 
@@ -70,6 +80,17 @@ M365_NAMES: Dict[str, frozenset] = {
 _AREA_WORDS = (("EXCHANGE", "Exchange"), ("OUTLOOK", "Exchange"), ("SHAREP", "SharePoint"), ("ONEDRIVE", "SharePoint"),
                ("SKYPE", "Skype"), ("TEAMS", "Skype"), ("LYNC", "Skype"), ("COMMON", "Common"))
 FIELDS = (("appServiceGroups", "group"), ("appServices", "service"))
+# Why Zscaler's own app service groups stay unknown, in the words every
+# result uses. The ZIA API has GET /appServiceGroups/lite and
+# /appServices/lite, which return only {id, name, nameL10nTag} (Zscaler's Go
+# SDK zia/services/firewallpolicies/appservicegroups, applicationservices);
+# no call returns a group's members, ports or addresses.
+# zscaler-sdk-python 1.11.3 has no call for either (zia/cloud_firewall.py),
+# and a rule carries each one as zia/models/cloud_firewall_app_services.py:
+# id, name, isNameL10nTag. Network application groups hold application
+# signatures, not addresses.
+ZSCALER_OWN = ("Zscaler's API lists app services and app service groups only by id and name (appServices/lite, "
+               "appServiceGroups/lite), never their members, ports or addresses, so no published list settles them")
 
 
 def _norm(name: Any) -> str:
@@ -177,32 +198,61 @@ def sample_list() -> "m365_endpoints.EndpointList":
     return _SAMPLE["list"]
 
 
-def current(client: Any = None) -> Optional["m365_endpoints.EndpointList"]:
+def current(client: Any = None, now: Optional[_dt.datetime] = None) -> Optional["m365_endpoints.EndpointList"]:
     """The list a run uses: the one kept (fetched or imported); for the
-    sample tenant with none kept, its excerpt; else None."""
+    sample tenant with none kept, its excerpt; else the bundled excerpt
+    (endpoint_snapshots), which also stands in for a stale kept list older
+    than itself. None only when there is none at all."""
+    import endpoint_snapshots
     lst = m365_endpoints.load()
     if lst is None and _is_sample(client):
         return sample_list()
+    excerpt = endpoint_snapshots.m365_list()
+    if lst is None:
+        return excerpt
+    if excerpt is not None and lst.stale(now) and _newer(excerpt, lst):
+        return excerpt
     return lst
 
 
+def _newer(a: Any, b: Any) -> bool:
+    """Whether list `a` was confirmed after list `b` (an unknown date is oldest)."""
+    ca, cb = a.checked(), b.checked()
+    return ca is not None and (cb is None or ca > cb)
+
+
+def _age_words(lst: Any, now: Optional[_dt.datetime] = None) -> str:
+    """' (checked 12 days ago)' for a bundled excerpt (its age runs from the
+    day it was last compared with its source), '' for a kept list."""
+    if not getattr(lst, "bundled", False):
+        return ""
+    age = lst.age_days(now)
+    return f" (checked {int(age) if age is not None else 'an unknown number of'} days ago)"
+
+
 def summary(lst: Optional["m365_endpoints.EndpointList"], now: Optional[_dt.datetime] = None) -> Dict[str, Any]:
-    """The list as a result names it: {present, describe, stale, version, source}."""
+    """The list as a result names it: {present, describe, stale, version, source, freshness}."""
+    import endpoint_snapshots
     if lst is None:
-        return {"present": False, "describe": "no Microsoft 365 endpoint list is kept", "stale": None, "version": None, "source": None}
-    return {"present": True, "describe": lst.describe(), "stale": lst.stale(now), "version": lst.version, "source": lst.meta.get("source")}
+        return {"present": False, "describe": "no Microsoft 365 endpoint list is kept", "stale": None, "version": None, "source": None,
+                "freshness": endpoint_snapshots.freshness("Microsoft", present=False, stale=None, age=None, source=None, max_age=0)}
+    return {"present": True, "describe": lst.describe(), "stale": lst.stale(now), "version": lst.version, "source": lst.meta.get("source"),
+            "freshness": lst.freshness(now)}
 
 
 # ── The criterion ────────────────────────────────────────────────────
 def criterion(rule: Dict[str, Any], host: str, ip: Any, traffic: Optional[Dict[str, Any]], lst: Optional["m365_endpoints.EndpointList"],
               *, check_ports: bool = True, now: Optional[_dt.datetime] = None,
-              vendors: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, str]]:
+              vendors: Optional[Dict[str, Any]] = None, bundled: bool = True) -> Optional[Dict[str, str]]:
     """The rule's app service criterion for the destination (`host`, and
     `ip` when it is an address), or None when the rule names none.
     {name, state: match | no_match | unknown, detail}. Groups of other
     UCaaS providers (vendor_endpoints: Zoom, Webex, RingCentral, GoTo,
     Talkdesk) are matched against the provider's kept list (`vendors`,
-    {provider: VendorList}; None reads the ones kept on disk)."""
+    {provider: VendorList}; None reads the ones kept on disk), and, with
+    none kept or for a destination the kept list leaves open, against the
+    bundled excerpt (endpoint_snapshots; `bundled=False` leaves it out).
+    An excerpt can show a match, never a no match."""
     items = named(rule)
     if not items:
         return None
@@ -218,36 +268,54 @@ def criterion(rule: Dict[str, Any], host: str, ip: Any, traffic: Optional[Dict[s
     def crit(state: str, detail: str) -> Dict[str, str]:
         return {"name": label, "state": state, "detail": detail}
 
-    # 1. A provider's current list that holds the destination: match.
+    # 1. A provider's current list (the kept one, else the bundled excerpt) that holds the destination: match.
     settled: List[str] = []      # names whose list says the destination is not theirs
     open_: List[str] = []        # why the others say nothing
     for n, pid in by_vendor:
         if pid is None:
-            open_.append(f"the members of {n} are not known (Zscaler does not expose them through the API, and no published list is used)")
+            open_.append(f"the members of {n} are not known ({ZSCALER_OWN})")
             continue
-        vl = vendors.get(pid)
         label_p = vendor_endpoints.PROVIDERS[pid]["label"]
-        if vl is None:
-            open_.append(f"no {label_p} list is kept for {n} (import it, or fetch it where {label_p} publishes one, in Advanced settings)")
-            continue
-        if vl.stale(now):
-            open_.append(f"{vl.describe()} was last confirmed more than {_max_age()} days ago, so it settles nothing for {n}")
-            continue
-        hit = vl.lookup_ip(ip) if ip is not None else vl.lookup_host(host)
-        if hit:
-            via = f" ({hit})" if hit != subject else ""
-            return crit("match", f"{subject} is in {vl.describe()}{via}, which {n} is taken to hold (the provider's published endpoints, "
-                                 "on any port: the list names no ports).")
-        if ip is not None:
-            if vl.has_family(4 if ip.version == 4 or ip.ipv4_mapped is not None else 6):
+        kept = vendors.get(pid)
+        excerpt = vendor_endpoints.bundled(pid) if bundled else None
+        why: List[str] = []
+        decided = False
+        for vl in (kept, excerpt):
+            if vl is None:
+                continue
+            if vl is excerpt and kept is not None and kept.stale(now) and not _newer(excerpt, kept):
+                continue                 # a stale kept list newer than the excerpt: the excerpt is older still
+            if vl.stale(now):
+                why.append(f"{vl.describe()} was last confirmed more than {vl.max_age()} days ago, so it settles nothing for {n}")
+                continue
+            hit = vl.lookup_ip(ip) if ip is not None else vl.lookup_host(host)
+            if hit:
+                via = f" ({hit})" if hit != subject else ""
+                return crit("match", f"{subject} is in {vl.describe()}{_age_words(vl, now)}{via}, which {n} is taken to hold (the provider's "
+                                     "published endpoints, on any port: the list names no ports).")
+            if vl.partial:
+                why.append(f"{subject} is not in {vl.describe()}{_age_words(vl, now)}, and an excerpt cannot rule it out (fetch or import "
+                           f"{label_p}'s whole list in Advanced settings to settle it)")
+                continue
+            if ip is not None:
+                if vl.has_family(4 if ip.version == 4 or ip.ipv4_mapped is not None else 6):
+                    settled.append(n)
+                    decided = True
+                    break
+                why.append(f"{vl.describe()} has no IPv{ip.version} range to compare {subject} with")
+            elif not vl.nets:
                 settled.append(n)
+                decided = True
+                break
             else:
-                open_.append(f"{vl.describe()} has no IPv{ip.version} range to compare {subject} with")
-        elif not vl.nets:
-            settled.append(n)
+                why.append(f"{host} is not a host name in {vl.describe()}, and its address is not resolved here, so whether it is in "
+                           f"{label_p}'s published ranges is not known")
+        if decided:
+            continue
+        if kept is None and excerpt is None:
+            open_.append(f"no {label_p} list is kept for {n} (import it, or fetch it where {label_p} publishes one, in Advanced settings)")
         else:
-            open_.append(f"{host} is not a host name in {vl.describe()}, and its address is not resolved here, so whether it is in "
-                         f"{label_p}'s published ranges is not known")
+            open_.append(why[0] if len(why) == 1 else "; ".join(why[:2]))
     # 2. Microsoft 365 groups the rule also names.
     m365_items = [(k, n) for k, n in items if m365_areas(n) is not None]
     if m365_items:
@@ -282,8 +350,7 @@ def _m365_criterion(rule: Dict[str, Any], items: List[Tuple[str, str]], host: st
         return {"name": label, "state": state, "detail": detail}
 
     if not known:
-        return crit("unknown", f"Applies only to {what}; Zscaler does not expose the members of app services through the API, "
-                               "and no published list is used for these.")
+        return crit("unknown", f"Applies only to {what}; {ZSCALER_OWN}.")
     if lst is None:
         return crit("unknown", f"Applies only to {what}; Zscaler does not expose the members through the API. Turn on Microsoft's published "
                                "Microsoft 365 endpoint list in Advanced settings, or import it there, to evaluate "
@@ -292,7 +359,7 @@ def _m365_criterion(rule: Dict[str, Any], items: List[Tuple[str, str]], host: st
         age = lst.age_days(now)
         return crit("unknown", f"Applies only to {what}; the Microsoft 365 endpoint list ({lst.describe()}) was last confirmed "
                                + (f"{int(age)} days ago" if age is not None else "on an unknown date")
-                               + f", more than {m365_endpoints.max_age_days()} days, so it settles nothing. Refresh or import it again in Advanced settings.")
+                               + f", more than {lst.max_age()} days, so it settles nothing. Refresh or import it again in Advanced settings.")
     areas = frozenset().union(*(a for _, a in known))
     subject = str(ip) if ip is not None else host
     hits = lst.lookup_ip(ip) if ip is not None else lst.lookup_host(host)
@@ -305,7 +372,7 @@ def _m365_criterion(rule: Dict[str, Any], items: List[Tuple[str, str]], host: st
             member = next((n for n, a in known if _in_areas(s, a)), known[0][0])
             via = f"{e}, " if e != subject else ""
             return crit("match", f"{subject} is in Microsoft 365 '{s['area_name']}' (endpoint set {s['id']}: {via}{ports_words(s)}; "
-                                 f"{lst.describe()}), which {member} holds.")
+                                 f"{lst.describe()}{_age_words(lst, now)}), which {member} holds.")
         s, e = hits[0]
         return crit("unknown", f"{subject} is in Microsoft 365 '{s['area_name']}' (endpoint set {s['id']}), which Microsoft publishes for "
                                f"{ports_words(s)}, not {str(proto).upper()}/{port}; whether Zscaler's {what} holds other ports is not published "
@@ -313,6 +380,9 @@ def _m365_criterion(rule: Dict[str, Any], items: List[Tuple[str, str]], host: st
     if other:
         return crit("unknown", f"Applies only to {what}; {subject} is not a published {_areas_words(areas)} endpoint ({lst.describe()}), "
                                f"and the members of {_short(other)} are not known.")
+    if getattr(lst, "partial", False):
+        return crit("unknown", f"Applies only to {what}; {subject} is not in {lst.describe()}{_age_words(lst, now)}, and an excerpt "
+                               "cannot rule it out. Fetch or import Microsoft's whole list in Advanced settings to settle it.")
     if ip is not None:
         v = 4 if ip.version == 4 or ip.ipv4_mapped is not None else 6
         n = sum(1 for s in lst.sets if _in_areas(s, areas) for r in s["ips"] if ipaddress.ip_network(r, strict=False).version == v)

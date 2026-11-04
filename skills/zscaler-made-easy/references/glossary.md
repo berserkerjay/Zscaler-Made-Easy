@@ -141,7 +141,7 @@ every word there is here).
 | time window | A time window is a set of days and hours, like work hours. A rule with one only acts at those times. |
 | to-do | A to-do is a small job you write down so you do not forget it. You tick it off when it is done. |
 | traffic river | A traffic river is a moving picture of your web traffic. Each stream is as wide as its share, and dots show the traffic going by. |
-| true inspection coverage | True inspection coverage is the share of the web traffic that reaches Zscaler that it could look inside. It is plain HTTP plus the HTTPS it unlocked. Traffic it cannot sort is never counted as inspected. Traffic sent around Zscaler is not in it, so the page also says what it is out of all your web traffic. |
+| true inspection coverage | True inspection coverage is the share of the web traffic that reaches Zscaler that it could look inside: plain HTTP plus the HTTPS it unlocked. Unsorted traffic never counts as inspected. |
 | trust level | A trust level is a grade for a device: high, medium or low. Client Connector gives it from the posture checks. ZIA rules can use it. |
 | trusted network | A trusted network is a network you own, like the office one. It says where a device is, not if the device is safe. |
 | Trusted Resolver | The Trusted Resolver is the Zscaler service that looks up web names. It keeps people off bad sites. |

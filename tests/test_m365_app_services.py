@@ -27,6 +27,7 @@ import requests.adapters
 from requests.models import Response
 
 import app_services as aps
+import endpoint_snapshots
 import m365_endpoints as m365
 import path_analyzer as pa
 import shadow_rules as sr
@@ -50,6 +51,10 @@ def _own_folder(tmp_path, monkeypatch):
     def refuse(self, request, **kw):
         raise AssertionError(f"no network in tests: {request.url}")
     monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", refuse)
+    # These tests pin the kept-list logic, so the bundled excerpts are left
+    # out here; tests/test_app_service_snapshots.py tests them on their own.
+    monkeypatch.setattr(endpoint_snapshots, "vendor_list", lambda pid: None)
+    monkeypatch.setattr(endpoint_snapshots, "m365_list", lambda: None)
     m365._CACHE.update(key=None, list=None)
     yield
     m365._CACHE.update(key=None, list=None)
@@ -143,7 +148,7 @@ def test_the_match_reads_as_one_plain_sentence():
     # Another provider's group: unknown until that provider's list is kept (vendor_endpoints, tests/test_vendor_app_services.py).
     ({"appServiceGroups": [{"id": 4, "name": "ZOOM"}]}, "40.97.1.2", "unknown", "no Zoom list is kept"),
     ({"appServiceGroups": [{"id": 4, "name": "WEBEX_TEAMS"}]}, "40.97.1.2", "unknown", "no Webex list is kept"),
-    ({"appServiceGroups": [{"id": 4, "name": "ZSCALER_SERVICES"}]}, "40.97.1.2", "unknown", "no published list is used"),
+    ({"appServiceGroups": [{"id": 4, "name": "ZSCALER_SERVICES"}]}, "40.97.1.2", "unknown", "no published list settles them"),
     ({"appServiceGroups": [{"id": 3, "name": "OFFICE365"}, {"id": 4, "name": "ZOOM"}]}, "203.0.113.9", "unknown", "no Zoom list is kept"),
     ({"appServiceGroups": [{"id": 3, "name": "OFFICE365"}, {"id": 4, "name": "ZOOM"}]}, "40.97.1.2", "match", "OFFICE365"),
     ({"appServiceGroups": ["ANY"]}, "40.97.1.2", None, None),

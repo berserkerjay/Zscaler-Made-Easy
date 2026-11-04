@@ -126,7 +126,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
                    "test_insights.py", "test_bulk_test.py", "test_zpa_*.py", "test_shared_path.py", "test_qa_func_path.py",
                    "test_c6_path.py", "test_c6_zpa.py", "test_c6_posture.py", "test_c6_checks.py", "test_c6_assessment.py", "test_w8_cloud_connector.py",
                    "test_admin_rank.py", "test_rule_fields.py", "test_category_lookup*.py", "test_ucaas_oneclick.py",
-                   "test_m365_app_services.py", "test_vendor_app_services.py", "test_w8_zia_governance.py", "test_zcc_bypass_path.py", "test_zia_forwarding.py",
+                   "test_m365_app_services.py", "test_vendor_app_services.py", "test_app_service_snapshots.py", "test_w8_zia_governance.py", "test_zcc_bypass_path.py", "test_zia_forwarding.py",
                    "test_w9_coverage_checks.py"),
          "controls": ("ASVS V11.1.1", "ASVS V11.1.4", "CWE-670", "CWE-682", "CWE-754")},
         {"key": "builders", "name": "Builders", "slugs": ("func-builders", "c6-zia-baseline-aiguard", "c6-zcc-zdx", "w7-restore-clone", "w7-admin-zpa-zcc-zdx", "w7-rank-inherit", "w7-federal-compliance", "w7-admin-zia-zid", "w9-admin-editors", "w7-migrate-tui-plugins", "w7-net-files", "w7-fix-selected", "w7-tf-export", "w7-fleet-plus", "w7-health-diag", "w7-pov-oneshot", "w7-parity-small", "w8-zia-threat-saas", "w8-shadow-it", "w8-zwa-aiguard", "w8-zdx-zid-zcc", "w9-ops-gaps", "w9-path-fix-flow"),

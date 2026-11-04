@@ -69,7 +69,7 @@
     'certificate pinning': { term: 'certificate pinning', def: 'Some apps only trust their own lock. When Zscaler opens their traffic, they stop working. We say they pin their certificate.' },
     'decrypt': { term: 'decrypt', def: 'To decrypt is to unlock traffic so Zscaler can read it. Then it is locked again on its way.' },
     'inspected': { term: 'inspected', def: 'Inspected traffic has been opened and checked by Zscaler. DLP can only check what is inspected.' },
-    'true inspection coverage': { term: 'true inspection coverage', def: 'True inspection coverage is the share of the web traffic that reaches Zscaler that it could look inside. It is plain HTTP plus the HTTPS it unlocked. Traffic it cannot sort is never counted as inspected. Traffic sent around Zscaler is not in it, so the page also says what it is out of all your web traffic.' },
+    'true inspection coverage': { term: 'true inspection coverage', def: 'True inspection coverage is the share of the web traffic that reaches Zscaler that it could look inside: plain HTTP plus the HTTPS it unlocked. Unsorted traffic never counts as inspected.' },
     'plain http': { term: 'plain HTTP', def: 'Plain HTTP is web traffic that is not locked. Zscaler can read it without unlocking it.' },
     'coverage': { term: 'coverage', def: 'Coverage is how many checks could run. If the app was not let in to look, that check is not in the score.' },
     'projected score': { term: 'projected score', def: 'A projected score is your score after the fixes you pick. It is a guess made with the real math, before you change a thing.' },

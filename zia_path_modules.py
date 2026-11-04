@@ -1169,9 +1169,11 @@ def _atp(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
                            "No ATP list entry or blocked category matches this destination; ATP lets it through to the next module."))
 
 
-# App services and app service groups (app_services): matched with
-# Microsoft's published Microsoft 365 endpoint list when one is kept and
-# current, else unknown as before.
+# App services and app service groups (app_services): matched with the
+# providers' published lists when one is kept and current, else (Microsoft
+# 365 only) with the bundled, dated excerpt (endpoint_snapshots: a match,
+# never a no match);
+# Zscaler's own groups stay unknown (the API never returns their members).
 APP_SERVICE_FIELDS = ("appServices", "appServiceGroups")
 
 
@@ -1192,12 +1194,25 @@ def _app_service_note(res: Dict[str, Any], rules: List[Dict[str, Any]], ctx: Dic
     for pid in sorted({p for p in vend if p}):
         vl = kept.get(pid)
         label = vendor_endpoints.PROVIDERS[pid]["label"]
-        res["notes"].append(f"{label} app service groups are matched with {vl.describe()}" + (": it is stale, so it settles nothing." if vl.stale() else ".")
-                            if vl is not None else
-                            f"{label} app service groups are unknown until {label}'s published list is imported (or, for Zoom, fetched) in Advanced settings.")
+        ex = vendor_endpoints.bundled(pid)
+        if vl is not None:
+            res["notes"].append(f"{label} app service groups are matched with {vl.describe()}" + (": it is stale, so it settles nothing." if vl.stale() else ".")
+                                + (f" The bundled excerpt from {ex.meta.get('fetched_at', '')[:10]} fills in what it leaves open." if ex is not None else ""))
+        elif ex is not None:
+            res["notes"].append(f"{label} app service groups are matched with {ex.describe()} ({ex.freshness()['label']}) "
+                                f"Fetch or import {label}'s whole list in Advanced settings to settle more.")
+        else:
+            how = "fetched or imported" if vendor_endpoints.PROVIDERS[pid]["fetch"] else "imported"
+            res["notes"].append(f"{label} app service groups are unknown until {label}'s published list is {how} in Advanced settings "
+                                "(no excerpt of it comes with the app).")
+    if any(vendor_endpoints.provider_for(n) is None and app_services.m365_areas(n) is None
+           for r in rules if isinstance(r, dict) for _, n in app_services.named(r)):
+        res["notes"].append(vendor_endpoints.ZSCALER_GROUPS_NOTE)
     if lst is None:
         res["notes"].append("App services and app service groups are Zscaler-managed and the API does not return their members; "
                             "with Microsoft's published Microsoft 365 endpoint list (Advanced settings) the Microsoft 365 ones are evaluated.")
+    elif getattr(lst, "bundled", False):
+        res["notes"].append(f"Microsoft 365 app services are matched with {lst.describe()} ({lst.freshness()['label']})")
     else:
         res["notes"].append(f"Microsoft 365 app services are matched with Microsoft's published endpoint list ({lst.describe()})"
                             + (": it is stale, so it settles nothing." if lst.stale() else "."))
