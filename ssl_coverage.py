@@ -685,9 +685,11 @@ def headline(summary: Mapping[str, Any], volume: Optional[Mapping[str, Any]]) ->
 def analyse(ssl_rules: List[Mapping[str, Any]], *, lookup: Optional[Mapping[str, Any]] = None,
             catalogue: Optional[Mapping[str, List[str]]] = None, cc: Optional[Mapping[str, Any]] = None,
             volume: Optional[Mapping[str, Any]] = None, read_errors: Optional[Mapping[str, str]] = None,
-            logs: Optional[Mapping[str, Any]] = None, zpa_in_scope: bool = False, no_volume_reason: str = "") -> Dict[str, Any]:
+            logs: Optional[Mapping[str, Any]] = None, zpa_in_scope: bool = False, no_volume_reason: str = "",
+            bypass_bytes: Optional[float] = None) -> Dict[str, Any]:
     """Pure: tenant data in, report body out. `logs` is the ZIA web SSL
-    section of an uploaded traffic log report (ssl_true_coverage.build)."""
+    section of an uploaded traffic log report and `bypass_bytes` the
+    admin's figure for web traffic that never reaches ZIA (ssl_true_coverage.build)."""
     import ssl_true_coverage
     causes = ssl_rule_causes(ssl_rules, lookup, catalogue) + zcc_causes(cc)
     if volume and volume.get("apps") is not None:
@@ -700,14 +702,16 @@ def analyse(ssl_rules: List[Mapping[str, Any]], *, lookup: Optional[Mapping[str,
                 "decided_by": (c.get("decided_by") or {}).get("name"), "exceptions": [e.get("name") for e in c.get("exceptions") or []]}
                for c in flow["classes"]]
     summary = summarise(causes, classes, volume)
-    true = ssl_true_coverage.build(causes, classes, volume, logs, zpa_in_scope=zpa_in_scope, no_volume_reason=no_volume_reason)
+    true = ssl_true_coverage.build(causes, classes, volume, logs, zpa_in_scope=zpa_in_scope, no_volume_reason=no_volume_reason,
+                                   bypass_bytes=bypass_bytes, bypass_read=cc is not None)
     if not true.get("estimate"):
         # One figure everywhere: the measured true share (unknown never
         # counted as inspected) replaces the share that left it out.
+        # Both units come from the one source the figure uses (None where
+        # it has no split), never one from the logs and one from Insights.
         for unit in ("TRANSACTIONS", "BYTES"):
             u = (true.get("units") or {}).get(unit)
-            if u:
-                summary[f"inspected_pct_{unit.lower()}"] = u["inspected_pct"]
+            summary[f"inspected_pct_{unit.lower()}"] = u["inspected_pct"] if u else None
         summary["true_source"] = true.get("source")
     return {"summary": summary, "headline": headline(summary, volume), "causes": causes, "plan": recovery_plan(causes),
             "classes": classes, "true_coverage": true}
@@ -715,7 +719,7 @@ def analyse(ssl_rules: List[Mapping[str, Any]], *, lookup: Optional[Mapping[str,
 
 def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan: Optional[Mapping[str, Any]] = None,
         log: Optional[Callable[[str], None]] = None, cancel: Any = None, scrub: Optional[Callable[[str], str]] = None,
-        web_logs: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+        web_logs: Optional[Mapping[str, Any]] = None, bypass_bytes: Optional[float] = None) -> Dict[str, Any]:
     """Read only what `scope` (data_flow.path_scope) puts in scope, then
     analyse. Stop returns {stopped} with no partial result."""
     import data_flow
@@ -779,7 +783,8 @@ def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan:
     if web_logs:
         _log(f"Using the uploaded ZIA web logs ({int(web_logs.get('records') or 0):,} records) for the true inspection coverage.")
     rep = analyse(ssl_rules, lookup=lookup, catalogue=catalogue, cc=cc, volume=volume if volume.get("available") else None, read_errors=errors,
-                  logs=web_logs, zpa_in_scope="zpa" in (scope.get("scopes") or []), no_volume_reason=str(volume.get("reason") or ""))
+                  logs=web_logs, zpa_in_scope="zpa" in (scope.get("scopes") or []), no_volume_reason=str(volume.get("reason") or ""),
+                  bypass_bytes=bypass_bytes)
     if volume.get("available"):
         volume.pop("apps", None)   # only the matches on each cause are kept
     rep.update(volume=volume, diagnostics=diagnostics, read_errors=errors,
@@ -933,7 +938,13 @@ def to_xlsx(rep: Mapping[str, Any]) -> bytes:
             continue
         for x in sp["slices"]:
             tc.append([unit.lower(), x["label"], x["pct"], x["amount"], "", "", "", ""])
-        tc.append([unit.lower(), "True inspection coverage", sp["inspected_pct"], "", "", f"up to {sp['inspected_pct_high']}% if the unknown part was inspected", "", ""])
+        tc.append([unit.lower(), "True inspection coverage (of traffic that reached ZIA)", sp["inspected_pct"], "", "",
+                   f"up to {sp['inspected_pct_high']}% if the unknown part was inspected", "", ""])
+        inc = (t.get("including_bypass") or {}).get(unit) or {}
+        if inc:
+            tc.append([unit.lower(), "Including traffic that never reaches ZIA", inc.get("inspected_pct") if inc.get("inspected_pct") is not None else "not measured",
+                       inc.get("bypassed_amount") if inc.get("bypassed_amount") is not None else "", "", inc.get("text") or "",
+                       inc.get("basis") or ("not measurable" if not inc.get("known") else ""), ""])
         for r in (t.get("causes") or []) + ([t["unattributed"]] if t.get("unattributed") else []):
             share = (r.get("pct_of") or {}).get(unit)
             if share is None:
@@ -963,9 +974,12 @@ def to_xlsx(rep: Mapping[str, Any]) -> bytes:
                        for c in rep.get("classes") or []])
     hist = rep.get("history") or []
     if hist:
-        wb.add_sheet("Run history", columns=["Run", "Classes covered (%)", "Inspected (% bytes)", "Inspected (% transactions)", "High", "Medium", "Low", "Expected"],
+        import ssl_true_coverage
+        wb.add_sheet("Run history", columns=["Run", "Classes covered (%)", "Inspected (% bytes)", "Inspected (% transactions)", "Measured from",
+                                             "High", "Medium", "Low", "Expected"],
                      rows=[[h.get("at"), h.get("class_coverage_pct") if h.get("class_coverage_pct") is not None else "",
                             h.get("inspected_pct_bytes") if h.get("inspected_pct_bytes") is not None else "",
-                            h.get("inspected_pct_transactions") if h.get("inspected_pct_transactions") is not None else ""]
+                            h.get("inspected_pct_transactions") if h.get("inspected_pct_transactions") is not None else "",
+                            ssl_true_coverage.source_word(h)]
                            + [(h.get("by_risk") or {}).get(k, 0) for k in RISK_ORDER] for h in hist])
     return wb.to_bytes()

@@ -41,7 +41,13 @@ Sources, best first (one source gives the figure; no mixing):
 Traffic that never reaches ZIA (Client Connector and PAC bypasses, a
 forwarding profile sending a network direct, private applications on ZPA)
 is not in any ZIA number: it is listed under `outside` with its cause and
-fix, and the headline says so. It is never folded into a percentage.
+fix. So the figure is the share of the web traffic that REACHED ZIA, and
+every label says so. A second figure, `including_bypass`, answers "of all
+my web traffic": with the bypassed volume known (the admin's own figure
+from firewall or egress logs, in bytes for the same period) the bypassed
+traffic is counted as not inspected; without it, it says plainly that the
+share is unmeasured and only bounded above. ZPA private applications are
+not internet web traffic and stay out of both.
 """
 from __future__ import annotations
 
@@ -96,6 +102,21 @@ ZPA_NOTE = ("Private applications reached through ZPA go from Client Connector t
             "not in these numbers. ZPA has its own inspection (AppProtection); its traffic is in ZPA's LSS logs.")
 
 
+SOURCE_WORD = {"logs": "Uploaded web logs", "insights": "ZIA Insights"}
+
+
+def source_word(entry: Mapping[str, Any]) -> str:
+    """Where a history entry's inspected shares were measured: the true
+    figure's source, or ZIA Insights for a run kept before it existed (its
+    shares then left unknown traffic out), or nothing when none was measured."""
+    src = entry.get("true_source")
+    if src in SOURCE_WORD:
+        return SOURCE_WORD[src]
+    if entry.get("inspected_pct_bytes") is None and entry.get("inspected_pct_transactions") is None:
+        return ""
+    return "ZIA Insights (unknown left out)"
+
+
 def fix_of(cause: Mapping[str, Any]) -> Optional[Dict[str, str]]:
     """The fix link of a cause, or None when it should be kept (expected,
     certificate-pinned, or 'do not change')."""
@@ -108,14 +129,19 @@ def fix_of(cause: Mapping[str, Any]) -> Optional[Dict[str, str]]:
 
 
 # ── Arithmetic ──────────────────────────────────────────────────────────
+# No real tenant moves a zettabyte in a window: an amount above this comes
+# from a broken or hostile answer or upload, and is left out (as 0).
+MAX_AMOUNT = 1e21
+
+
 def _num(v: Any) -> float:
     if isinstance(v, bool):
         return 0.0
     try:
         f = float(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0.0
-    return f if f == f and f not in (float("inf"), float("-inf")) and f > 0 else 0.0
+    return f if f == f and 0 < f <= MAX_AMOUNT else 0.0
 
 
 def tenths(amounts: Mapping[str, float], keys: Iterable[str], total_tenths: int = 1000) -> Dict[str, int]:
@@ -123,10 +149,13 @@ def tenths(amounts: Mapping[str, float], keys: Iterable[str], total_tenths: int 
     tenths of a percent, so the rounded shares add up exactly. Ties go to
     the earlier key. Nothing to divide gives all zeros. Pure."""
     keys = list(keys)
-    total = sum(_num(amounts.get(k)) for k in keys)
-    if total <= 0 or total_tenths <= 0:
+    vals = {k: _num(amounts.get(k)) for k in keys}
+    top = max(vals.values(), default=0.0)
+    if top <= 0 or total_tenths <= 0:
         return {k: 0 for k in keys}
-    raw = {k: _num(amounts.get(k)) * total_tenths / total for k in keys}
+    vals = {k: v / top for k, v in vals.items()}   # scaled to at most 1: the sum can never overflow
+    total = sum(vals.values())
+    raw = {k: vals[k] * total_tenths / total for k in keys}
     out = {k: int(raw[k]) for k in keys}
     left = total_tenths - sum(out.values())
     for k in sorted(keys, key=lambda k: (-(raw[k] - out[k]), keys.index(k)))[:left]:
@@ -385,7 +414,7 @@ def _fmt(p: Optional[float]) -> str:
     return "—" if p is None else f"{p:g}%"
 
 
-def _headline(mode: str, unit: str, sp: Mapping[str, Any], window: str, out_n: int) -> str:
+def _headline(mode: str, unit: str, sp: Mapping[str, Any], window: str, out_n: int, incl: Optional[Mapping[str, Any]] = None) -> str:
     sl = {s["key"]: s["pct"] for s in sp["slices"]}
     what = UNIT_LABEL.get(unit, unit)
     if mode == "estimate":
@@ -393,16 +422,61 @@ def _headline(mode: str, unit: str, sp: Mapping[str, Any], window: str, out_n: i
                 f"({_fmt(sl['http'])} plain HTTP and {_fmt(sl['https_inspected'])} HTTPS decrypted); about {_fmt(sl['https_not_inspected'])} "
                 "would be HTTPS left encrypted")
     else:
-        lead = (f"True inspection coverage{f' ({window})' if window else ''}: {_fmt(sp['inspected_pct'])} of web {what} was visible to "
-                f"Zscaler ({_fmt(sl['http'])} plain HTTP and {_fmt(sl['https_inspected'])} HTTPS decrypted); {_fmt(sl['https_not_inspected'])} "
-                "was HTTPS left encrypted")
+        lead = (f"True inspection coverage{f' ({window})' if window else ''}: {_fmt(sp['inspected_pct'])} of the web {what} that reached ZIA "
+                f"was visible to Zscaler ({_fmt(sl['http'])} plain HTTP and {_fmt(sl['https_inspected'])} HTTPS decrypted); "
+                f"{_fmt(sl['https_not_inspected'])} was HTTPS left encrypted")
     if sl["unknown"]:
         lead += (f" and {_fmt(sl['unknown'])} is unknown, so the real figure is between {_fmt(sp['inspected_pct'])} and "
                  f"{_fmt(sp['inspected_pct_high'])}")
     lead += "."
-    if out_n:
+    if incl and incl.get("text"):
+        lead += " " + incl["text"]
+    elif out_n:
         lead += f" {out_n} cause{'s' if out_n != 1 else ''} send traffic around ZIA; that traffic is in no figure here."
     return lead
+
+
+def _bypass_count(out_rows: Iterable[Mapping[str, Any]]) -> int:
+    """The causes that send internet web traffic around ZIA (ZPA private
+    applications are not internet web traffic: never counted here)."""
+    return sum(1 for r in out_rows if r.get("kind") != "zpa_routed")
+
+
+def including_bypass(unit: str, sp: Optional[Mapping[str, Any]], n_bypass: int, bypass_bytes: Optional[float],
+                     bypass_read: bool) -> Optional[Dict[str, Any]]:
+    """The share of ALL web traffic that was inspected, with the traffic
+    that never reaches ZIA counted as not inspected. `bypass_bytes` is the
+    admin's own figure for that traffic (bytes, same period) or None.
+    Known only in bytes; otherwise unmeasured, with the ZIA figure as an
+    upper bound when a bypass exists. Pure."""
+    if not sp:
+        return None
+    zia_lo, zia_hi = sp["inspected_pct"], sp["inspected_pct_high"]
+    rng = (lambda lo, hi: _fmt(lo) if lo == hi else f"between {_fmt(lo)} and {_fmt(hi)}")
+    known = bypass_bytes if bypass_bytes is not None and not isinstance(bypass_bytes, bool) and (bypass_bytes == 0 or _num(bypass_bytes)) else None
+    if unit == "BYTES" and known is not None:
+        amounts = {s["key"]: s["amount"] for s in sp["slices"]}
+        amounts["bypassed"] = float(known)
+        keys = list(SLICES) + ["bypassed"]
+        t = tenths(amounts, keys)
+        lo, hi = (t["http"] + t["https_inspected"]) / 10, (t["http"] + t["https_inspected"] + t["unknown"]) / 10
+        return {"known": True, "unit": unit, "inspected_pct": lo, "inspected_pct_high": hi, "bypassed_pct": t["bypassed"] / 10,
+                "bypassed_amount": float(known), "basis": "your figure for the traffic that bypasses ZIA, counted as not inspected",
+                "text": (f"Including the traffic that never reaches ZIA (your figure, counted as not inspected): {rng(lo, hi)} of all web "
+                         f"{UNIT_LABEL[unit]}.")}
+    if not bypass_read:
+        return {"known": False, "unit": unit, "upper_pct": None, "inspected_pct": None,
+                "text": ("Including the traffic that never reaches ZIA: not known. Client Connector and PAC settings were not read "
+                         "(tick ZCC on the Scope page), so traffic sent around ZIA could not be looked for.")}
+    if not n_bypass:
+        return {"known": True, "unit": unit, "inspected_pct": zia_lo, "inspected_pct_high": zia_hi, "bypassed_pct": 0.0, "bypassed_amount": None,
+                "basis": "no setting read sends web traffic around ZIA",
+                "text": "No Client Connector, PAC or forwarding setting read here sends web traffic around ZIA, so this is also the share of all web traffic."}
+    return {"known": False, "unit": unit, "upper_pct": zia_hi, "inspected_pct": None,
+            "text": (f"Including the traffic that never reaches ZIA: not measured. It is at most {_fmt(zia_hi)} of "
+                     f"{'all of a typical traffic mix' if unit == 'MIX' else 'all web ' + UNIT_LABEL[unit]}, lower by an amount ZIA cannot see "
+                     f"({n_bypass} bypass{'es' if n_bypass != 1 else ''} below)."
+                     + ("" if unit == "MIX" else " Enter the bypassed volume from your firewall or egress logs to count it."))}
 
 
 def _public(sp: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -410,12 +484,18 @@ def _public(sp: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 
 
 def build(causes: List[Mapping[str, Any]], classes: List[Mapping[str, Any]], volume: Optional[Mapping[str, Any]] = None,
-          logs: Optional[Mapping[str, Any]] = None, *, zpa_in_scope: bool = False, no_volume_reason: str = "") -> Dict[str, Any]:
+          logs: Optional[Mapping[str, Any]] = None, *, zpa_in_scope: bool = False, no_volume_reason: str = "",
+          bypass_bytes: Optional[float] = None, bypass_read: bool = True) -> Dict[str, Any]:
     """The true-coverage block of an SSL coverage report. `volume` is
     ssl_coverage.read_volume's answer (or None), `logs` is
     {"ssl": traffic_logs zia_web ssl section, "period": {first, last},
-    "records": n, "report_id": id} (or None). Pure."""
+    "records": n, "report_id": id} (or None). `bypass_bytes` is the
+    admin's figure for web traffic that never reaches ZIA (or None);
+    `bypass_read` says whether Client Connector and PAC settings were read. Pure."""
     out_rows = outside(causes, zpa_in_scope)
+    n_bypass = _bypass_count(out_rows)
+    if bypass_bytes is not None and (isinstance(bypass_bytes, bool) or not (_num(bypass_bytes) or bypass_bytes == 0)):
+        bypass_bytes = None
     notes: List[str] = []
     ssl = (logs or {}).get("ssl") if isinstance((logs or {}).get("ssl"), Mapping) else None
     ins = None
@@ -460,15 +540,19 @@ def build(causes: List[Mapping[str, Any]], classes: List[Mapping[str, Any]], vol
                     "headline": "Coverage cannot be given: no traffic numbers were read and the SSL rules decide no kind of traffic.",
                     "window": "", "estimate": True}
         sp = est["split"]
-        return {"mode": "estimate", "source": "policy", "estimate": True,
+        incl = including_bypass("MIX", sp, n_bypass, None, bypass_read)
+        return {"mode": "estimate", "including_bypass": {"MIX": incl}, "source": "policy", "estimate": True,
                 "source_label": "Estimate from your SSL rules and a typical traffic mix: not measured",
                 "window": "", "units": {"MIX": _public(sp)}, "primary_unit": "MIX", "causes": est["causes"], "unattributed": None,
                 "outside": out_rows, "needs": NEEDS, "why_estimate": no_volume_reason,
                 "assumed_mix": {"http_pct": ASSUMED_HTTP_PCT, "https_by_kind_pct": dict(ASSUMED_MIX)},
                 "notes": notes + ["The typical mix is this app's assumption, not your traffic. Rules for some users only are not counted."],
-                "headline": _headline("estimate", "MIX", sp, "", len(out_rows))}
+                "headline": _headline("estimate", "MIX", sp, "", len(out_rows), incl)}
     primary = "BYTES" if split.get("BYTES") else "TRANSACTIONS"
-    return {"mode": mode, "source": source, "source_label": source_label, "estimate": False, "window": window,
+    incl = {u: including_bypass(u, split.get(u), n_bypass, bypass_bytes, bypass_read) for u in UNITS}
+    if bypass_bytes is not None and not split.get("BYTES"):
+        notes.append("Your figure for traffic that bypasses ZIA is in bytes, and this source has no split by bytes, so it could not be counted.")
+    return {"mode": mode, "including_bypass": incl, "source": source, "source_label": source_label, "estimate": False, "window": window,
             "units": {u: _public(split.get(u)) for u in UNITS}, "primary_unit": primary,
             "causes": per["causes"], "unattributed": per.get("unattributed"), "outside": out_rows, "needs": None, "notes": notes,
-            "headline": _headline(mode, primary, split[primary], window, len(out_rows))}
+            "headline": _headline(mode, primary, split[primary], window, len(out_rows), incl.get(primary))}

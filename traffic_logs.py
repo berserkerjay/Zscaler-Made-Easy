@@ -58,6 +58,7 @@ TOP = 100                      # rows kept per top list
 SESSION_ROWS = 5000            # consolidated sessions kept for the table and export
 MAX_BUCKETS = 96               # points on a time chart (an hour a bar for up to four days)
 OTHER = "(other values, past the counting limit)"
+MAX_TX_BYTES = 10 ** 15        # a request or response size above this (1 PB) is not a real transaction: counted, not added
 
 # Session consolidation (ZPA User Status). A session shorter than this is a
 # sign-in check, not a user session; consecutive sessions of the same user
@@ -238,6 +239,21 @@ def _s(v: Any) -> str:
 
 def _blank(v: Any) -> bool:
     return _s(v).lower() in EMPTY
+
+
+def _size(v: Any) -> Optional[int]:
+    """A request or response size in bytes: 0 when absent, None when it is
+    not a size one transaction can have (not finite, or over MAX_TX_BYTES),
+    so a hostile line can never overflow the totals."""
+    if v is None or str(v).strip() == "":
+        return 0
+    try:
+        f = float(str(v).strip()[:64])
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    if not math.isfinite(f) or f > MAX_TX_BYTES:
+        return None
+    return int(f) if f > 0 else 0
 
 
 def _num(v: Any) -> float:
@@ -770,6 +786,7 @@ class Analysis:
         self.first_time: Optional[datetime] = None
         self.last_time: Optional[datetime] = None
         self.untimed = 0
+        self.skipped = 0   # records skipped because a value broke the arithmetic (Analysis.add)
         # ZPA User Activity
         self.za_conn: set = set()
         self.za_conn_overflow = 0
@@ -818,7 +835,7 @@ class Analysis:
                 # Bytes per SSL bucket (reqsize + respsize) and the not-inspected
                 # transactions and bytes per (URL category, cloud app): what
                 # ssl_true_coverage needs to tie each one to the SSL rule behind it.
-                "ssl_bytes": Counter(), "ssl_no_by": BoundedCounter(5000), "ssl_no_by_bytes": BoundedCounter(5000),
+                "ssl_bytes": Counter(), "ssl_bad_sizes": 0, "ssl_no_by": BoundedCounter(5000), "ssl_no_by_bytes": BoundedCounter(5000),
                 "dns_cats": BoundedCounter(2000)}
 
     # -- time
@@ -832,8 +849,15 @@ class Analysis:
             self.last_time = t
 
     def add(self, kind: str, r: Dict[str, Any]) -> None:
+        # A record whose values break the arithmetic (a hostile upload) is
+        # counted and skipped: one line never stops the whole analysis.
+        try:
+            t = getattr(self, "_" + kind)(r)
+        except (ArithmeticError, ValueError, TypeError):
+            self.skipped += 1
+            return
         self.kinds[kind] += 1
-        if getattr(self, "_" + kind)(r) is None:
+        if t is None:
             self.untimed += 1
 
     @staticmethod
@@ -1075,7 +1099,12 @@ class Analysis:
             a["threat_users"].add(r.get("login", ""))
             a["threat_dests"].add(dest)
         ssl = (r.get("ssldecrypted") or "").strip().lower()
-        size = int(_num(r.get("reqsize")) + _num(r.get("respsize")))
+        req, resp = _size(r.get("reqsize")), _size(r.get("respsize"))
+        if req is None or resp is None:
+            a["ssl_bad_sizes"] += 1
+            size = 0
+        else:
+            size = req + resp
         if ssl in ("yes", "no", "1", "0", "true", "false"):
             inspected = ssl in ("yes", "1", "true")
             bucket = "inspected" if inspected else "not_inspected"
@@ -1342,6 +1371,7 @@ class Analysis:
                             "plain_http": ssl.get("plain_http", 0), "not_logged": ssl.get("not_logged", 0),
                             "reasons": _rows(a["ssl_reasons"]), "destinations_not_inspected": _rows(a["ssl_dests_no"]),
                             "bytes": {b: int(a["ssl_bytes"].get(b, 0)) for b in ("inspected", "not_inspected", "plain_http", "not_logged")},
+                            "bad_sizes": int(a["ssl_bad_sizes"]),
                             "not_inspected_by": [{"category": key.split("\x1f")[0], "app": (key.split("\x1f") + [""])[1], "count": n,
                                                   "bytes": int(a["ssl_no_by_bytes"].c.get(key, 0))} for key, n in a["ssl_no_by"].top(TOP)]}
                     if k == "zia_web" else None,
@@ -1376,6 +1406,12 @@ def analyze(files: List[Dict[str, Any]], feed_format: str = "") -> Dict[str, Any
     rep = an.result()
     if stats["capped"]:
         notes.append(f"stopped after {MAX_LINES:,} lines; the rest was not read")
+    bad = int(((((rep.get("zia") or {}).get("zia_web") or {}).get("ssl")) or {}).get("bad_sizes") or 0)
+    if bad:
+        notes.append(f"{bad:,} ZIA web lines had a request or response size no transaction can have (over 1 PB, or not a number "
+                     "that fits); their bytes were not counted")
+    if an.skipped:
+        notes.append(f"{an.skipped:,} records had a value that could not be used and were skipped")
     rep["input"] = {"lines": stats["lines"], "records": sum(an.kinds.values()), "malformed": stats["malformed"],
                     "oversized": stats["oversized"], "unrecognised": stats["unrecognised"], "capped": stats["capped"],
                     "malformed_examples": stats["malformed_examples"], "files": stats["files"][:200], "notes": notes,

@@ -55,6 +55,11 @@
   .sc-swatch.unknown { background: var(--well); border-style: dashed; border-color: var(--border-strong); }
   .sc-est { border: 1px dashed var(--warn); border-radius: var(--r-md); padding: 0.5rem 0.7rem; font-size: 0.85rem; margin: 0.5rem 0; }
   .sc-logs { display: inline-flex; gap: 0.4rem; align-items: center; font-size: 0.8rem; }
+  .sc-logs[hidden] { display: none; }
+  #scBypassGb { width: 6.5em; }
+  .sc-lead.warn { border-left-color: var(--warn); }
+  .sc-incl { font-size: 0.9rem; margin: 0 0 0.6rem; }
+  .sc-table td.num, .sc-table th.num { white-space: nowrap; overflow-wrap: normal; }
   @media (max-width: 600px) { .sc-dl { grid-template-columns: 1fr; } .sc-tile .n { font-size: 1.5rem; } }
 </style>
 <link rel="stylesheet" href="/static/hover_help.css">
@@ -77,6 +82,8 @@
           <option value="30d">Last 30 days</option>
         </select></label>
       <label class="df-ctl"><input type="checkbox" id="scVolume" checked> <span class="lbl">Traffic numbers</span></label>
+      <label class="df-ctl"><span class="lbl">Bypass (GB)</span><input type="number" id="scBypassGb" min="0" step="any" inputmode="decimal" placeholder="unknown"
+        aria-label="Web traffic that goes around ZIA, in GB, from your firewall or egress logs (optional)"></label>
       <span class="sc-logs" id="scLogsWrap" hidden><span id="scLogsLbl">Using your uploaded web logs</span> <button type="button" class="rp-btn" id="scLogsDrop">Don't use the logs</button></span>
       <button type="button" class="rp-btn primary" id="scRun">Check coverage</button>
       <a class="rp-btn" id="expXlsx" hidden>Excel</a>
@@ -200,7 +207,7 @@
         tiles = `<div class="sc-tiles">
           <div class="sc-tile ${tone(sel.ssl_pct)}"><div class="k">SSL/TLS (HTTPS)</div><div class="n">${E(pct(sel.ssl_pct))}</div><div class="d">inspected of ${E(amount('ssl_total'))}</div></div>
           <div class="sc-tile ${tone(sel.http_pct)}"><div class="k">HTTP</div><div class="n">${E(pct(sel.http_pct))}</div><div class="d">inspected of ${E(amount('http_total'))}. Cleartext is inspected once it reaches Zscaler.</div></div>
-          <div class="sc-tile ${tone(sel.total_pct)}"><div class="k">Total</div><div class="n">${E(pct(sel.total_pct))}</div><div class="d">of web traffic inspected (SSL/TLS and HTTP)${sel.total_pct_if_other_not_inspected != null ? `; ${E(pct(sel.total_pct_if_other_not_inspected))} if the unclassified traffic is not inspected` : ''}.</div></div>
+          <div class="sc-tile ${tone(sel.total_pct)}"><div class="k">Total of classified traffic</div><div class="n">${E(pct(sel.total_pct))}</div><div class="d">of the traffic Insights could classify (SSL/TLS and HTTP)${sel.total_pct_if_other_not_inspected != null ? `; ${E(pct(sel.total_pct_if_other_not_inspected))} if the unclassified traffic is not inspected, as in True inspection coverage above` : ''}.</div></div>
         </div>`;
         if (sel.other_total) tiles += `<p class="sc-note">Other / not classified: ${E(amount('other_total'))}. Shown apart and left out of the percentages.</p>`;
         const un = (sel.unrecognised || []);
@@ -242,19 +249,30 @@
           <dt>Safe to change?</dt><dd>${chip(s.safe, s.safe_label)} ${E(s.safe_note)}</dd>
         </dl></li>`;
     }
+    const SOURCE_WORD = { logs: 'Uploaded web logs', insights: 'ZIA Insights' };   // ssl_true_coverage.SOURCE_WORD
     function historyHtml(h) {
       if (!h || !h.length) return '<p class="sc-note">No earlier runs are kept for this tenant yet.</p>';
       const rows = h.slice().reverse().map(x => `<tr><td>${E(when(x.at))}</td><td class="num">${E(x.class_coverage_pct == null ? '—' : pct(x.class_coverage_pct))}</td>
-          <td class="num">${E(x.inspected_pct_bytes == null ? '—' : pct(x.inspected_pct_bytes))}</td><td class="num">${E((x.by_risk || {}).high || 0)}</td>
+          <td class="num">${E(x.inspected_pct_bytes == null ? '—' : pct(x.inspected_pct_bytes))}</td><td>${E(SOURCE_WORD[x.true_source] || (x.inspected_pct_bytes == null && x.inspected_pct_transactions == null ? '—' : 'ZIA Insights (unknown left out)'))}</td><td class="num">${E((x.by_risk || {}).high || 0)}</td>
           <td class="num">${E((x.by_risk || {}).medium || 0)}</td><td class="num">${E(x.plan_steps || 0)}</td></tr>`).join('');
       return `<div class="df-tablewrap"><table class="bp-table sc-table"><caption class="sr-only">Coverage across runs, newest first</caption>
-        <thead><tr><th scope="col">Run</th><th scope="col" class="num">Traffic kinds covered</th><th scope="col" class="num">Inspected (bytes)</th><th scope="col" class="num">High</th><th scope="col" class="num">Medium</th><th scope="col" class="num">Plan steps</th></tr></thead>
+        <thead><tr><th scope="col">Run</th><th scope="col" class="num">Traffic kinds covered</th><th scope="col" class="num">Inspected (bytes)</th><th scope="col">Measured from</th><th scope="col" class="num">High</th><th scope="col" class="num">Medium</th><th scope="col" class="num">Plan steps</th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
     // ── True inspection coverage (ssl_true_coverage.py) ──────────────
     // One figure, four slices that add up to 100%, each slice left
     // encrypted tied to its cause. Built with DOM calls only: rule names,
     // categories and applications are tenant data.
+    // The headline box's colour follows the figure, as the tiles do (the box has no amber 'warn' fill, only its rule).
+    const leadTone = p => (p == null ? '' : p >= 90 ? 'ok' : p >= 70 ? 'warn' : 'risk');
+    // The logs chip shows only while the logs are picked for the next check
+    // or were what the result on screen was measured from. Pure.
+    function logsChipState(res, picked) {
+      const used = !!(res && res.true_coverage && res.true_coverage.source === 'logs');
+      if (used) return { show: true, text: 'Using your uploaded web logs', drop: !!picked };
+      if (picked && !res) return { show: true, text: 'Your uploaded web logs will be used', drop: true };
+      return { show: false, text: '', drop: false };
+    }
     const SLICE_WORD = { http: 'Plain HTTP', https_inspected: 'HTTPS decrypted', https_not_inspected: 'HTTPS not inspected', unknown: 'Unknown' };
     function drawTrue() {
       const host = document.getElementById('scTrue');
@@ -267,7 +285,8 @@
       if (!t) { host.appendChild(el('p', 'sc-note', 'This result was made before true coverage existed: check coverage again.')); return; }
       const est = !!t.estimate;
       h.appendChild(el('span', `sc-chip ${est ? 'test' : 'yes'}`, est ? 'Estimate, not measured' : 'Measured'));
-      host.appendChild(el('p', `sc-lead ${est ? '' : (t.units && Object.keys(t.units).length ? 'ok' : '')}`, t.headline || ''));
+      const lead0 = (t.units || {})[t.primary_unit] || null;
+      host.appendChild(el('p', `sc-lead ${est || !lead0 ? '' : leadTone(lead0.inspected_pct)}`, t.headline || ''));
       const src = el('p', 'sc-note', `${t.source_label || ''}${t.window ? `. Window: ${t.window}` : ''}.`);
       host.appendChild(src);
       const units = t.units || {};
@@ -289,10 +308,18 @@
       const amountOf = v => (u === 'BYTES' ? bytes(v) : u === 'TRANSACTIONS' ? `${count(v)} transactions` : `${pct(v)} of the mix`);
       const tiles = el('div', 'sc-tiles');
       const tile = (cls, k, n, d) => { const x = el('div', `sc-tile ${cls}`); x.appendChild(el('div', 'k', k)); x.appendChild(el('div', 'n', n)); x.appendChild(el('div', 'd', d)); tiles.appendChild(x); };
-      tile(tone(sp.inspected_pct), est ? 'Inspected (estimate)' : 'Inspected', pct(sp.inspected_pct),
+      tile(tone(sp.inspected_pct), est ? 'Inspected (estimate)' : 'Inspected (of traffic reaching ZIA)', pct(sp.inspected_pct),
         sp.unknown_pct ? `Between ${pct(sp.inspected_pct)} and ${pct(sp.inspected_pct_high)}: ${pct(sp.unknown_pct)} is unknown and never counted as inspected.` : 'Plain HTTP plus HTTPS that Zscaler decrypted.');
       tile(sp.not_inspected_pct ? 'risk' : 'ok', 'HTTPS not inspected', pct(sp.not_inspected_pct), 'Left encrypted: DLP and malware scanning see only where it goes.');
       host.appendChild(tiles);
+      // Of all web traffic: the bypassed traffic counted as not inspected, or said to be unmeasured.
+      const inc = (t.including_bypass || {})[u];
+      if (inc && inc.text) {
+        const p2 = el('p', 'sc-incl'); p2.id = 'scInclBypass';
+        p2.appendChild(el('strong', '', inc.known && inc.inspected_pct != null ? `Of all web traffic: ${pct(inc.inspected_pct)}. ` : 'Of all web traffic: not measured. '));
+        p2.appendChild(document.createTextNode(inc.text));
+        host.appendChild(p2);
+      }
       const bar = el('div', 'sc-true-bar'); bar.setAttribute('aria-hidden', 'true');
       (sp.slices || []).forEach(x => { if (x.pct > 0) { const s2 = el('span', x.key); s2.style.width = `${Number(x.pct)}%`; s2.title = `${SLICE_WORD[x.key] || x.key}: ${pct(x.pct)}`; bar.appendChild(s2); } });
       host.appendChild(bar);
@@ -436,6 +463,8 @@
       }
       drawTrue();
       drawRiver();
+      if (logsId && !((res.true_coverage || {}).source === 'logs')) logsId = '';   // given but not usable: the notes say why
+      drawLogsChip();
     }
     body.addEventListener('click', e => {
       const b = e.target.closest('button[data-unit]'); if (!b || !last) return;
@@ -489,8 +518,15 @@
       const hint = /credential|sign in|token|401|403|profile/i.test(msg) ? ' Sign in on the assessment page first and open SSL coverage from there, or choose a saved tenant profile in the bar above.' : '';
       body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
     }
+    function bypassGb() {
+      const v = (document.getElementById('scBypassGb').value || '').trim();
+      const n = Number(v);
+      return v !== '' && Number.isFinite(n) && n >= 0 ? n : null;
+    }
     async function run() {
       if (running) return;
+      const bv = (document.getElementById('scBypassGb').value || '').trim();
+      if (bv !== '' && bypassGb() == null) { say('Bypass (GB) must be a number of gigabytes, 0 or more, or left empty.'); fail('SSL coverage was not checked', 'Bypass (GB) must be a number of gigabytes, 0 or more, or left empty.'); return; }
       const btn = document.getElementById('scRun');
       running = true; stopAsked = false; job = null; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Checking…';
       pics.forEach(p => p.destroy()); pics = [];
@@ -501,7 +537,7 @@
       const tick = setInterval(() => { const el = document.getElementById('scElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
       try {
         const payload = Object.assign({}, credBody(), scopeSelection(), { window: document.getElementById('scWindow').value, include_volume: document.getElementById('scVolume').checked },
-          logsId ? { logs_report_id: logsId } : {});
+          logsId ? { logs_report_id: logsId } : {}, bypassGb() != null ? { bypass_gb: bypassGb() } : {});
         const r = await fetch('/api/ssl-coverage/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
@@ -527,9 +563,15 @@
     // hand-off. The server checks the id before anything is read.
     let logsId = (new URLSearchParams(location.search).get('logs') || '').trim();
     if (!/^tlogs-[A-Za-z0-9_-]{6,40}$/.test(logsId)) logsId = '';
-    if (logsId) document.getElementById('scLogsWrap').hidden = false;
+    function drawLogsChip() {
+      const st = logsChipState(last, logsId);
+      document.getElementById('scLogsWrap').hidden = !st.show;
+      document.getElementById('scLogsLbl').textContent = st.text;
+      document.getElementById('scLogsDrop').hidden = !st.drop;
+    }
+    drawLogsChip();
     document.getElementById('scLogsDrop').addEventListener('click', () => {
-      logsId = ''; document.getElementById('scLogsWrap').hidden = true;
+      logsId = ''; drawLogsChip();
       document.getElementById('scRun').focus();
       say('The uploaded web logs will not be used. Check coverage uses ZIA Insights or the estimate.');
     });

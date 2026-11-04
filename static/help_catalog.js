@@ -8636,8 +8636,13 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. It shows when you came from the Traffic and session logs page.",
     "effect": "local"
    },
+   "#scBypassGb": {
+    "what": "How much web traffic goes around ZIA (Client Connector or PAC bypasses, networks sent direct), so the true coverage can also be given out of all your web traffic. That traffic counts as not inspected.",
+    "input": "A number of gigabytes (GB) from your firewall or egress logs, for the same period as the check. Leave it empty if you do not know it.",
+    "effect": "local"
+   },
    "#scTrueH": {
-    "what": "The true share of web traffic Zscaler can see inside: plain HTTP plus HTTPS it decrypted, out of all of it. Unknown traffic never counts as inspected. Without traffic numbers it is an estimate, and it says so.",
+    "what": "The true share of the web traffic that reaches ZIA that Zscaler can see inside: plain HTTP plus HTTPS it decrypted. Unknown traffic never counts as inspected. A second line says the share of all web traffic, with traffic sent around ZIA counted as not inspected, or that it is not measured. Without traffic numbers it is an estimate, and it says so.",
     "input": "Nothing to type. It shows after a check.",
     "effect": "local"
    },

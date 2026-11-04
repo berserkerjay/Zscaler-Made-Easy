@@ -15,6 +15,8 @@ import json
 import math
 import os
 import re
+import shutil
+import subprocess
 import zipfile
 
 import pytest
@@ -111,7 +113,7 @@ def test_bytes_and_transactions_are_split_apart():
     assert _sum(by) == 100.0 and _sum(tx) == 100.0
     assert by["inspected_pct"] == 90.0 and by["not_inspected_pct"] == 10.0 and by["unknown_pct"] == 0.0
     assert tx["not_inspected_pct"] == 19.0 and tx["inspected_pct"] != by["inspected_pct"]
-    assert t["primary_unit"] == "BYTES" and "of web bytes" in t["headline"] and t["window"] == "last 7 days"
+    assert t["primary_unit"] == "BYTES" and "of the web bytes that reached ZIA" in t["headline"] and t["window"] == "last 7 days"
 
 
 # ── Cause attribution ───────────────────────────────────────────────────
@@ -194,8 +196,107 @@ def test_traffic_that_never_reaches_zia_is_listed_apart_and_in_no_percentage():
     assert with_cc["units"] == without["units"]
     fixes = {o["kind"]: (o["fix"] or {}).get("href") for o in with_cc["outside"]}
     assert fixes["pac_direct"] == "/report/operations?build=zia_pac" and fixes["zpa_routed"] == "/report/zpa"
-    assert "send traffic around ZIA" in with_cc["headline"]
+    assert "never reaches ZIA: not measured" in with_cc["headline"] and "(4 bypasses below)" in with_cc["headline"]
     assert all(re.fullmatch(r"/report/operations\?build=[a-z_]+", f"/report/operations?build={b}") for b, _ in tc.FIX_LINKS.values())
+
+
+# ── Of the traffic that reached ZIA, and of all web traffic ─────────────
+def test_every_label_says_the_figure_is_of_traffic_that_reached_zia():
+    """ASVS V1.4.4 · CWE-1287 · WSTG-BUSL-01: headline, glossary, help and Excel all say the figure is of the traffic that reached ZIA, not of all traffic."""
+    # Arrange
+    rep = sc.analyse(SSL, cc=_cc(), volume=_volume(), lookup=LOOKUP)
+    rep.update(tenant_label="t", history=[])
+    # Act
+    t = rep["true_coverage"]
+    cells = "".join(zipfile.ZipFile(io.BytesIO(sc.to_xlsx(rep))).read(n).decode() for n in zipfile.ZipFile(io.BytesIO(sc.to_xlsx(rep))).namelist() if n.startswith("xl/"))
+    g = open(os.path.join(ROOT, "static", "glossary.js"), encoding="utf-8").read()
+    gdef = g[g.index("'true inspection coverage'"):].split("\n", 1)[0]
+    # Assert
+    assert "of the web bytes that reached ZIA" in t["headline"] and "of web bytes was" not in t["headline"]
+    assert "share of all web traffic" not in gdef and "reaches Zscaler" in gdef
+    assert "True inspection coverage (of traffic that reached ZIA)" in cells and "Including traffic that never reaches ZIA" in cells
+    assert "Inspected (of traffic reaching ZIA)" in _page()
+
+
+def test_with_bypasses_and_no_volume_the_all_traffic_share_is_unmeasured_and_only_bounded():
+    """ASVS V1.4.4 · CWE-1287 · WSTG-BUSL-01: bypasses whose volume is unknown give no all-traffic number: an upper bound, said to be not measured."""
+    # Act
+    t = sc.analyse(SSL, cc=_cc(), volume=_volume(), lookup=LOOKUP, zpa_in_scope=True)["true_coverage"]
+    # Assert
+    for u in ("BYTES", "TRANSACTIONS"):
+        inc = t["including_bypass"][u]
+        assert inc["known"] is False and inc["inspected_pct"] is None and inc["upper_pct"] == t["units"][u]["inspected_pct_high"]
+        assert "not measured" in inc["text"] and "at most" in inc["text"]
+    n = sum(1 for o in t["outside"] if o["kind"] != "zpa_routed")
+    assert f"({n} bypasses below)" in t["including_bypass"]["BYTES"]["text"] and t["including_bypass"]["BYTES"]["text"] in t["headline"]
+
+
+def test_a_known_bypass_volume_counts_as_not_inspected_in_the_all_traffic_share():
+    """ASVS V1.4.4 · CWE-682 · WSTG-BUSL-01: with the bypassed bytes given, the all-traffic share is HTTP plus decrypted over everything including the bypass."""
+    # Arrange
+    ref = sc.analyse(SSL, cc=_cc(), volume=_volume(), lookup=LOOKUP)["true_coverage"]["units"]["BYTES"]
+    a = {x["key"]: x["amount"] for x in ref["slices"]}
+    bypass = ref["total"] / 4
+    # Act
+    t = sc.analyse(SSL, cc=_cc(), volume=_volume(), lookup=LOOKUP, bypass_bytes=bypass)["true_coverage"]
+    inc = t["including_bypass"]["BYTES"]
+    # Assert
+    exact = 100 * (a["http"] + a["https_inspected"]) / (ref["total"] + bypass)
+    assert inc["known"] is True and abs(inc["inspected_pct"] - exact) <= 0.1 and inc["inspected_pct"] < ref["inspected_pct"]
+    assert inc["bypassed_pct"] == 20.0 and "your figure, counted as not inspected" in inc["text"]
+    assert t["including_bypass"]["TRANSACTIONS"]["known"] is False      # the figure is in bytes only
+    assert t["units"]["BYTES"] == ref                                    # the ZIA figure itself is unchanged
+
+
+@pytest.mark.parametrize("cc,expect", [(None, "were not read"), ({}, "also the share of all web traffic")])
+def test_without_a_bypass_to_look_for_the_all_traffic_share_says_why(cc, expect):
+    """ASVS V1.4.4 · CWE-1287: settings not read is "not known"; settings read with no bypass make the ZIA figure the all-traffic figure."""
+    # Act
+    inc = sc.analyse(SSL, cc=cc, volume=_volume(), lookup=LOOKUP)["true_coverage"]["including_bypass"]["BYTES"]
+    # Assert
+    assert expect in inc["text"] and (inc["known"] is (cc is not None))
+
+
+@pytest.mark.parametrize("gb", [-1, 1e10, "lots", "NaN", "1e400"])
+def test_a_bad_bypass_figure_is_refused_before_sign_in(monkeypatch, gb):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: a bypass figure that is negative, impossible or not a number is a 400 before any client is built."""
+    # Arrange
+    monkeypatch.setattr(srv, "_build_client", lambda req: (_ for _ in ()).throw(AssertionError("signed in")))
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: (_ for _ in ()).throw(AssertionError("signed in")))
+    # Act
+    r = TestClient(srv.app).post("/api/ssl-coverage/start", json=dict(CREDS, bypass_gb=gb, **IN_SCOPE))
+    # Assert
+    assert r.status_code in (400, 422) and "signed in" not in r.text
+
+
+def test_the_job_counts_a_given_bypass_figure(monkeypatch):
+    """ASVS V1.4.4 · CWE-682: the bypass figure in GB reaches the result as bytes, counted as not inspected."""
+    # Arrange
+    monkeypatch.setattr(srv, "_build_client", lambda req: FakeCl(tenant_routes()))
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: sdk())
+    c = TestClient(srv.app)
+    # Act
+    snap = _poll(c, c.post("/api/ssl-coverage/start", json=dict(CREDS, bypass_gb=2.5, **IN_SCOPE)).json()["job_id"])
+    # Assert
+    inc = snap["result"]["true_coverage"]["including_bypass"]["BYTES"]
+    assert snap["status"] == "done" and inc["known"] is True and inc["bypassed_amount"] == 2.5e9
+
+
+# ── One source per summary ──────────────────────────────────────────────
+def test_logs_without_sizes_never_leave_the_insights_bytes_share_in_the_summary():
+    """ASVS V1.4.4 · CWE-1287 · WSTG-BUSL-01: with the figure from logs, both summary shares come from the logs (None where they have no bytes), and the history says the source."""
+    # Arrange
+    no_bytes = dict(copy.deepcopy(LOG_SSL), bytes={})
+    for r in no_bytes["not_inspected_by"]:
+        r["bytes"] = 0
+    # Act
+    rep = sc.analyse(SSL, volume=_volume(), logs=_logs(no_bytes))
+    h = sc.history_entry(dict(rep, at="2026-11-04T00:00:00Z"))
+    # Assert
+    assert rep["summary"]["inspected_pct_bytes"] is None and rep["summary"]["inspected_pct_transactions"] == 76.0
+    assert rep["headline"].startswith("About 76%")
+    assert h["true_source"] == "logs" and tc.source_word(h) == "Uploaded web logs"
+    assert tc.source_word({"inspected_pct_bytes": 90.0}) == "ZIA Insights (unknown left out)" and tc.source_word({}) == ""
 
 
 # ── Estimate versus measured ────────────────────────────────────────────
@@ -288,6 +389,69 @@ def test_nss_web_lines_give_bytes_per_part_and_what_was_left_encrypted():
     assert (s["inspected"], s["not_inspected"], s["plain_http"], s["not_logged"]) == (1, 1, 1, 1)
     assert s["bytes"] == {"inspected": 10, "not_inspected": 1000, "plain_http": 100, "not_logged": 0}
     assert s["not_inspected_by"] == [{"category": "Web Mail", "app": "Gmail", "count": 1, "bytes": 1000}]
+
+
+def _nss(**k):
+    return json.dumps({"sourcetype": "zscalernss-web", "event": dict({"datetime": "2026-11-01 10:00:00", "login": "a@x.example", "action": "Allowed",
+                                                                       "proto": "HTTPS", "url": "x.example.com/", "urlcat": "News"}, **k)})
+
+
+HOSTILE_SIZES = "\n".join([_nss(ssldecrypted="No", reqsize="1e308", respsize="1e308"),      # inf when summed
+                            _nss(ssldecrypted="No", reqsize="1e306", respsize="1e306"),      # finite, but inf once a few add up
+                            _nss(ssldecrypted="Yes", reqsize="1" + "0" * 400, respsize="5"),  # an integer past any float
+                            _nss(ssldecrypted="Yes", reqsize="100", respsize="900")])
+
+
+def test_a_hostile_web_log_size_is_counted_and_never_crashes_the_analysis():
+    """ASVS V5.1.4 · CWE-190 · WSTG-INPV-01: a request or response size no transaction can have is counted and left out; the analysis goes on."""
+    # Act
+    rep = tl.analyze([{"name": "web.json", "content": HOSTILE_SIZES}])
+    s = rep["zia"]["zia_web"]["ssl"]
+    # Assert
+    assert (s["inspected"], s["not_inspected"]) == (2, 2)
+    assert s["bytes"] == {"inspected": 1000, "not_inspected": 0, "plain_http": 0, "not_logged": 0}
+    assert s["bad_sizes"] == 3 and all(r["bytes"] == 0 for r in s["not_inspected_by"])
+    assert any("size" in n and "3" in n for n in rep["input"]["notes"])
+    json.dumps(rep, allow_nan=False)
+
+
+@pytest.mark.parametrize("amounts,split", [
+    ({"http": 10 ** 400, "https_inspected": 5, "https_not_inspected": 1, "unknown": 0}, True),     # too large for a float: left out
+    ({"http": 1e306, "https_inspected": 1e306, "https_not_inspected": 1e306, "unknown": 1e306}, False),
+    ({"http": 1.7e308, "https_inspected": 1.7e308, "https_not_inspected": 0, "unknown": 0}, False),  # inf once added
+    ({"http": tc.MAX_AMOUNT, "https_inspected": tc.MAX_AMOUNT, "https_not_inspected": 1, "unknown": 0}, True),
+])
+def test_amounts_past_any_real_traffic_never_crash_the_figure(amounts, split):
+    """ASVS V5.1.4 · CWE-190 · WSTG-INPV-01: amounts no tenant can have are left out, never overflow; what is left still adds up, or there is no figure."""
+    # Act
+    sp = tc.unit_split(amounts)
+    # Assert
+    assert (sp is not None) is split
+    if sp:
+        assert sp["sum_pct"] == 100.0 and sum(sp["_tenths"].values()) == 1000
+        json.dumps(tc._public(sp), allow_nan=False)
+    assert sum(tc.tenths(amounts, list(amounts)).values()) in (0, 1000)
+
+
+def test_the_job_finishes_on_logs_with_hostile_sizes(monkeypatch):
+    """ASVS V5.1.4 · CWE-190 · WSTG-INPV-01: the SSL coverage job on an upload with impossible sizes finishes with a figure, never a crash."""
+    # Arrange
+    cl = FakeCl(tenant_routes())
+    monkeypatch.setattr(srv, "_build_client", lambda req: cl)
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: sdk())
+    c = TestClient(srv.app)
+    up = c.post("/api/traffic-logs/analyze", json={"files": [{"name": "web.json", "content": HOSTILE_SIZES}]})
+    assert up.status_code == 200, up.text
+    rid = up.json()["report_id"]
+    rep = srv._REPORTS[rid]
+    rep["zia"]["zia_web"]["ssl"]["bytes"]["inspected"] = 10 ** 400    # as if the counters were tampered with in memory
+    rep["zia"]["zia_web"]["ssl"]["not_inspected_by"].append({"category": "News", "app": "", "count": 1, "bytes": 1e306})
+    # Act
+    snap = _poll(c, c.post("/api/ssl-coverage/start", json=dict(CREDS, logs_report_id=rid, **NO_INSIGHTS)).json()["job_id"])
+    # Assert
+    t = snap["result"]["true_coverage"]
+    assert snap["status"] == "done" and t["source"] == "logs" and t["units"]["TRANSACTIONS"]["sum_pct"] == 100.0
+    assert c.get(f"/api/ssl-coverage/{snap['result']['report_id']}").status_code == 200
 
 
 # ── The route ───────────────────────────────────────────────────────────
@@ -391,3 +555,99 @@ def test_help_marks_and_glossary_cover_the_new_controls():
     assert "\"#tlSslCov\"" in cat
     assert cat == ext
     assert "'true inspection coverage'" in g and "'plain http'" in g
+
+
+# ── The logs chip and the page's readability (browser and node) ─────────
+def _js_fn(name, end):
+    html = _page()
+    return html[html.index(f"function {name}("):html.index(end, html.index(f"function {name}("))]
+
+
+def test_the_logs_chip_shows_only_while_picked_or_when_the_result_used_the_logs():
+    """ASVS V1.4.4 · CWE-1287 · WCAG 2.2 SC 1.3.1: the "Using your uploaded web logs" chip never labels a run measured from Insights or the estimate."""
+    # Arrange
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("needs node")
+    fn = _js_fn("logsChipState", "const SLICE_WORD")
+    cases = [["null", "''"], ["null", "'tlogs-abcdef'"], ["{true_coverage: {source: 'insights'}}", "'tlogs-abcdef'"],
+             ["{true_coverage: {source: 'insights'}}", "''"], ["{true_coverage: {source: 'logs'}}", "''"], ["{true_coverage: {source: 'logs'}}", "'tlogs-abcdef'"]]
+    js = fn + "console.log(JSON.stringify([" + ",".join(f"logsChipState({r}, {p})" for r, p in cases) + "]));"
+    # Act
+    out = json.loads(subprocess.run([node, "-e", js], capture_output=True, text=True, timeout=60).stdout)
+    # Assert
+    assert [o["show"] for o in out] == [False, True, False, False, True, True]
+    assert out[1]["text"] == "Your uploaded web logs will be used" and out[4] == {"show": True, "text": "Using your uploaded web logs", "drop": False}
+    html = _page()
+    assert "logsId = ''; drawLogsChip();" in html and "if (logsId) document.getElementById('scLogsWrap').hidden = false;" not in html
+
+
+def test_the_page_names_the_classified_total_and_colours_the_headline_by_its_value():
+    """WCAG 2.2 SC 1.3.1 · SC 1.4.10: the Insights total says it is of classified traffic, the true headline's colour follows its value, numbers never break mid-word."""
+    # Arrange
+    html = _page()
+    fn = html[html.index("function drawTrue()"):html.index("// ── Traffic river")]
+    # Assert
+    assert ">Total of classified traffic<" in html and '<div class="k">Total</div>' not in html
+    assert "leadTone(lead0.inspected_pct)" in fn and "Object.keys(t.units).length ? 'ok'" not in fn
+    assert ".sc-lead.warn" in html and "Measured from</th>" in html and "x.true_source" in html
+    assert 'id="scBypassGb"' in html and "bypass_gb: bypassGb()" in html and "t.including_bypass" in fn
+
+
+def _chrome():
+    c = os.environ.get("CHROME_BIN")
+    return c if c and os.path.exists(c) else shutil.which("chromium") or shutil.which("google-chrome")
+
+
+CSS_DRIVER = r"""
+import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+const [chrome, url, dir] = process.argv.slice(2);
+const p = spawn(chrome, ['--headless=new', '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--no-first-run', '--window-size=390,800', `--user-data-dir=${dir}`, 'about:blank'], { stdio: 'ignore' });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+try {
+  let port; for (let i = 0; i < 200 && !port; i++) { try { port = (await readFile(`${dir}/DevToolsActivePort`, 'utf8')).split('\n')[0].trim(); } catch {} if (!port) await sleep(100); }
+  let tabs; for (let i = 0; i < 200; i++) { try { tabs = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); if (tabs.find(t => t.type === 'page')) break; } catch {} await sleep(100); }
+  const ws = new WebSocket(tabs.find(t => t.type === 'page').webSocketDebuggerUrl);
+  await new Promise(r => ws.onopen = r);
+  let id = 0; const pend = {}; ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pend[m.id]) { pend[m.id](m); delete pend[m.id]; } };
+  const send = (method, params = {}) => new Promise(r => { const i = ++id; pend[i] = r; ws.send(JSON.stringify({ id: i, method, params })); });
+  const ev = async x => (await send('Runtime.evaluate', { expression: x, returnByValue: true })).result.result.value;
+  await send('Page.enable'); await send('Page.navigate', { url });
+  for (let i = 0; i < 200 && !(await ev(`!!document.getElementById('done')`)); i++) await sleep(50);
+  console.log(JSON.stringify(await ev(`(() => { const w = document.getElementById('scLogsWrap'), td = document.querySelector('.sc-table td.num');
+    return { hidden: w.hidden, display: getComputedStyle(w).display, width: w.getBoundingClientRect().width, ws: getComputedStyle(td).whiteSpace }; })()`)));
+  ws.close();
+} finally { p.kill(); }
+process.exit(0);
+"""
+
+
+def test_browser_the_hidden_logs_chip_takes_no_space(tmp_path):
+    """ASVS V1.4.4 · CWE-1287 · WCAG 2.2 SC 1.3.1 · SC 1.4.10: with no logs picked the chip is not shown (its display rule never beats [hidden]); numbers stay on one line."""
+    # Arrange
+    chrome, node = _chrome(), shutil.which("node")
+    if not chrome or not node:
+        pytest.skip("needs node and a Chromium build")
+    html = _page()
+    style = html[html.index("<style>"):html.index("</style>") + len("</style>")]
+    chip = html[html.index('<span class="sc-logs" id="scLogsWrap" hidden>'):html.index('<button type="button" class="rp-btn primary" id="scRun">')]
+    (tmp_path / "h.html").write_text(f"<!doctype html><html><head><meta charset='utf-8'>{style}</head><body>{chip}"
+                                     "<table class='sc-table'><tr><th class='num'>Share</th><td class='num'>27.6 %</td></tr></table>"
+                                     "<i id='done'></i></body></html>", encoding="utf-8")
+    (tmp_path / "d.mjs").write_text(CSS_DRIVER, encoding="utf-8")
+    import http.server
+    import threading
+    handler = lambda *a, **k: http.server.SimpleHTTPRequestHandler(*a, directory=str(tmp_path), **k)  # noqa: E731
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    # Act
+    try:
+        out = subprocess.run([node, str(tmp_path / "d.mjs"), chrome, f"http://127.0.0.1:{httpd.server_address[1]}/h.html", str(tmp_path / "prof")],
+                             capture_output=True, text=True, timeout=120)
+    finally:
+        httpd.shutdown()
+    res = json.loads(out.stdout.strip().splitlines()[-1])
+    # Assert
+    assert res["hidden"] is True and res["display"] == "none" and res["width"] == 0, res
+    assert res["ws"] == "nowrap", res
