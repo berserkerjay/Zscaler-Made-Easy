@@ -29,7 +29,9 @@
   "CWE-20",
   "CWE-285",
   "CWE-532",
-  "CWE-1287"
+  "CWE-1287",
+  "CWE-400",
+  "ASVS V11.1.7"
  ],
  "coverage": {
   "before": 0.0,
@@ -42,7 +44,8 @@
   {"id": "W10-DF-C03", "what": "Tab reaches every step and focus shows its details; the walk-through moves with Next and Back and Esc returns focus", "standard": "WCAG 2.2 SC 2.1.1 · SC 2.4.3", "result": "pass"},
   {"id": "W10-DF-C04", "what": "With ZIA Insights in scope the uploads picture is weighted by Shadow IT bytes per traffic class and moves; without it nothing is guessed and nothing moves; the full map's path-count picture is opt-in", "standard": "WCAG 2.2 SC 2.2.2 · CWE-1287", "result": "pass"},
   {"id": "W10-DF-C05", "what": "Insights is read only when ticked on the Scope page; a failed sign-in keeps the map and masks every secret", "standard": "ASVS V4.1.3 · V7.1.1 · CWE-285 · CWE-532", "result": "pass"},
-  {"id": "W10-DF-C06", "what": "AA contrast of the new words (4.5:1) and shapes (3:1) in both themes with glass on and off; no sideways scroll at 320 and 390 px", "standard": "WCAG 2.2 SC 1.4.3 · 1.4.11 · 1.4.10", "result": "pass"}
+  {"id": "W10-DF-C06", "what": "AA contrast of the new words (4.5:1) and shapes (3:1) in both themes with glass on and off; no sideways scroll at 320 and 390 px", "standard": "WCAG 2.2 SC 1.4.3 · 1.4.11 · 1.4.10", "result": "pass"},
+  {"id": "W10-DF-C07", "what": "The Markdown export lists the same traffic shares as the JSON export (class, share, bytes, apps, window, basis), or why there are none; a slow Insights read has its own time limit", "standard": "ASVS V7.4.1 · V11.1.7", "result": "pass"}
  ],
  "findings": [
   {
@@ -64,9 +67,53 @@
    "asvs": "V1.1.1",
    "status": "fixed",
    "fix": "Uploads picture weighted by ZIA Insights Shadow IT bytes per traffic class when in scope; the path-count picture starts still (opt-in)",
-   "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_moves_only_with_real_numbers",
+   "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_starts_still_and_moves_only_on_request",
    "commit": "ad6000c"
+  },
+  {
+   "id": "W10-DF-03",
+   "title": "The uploads picture never mentioned the selected path, so \"Not inspected\" in the steps read as a contradiction of \"100% inspected\" below",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V1.1.1",
+   "status": "fixed",
+   "fix": "One sentence gives the selected path's share of the uploads and what happens (or would happen at 0%) to that data; blind, bypassed or blocked classes with no uploads are named as 0%; the red-stream sentence only when one is drawn",
+   "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_is_tied_to_the_path_above",
+   "commit": "65c2922"
+  },
+  {
+   "id": "W10-DF-04",
+   "title": "The uploads picture moved by default although its dots carried nothing beyond the widths, and its column heads were cut off",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V1.1.1",
+   "status": "fixed",
+   "fix": "Starts still with Play motion opt-in; river column heads and node labels wrap instead of being cut",
+   "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_labels_are_never_cut_off",
+   "commit": "65c2922"
+  },
+  {
+   "id": "W10-DF-05",
+   "title": "Generative AI and paste-site applications (ChatGPT, Pastebin) were counted as all other web traffic",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Shadow IT category table and a short well-known application list, both marked assumed",
+   "test": "tests/test_dataflow_clarity.py::test_generative_ai_and_paste_apps_land_in_their_own_class",
+   "commit": "b7b4782"
+  },
+  {
+   "id": "W10-DF-06",
+   "title": "A slow ZIA Insights read held up the whole data flow map",
+   "severity": "low",
+   "cwe": "CWE-400",
+   "asvs": "V11.1.7",
+   "status": "fixed",
+   "fix": "Its own 20-second limit; a late answer is dropped and the page says Insights did not answer",
+   "test": "tests/test_dataflow_clarity.py::test_a_slow_insights_read_times_out_with_a_plain_message",
+   "commit": "b7b4782"
   }
  ],
- "tests_added": 26
+ "tests_added": 35
 }

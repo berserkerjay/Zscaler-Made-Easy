@@ -296,7 +296,7 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 158,
+            "fixed": 162,
             "accepted": 7,
             "records": [
               "c6-assessment",
@@ -489,7 +489,7 @@
     }
   ],
   "counts": {
-    "findings": 763,
+    "findings": 767,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -508,7 +508,7 @@
       },
       "low": {
         "open": 2,
-        "fixed": 423,
+        "fixed": 427,
         "accepted": 3
       },
       "info": {
@@ -518,12 +518,12 @@
       }
     },
     "checks": {
-      "pass": 705,
+      "pass": 706,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11729
+    "tests_added": 11738
   },
   "findings": [
     {
@@ -11511,8 +11511,72 @@
       "asvs": "V1.1.1",
       "wcag": "",
       "fix": "Uploads picture weighted by ZIA Insights Shadow IT bytes per traffic class when in scope; the path-count picture starts still (opt-in)",
-      "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_moves_only_with_real_numbers",
+      "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_starts_still_and_moves_only_on_request",
       "commit": "ad6000c",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-03",
+      "title": "The uploads picture never mentioned the selected path, so \"Not inspected\" in the steps read as a contradiction of \"100% inspected\" below",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V1.1.1",
+      "wcag": "",
+      "fix": "One sentence gives the selected path's share of the uploads and what happens (or would happen at 0%) to that data; blind, bypassed or blocked classes with no uploads are named as 0%; the red-stream sentence only when one is drawn",
+      "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_is_tied_to_the_path_above",
+      "commit": "65c2922",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-04",
+      "title": "The uploads picture moved by default although its dots carried nothing beyond the widths, and its column heads were cut off",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V1.1.1",
+      "wcag": "",
+      "fix": "Starts still with Play motion opt-in; river column heads and node labels wrap instead of being cut",
+      "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_labels_are_never_cut_off",
+      "commit": "65c2922",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-05",
+      "title": "Generative AI and paste-site applications (ChatGPT, Pastebin) were counted as all other web traffic",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "Shadow IT category table and a short well-known application list, both marked assumed",
+      "test": "tests/test_dataflow_clarity.py::test_generative_ai_and_paste_apps_land_in_their_own_class",
+      "commit": "b7b4782",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-06",
+      "title": "A slow ZIA Insights read held up the whole data flow map",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-400",
+      "asvs": "V11.1.7",
+      "wcag": "",
+      "fix": "Its own 20-second limit; a late answer is dropped and the page says Insights did not answer",
+      "test": "tests/test_dataflow_clarity.py::test_a_slow_insights_read_times_out_with_a_plain_message",
+      "commit": "b7b4782",
       "reason": "",
       "slug": "w10-dataflow-clarity",
       "area": "functionality",
@@ -13656,11 +13720,13 @@
         "CWE-20",
         "CWE-285",
         "CWE-532",
-        "CWE-1287"
+        "CWE-1287",
+        "CWE-400",
+        "ASVS V11.1.7"
       ],
-      "checks": 6,
-      "findings": 2,
-      "tests_added": 26
+      "checks": 7,
+      "findings": 6,
+      "tests_added": 35
     },
     {
       "slug": "w10-native-click",
