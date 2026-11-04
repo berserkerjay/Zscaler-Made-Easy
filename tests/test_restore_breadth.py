@@ -260,6 +260,28 @@ def zpa_target():
     return Tenant(t)
 
 
+def test_the_sample_tenants_pools_and_isolation_profiles_are_remapped_by_name_on_restore():
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-06: the sample tenant's PRA credential pool and ZPA isolation profile, backed up from the sample, are found on the target by name, so a restored credential rule names the target's pool and a restored isolation rule the target's profile."""
+    import offline_tenant as ot
+    sample = cb.from_offline(ot.sample_store(reset=True))["types"]
+    pool, prof = sample["zpa.pra_credential_pools"][0], sample["zpa.isolation_profiles"][0]
+    src = zpa_source()
+    src["zpa.pra_credential_pools"], src["zpa.isolation_profiles"] = [pool], [prof]
+    src["zpa.isolation_rules"][0]["zpn_isolation_profile_id"] = prof["id"]
+    src["zpa.credential_rules"].append({"id": "763", "name": "Inject the depot pool", "action": "INJECT_CREDENTIALS",
+                                        "credential_pool": {"id": pool["id"]}, "conditions": [
+                                            {"operator": "OR", "operands": [{"object_type": "APP", "lhs": "id", "rhs": "601"}]}]})
+    bid = backup_of(src, ["zpa"])
+    t = zpa_target()
+    t.data["zpa.pra_credential_pools"] = [{"id": "986", "name": pool["name"]}]
+    t.data["zpa.isolation_profiles"] = [{"id": "987", "name": prof["name"]}]
+    tgt = Client(t)
+    p, r = apply(tgt, spec("zpa", bid, keep_state=True))
+    assert p["status"] == "ready" and r["status"] == "applied", (p["blockers"], [u for u in r["items"] if u["status"] == "failed"])
+    assert tgt.tenant.by_name("zpa.credential_rules", "Inject the depot pool")["credential_pool"] == {"id": "986"}
+    assert tgt.tenant.by_name("zpa.isolation_rules", "Isolate unmanaged")["zpn_isolation_profile_id"] == "987"
+
+
 def _ops(rule):
     return sorted((o["object_type"], o["lhs"], o["rhs"], o.get("idp_id", "")) for b in rule["conditions"] for o in b["operands"])
 
