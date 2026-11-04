@@ -45,6 +45,16 @@
   .sc-seg button[aria-pressed="true"] { background: var(--well); color: var(--text); font-weight: 600; }
   .sc-seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .sc-unavail { margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.85rem; }
+  .sc-true-bar { display: flex; height: 22px; border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--border); margin: 0.5rem 0; }
+  .sc-true-bar span { min-width: 0; }
+  .sc-true-bar .http { background: var(--accent); } .sc-true-bar .https_inspected { background: var(--pass); }
+  .sc-true-bar .https_not_inspected { background: var(--fail); }
+  .sc-true-bar .unknown { background: repeating-linear-gradient(45deg, var(--border-strong) 0 4px, transparent 4px 8px); }
+  .sc-swatch { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 2px; margin-right: 0.35em; vertical-align: -0.05em; border: 1px solid var(--border); }
+  .sc-swatch.http { background: var(--accent); } .sc-swatch.https_inspected { background: var(--pass); } .sc-swatch.https_not_inspected { background: var(--fail); }
+  .sc-swatch.unknown { background: repeating-linear-gradient(45deg, var(--border-strong) 0 3px, transparent 3px 6px); }
+  .sc-est { border: 1px dashed var(--warn); border-radius: var(--r-md); padding: 0.5rem 0.7rem; font-size: 0.85rem; margin: 0.5rem 0; }
+  .sc-logs { display: inline-flex; gap: 0.4rem; align-items: center; font-size: 0.8rem; }
   @media (max-width: 600px) { .sc-dl { grid-template-columns: 1fr; } .sc-tile .n { font-size: 1.5rem; } }
 </style>
 <link rel="stylesheet" href="/static/hover_help.css">
@@ -67,6 +77,7 @@
           <option value="30d">Last 30 days</option>
         </select></label>
       <label class="df-ctl"><input type="checkbox" id="scVolume" checked> <span class="lbl">Traffic numbers</span></label>
+      <span class="sc-logs" id="scLogsWrap" hidden><span id="scLogsLbl">Using your uploaded web logs</span> <button type="button" class="rp-btn" id="scLogsDrop">Don't use the logs</button></span>
       <button type="button" class="rp-btn primary" id="scRun">Check coverage</button>
       <a class="rp-btn" id="expXlsx" hidden>Excel</a>
       <a class="rp-btn" id="expJson" hidden>JSON</a>
@@ -78,6 +89,7 @@
           <div class="pa-intro-t">How it works</div>
           <ol class="pa-steps">
             <li><strong>Check coverage.</strong> It reads the SSL inspection rules and, when ZCC is in scope on the Scope page, the Client Connector profiles and PAC files. With ZIA Insights in scope it also asks how much HTTPS and HTTP traffic was inspected.</li>
+            <li><strong>Read the true coverage.</strong> One figure says how much web traffic Zscaler really saw inside: plain HTTP plus HTTPS it decrypted, out of all of it, by transactions and by bytes, adding up to 100%. Unknown traffic is never counted as inspected. Each share left encrypted is tied to the rule or bypass behind it. Without traffic numbers it is an estimate, and says so.</li>
             <li><strong>Read the causes.</strong> Each thing that leaves traffic uninspected is listed with the rule or setting behind it and how risky it is. Leaving file sharing or AI tools encrypted is high risk; leaving banking or health sites encrypted for privacy is expected.</li>
             <li><strong>Follow the recovery plan.</strong> The changes are ordered biggest risk first, each with where to change it and whether it is safe. Run it again afterwards to see the trend.</li>
           </ol>
@@ -239,6 +251,113 @@
         <thead><tr><th scope="col">Run</th><th scope="col" class="num">Traffic kinds covered</th><th scope="col" class="num">Inspected (bytes)</th><th scope="col" class="num">High</th><th scope="col" class="num">Medium</th><th scope="col" class="num">Plan steps</th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
+    // ── True inspection coverage (ssl_true_coverage.py) ──────────────
+    // One figure, four slices that add up to 100%, each slice left
+    // encrypted tied to its cause. Built with DOM calls only: rule names,
+    // categories and applications are tenant data.
+    const SLICE_WORD = { http: 'Plain HTTP', https_inspected: 'HTTPS decrypted', https_not_inspected: 'HTTPS not inspected', unknown: 'Unknown' };
+    function drawTrue() {
+      const host = document.getElementById('scTrue');
+      if (!host || !last) return;
+      host.textContent = '';
+      const t = last.true_coverage;
+      const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+      const h = el('h2', 'sc-h'); h.id = 'scTrueH'; h.appendChild(document.createTextNode('True inspection coverage '));
+      host.appendChild(h);
+      if (!t) { host.appendChild(el('p', 'sc-note', 'This result was made before true coverage existed: check coverage again.')); return; }
+      const est = !!t.estimate;
+      h.appendChild(el('span', `sc-chip ${est ? 'test' : 'yes'}`, est ? 'Estimate, not measured' : 'Measured'));
+      host.appendChild(el('p', `sc-lead ${est ? '' : (t.units && Object.keys(t.units).length ? 'ok' : '')}`, t.headline || ''));
+      const src = el('p', 'sc-note', `${t.source_label || ''}${t.window ? `. Window: ${t.window}` : ''}.`);
+      host.appendChild(src);
+      const units = t.units || {};
+      const avail = ['BYTES', 'TRANSACTIONS', 'MIX'].filter(u => units[u]);
+      if (!avail.length) {
+        if (t.needs) host.appendChild(el('p', 'sc-est', t.needs));
+        drawOutside(host, t, el);
+        return;
+      }
+      const u = units[unit] ? unit : avail[0];
+      if (avail.length > 1) {
+        const seg = el('span', 'sc-seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Unit for the true coverage');
+        [['BYTES', 'Bytes'], ['TRANSACTIONS', 'Transactions']].filter(([k]) => units[k]).forEach(([k, l]) => {
+          const b = el('button', '', l); b.type = 'button'; b.dataset.unit = k; b.setAttribute('aria-pressed', String(u === k)); seg.appendChild(b);
+        });
+        host.appendChild(seg);
+      }
+      const sp = units[u];
+      const amountOf = v => (u === 'BYTES' ? bytes(v) : u === 'TRANSACTIONS' ? `${count(v)} transactions` : `${pct(v)} of the mix`);
+      const tiles = el('div', 'sc-tiles');
+      const tile = (cls, k, n, d) => { const x = el('div', `sc-tile ${cls}`); x.appendChild(el('div', 'k', k)); x.appendChild(el('div', 'n', n)); x.appendChild(el('div', 'd', d)); tiles.appendChild(x); };
+      tile(tone(sp.inspected_pct), est ? 'Inspected (estimate)' : 'Inspected', pct(sp.inspected_pct),
+        sp.unknown_pct ? `Between ${pct(sp.inspected_pct)} and ${pct(sp.inspected_pct_high)}: ${pct(sp.unknown_pct)} is unknown and never counted as inspected.` : 'Plain HTTP plus HTTPS that Zscaler decrypted.');
+      tile(sp.not_inspected_pct ? 'risk' : 'ok', 'HTTPS not inspected', pct(sp.not_inspected_pct), 'Left encrypted: DLP and malware scanning see only where it goes.');
+      host.appendChild(tiles);
+      const bar = el('div', 'sc-true-bar'); bar.setAttribute('aria-hidden', 'true');
+      (sp.slices || []).forEach(x => { if (x.pct > 0) { const s2 = el('span', x.key); s2.style.width = `${Number(x.pct)}%`; s2.title = `${SLICE_WORD[x.key] || x.key}: ${pct(x.pct)}`; bar.appendChild(s2); } });
+      host.appendChild(bar);
+      const wrap = el('div', 'df-tablewrap'), tb = el('table', 'bp-table sc-table');
+      const cap = el('caption', 'sr-only', `All web traffic in four parts, by ${UNIT_WORD[u]}; they add up to ${pct(sp.sum_pct)}`); tb.appendChild(cap);
+      const thead = el('thead'), hr = el('tr');
+      ['Part', 'Share', 'Amount'].forEach((c, i) => { const th = el('th', i ? 'num' : '', c); th.scope = 'col'; hr.appendChild(th); });
+      thead.appendChild(hr); tb.appendChild(thead);
+      const tbody = el('tbody');
+      (sp.slices || []).forEach(x => {
+        const tr = el('tr'), td = el('td'); td.appendChild(el('span', `sc-swatch ${x.key}`)); td.appendChild(document.createTextNode(x.label));
+        tr.appendChild(td); tr.appendChild(el('td', 'num', pct(x.pct))); tr.appendChild(el('td', 'num', amountOf(x.amount))); tbody.appendChild(tr);
+      });
+      const tr = el('tr'); tr.appendChild(el('td', '', 'Total')); tr.appendChild(el('td', 'num', pct(sp.sum_pct))); tr.appendChild(el('td', 'num', amountOf(sp.total))); tbody.appendChild(tr);
+      tb.appendChild(tbody); wrap.appendChild(tb); host.appendChild(wrap);
+      // Why: each share left encrypted, with its cause and fix.
+      const rows = (t.causes || []).concat(t.unattributed ? [t.unattributed] : []).filter(r => (r.pct_of || {})[u] != null);
+      host.appendChild(el('h3', 'sc-h', 'Why HTTPS is not inspected'));
+      host.appendChild(el('p', 'sc-note', `Each row is its share of all web traffic (by ${UNIT_WORD[u]}); together they make the ${pct(sp.not_inspected_pct)} not inspected. Biggest first.`));
+      if (!rows.length) host.appendChild(el('p', 'sc-note', u === 'TRANSACTIONS' && t.source === 'insights' ? 'Insights cannot split transactions by cause: switch to bytes.' : 'Nothing is left encrypted.'));
+      else {
+        const list = el('ul', 'sc-list');
+        rows.forEach(r => {
+          const li = el('li', `sc-item ${r.risk || ''}`), hd = el('div', 'sc-item-h');
+          hd.appendChild(el('span', 'sc-n', pct(r.pct_of[u])));
+          hd.appendChild(el('span', '', `${r.kind_label || ''}${r.rule ? `: ${r.rule}` : ''}${r.order != null && r.order !== '' ? ` (order ${r.order})` : ''}`));
+          li.appendChild(hd);
+          const dl = el('dl', 'sc-dl');
+          const row = (k, v) => { if (!v) return; dl.appendChild(el('dt', '', k)); const dd = el('dd'); typeof v === 'string' ? dd.textContent = v : dd.appendChild(v); dl.appendChild(dd); };
+          row('Why', r.how || '');
+          row('Seen as', (r.examples || []).join('; '));
+          row('Basis', r.basis || '');
+          if ((r.likely || []).length) row('Likely behind it', r.likely.map(x => `${x.kind_label}${x.rule ? `: ${x.rule}` : ''}`).join('; '));
+          row('To fix', r.recovery || '');
+          if (r.fix && /^\/report\/[a-z-]+(\?build=[a-z_]{1,40})?$/.test(r.fix.href)) {
+            const a = el('a', 'rp-btn sc-fix', r.fix.label); a.href = r.fix.href; a.target = '_blank'; a.rel = 'noopener'; row('Fix it', a);
+          }
+          li.appendChild(dl); list.appendChild(li);
+        });
+        host.appendChild(list);
+      }
+      if (t.needs) host.appendChild(el('p', 'sc-est', `${t.why_estimate ? `${t.why_estimate} ` : ''}${t.needs}`));
+      drawOutside(host, t, el);
+    }
+    const UNIT_WORD = { BYTES: 'bytes', TRANSACTIONS: 'transactions', MIX: 'a typical traffic mix' };
+    function drawOutside(host, t, el) {
+      const out = t.outside || [];
+      if (out.length) {
+        host.appendChild(el('h3', 'sc-h', `Never reaches ZIA (${out.length}): in no figure above`));
+        const list = el('ul', 'sc-list');
+        out.forEach(r => {
+          const li = el('li', `sc-item ${r.risk || ''}`), hd = el('div', 'sc-item-h');
+          hd.appendChild(el('span', `sc-chip ${r.risk || ''}`, r.risk_label || ''));
+          hd.appendChild(el('span', '', `${r.kind_label || ''}${r.rule ? `: ${r.rule}` : ''}`));
+          li.appendChild(hd); li.appendChild(el('div', '', `${r.what || ''}. ${r.why || ''}`));
+          if (r.fix && /^\/report\/[a-z-]+(\?build=[a-z_]{1,40})?$/.test(r.fix.href)) {
+            const a = el('a', 'rp-btn sc-fix', r.fix.label); a.href = r.fix.href; a.target = '_blank'; a.rel = 'noopener'; li.appendChild(a);
+          }
+          list.appendChild(li);
+        });
+        host.appendChild(list);
+      }
+      if ((t.notes || []).length) { const ul = el('ul', 'sc-unavail'); t.notes.forEach(n => ul.appendChild(el('li', '', n))); host.appendChild(ul); }
+    }
+
     // ── Traffic river (static/flow_anim.js): the numbers above, moving ──
     // Stream widths are this page's own Insights numbers in the chosen
     // unit; the causes fan is each kind of cause's share of the causes.
@@ -288,6 +407,7 @@
       const diag = (res.diagnostics || []).map(d => `<li>${E(d.section)}: ${E(d.error_type || '')} ${E(d.error || '')}</li>`).join('');
       body.innerHTML = `
         <p class="sc-lead ${hi ? 'risk' : 'ok'}" role="note">${E(res.headline || '')}</p>
+        <section aria-labelledby="scTrueH" id="scTrue"></section>
         <section aria-labelledby="hRiver" id="scRiverSec"><h2 class="sc-h" id="hRiver">Traffic river</h2><div id="scRiver"></div></section>
         <section aria-labelledby="hTraffic" id="scTraffic">${trafficHtml(res)}</section>
         <h2 class="sc-h" id="hPlan">Recovery plan</h2>
@@ -314,14 +434,17 @@
         x.href = `/api/ssl-coverage/export/${encodeURIComponent(res.report_id)}?format=xlsx`; x.hidden = false;
         j.href = `/api/ssl-coverage/export/${encodeURIComponent(res.report_id)}?format=json`; j.hidden = false;
       }
+      drawTrue();
       drawRiver();
     }
     body.addEventListener('click', e => {
       const b = e.target.closest('button[data-unit]'); if (!b || !last) return;
       unit = b.dataset.unit;
+      const where = b.closest('#scTrue') ? '#scTrue' : '#scTraffic';
       document.getElementById('scTraffic').innerHTML = trafficHtml(last);
+      drawTrue();
       drawRiver();
-      const again = body.querySelector(`button[data-unit="${unit}"]`); if (again) again.focus();
+      const again = body.querySelector(`${where} button[data-unit="${unit}"]`); if (again) again.focus();
       say(`Percentages now by ${unit === 'BYTES' ? 'bytes' : 'transactions'}.`);
     });
 
@@ -377,7 +500,8 @@
       const t0 = Date.now();
       const tick = setInterval(() => { const el = document.getElementById('scElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
       try {
-        const payload = Object.assign({}, credBody(), scopeSelection(), { window: document.getElementById('scWindow').value, include_volume: document.getElementById('scVolume').checked });
+        const payload = Object.assign({}, credBody(), scopeSelection(), { window: document.getElementById('scWindow').value, include_volume: document.getElementById('scVolume').checked },
+          logsId ? { logs_report_id: logsId } : {});
         const r = await fetch('/api/ssl-coverage/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
@@ -399,6 +523,16 @@
       if (!id) return;
       try { const r = await fetch(`/api/ssl-coverage/${encodeURIComponent(id)}`, { cache: 'no-store' }); if (r.ok) render(await r.json()); } catch (e) { /* run it again */ }
     }
+    // ?logs=<traffic log report id>: the Traffic and session logs page's
+    // hand-off. The server checks the id before anything is read.
+    let logsId = (new URLSearchParams(location.search).get('logs') || '').trim();
+    if (!/^tlogs-[A-Za-z0-9_-]{6,40}$/.test(logsId)) logsId = '';
+    if (logsId) document.getElementById('scLogsWrap').hidden = false;
+    document.getElementById('scLogsDrop').addEventListener('click', () => {
+      logsId = ''; document.getElementById('scLogsWrap').hidden = true;
+      document.getElementById('scRun').focus();
+      say('The uploaded web logs will not be used. Check coverage uses ZIA Insights or the estimate.');
+    });
     document.getElementById('scRun').addEventListener('click', run);
     tenantChoices();
     reopen();
