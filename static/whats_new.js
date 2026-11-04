@@ -261,7 +261,10 @@ window.WHATS_NEW = {
       "id": "ssl-true-coverage", "release": "2026-11-04", "label": "True inspection coverage",
       "what": "One figure for how much web traffic Zscaler really sees inside (plain HTTP plus decrypted HTTPS), by transactions and by bytes, adding up to 100%, with each share left encrypted tied to its rule or bypass and a fix. Without traffic numbers it is a labelled estimate.",
       "changelog": ["True inspection coverage"],
-      "marks": [{ "page": "/report/sslcoverage", "at": "#scTrueH", "shown": "after a check" }]
+      "marks": [
+        { "page": "/report/sslcoverage", "at": "#scTrueH", "shown": "after a check" },
+        { "page": "/report/operations", "at": "#opSslCov" }
+      ]
     },
     {
       "id": "ssl-true-coverage-logs", "release": "2026-11-04", "label": "True coverage from your web logs",

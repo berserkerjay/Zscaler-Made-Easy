@@ -4625,6 +4625,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/operations": {
+   "#opSslCov": {
+    "what": "Opens SSL coverage in a new tab. It shows how much web traffic Zscaler really inspects. It names the rule or bypass that leaves the rest locked, with a link back here to fix it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#fwiFile": {
     "what": "Loads a migration plan saved from Migrate from another vendor (Palo Alto Networks). The server checks it again before the preview.",
     "input": "Optional when the plan was handed over from that page. One .json plan file under 4 MB.",
