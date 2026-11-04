@@ -89,6 +89,8 @@ answer leaves the question open.
 | What did the logs I saved show? Which ZPA connections failed and why? | `traffic_logs_summary` (blank to list, then `saved_report`) | `zpa_path` for a failing destination; SIEM queries |
 | Are our Cloud & Branch Connectors healthy and set up well? | `ztw_summary` | `path_check` for a workload destination |
 | Which apps have a poor ZDX score? What ZDX alerts fired? | `zdx_summary` | `fleet_health` for the devices' Client Connector |
+| Who can administer the tenant? Too many super admins? Stale admins, MFA, API client scopes? | `rbac_review` | `readiness` for this API client's own rights; `run_section` (`rbac`) |
+| What do we send to the SIEM? Which logs are not streamed? Are NSS feeds or LSS on? | `telemetry_review` | `traffic_logs_summary` for logs the admin saved |
 | What did the app change recently? What happened since Monday? | `timeline` (`since`) | `snapshot_diff` for what the configuration now differs by |
 | What did we note about this rule or finding? Note this for later | `case_notes` (`tag` or `kind`) | Ask the admin to add the note on the app's pages (you cannot add one) |
 
