@@ -116,6 +116,7 @@ Assumed, not verifiable without a tenant:
 """
 from __future__ import annotations
 
+import copy
 import io
 import json
 import re
@@ -380,6 +381,33 @@ def _keep_ztc_gateway(row: Dict[str, Any]) -> bool:
     return str(row.get("type") or "").upper() in _ZTC_GATEWAY_TYPES
 
 
+# The forward methods zscaler/ztc's ztc_traffic_forwarding_rule accepts (its
+# forward_method validator, 0.2.0). The API also answers ZPA, PROXYCHAIN,
+# ECSELF and others, which that resource cannot express.
+_ZTC_FORWARD_METHODS = ("DIRECT", "LOCAL_SWITCH", "ZIA", "ECZPA", "DROP")
+
+
+def _keep_ztc_forwarding_rule(row: Dict[str, Any]) -> bool:
+    return _custom_rule(row) and str(row.get("forward_method") or "").upper() in _ZTC_FORWARD_METHODS
+
+
+def _why_ztc_forwarding_rule(row: Dict[str, Any]) -> str:
+    if not _custom_rule(row):
+        return _PREDEF
+    return (f"forward method {one_line(str(row.get('forward_method') or 'none'))[:40]}, which the provider's "
+            f"ztc_traffic_forwarding_rule does not take (it takes {', '.join(_ZTC_FORWARD_METHODS)})")
+
+
+def _keep_ztc_ip_pool(row: Dict[str, Any]) -> bool:
+    # ztc_ip_pool_groups holds exactly one address range (ip_addresses: required, at most 1 item, 0.2.0).
+    return isinstance(row.get("ip_addresses"), list) and len(row["ip_addresses"]) == 1
+
+
+def _why_ztc_ip_pool(row: Dict[str, Any]) -> str:
+    n = len(row.get("ip_addresses") or []) if isinstance(row.get("ip_addresses"), list) else 0
+    return f"{n} address ranges; the provider's ztc_ip_pool_groups holds exactly one"
+
+
 _ZPA_SPECIAL = ("clientless_apps", "pra_apps", "inspection_apps", "common_apps_dto")
 
 
@@ -421,7 +449,7 @@ def _t(key: str, resource: str, label: str, area: str, svc: str, method: Optiona
        args: Tuple[Any, ...] = (), singleton: bool = False, import_id: Optional[str] = None, name: str = "name",
        keep: Optional[Callable[[Dict[str, Any]], bool]] = None, per_type: bool = False, zpa_paged: bool = False,
        personal: bool = False, hook: Optional[str] = None, import_fmt: str = "{id}", secrets: Optional[Dict[str, str]] = None,
-       keep_why: str = "", extra: Optional[List[Tuple[str, Tuple[Any, ...]]]] = None, bound: bool = False,
+       keep_why: Any = "", extra: Optional[List[Tuple[str, Tuple[Any, ...]]]] = None, bound: bool = False,
        raw: Optional[str] = None) -> Dict[str, Any]:
     product = key.split(".", 1)[0]
     return {"key": key, "product": product, "resource": resource, "label": label, "area": area, "svc": svc, "method": method,
@@ -649,7 +677,8 @@ TYPES: List[Dict[str, Any]] = [
        keep=_custom, keep_why=_PREDEF),
     _t("ztc.ip_destination_groups", "ztc_ip_destination_groups", "IP destination groups", "objects", "ip_destination_groups",
        "list_ip_destination_groups", gate=_ZTC, keep=_custom, keep_why=_PREDEF),
-    _t("ztc.ip_pool_groups", "ztc_ip_pool_groups", "IP pool groups", "objects", "ip_groups", "list_ip_groups", gate=_ZTC),
+    _t("ztc.ip_pool_groups", "ztc_ip_pool_groups", "IP pool groups", "objects", "ip_groups", "list_ip_groups", gate=_ZTC,
+       keep=_keep_ztc_ip_pool, keep_why=_why_ztc_ip_pool),
     _t("ztc.network_services", "ztc_network_services", "Network services", "objects", "nw_service", "list_network_services", gate=_ZTC,
        keep=_custom, keep_why=_PREDEF),
     _t("ztc.network_service_groups", "ztc_network_service_groups", "Network service groups", "objects", "nw_service_groups",
@@ -657,7 +686,7 @@ TYPES: List[Dict[str, Any]] = [
     _t("ztc.forwarding_gateways", "ztc_forwarding_gateway", "Forwarding gateways", "forwarding", "forwarding_gateways", "list_gateways",
        gate=_ZTC, keep=_keep_ztc_gateway, keep_why="a gateway type the provider's ztc_forwarding_gateway does not take (ZIA, ECSELF or PROXYCHAIN)"),
     _t("ztc.forwarding_rules", "ztc_traffic_forwarding_rule", "Traffic forwarding rules", "forwarding", "forwarding_rules", "list_rules",
-       gate=_ZTC, keep=_custom_rule, keep_why=_PREDEF),
+       gate=_ZTC, keep=_keep_ztc_forwarding_rule, keep_why=_why_ztc_forwarding_rule),
     _t("ztc.location_templates", "ztc_location_template", "Location templates", "provisioning", "location_template",
        "list_location_templates", gate=_ZTC),
     _t("ztc.provisioning_urls", "ztc_provisioning_url", "Provisioning URLs", "provisioning", "provisioning_url", "list_provisioning_url",
@@ -1815,13 +1844,23 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
                 ctx.names.setdefault(key, {})[rid] = _display_name(t, row)
             for row in types[key]:
                 if t["keep"] and not t["keep"](row):
-                    skipped.append({"what": f"{t['label']}: {one_line(_display_name(t, row))[:120]}", "why": t["keep_why"] or "not exported"})
+                    why = t["keep_why"](row) if callable(t["keep_why"]) else t["keep_why"]
+                    skipped.append({"what": f"{t['label']}: {one_line(_display_name(t, row))[:120]}", "why": why or "not exported"})
                     continue
                 lab = ctx.label(t["resource"], t["resource"].split("_", 1)[1] if t["singleton"] else _display_name(t, row))
                 if not t["singleton"] and _rid(row):
                     ctx.addr[(key, _rid(row))] = (t["resource"], lab)
                 kept.setdefault(key, []).append((row, lab))
-        # 2. the resources, area by area
+        # 2. objects the provider cannot take (a required argument missing) lose their address before
+        #    anything is rendered, so no other resource refers to a resource that is never written:
+        #    it is looked up by name or written as its id instead (a dry run on copies; rendering has side effects)
+        scratch = copy.deepcopy(ctx)
+        for key in keys:
+            t = BY_KEY[key]
+            for row, lab in kept.get(key, []):
+                if render_resource(t, copy.deepcopy(row), lab, scratch)[1]:
+                    ctx.addr.pop((key, _rid(row)), None)
+        # 3. the resources, area by area
         by_area: Dict[str, List[str]] = {}
         imports: List[str] = []
         by_resource: Dict[str, List[Tuple[str, str]]] = {}

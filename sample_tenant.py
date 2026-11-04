@@ -919,7 +919,7 @@ ZTW_WORKLOAD_GROUPS = [
         {"tagType": "ATTR", "operator": "AND", "tagContainer": {"operator": "AND", "tags": [{"key": "Role", "value": "backup"}]}}]}},
 ]
 ZTW_FORWARDING_RULES = [
-    {"id": 4401, "name": "Billing to ZPA", "order": 1, "rank": 7, "state": "ENABLED", "type": "EC_RDR", "forwardMethod": "ZPA",
+    {"id": 4401, "name": "Billing to ZPA", "order": 1, "rank": 7, "state": "ENABLED", "type": "EC_RDR", "forwardMethod": "ECZPA",
      "srcWorkloadGroups": [{"id": 4201, "name": "Billing servers"}], "zpaAppSegments": [{"id": 4501, "name": "Freight billing", "externalId": "2201"}]},
     {"id": 4402, "name": "Backups direct to S3", "order": 2, "rank": 7, "state": "ENABLED", "type": "EC_RDR", "forwardMethod": "DIRECT",
      "srcWorkloadGroups": [{"id": 4202, "name": "Backup agents"}], "destAddresses": ["52.218.128.0/17"],
@@ -1055,8 +1055,8 @@ ZIA_WORKLOAD_GROUPS = [{"id": 5711, "name": "Billing workloads", "description": 
                              "tagContainer": {"operator": "AND", "tags": [{"key": "Vpc-id", "value": "vpc-0larkspur1"}]}}]}}]
 # HTTP header insertion (zia/models/http_header_control.py): the Microsoft 365
 # tenant restriction header, complete.
-HTTP_HEADER_PROFILES = [{"id": 5721, "name": "Microsoft 365 sign-in", "description": "Sign-in hosts.", "deleted": False,
-                         "profileReadyForUse": True, "httpHeaderProfileCriteria": [{"id": 1, "header": "Host", "operator": "CONTAINS"}]}]
+HTTP_HEADER_PROFILES = [{"id": 5721, "name": "Microsoft 365 sign-in", "description": "Sign-in from Edge, any version.", "deleted": False,
+                         "profileReadyForUse": True, "httpHeaderProfileCriteria": [{"id": 1, "header": "USERAGENT", "operator": "UAVERSIONANY", "userAgentBitmap": "MSEDGE"}]}]
 HTTP_HEADER_ACTION_PROFILES = [{"id": 5731, "name": "Tenant restrictions v1", "description": "Larkspur tenant only.", "deleted": False,
                                 "profileReadyForUse": True,
                                 "httpHeaderActionProfileKeys": [{"id": 1, "key": "Restrict-Access-To-Tenants", "value": "larkspur.example"}]}]
@@ -1077,7 +1077,7 @@ CBI_CERTIFICATES = [{"id": "5751", "name": "Larkspur isolation root", "isDefault
     "LQNSRLAR\n"
     "-----END CERTIFICATE-----\n")}]
 # Cloud & Branch Connector IP groups (ztw/models/ip_groups.py): one holds no address.
-ZTW_IP_GROUPS = [{"id": 5761, "name": "Billing subnets", "description": "Billing VPC.", "ipAddresses": ["10.40.0.0/24", "10.40.1.0/24"]},
+ZTW_IP_GROUPS = [{"id": 5761, "name": "Billing subnets", "description": "Billing VPC.", "ipAddresses": ["10.40.0.0/23"]},
                  {"id": 5762, "name": "Retired DR subnets", "description": "Emptied after the move.", "ipAddresses": []}]
 
 # A made-up detector for "Test a prompt" on the sample: keyword rules only,
