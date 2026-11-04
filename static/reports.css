@@ -885,6 +885,7 @@ summary { min-height: 24px; }
 .dfs-more { margin-top: 0.6rem; }
 .dfs-traffic { margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .dfs-traffic .dfs-lead { margin-bottom: 0.6rem; }
+.dfs-trafpath { margin: 0 0 0.6rem; line-height: 1.5; color: var(--text); font-size: 1rem; }
 .dfs-stage { overflow-x: auto; }
 @media (max-width: 760px) {
   .dfs { padding: 0.8rem 0.6rem; }

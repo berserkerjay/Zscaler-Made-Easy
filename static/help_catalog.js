@@ -3115,12 +3115,12 @@ window.HELP_CATALOG = {
     "effect": "nav"
    },
    "#dfsNet": {
-    "what": "Picks the network for the uploads picture. Insights cannot say which network was used, so it shows where all of the uploads would go on the one you pick.",
+    "what": "Picks the network for the uploads picture. It follows the path you pick above. Insights cannot say which network was used, so it shows where all of the uploads would go on the one you pick.",
     "input": "Pick one: Off network (remote), On trusted network (office) or On VPN.",
     "effect": "local"
    },
    "#dfsFlowPlay": {
-    "what": "Pauses or plays the moving dots in the uploads picture. The list under it says the same in words.",
+    "what": "Plays or pauses the moving dots in the uploads picture. It starts still, because the widths already show the shares. The list under it says the same in words.",
     "input": "Nothing to type. Just click it. The label says what a click does now.",
     "effect": "local"
    },

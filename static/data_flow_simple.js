@@ -6,9 +6,10 @@
 // for each step (never colour alone, WCAG 1.4.1), a legend beside it, the
 // details of one step at a time (hover, focus or click), and an optional
 // walk-through (Back / Next). When the report carries traffic numbers
-// (report.traffic, from ZIA Insights) a moving picture shows where the
-// uploaded bytes really go on one network; without them nothing moves and
-// the page says why. Every fact the full map shows stays in "Show all
+// (report.traffic, from ZIA Insights) a picture shows where the uploaded
+// bytes really go on the chosen path's network, tied to that path by one
+// sentence; it starts still (Play motion is opt-in); without numbers there
+// is no picture and the page says why. Every fact the full map shows stays in "Show all
 // details" (report_dataflow.html). Built with DOM calls and textContent
 // only: rule and destination names are tenant data.
 (function (root) {
@@ -214,7 +215,7 @@
     wrap.appendChild(tsec);
     container.appendChild(wrap);
 
-    let steps = [], cur = -1, pinned = -1, walking = false, trace = null, pic = null;
+    let steps = [], cur = -1, pinned = -1, walking = false, trace = null, pic = null, onTrace = null;
 
     function showDetail(i) {
       detail.textContent = '';
@@ -328,6 +329,7 @@
       endWalk(false);
       drawSteps();
       pin(keyStep());
+      if (onTrace) onTrace(t);
     }
 
     function startWalk() {
@@ -361,7 +363,11 @@
         + ' The numbered steps above show what the settings decide. With ZIA Insights in scope, this space shows how much of your real uploads takes each road.';
       tsec.appendChild(p);
     } else {
-      tsec.appendChild(el('p', 'dfs-lead', `This picture uses real numbers: the data your users uploaded to cloud apps in ${winWords(tr)}. Each stream is as wide as its share. Dots show data moving, and a red stream ends where the data is not checked.`));
+      // One plain sentence ties the picture to the path above.
+      const said = el('p', 'dfs-trafpath'); said.id = 'dfsTrafficPath';
+      tsec.appendChild(said);
+      const lead = el('p', 'dfs-lead');
+      tsec.appendChild(lead);
       const row = el('div', 'dfs-top');
       const nl = el('label', 'df-ctl'); nl.appendChild(el('span', 'lbl', 'Network'));
       const ns = el('select'); ns.id = 'dfsNet';
@@ -381,11 +387,14 @@
       const draw = network => {
         if (pic) pic.destroy();
         const m = FA.dataFlowTrafficModel(report, network);
+        lead.textContent = `This picture uses real numbers: the data your users uploaded to cloud apps in ${winWords(tr)}. Each stream is as wide as its share. `
+          + (m && m.unchecked ? 'A red stream ends where the data is not checked.' : 'None of the counted uploads took a road where the data is not checked.')
+          + ' The picture starts still, because the widths say it all; Play motion shows the data moving.';
         altHost.textContent = '';
         if (!m) { stage.textContent = ''; pic = null; altHost.appendChild(el('p', 'dfs-note', 'No uploads were counted for this network.')); syncPlay(); return; }
         FA.altList(altHost, m.alt, 'dfsFlowAlt');
         pic = FA.river(stage, m, {
-          height: 200,
+          height: 200, autoplay: false,   // motion adds nothing the widths do not say: Play is opt-in
           onFocus: l => { pick.textContent = l ? l.label : 'Point at or focus a stream for its share. Press Enter on it to show that path in the steps above.'; },
           onPick: l => { const it = l.items && l.items[0]; if (it && report.traces[it.i]) { show(report.traces[it.i], it.i); const b = ol.querySelector('.dfs-btn[aria-pressed="true"]'); if (b) b.focus(); } },
         });
@@ -394,7 +403,34 @@
       };
       const syncPlay = FA.playButton(play, () => [pic]);
       ns.addEventListener('change', () => draw(ns.value));
+      // The path above: its share of the uploads and what happens to that
+      // data; the picture shows that path's network.
+      onTrace = t => {
+        said.textContent = '';
+        const ps = FA.dataFlowPathShare ? FA.dataFlowPathShare(report, t) : null;
+        if (t && t.network && t.network !== ns.value && [...ns.options].some(op => op.value === t.network)) { ns.value = t.network; draw(ns.value); }
+        if (!ps) {
+          const k = t && t.destination && t.destination.kind === 'class' && t.destination.class;
+          said.textContent = k && tr.classes[k] ? 'No uploads were counted on the network of the path above, so this picture has nothing to show for it.'
+            : 'The path above is not one of the traffic classes ZIA Insights counts, so this picture cannot say how much of your uploads took it.';
+          return;
+        }
+        const where = `${ps.label} · ${nets[t.network] || t.network}`;
+        const pct = ps.share > 0 && ps.share < 0.005 ? 'under 1%' : `${Math.round(100 * ps.share)}%`;
+        said.appendChild(doc.createTextNode(`The path above (${where}) carried `));
+        said.appendChild(el('strong', '', pct));
+        if (ps.bytes > 0) {
+          said.appendChild(doc.createTextNode(` (${FA.humanBytes(ps.bytes)}) of the ${FA.humanBytes(ps.total)} your users uploaded in ${ps.window}. On this network, that data `));
+          said.appendChild(el('strong', '', ps.now));
+          said.appendChild(doc.createTextNode('.'));
+        } else {
+          said.appendChild(doc.createTextNode(` of the ${FA.humanBytes(ps.total)} your users uploaded in ${ps.window}: no uploads were seen there. If people start uploading to ${ps.label}, that data `));
+          said.appendChild(el('strong', '', ps.would));
+          said.appendChild(doc.createTextNode('.'));
+        }
+      };
       draw(ns.value);
+      if (trace) onTrace(trace);
     }
 
     return {

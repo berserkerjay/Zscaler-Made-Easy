@@ -67,6 +67,36 @@ def test_a_catalogue_name_wins_over_the_category():
     assert tr["classes"]["ai_ml"]["upload"] == 7 and tr["classes"]["general"]["upload"] == 0
 
 
+def test_generative_ai_and_paste_apps_land_in_their_own_class():
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: ChatGPT and Pastebin, whose Shadow IT categories say nothing about their class, are counted as Generative AI and paste sites, and a "Generative AI" category maps there too; the catalogue still wins."""
+    rep = fx.dataflow_report()
+    apps = [{"application": "ChatGPT", "application_category": "System and Development", "data_uploaded": 5},
+            {"application": "Pastebin", "application_category": "Consumer", "data_uploaded": 3},
+            {"application": "Some New Bot", "application_category": "Generative AI", "data_uploaded": 2},
+            {"application": "Proton Mail", "application_category": "Web Mail", "data_uploaded": 1},
+            {"application": "Salesforce", "application_category": "Sales and Marketing", "data_uploaded": 4}]
+    tr = df.attach_traffic(rep, {"status": "ok", "apps": apps, "window": None})
+    c = tr["classes"]
+    assert c["ai_ml"]["apps"] == ["ChatGPT", "Some New Bot"] and c["ai_ml"]["upload"] == 7, c["ai_ml"]
+    assert c["forums"]["apps"] == ["Pastebin"] and c["webmail"]["apps"] == ["Proton Mail"]
+    assert c["general"]["apps"] == ["Salesforce"]
+    traces = [{"destination": {"kind": "class", "class": "file_share", "label": "Files", "applications": ["CHATGPT"], "app_classes": []}},
+              {"destination": {"kind": "class", "class": "ai_ml", "label": "AI", "applications": [], "app_classes": ["AI_ML"]}}]
+    assert df.traffic_shares(traces, apps[:1])["classes"]["file_share"]["upload"] == 5
+
+
+def test_the_markdown_export_lists_the_traffic_shares():
+    """ASVS V7.4.1 · CWE-1287 · WSTG-INFO-05: the Markdown export carries the same traffic shares as the JSON export (class, share, bytes, apps, window, basis), or why there are none; application names stay inert text."""
+    rep = _report_with_traffic(APPS + [{"application": "<b>x</b>", "application_category": "File Share", "data_uploaded": 0}])
+    md = df.to_markdown(rep)
+    sec = md.split("## Where uploads go")[1].split("\n## ")[0]
+    assert "File sharing & cloud storage: 60% (6.0 KB uploaded" in sec and "Personal webmail: 30% (3.0 KB" in sec, sec
+    assert "Box" in sec and "<b>" not in sec and "Last 7 days" in sec and "network" in sec
+    plain = fx.dataflow_report()
+    df.attach_traffic(plain, None)
+    assert df.TRAFFIC_NOT_IN_SCOPE.split(":")[0] in df.to_markdown(plain).split("## Where uploads go")[1]
+
+
 @pytest.mark.parametrize("read, word", [
     (None, "not in scope"),
     ({"status": "error", "apps": [], "error": "HTTP 403"}, "HTTP 403"),
@@ -149,6 +179,40 @@ def test_a_failed_insights_sign_in_never_shows_the_secret(route, monkeypatch):
     assert rep["traffic"]["available"] is False and "s3cr3t-value" not in json.dumps(rep["traffic"]) and "not read" in rep["traffic"]["reason"]
 
 
+def test_a_slow_insights_read_times_out_with_a_plain_message(monkeypatch):
+    """ASVS V11.1.7 · CWE-400 · WSTG-BUSL-07: a slow ZIA Insights read gets its own time limit; the map is kept with a plain reason, and the late answer never lands in the report."""
+    import asyncio
+    import threading
+    import dlp_api_server as srv
+    gate = threading.Event()
+
+    def slow(req, rep):
+        gate.wait(10)
+        rep["traffic"] = {"available": True, "late": True}
+    monkeypatch.setattr(srv, "_dataflow_traffic", slow)
+    monkeypatch.setattr(srv, "DATAFLOW_TRAFFIC_TIMEOUT_S", 0)
+    rep = fx.dataflow_report()
+
+    async def go():
+        try:
+            await srv._dataflow_traffic_bounded(_Req(), rep)
+        finally:
+            gate.set()
+    asyncio.run(go())
+    tr = rep["traffic"]
+    assert tr["available"] is False and "did not answer" in tr["reason"] and "late" not in tr, tr
+
+
+def test_a_quick_insights_read_is_kept(monkeypatch):
+    """ASVS V11.1.7 · CWE-400: within the time limit the Insights answer is put on the report as it was read."""
+    import asyncio
+    import dlp_api_server as srv
+    monkeypatch.setattr(srv, "_dataflow_traffic", lambda req, rep: rep.__setitem__("traffic", {"available": True, "x": 1}))
+    rep = fx.dataflow_report()
+    asyncio.run(srv._dataflow_traffic_bounded(_Req(), rep))
+    assert rep["traffic"] == {"available": True, "x": 1}
+
+
 # ── node: the models ────────────────────────────────────────────────────
 def _node(expr, **data):
     script = ("global.window = globalThis; const FA = require(%s); require(%s); const S = globalThis.DataFlowSimple;\n"
@@ -172,6 +236,29 @@ def test_the_traffic_model_weights_each_path_by_its_uploads_on_one_network():
     blind = [e for e in m["ends"] if e["key"] == "enc"]
     assert vis["webmail"] == "blind" and blind and blind[0]["bytes"] == 3_000
     assert any("cannot say which network" in a for a in m["alt"]) and any("30%" in a for a in m["alt"])
+
+
+@needs_node
+def test_the_uploads_words_name_risky_roads_that_carried_no_uploads():
+    """WCAG 2.2 SC 1.1.1 · CWE-1287: a blind or bypassed traffic class with 0 bytes uploaded still appears in the picture's words as 0%, and the lead mentions a red stream only when one exists."""
+    rep = _report_with_traffic([a for a in APPS if not (isinstance(a, dict) and a.get("application") == "Gmail")])
+    m = _node("const m = FA.dataFlowTrafficModel(D.rep, 'off'); return { alt: m.alt, unchecked: m.unchecked };", rep=rep)
+    zero = [a for a in m["alt"] if a.startswith("0% ")]
+    assert zero and "not inspected" in zero[0] and "Personal webmail" in zero[0] and "no uploads" in zero[0], m["alt"]
+    assert m["unchecked"] is False
+    assert _node("return FA.dataFlowTrafficModel(D.rep, 'off').unchecked;", rep=_report_with_traffic()) is True
+
+
+@needs_node
+def test_the_selected_path_has_its_share_of_the_uploads():
+    """WCAG 2.2 SC 1.3.1 · CWE-1287: the chosen path's share of the uploads and what would happen to that data, including a path that carried 0%."""
+    rep = _report_with_traffic([a for a in APPS if not (isinstance(a, dict) and a.get("application") == "Gmail")])
+    i = [k for k, t in enumerate(rep["traces"]) if t["network"] == "off" and t["destination"].get("class") == "webmail"][0]
+    j = [k for k, t in enumerate(rep["traces"]) if t["network"] == "off" and t["destination"].get("class") == "file_share"][0]
+    out = _node("return [FA.dataFlowPathShare(D.rep, D.rep.traces[%d]), FA.dataFlowPathShare(D.rep, D.rep.traces[%d])];" % (i, j), rep=rep)
+    web, fs = out
+    assert web["label"] == "Personal webmail" and web["share"] == 0 and web["bytes"] == 0 and "not inspected" in web["would"]
+    assert fs["share"] > 0.5 and fs["bytes"] == 6_000 and fs["total"] == 7_000
 
 
 @needs_node
@@ -235,13 +322,32 @@ out.view = await ev(`({ simpleShown: !document.getElementById('dfSimpleWrap').hi
   beside: (() => { const l = document.getElementById('dfsLegend').getBoundingClientRect(), s = document.getElementById('dfsSteps').getBoundingClientRect(); return l.left >= s.right && l.top < s.bottom; })(),
   detailShown: document.getElementById('dfsDetail').textContent.length > 20, howTo: document.querySelector('.dfs-howto p').textContent,
   scrollY: window.scrollY })`);
-// The uploads picture moves (real numbers), with Pause.
-await until(() => ev(`[...document.querySelectorAll('#dfsFlowStage .fa-dot.pk')].some(d => d.hasAttribute('cx'))`), 'packets', 5000).catch(() => null);
+// The uploads picture starts still (its widths say it all); Play motion starts it, and Pause is offered.
+await frames(6);
 const pk = () => ev(`[...document.querySelectorAll('#dfsFlowStage .fa-dot.pk')].map(d => d.getAttribute('cx')).join(',')`);
+out.flow = { stillFirst: await ev(`[...document.querySelectorAll('#dfsFlowStage .fa-dot.pk')].every(d => !d.hasAttribute('cx'))`),
+  button0: await ev(`document.getElementById('dfsFlowPlay').textContent`) };
+await ev(`(document.getElementById('dfsFlowPlay').click(), 1)`);
+await until(() => ev(`[...document.querySelectorAll('#dfsFlowStage .fa-dot.pk')].some(d => d.hasAttribute('cx'))`), 'packets', 5000).catch(() => null);
 const a0 = await pk();
-out.flow = { moves: !!(await until(async () => (await pk()) !== a0, 'moving', 5000).catch(() => false)),
+Object.assign(out.flow, { moves: !!(await until(async () => (await pk()) !== a0, 'moving', 5000).catch(() => false)),
   button: await ev(`document.getElementById('dfsFlowPlay').textContent`), alt: await ev(`document.getElementById('dfsFlowAlt').textContent`),
-  described: await ev(`document.querySelector('#dfsFlowStage svg').getAttribute('aria-describedby')`) };
+  described: await ev(`document.querySelector('#dfsFlowStage svg').getAttribute('aria-describedby')`) });
+await ev(`(document.getElementById('dfsFlowPlay').click(), 1)`);
+// Column heads and node labels are never cut short, and no column head runs into the next one.
+const LABELS = `(() => { const cols = [...document.querySelectorAll('#dfsFlowStage text.fa-col')].map(t => { const r = t.getBBox(); return { text: [...t.querySelectorAll('tspan')].map(s => s.textContent).join(' '), full: t.querySelector('title').textContent, x0: r.x, x1: r.x + r.width }; });
+  return { cols, nodes: [...document.querySelectorAll('#dfsFlowStage .fa-rnode .fa-t')].map(t => t.textContent) }; })()`;
+out.labels = { 1280: await ev(LABELS) };
+// The uploads picture names the path above, its share, and says "not inspected" when that path is blind.
+const pathWas = await ev(`document.getElementById('dfsPath').value`);
+out.tie = await ev(`({ path: document.getElementById('dfsPath').selectedOptions[0].textContent, said: (document.getElementById('dfsTrafficPath') || {}).textContent || '',
+  lead: document.querySelector('#dfsTraffic .dfs-lead').textContent, red: !!document.querySelector('#dfsFlowStage .fa-band.stop'),
+  alt: document.getElementById('dfsFlowAlt').textContent, dest: document.querySelector('#dfsSteps li[data-step="dest"] .dfs-dec').textContent })`);
+await ev(`(() => { const s = document.getElementById('dfsPath'); const o = [...s.options].filter(o => /^File sharing/.test(o.textContent))[0]; s.value = o.value; s.dispatchEvent(new Event('change')); return 1; })()`);
+await frames(2);
+out.tie.other = await ev(`({ path: document.getElementById('dfsPath').selectedOptions[0].textContent, said: document.getElementById('dfsTrafficPath').textContent, net: document.getElementById('dfsNet').value })`);
+await ev(`(() => { const s = document.getElementById('dfsPath'); s.value = ${JSON.stringify(pathWas)}; s.dispatchEvent(new Event('change')); return 1; })()`);
+await frames(2);
 // Keyboard: Tab from the path picker reaches every step, and focus shows that step's details.
 await ev(`(document.getElementById('dfsPath').focus(), 1)`);
 const reached = new Set(); const shown = [];
@@ -272,7 +378,7 @@ out.contrast = {};
 for (const theme of ['dark', 'light']) for (const glass of ['on', 'off']) {
   await ev(`(localStorage.setItem('zassess_theme', '${theme}'), localStorage.setItem('zassess_glass', '${glass}'), 1)`);
   await open(sample, 1280);
-  out.contrast[theme + '-' + glass] = { text: await ev(`(${CONTRAST})('#dfSimple .dfs-lead, #dfSimple .dfs-title, #dfSimple .dfs-btn .dfs-cap, #dfSimple .dfs-dec, #dfSimple .dfs-leg-t, #dfSimple .dfs-note, #dfsDetail p, #dfsDetail dd, #dfsDetail dt, .dfs-result, .dfs-views .rp-btn, #dfsWalk')`),
+  out.contrast[theme + '-' + glass] = { text: await ev(`(${CONTRAST})('#dfSimple .dfs-lead, #dfsTrafficPath, #dfSimple .dfs-title, #dfSimple .dfs-btn .dfs-cap, #dfSimple .dfs-dec, #dfSimple .dfs-leg-t, #dfSimple .dfs-note, #dfsDetail p, #dfsDetail dd, #dfsDetail dt, .dfs-result, .dfs-views .rp-btn, #dfsWalk')`),
     shapes: await ev(`(${CONTRAST})('#dfSimple svg.dfs-shape')`), glassOff: await ev(`document.documentElement.classList.contains('glass-off')`) };
 }
 // Show all details: today's full map, every path in the table, its motion opt-in.
@@ -299,6 +405,7 @@ out.overflow = {};
 for (const w of [320, 390]) {
   await open(sample, w);
   out.overflow[w + '-simple'] = await ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+  out.labels[w] = await ev(LABELS);
   out.overflow[w + '-legendFirst'] = await ev(`document.getElementById('dfsLegend').getBoundingClientRect().top < document.getElementById('dfsSteps').getBoundingClientRect().top`);
   await ev(`(document.getElementById('dfViewAll').click(), 1)`); await frames(3);
   out.overflow[w + '-all'] = await ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
@@ -365,12 +472,27 @@ def test_the_walk_through_moves_with_next_and_back_and_esc_ends_it(page):
     assert w["closed"] is True and w["focusBack"] == "dfsWalk"
 
 
-def test_the_uploads_picture_moves_only_with_real_numbers(page):
-    """WCAG 2.2 SC 2.2.2 · SC 1.1.1: with Insights numbers the uploads picture moves, has Pause and a text alternative; without them nothing moves and the page says why."""
+def test_the_uploads_picture_starts_still_and_moves_only_on_request(page):
+    """WCAG 2.2 SC 2.2.2 (Pause, Stop, Hide) · SC 2.3.3 · SC 1.1.1: with Insights numbers the uploads picture starts still (its widths say it all), Play motion starts it with Pause offered, and it has a text alternative; without numbers there is no picture and the page says why."""
     f = page["flow"]
+    assert f["stillFirst"] is True and f["button0"] == "Play motion", f
     assert f["moves"] and f["button"] == "Pause motion" and f["described"] == "dfsFlowAlt" and "%" in f["alt"]
     assert page["reduced"] == {"still": True, "button": "Play motion"}
     assert page["plain"]["stage"] is False and "not read" in page["plain"]["note"]
+
+
+def test_the_uploads_picture_is_tied_to_the_path_above(page):
+    """WCAG 2.2 SC 1.3.1 (Info and Relationships) · SC 3.3.5 (Help): the uploads picture names the selected path and its share of the uploads, says "not inspected" when that path is blind, and mentions a red stream only when one is drawn."""
+    t = page["tie"]
+    label = t["path"].split(" · ")[0]
+    assert label in t["said"] and "%" in t["said"], t
+    if t["dest"] == "Not inspected":
+        assert "not inspected" in t["said"], t
+    assert ("red stream" in t["lead"]) is t["red"], t
+    if not t["red"]:
+        assert "None of the counted uploads" in t["lead"], t
+    o = t["other"]
+    assert o["path"].startswith("File sharing") and "File sharing" in o["said"] and " 0% " not in o["said"], o
 
 
 def test_show_all_details_keeps_every_fact_and_its_motion_is_opt_in(page):
@@ -399,6 +521,17 @@ def test_aa_contrast_in_both_themes_with_glass_on_and_off(page, combo):
     assert c["text"] and not low, low
     lows = [x for x in c["shapes"] if x["r"] < 3]
     assert c["shapes"] and not lows, lows
+
+
+@pytest.mark.parametrize("width", ["1280", "320"])
+def test_the_uploads_picture_labels_are_never_cut_off(page, width):
+    """WCAG 2.2 SC 1.4.10 (Reflow) · SC 1.3.1: every column head of the uploads picture shows its whole name (wrapped, never cut with "…") without running into the next column, and so does every node label, on a desktop and at 320 px."""
+    lab = page["labels"][width]
+    cols = lab["cols"]
+    assert len(cols) >= 4 and all(c["text"] == c["full"] and "…" not in c["text"] for c in cols), cols
+    xs = sorted(cols, key=lambda c: c["x0"])
+    assert all(a["x1"] < b["x0"] for a, b in zip(xs, xs[1:])), xs
+    assert lab["nodes"] and not [n for n in lab["nodes"] if "…" in n], lab["nodes"]
 
 
 @pytest.mark.parametrize("width", ["320", "390"])
