@@ -426,6 +426,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("DELETE", "/api/scim/v2/Groups/{scim_id}"): "SCIM provisioning of team server accounts and groups, never a tenant; 404 unless ZSCALER_TEAM_MODE",
     ("POST", "/api/offline/sample"): "uses the in-memory sample tenant in this browser (offline_tenant): no tenant is reached",
     ("POST", "/api/offline/leave"): "back to the live tenant in this browser: clears a cookie",
+    ("DELETE", "/api/tenant/session"): "forgets this person's signed-in tenant from server memory (tenant_session); reaches no tenant",
     ("POST", "/api/offline/simulate/operation"): "rehearses a Build new / Bulk changes plan into an in-memory simulation copy (offline_tenant.simulate), never a tenant, the sample or a snapshot file (only its audit entries, marked simulation=true); 409 on a live tenant",
     ("POST", "/api/offline/simulate/pov-build"): "rehearses a POV build into an in-memory simulation copy (offline_tenant.simulate), never a tenant, the sample or a snapshot file (only its audit entries, marked simulation=true); 409 on a live tenant",
     ("POST", "/api/offline/simulation/discard"): "drops the in-memory simulation copy and returns this browser to the sample or snapshot; no tenant is reached",

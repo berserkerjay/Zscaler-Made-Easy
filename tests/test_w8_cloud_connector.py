@@ -371,7 +371,11 @@ def test_the_page_is_served_registered_and_escapes_tenant_text():
     js = open(os.path.join(ROOT, "static", "explain.js"), encoding="utf-8").read()
     assert "'/report/ztw': 'ztw'" in js and "X.ztw = {" in js
     wn = open(os.path.join(ROOT, "static", "whats_new.js"), encoding="utf-8").read()
-    assert '"id": "cloud-connector", "release": "2026-10-31"' in wn
+    # While 2026-10-31 is one of the newest two releases its feature is marked; once rotated out (keep: 2) it stays in CHANGELOG.md.
+    if '"2026-10-31":' in wn.split('"skipped"')[0]:
+        assert '"id": "cloud-connector", "release": "2026-10-31"' in wn
+    else:
+        assert "## 2026-10-31" in open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8").read() and '"id": "cloud-connector"' not in wn
 
 
 def test_the_path_analyzer_takes_the_workload_from_the_link_but_only_a_kept_read_id():

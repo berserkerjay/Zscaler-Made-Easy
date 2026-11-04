@@ -146,6 +146,10 @@
           <h2 class="df-h" id="advSrvH">This server</h2>
           <div class="tw"><table class="bp-table adv-table" id="advServer" aria-describedby="advSrvH"><tbody><tr><td class="dim">Loading…</td></tr></tbody></table></div>
           <p class="adv-lead" id="advSignInNote">On a team server, people can sign in through your identity provider with SAML 2.0, and use a passkey after their password. An administrator sets both up in the Sign-in section of the Team server page.</p>
+          <h3 class="adv-qs-h" id="advTenantSessionH">Signed-in tenant</h3>
+          <p class="adv-lead" id="advTenantSessionBox" role="status" aria-live="polite">Checking…</p>
+          <p class="adv-lead dim">After you sign in to a tenant once (Authenticate, an assessment or Simple mode), every page reads it without asking again. The server keeps that sign-in in its memory only, for you and this browser, until 30 minutes without use or 8 hours at most, or until you sign out of it here. Changes to the tenant still need the sign-in details.</p>
+          <div class="adv-actions"><button type="button" class="rp-btn" id="advTenantSignOut" hidden>Sign out of tenant</button></div>
         </section>
 
         <section id="m365" aria-labelledby="advM365H">

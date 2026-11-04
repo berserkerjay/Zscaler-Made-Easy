@@ -1185,6 +1185,7 @@
     <div class="actions">
       <button class="btn btn-primary" id="authBtn" onclick="authenticateTenant()" title="Signs in to the tenant with these values and nothing else: it reads nothing from the tenant. Run the assessment from the Scope page.">Authenticate</button>
       <span id="authStatus" class="auth-status" aria-live="polite"></span>
+      <button type="button" class="btn btn-ghost" id="authSignOutBtn" onclick="signOutTenant()" hidden>Sign out of tenant</button>
       <!-- The assessment itself starts from Start here (step 2); this hidden
            button keeps the existing run/complete handlers wired. -->
       <button id="runBtn" onclick="runAssessment()" hidden aria-hidden="true">Run assessment</button>
@@ -1753,7 +1754,7 @@ let optimizedRules = null;
 // a Run assessment button.
 async function authenticateTenant() {
   const st = document.getElementById('authStatus');
-  if (typeof _gdTest === 'function') { if (st) st.textContent = 'Checking…'; await _gdTest(); return; }
+  if (typeof _gdTest === 'function') { if (st) st.textContent = 'Checking…'; await _gdTest(); refreshSignedIn(false); return; }
   const body = migrateValidateCreds(); if (!body) return;
   if (st) st.textContent = 'Checking…';
   try {
@@ -1761,7 +1762,39 @@ async function authenticateTenant() {
     const d = await r.json().catch(() => ({}));
     if (st) st.textContent = r.ok ? `Signed in to ${d.tenant_label}. Nothing in the tenant was read.` : `Could not connect: ${(d.detail && d.detail.cause) || d.detail || r.status}`;
   } catch (e) { if (st) st.textContent = `Could not connect: ${e.message}`; }
+  refreshSignedIn(false);
 }
+
+// The signed-in tenant (tenant_session.py): the last sign-in made on any page
+// (Authenticate, an assessment, Simple mode), kept in the server's memory for
+// this browser only, never in the browser. Reads use it while the sign-in
+// fields are blank; changes always need the sign-in details typed.
+window.__zmeSignedIn = null;
+// The words for a live signed-in tenant (also what the guide shows in #authStatus).
+window.zmeSignedInText = d => `Signed in to ${d.profile_name || d.tenant_label}. Every page reads this tenant without asking again; changes still need the sign-in details.`;
+async function refreshSignedIn(say) {
+  let d = null;
+  try { const r = await fetch('/api/tenant/session', { cache: 'no-store' }); if (r.ok) d = await r.json(); } catch (e) { d = null; }
+  window.__zmeSignedIn = d && d.connected ? d : null;
+  const out = document.getElementById('authSignOutBtn');
+  if (out) out.hidden = !window.__zmeSignedIn;
+  const st = document.getElementById('authStatus');
+  if (say !== false && st && d) {
+    if (d.connected) st.textContent = window.zmeSignedInText(d);
+    else if (d.expired) st.textContent = d.message || 'Your sign-in to the tenant has ended. Sign in again.';
+  }
+  return d;
+}
+async function signOutTenant() {
+  const st = document.getElementById('authStatus');
+  try {
+    const r = await fetch('/api/tenant/session', { method: 'DELETE' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (st) st.textContent = 'Signed out of the tenant. The server no longer keeps the sign-in.';
+  } catch (e) { if (st) st.textContent = `Could not sign out of the tenant: ${e.message}`; }
+  refreshSignedIn(false);
+}
+document.addEventListener('DOMContentLoaded', () => { refreshSignedIn(); });
 
 // ── Sign-in method: OneAPI (ZIdentity API client) or the classic ZIA API ──
 // The same nine credential fields travel in every request (see
@@ -1812,6 +1845,10 @@ function missingSignInFields(b) {
   const missing = [];
   // The sample tenant or a snapshot (offline_tenant.js): the server uses it, not the form.
   if (window.zmeOffline && window.zmeOffline.active()) return missing;
+  // Signed in (refreshSignedIn) and no secret typed: the server reads with that
+  // sign-in when the form names the same tenant (or none); another tenant, or a
+  // change, is refused there in words until the details are typed.
+  if (window.__zmeSignedIn && !['client_secret', 'password', 'api_key'].some(k => (b[k] || '').trim())) return missing;
   const blank = s => !s || !s.trim();
   if (b.auth_method === 'legacy') {
     if (blank(b.username)) missing.push(['zuser', 'Admin username']);

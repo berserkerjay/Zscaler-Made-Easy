@@ -244,6 +244,10 @@ app.add_middleware(
 # The browser's offline tenant (the sample or a snapshot, offline_tenant.py), for _tenant_creds.
 import offline_tenant as _offline_src
 app.add_middleware(_offline_src.SourceMiddleware)
+# The signed-in tenant (tenant_session.py): this browser's handle and the
+# request's route, so a tenant read may use the sign-in made on another page.
+import tenant_session as _tenant_session
+app.add_middleware(_tenant_session.Middleware, routes=lambda: app.router.routes)
 app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
 # Just inside the body cap: every answer the other layers make (the rate
 # limiter's 429, a CORS preflight, the UI token's 401) carries CSP, nosniff
@@ -794,6 +798,7 @@ async def auth_logout(request: Request):
     if not _sso.sso_enabled() and not _team.enabled():
         raise HTTPException(status_code=404, detail="Sign out is only used with SSO; this server uses the UI token.")
     actor = _security.current_actor()
+    _tenant_session.forget_caller()   # signing out of the app forgets the signed-in tenant too
     ended = _sso.end_session(request.cookies.get(_security.SSO_SESSION_COOKIE))
     _audit.record("team_logout" if _team.enabled() else "sso_logout", actor=actor if ended else "not signed in",
                   ended=bool(ended), client=request.client.host if request.client else "?")
@@ -1422,8 +1427,23 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     if off is not None:
         return off
     creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
+    pid = str(getattr(req, "profile_id", "") or "").strip()
+    # The signed-in tenant (tenant_session): the sign-in this person made on
+    # any page, kept in memory for them and this browser. Tenant reads only
+    # (never a write), and only while the request's own sign-in is incomplete.
+    signed = _tenant_session.for_read()
+    if signed is not None and _team.enabled():
+        # A team server reaches a tenant only through a tenant profile: the
+        # one the sign-in was made with, still checked against the person below.
+        # Typed sign-in details without a profile are refused as before.
+        if not pid and not tenant_auth.started(creds) and not creds["vanity_domain"]:
+            pid = signed["profile_id"]
+        if not pid or pid != signed["profile_id"]:
+            signed = None
     if _team.enabled():
-        _team_tenant_gate(req, creds)
+        _team_tenant_gate(req, creds, pid)
+        if signed is not None and not str(getattr(req, "profile_id", "") or "").strip():
+            _team.adopt_profile(pid)
     # Every request model leaves the cloud blank by default, so a blank one
     # here was not typed: the profile, environment or tenant_config.json
     # names the cloud. A request rebuilt from every field (cloud now counts
@@ -1432,7 +1452,12 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
         # Nothing typed for a tenant: the source that has the sign-in decides
         # its method (the form always sends its selector, OneAPI by default).
         creds["auth_method"] = ""
-    creds = _fill_from_profile(creds, getattr(req, "profile_id", ""))
+    creds = _fill_from_profile(creds, pid)
+    if not tenant_auth.complete(creds) and signed is not None and _same_sign_in(creds, signed["creds"]):
+        # The remembered sign-in, whole (its own identity with its own
+        # secret); the request keeps only what it said beside the identity.
+        creds = tenant_auth.merge(signed["creds"], tenant_auth.without_identity(creds))
+        _tenant_session.touch()
     if not tenant_auth.complete(creds):
         env = tenant_auth.from_env()
         base = tenant_auth.without_identity(creds)
@@ -1458,13 +1483,15 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     return creds
 
 
-def _team_tenant_gate(req: Any, typed: Dict[str, str]) -> None:
+def _team_tenant_gate(req: Any, typed: Dict[str, str], pid: Optional[str] = None) -> None:
     """Team server: a tenant is reached only through a saved tenant profile
     the person may use for this route's action (team_server), and nothing
     typed beside it may name another tenant than the profile's (a typed
     vanity domain, client id or admin login of another tenant is refused,
-    never used). 403 otherwise."""
-    pid = str(getattr(req, "profile_id", "") or "").strip()
+    never used). 403 otherwise. `pid`: the profile to check when it is not
+    the request's own (the signed-in tenant's, tenant_session)."""
+    if pid is None:
+        pid = str(getattr(req, "profile_id", "") or "").strip()
     _team.require_tenant_profile(pid)
     if _team.context() is None:
         return
@@ -1625,9 +1652,17 @@ def _same_sign_in(typed: Dict[str, Any], stored: Dict[str, Any]) -> bool:
     return True
 
 
+SIGNED_IN_NOT_FOR_CHANGES = ("You are signed in to the tenant for reading, but changes to the tenant need the sign-in details "
+                             "typed again (or a saved tenant profile that remembers them): signing in once never allows changes.")
+
+
 def _validate_creds(creds: Dict[str, str]) -> Dict[str, str]:
     """Validate every field the sign-in uses (400 with the field's name
-    otherwise) and return the checked dict. Nothing is echoed."""
+    otherwise) and return the checked dict. Nothing is echoed. A change
+    whose caller is signed in (tenant_session) but sent no sign-in of its
+    own is told in words that changes never use the remembered sign-in."""
+    if not tenant_auth.complete(creds) and _tenant_session.withheld_from_write():
+        raise HTTPException(status_code=400, detail=SIGNED_IN_NOT_FOR_CHANGES)
     c = tenant_auth.normalize(creds)
     c["cloud"] = validate_cloud(c["cloud"] or "production")
     c["vanity_domain"] = validate_vanity(c["vanity_domain"])
@@ -4242,14 +4277,54 @@ async def tenant_check(req: TenantCredsRequest):
         # an admin session open until it idles out otherwise).
         await asyncio.to_thread(_close_quietly, client)
     except HTTPException as e:
+        _tenant_session.forget()   # a failed sign-in ends the signed-in tenant: never a silent fall back to the previous one
         raise HTTPException(status_code=e.status_code, detail={"tenant_label": label, "auth_method": method, **_explain_connection_error(e.detail, method)})
     except Exception as e:  # noqa: BLE001
+        _tenant_session.forget()
         raise HTTPException(status_code=502, detail={"tenant_label": label, "auth_method": method,
                                                      **_explain_connection_error(tenant_auth.mask_secrets(str(e), creds), method)})
-    out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": [], "access": access}
+    # Signed in: kept in this server's memory for this person and browser
+    # (tenant_session), so every page reads this tenant without asking again.
+    # The sample tenant and snapshots are never kept (they need no sign-in).
+    signed_in = (not _offline.is_offline_creds(creds)
+                 and _tenant_session.remember(creds, profile_id=str(req.profile_id or "").strip(), label=label, method=method))
+    out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": [], "access": access,
+                           "signed_in": bool(signed_in)}
     if method == tenant_auth.LEGACY:
         out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
     return out
+
+
+SIGNED_IN_ENDED = ("Your sign-in to {label} has ended ({why}), so the sign-in details were forgotten. "
+                   "Sign in again to keep reading this tenant.")
+
+
+@app.get("/api/tenant/session")
+async def tenant_session_get():
+    """The signed-in tenant of this person and browser (tenant_session):
+    whether one is kept, its label, sign-in method and saved profile, and
+    the seconds until it ends unused. Never a credential. When it has
+    ended, `expired` and a plain sentence say so. Reads no tenant."""
+    out = _tenant_session.status()
+    if out.get("profile_id"):
+        try:
+            import tenant_profiles
+            out["profile_name"] = str((tenant_profiles.get(out["profile_id"], with_secret=False) or {}).get("name") or "")[:120]
+        except Exception:  # noqa: BLE001 — the name is only a nicety
+            out["profile_name"] = ""
+    if out.get("expired"):
+        why = (f"{out['idle_minutes']} minutes without use" if out.get("ended") == "idle"
+               else f"it is kept for at most {out['max_hours']} hours")
+        out["message"] = SIGNED_IN_ENDED.format(label=out.get("tenant_label") or "the tenant", why=why)
+    out["offline"] = _offline.status().get("mode", "live") != "live"
+    return out
+
+
+@app.delete("/api/tenant/session")
+async def tenant_session_delete():
+    """Sign out of the tenant: forget this person's signed-in tenant in
+    this browser (server memory only; the tenant is not contacted)."""
+    return {"ok": True, "forgotten": _tenant_session.forget()}
 
 
 # ---------------------------------------------------------------------------
@@ -10810,9 +10885,14 @@ async def assess_stream(req: AssessRequest):
                 _v = str(getattr(req, _attr, "") or "").strip()
                 if _v and _op.valid_id(_v):
                     setattr(client, _attr, _v)
-            auth_result = await asyncio.to_thread(client.auth)
+            try:
+                auth_result = await asyncio.to_thread(client.auth)
+            except Exception:
+                _tenant_session.forget()   # a failed sign-in ends the signed-in tenant (as Authenticate's does)
+                raise
 
             if auth_result is not True:
+                _tenant_session.forget()   # never a silent fall back to the sign-in kept before
                 reason = ""
                 if isinstance(auth_result, tuple) and len(auth_result) == 2:
                     reason = str(auth_result[1])
@@ -10820,6 +10900,10 @@ async def assess_stream(req: AssessRequest):
                 yield _sse("error", {"message": f"Authentication failed: {reason[:200]}"})
                 return
 
+            if not _offline.is_offline_creds(creds):
+                # The assessment's own sign-in worked: remembered like Authenticate's (tenant_session).
+                _tenant_session.remember(creds, profile_id=str(req.profile_id or "").strip(),
+                                         label=tenant_auth.record_label(creds), method=creds["auth_method"])
             yield _sse("auth", {"status": "ok", "auth_method": creds["auth_method"],
                                 "note": ("Signed in through the classic ZIA API: ZIA checks only; ZPA, Client Connector and ZDX checks "
                                          "are reported as not available.") if creds["auth_method"] == tenant_auth.LEGACY else ""})

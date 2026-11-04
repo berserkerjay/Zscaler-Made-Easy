@@ -151,6 +151,16 @@ def _no_backoff_sleep(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _no_signed_in_tenant():
+    """The signed-in tenant (tenant_session) lives in process memory: each
+    test starts and ends with none, as a fresh server would."""
+    import tenant_session
+    tenant_session.clear_all()
+    yield
+    tenant_session.clear_all()
+
+
+@pytest.fixture(autouse=True)
 def _no_real_credential_store(monkeypatch):
     """keyring is a pinned dependency on Windows and macOS, so it is installed
     where the tests run. A test that remembers a profile secret must never
