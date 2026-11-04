@@ -28,7 +28,17 @@
   "CWE-613",
   "CWE-639",
   "CWE-862",
-  "CWE-1004"
+  "CWE-1004",
+  "ASVS V3.2.2",
+  "WSTG-SESS-03",
+  "WSTG-SESS-05",
+  "CWE-384",
+  "CWE-352",
+  "CWE-346",
+  "CWE-226",
+  "CWE-614",
+  "CWE-770",
+  "CWE-665"
  ],
  "coverage": {
   "before": 0.0,
@@ -77,6 +87,30 @@
    "what": "The sample tenant is never kept and still answers reads while it is in use",
    "standard": "ASVS V4.1.3 · WSTG-BUSL-01",
    "result": "pass"
+  },
+  {
+   "id": "W10-SI-C08",
+   "what": "Every successful sign-in (Authenticate or an assessment's) sets a new handle; a handle the browser brought (planted) never becomes a sign-in, and the old handle reads nothing afterwards",
+   "standard": "ASVS V3.2.1 · CWE-384 · WSTG-SESS-03",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SI-C09",
+   "what": "Only this app's own page reads with the kept sign-in: another Origin or a same-site/cross-site Sec-Fetch-Site request does not; DELETE from another origin is refused",
+   "standard": "ASVS V4.2.2 · CWE-352 · WSTG-SESS-05",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SI-C10",
+   "what": "An ended sign-in's secret leaves memory by a 30-second timer and on any request; a failed assessment sign-in ends the kept one; the store holds at most MAX_ENTRIES",
+   "standard": "ASVS V3.3.2 · CWE-226 · CWE-770 · WSTG-SESS-07",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SI-C11",
+   "what": "The expert page keeps saying Signed in while the guide redraws; Simple mode adopts the guide's tenant profile and says in words when the sign-in ended",
+   "standard": "ASVS V3.3.1 · CWE-665 · WSTG-SESS-06 · WCAG 2.2 SC 4.1.3",
+   "result": "pass"
   }
  ],
  "findings": [
@@ -90,7 +124,51 @@
    "fix": "The verified sign-in is kept in server memory for the person and browser (tenant_session); tenant reads fall back to it; Simple mode adopts it or the guide's saved profile",
    "test": "tests/test_tenant_session.py::test_after_authenticate_simple_mode_assesses_without_the_sign_in_details",
    "commit": "996a8bc"
+  },
+  {
+   "id": "W10-SI-02",
+   "title": "The signed-in tenant's handle was not replaced at sign-in: a handle planted by a page on another local port became a valid sign-in (session fixation)",
+   "severity": "medium",
+   "cwe": "CWE-384",
+   "asvs": "V3.2.1",
+   "status": "fixed",
+   "fix": "A new random handle on every successful sign-in; the kept sign-in moves to it; reads only from this app's own page",
+   "test": "tests/test_tenant_session.py::test_a_planted_handle_is_replaced_at_sign_in_and_finds_nothing",
+   "commit": "32c82dd"
+  },
+  {
+   "id": "W10-SI-03",
+   "title": "The guide blanked the expert page's 'Signed in to' status on every redraw",
+   "severity": "low",
+   "cwe": "CWE-665",
+   "asvs": "V3.3.1",
+   "status": "fixed",
+   "fix": "The guide writes the status only when its own state changes and never blanks words it did not write",
+   "test": "tests/test_tenant_session_browser.py::test_the_expert_pages_signed_in_state_stays_while_the_guide_redraws",
+   "commit": "8682287"
+  },
+  {
+   "id": "W10-SI-04",
+   "title": "An ended sign-in's secret stayed in memory until the next access",
+   "severity": "low",
+   "cwe": "CWE-226",
+   "asvs": "V3.3.2",
+   "status": "fixed",
+   "fix": "A 30-second timer and every request sweep the whole store",
+   "test": "tests/test_tenant_session.py::test_an_ended_sign_ins_secret_is_dropped_without_another_request",
+   "commit": "32c82dd"
+  },
+  {
+   "id": "W10-SI-05",
+   "title": "A failed assessment sign-in kept the tenant signed in before",
+   "severity": "low",
+   "cwe": "CWE-613",
+   "asvs": "V3.3.1",
+   "status": "fixed",
+   "fix": "The assessment's auth failure forgets the kept sign-in",
+   "test": "tests/test_tenant_session.py::test_a_failed_assessment_sign_in_ends_the_signed_in_tenant",
+   "commit": "32c82dd"
   }
  ],
- "tests_added": 30
+ "tests_added": 46
 }
