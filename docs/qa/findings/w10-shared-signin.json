@@ -33,7 +33,7 @@
  "coverage": {
   "before": 0.0,
   "after": 100.0,
-  "how": "tests/test_tenant_session.py maps each acceptance item of the spec (expert to Simple without re-entering, expiry, sign-out, secret canaries, another browser or person, writes still gated, sample tenant unaffected) to a test"
+  "how": "tests/test_tenant_session.py maps each acceptance item of the spec (expert to Simple without re-entering, expiry, sign-out, secret canaries, another browser or person, writes still gated, sample tenant unaffected) to a test; tests/test_tenant_session_browser.py drives the expert page and Simple mode in headless Chrome"
  },
  "checks": [
   {
@@ -92,5 +92,5 @@
    "commit": "996a8bc"
   }
  ],
- "tests_added": 27
+ "tests_added": 30
 }

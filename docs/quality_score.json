@@ -523,7 +523,7 @@
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11730
+    "tests_added": 11733
   },
   "findings": [
     {
@@ -13667,7 +13667,7 @@
       ],
       "checks": 7,
       "findings": 1,
-      "tests_added": 27
+      "tests_added": 30
     },
     {
       "slug": "w7-admin-zia-zid",
