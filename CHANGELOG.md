@@ -7,6 +7,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-04
+
+### App service groups match out of the box
+- **App service groups out of the box.** The Path analyzer, Test a list and Shadowed rules now match Microsoft 365, Zoom, Webex, RingCentral, GoTo and Talkdesk app service groups (such as the One Click rules' OFFICE365, ZOOM and WEBEX) with nothing fetched or imported. The app comes with a short excerpt of each provider's published list, dated 2026-11-04 and naming its source (`endpoint_snapshots.py`). An excerpt can show a match, never a no match, because it is not the whole list; every result says which excerpt it used and how old it is, and an excerpt older than 180 days is not used. A list you fetch or import in Advanced settings replaces the excerpt for that provider; a stale kept list older than the excerpt gives way to it.
+- **Fetch GoTo's list.** GoTo publishes its data-centre ranges as a JSON file, so Advanced settings has its own switch for it, beside Zoom's: off by default, and even when on, fetched only when you click Fetch GoTo's list now, never when a page loads. GET only, `goto-ipblocks.live.gtc.goto.com` only, no redirect followed, a 10-second timeout, at most 1 MB; every address range in it is checked (public unicast, no wider than /8 or /16) and one bad range refuses the whole file; kept with its date. GoTo's JSON file can also be imported by hand. Webex, RingCentral and Talkdesk publish no machine-readable list, so they keep the bundled excerpt or a list you import. The host is listed in SECURITY.md and in the Secure by Design outbound line.
+- **Zscaler's own app service groups** stay unknown, and Advanced settings and the Path analyzer now say exactly why: Zscaler's API (zscaler-sdk-python 1.11.3) has no call that lists app service groups or their members (a Cloud Firewall rule carries each one only as an id and a name), and network application groups name application signatures, not addresses or host names.
+
 ## 2026-11-01
 
 ### Pages stay quick: no piled-up scans, no "Rate limit exceeded" on your own pages
