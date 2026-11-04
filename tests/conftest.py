@@ -27,6 +27,13 @@ scrub_app_env(os.environ)
 # The UI token guards every API call from a browser; the test suite talks to
 # the app directly, so it is off here. tests/test_ui_auth.py switches it on.
 os.environ["ZSCALER_UI_AUTH"] = "0"
+# Encrypted stores (store_crypto.py) are on by default in the app; the suite
+# runs with them off, as it does the UI token, because many tests read a
+# store file directly. tests/test_store_encryption_default.py checks the
+# shipped default (it removes this setting), and DLP_TEST_STORE_ENCRYPTION=default
+# runs the whole suite with the shipped default instead.
+if os.environ.get("DLP_TEST_STORE_ENCRYPTION", "").strip().lower() != "default":
+    os.environ["DLP_CHECK_STORE_ENCRYPTION"] = "0"
 # Self-healing's startup run and timer (self_heal.py) stay off in tests: a
 # test runs the checks itself, on its own temporary files.
 os.environ["DLP_CHECK_SELF_HEAL_MINUTES"] = "0"

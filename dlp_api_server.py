@@ -15604,6 +15604,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if problem:
         print(f"\n  Could not start: {problem}\n", file=sys.stderr)
         return 2
+    # Encrypted stores are on by default (store_crypto): stores an earlier
+    # version wrote in plain text are encrypted once, here, before anything is
+    # served (a verified backup first; resumable; never stops the app).
+    import store_crypto
+    store_crypto.startup(print)
     all_interfaces = "0.0.0.0"  # nosec B104 # compared below to word the address and a notice; binds nothing
     # Inside the container the server listens on 0.0.0.0 and docker-compose
     # publishes it on the host's 127.0.0.1 only, so the address a person
