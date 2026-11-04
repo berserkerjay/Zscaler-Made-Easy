@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1243,3 +1245,60 @@ def test_each_new_write_type_is_refused_without_each_of_the_four_gates(monkeypat
     assert t.writes == []
     r = ao.execute(tgt, sp, **args)
     assert r["status"] == "applied" and t.writes, r.get("stopped")
+
+
+# ── fixes after verify: in a real browser, tenant-bound types start unticked ──
+
+TB_DRIVER = r"""
+const { chromium } = require('playwright');
+const fs = require('fs');
+const [chrome, js] = process.argv.slice(2);
+(async () => {
+  const b = await chromium.launch(chrome ? { executablePath: chrome } : {});
+  try {
+    const page = await b.newPage();
+    await page.setContent('<!doctype html><html lang="en"><body><main id="where"></main></body></html>');
+    await page.evaluate(() => { window.__plugins = {}; window.OPS_PLUGINS = { register: d => { window.__plugins[d.type] = d; } }; });
+    await page.addScriptTag({ content: fs.readFileSync(js, 'utf8') });
+    const out = await page.evaluate(() => {
+      const res = { backups: [{ id: 'b1', tenant_label: 'Source', saved_at: '2026-11-01T10:00', kind: 'manual', objects: 9, products: ['zia'] }],
+        modes: [{ id: 'update_matching', label: 'Update matching' }], templates: [],
+        coverage: { products: { zia: [{ key: 'zia.rule_labels', label: 'Rule labels', level: 'full' },
+                                      { key: 'zia.locations', label: 'Locations', level: 'full', tenant_bound: true },
+                                      { key: 'zia.sub_locations', label: 'Sub-locations', level: 'full', tenant_bound: true }] } } };
+      const S = { kind: 'config_restore_zia' };
+      const E = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+      const H = { E, S, body: o => Object.assign({ profile_id: 'p1' }, o), say() {}, fail() {}, preview() {} };
+      const where = document.getElementById('where'), d = window.__plugins.config_restore_zia;
+      d.render(res, where, S, H);
+      where.querySelector('input[name="crBackup"][value="b1"]').click();
+      const look = () => ({ tb: document.getElementById('crTb').checked,
+        shown: [...where.querySelectorAll('input[data-crtype]')].map(i => i.dataset.crtype),
+        ticked: [...where.querySelectorAll('input[data-crtype]:checked')].map(i => i.dataset.crtype), spec: d.spec(S, H) });
+      const before = look();
+      document.getElementById('crTb').click();   // the person ticks "Include tenant-bound objects"
+      return { before, after: look() };
+    });
+    console.log(JSON.stringify(out));
+  } finally { await b.close(); }
+})().catch(e => { console.error((e && e.stack) || String(e)); process.exit(1); });
+"""
+
+
+def test_tenant_bound_types_start_unticked_on_the_restore_page_and_are_sent_only_once_included(tmp_path):
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-06 · WCAG 2.2 SC 3.3.2: in a real browser the restore page opens with 'Include tenant-bound objects' unticked, shows no tenant-bound type and leaves them (and the flag) out of the operation; ticking it shows them ticked and sends them with the flag."""
+    node = shutil.which("node")
+    if not node or subprocess.run([node, "-e", "require('playwright')"], capture_output=True, timeout=30).returncode:
+        pytest.skip("needs node and Playwright")
+    chrome = os.environ.get("CHROME_BIN", "")
+    (tmp_path / "drive.js").write_text(TB_DRIVER, encoding="utf-8")
+    r = subprocess.run([node, str(tmp_path / "drive.js"), chrome if chrome and os.path.exists(chrome) else "",
+                        str(ROOT / "static" / "ops_config_restore.js")], capture_output=True, text=True, timeout=180, cwd=str(tmp_path))
+    assert r.returncode == 0, r.stderr[-2000:]
+    got = json.loads(r.stdout.strip().splitlines()[-1])
+    before, after = got["before"], got["after"]
+    assert before["tb"] is False and before["shown"] == ["zia.rule_labels"]
+    assert before["spec"]["types"] == ["zia.rule_labels"] and "include_tenant_bound" not in before["spec"]
+    assert after["tb"] is True and {"zia.locations", "zia.sub_locations"} <= set(after["ticked"])
+    assert set(after["spec"]["types"]) == {"zia.rule_labels", "zia.locations", "zia.sub_locations"}
+    assert after["spec"]["include_tenant_bound"] is True
