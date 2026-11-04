@@ -52,6 +52,8 @@ Tools exposed (every one read-only; none changes the tenant):
     traffic_logs_summary — A saved traffic and session log report, counts only
     ztw_summary       — Cloud & Branch Connector: counts and the connector checks
     zdx_summary       — ZDX application scores and alerts (counts only)
+    rbac_review       — SOC review: admins (numbered), roles, full vs scoped rights, stale admins, API keys and clients
+    telemetry_review  — SOC review: log streams, SIEM destinations and the gaps
     timeline          — What the app did since a date (its own records, people counted)
     case_notes        — The admin's workspace notes for the tenant (local)
 
@@ -702,6 +704,38 @@ async def zdx_summary(source: _Source = "live", snapshot_id: _SnapId = "") -> di
     changes the tenant.
     """
     return await _run("zdx_summary", mcp_tools.zdx_summary, {}, source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def rbac_review(source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    SOC review of admin access for ZIA, ZPA, Client Connector, ZDX and
+    ZIdentity: admins (numbered, never named) with their role, full / scoped /
+    read-only rights, enabled state, second factor and last sign-in where
+    the API reports them; roles; ZPA API keys and ZIdentity API clients with
+    their scopes; findings (too many full-access admins, no second factor,
+    disabled or unused admins, rights broader than used) and the RBAC
+    checks. Anything the API does not report is "unknown", never a pass.
+    Needs RBAC in scope (ZPA, Client Connector, ZIdentity for theirs).
+    source: live, sample or snapshot (with snapshot_id). Read-only: never
+    changes the tenant.
+    """
+    return await _run("rbac_review", mcp_tools.rbac_review, {}, source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def telemetry_review(source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    SOC review of logging and streaming: ZIA Cloud NSS feeds (log type,
+    enabled, SIEM type, destination host), NSS servers and collectors, ZPA
+    Log Streaming Service configurations (log type, receiver, TLS), Client
+    Connector log settings, the SIEM destinations, and the gaps (a product
+    with nothing streamed, disabled feeds, missing log types). ZDX streaming
+    is not in the API and is "unknown". Needs ZIA platform, ZPA, Client
+    Connector or ZDX in scope. source: live, sample or snapshot (with
+    snapshot_id). Read-only: never changes the tenant.
+    """
+    return await _run("telemetry_review", mcp_tools.telemetry_review, {}, source=source, snapshot_id=snapshot_id)
 
 
 @mcp.tool(annotations=READ_ONLY)
