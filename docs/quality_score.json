@@ -296,7 +296,7 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 156,
+            "fixed": 158,
             "accepted": 7,
             "records": [
               "c6-assessment",
@@ -305,6 +305,7 @@
               "c6-posture",
               "c6-zpa",
               "func-path",
+              "w10-dataflow-clarity",
               "w7-o365-endpoints",
               "w7-path-coverage",
               "w7-path-extras",
@@ -488,7 +489,7 @@
     }
   ],
   "counts": {
-    "findings": 761,
+    "findings": 763,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -507,7 +508,7 @@
       },
       "low": {
         "open": 2,
-        "fixed": 421,
+        "fixed": 423,
         "accepted": 3
       },
       "info": {
@@ -517,12 +518,12 @@
       }
     },
     "checks": {
-      "pass": 699,
+      "pass": 705,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11703
+    "tests_added": 11729
   },
   "findings": [
     {
@@ -11486,6 +11487,38 @@
       "sub_area": "auth_scope_secrets"
     },
     {
+      "id": "W10-DF-01",
+      "title": "The data flow map showed every diagram, table and label at once with no reading order or legend, and jumped past its own picture on load: a newcomer could not tell where to start",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V1.1.1",
+      "wcag": "",
+      "fix": "A simple numbered view by default with a legend, one step's details at a time and a walk-through; Show all details keeps the full map",
+      "test": "tests/test_dataflow_clarity.py::test_the_simple_view_is_the_default_and_shows_the_numbered_path",
+      "commit": "ad6000c",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-02",
+      "title": "The map's moving picture counted traced paths, not traffic, so its motion added nothing the still picture did not say",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V1.1.1",
+      "wcag": "",
+      "fix": "Uploads picture weighted by ZIA Insights Shadow IT bytes per traffic class when in scope; the path-count picture starts still (opt-in)",
+      "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_moves_only_with_real_numbers",
+      "commit": "ad6000c",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "W10-NC-01",
       "title": "The assessment page's 2.5 s refresh rewrote Run assessment's label and attributes and rebuilt the last-run note (replacing its button) on every tick, unchanged; a press that straddled a tick lost its click",
       "severity": "low",
@@ -13600,6 +13633,36 @@
       "tests_added": 958
     },
     {
+      "slug": "w10-dataflow-clarity",
+      "area": "Traffic analysis: the Data Flow Map for first-time readers (simple numbered view, legend, walk-through, traffic-weighted motion)",
+      "title": "Wave 10: the data flow map reads from the device to the destination in numbered steps, and its motion shows real upload shares or stays opt-in",
+      "standards": [
+        "WCAG 2.2 SC 1.1.1",
+        "WCAG 2.2 SC 1.3.2",
+        "WCAG 2.2 SC 1.4.1",
+        "WCAG 2.2 SC 1.4.3",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 1.4.11",
+        "WCAG 2.2 SC 2.1.1",
+        "WCAG 2.2 SC 2.2.2",
+        "WCAG 2.2 SC 2.4.3",
+        "WCAG 2.2 SC 2.4.7",
+        "WCAG 2.2 SC 3.3.5",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V7.1.1",
+        "WSTG-ATHZ-02",
+        "WSTG-INPV-01",
+        "CWE-20",
+        "CWE-285",
+        "CWE-532",
+        "CWE-1287"
+      ],
+      "checks": 6,
+      "findings": 2,
+      "tests_added": 26
+    },
+    {
       "slug": "w10-native-click",
       "area": "UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page",
       "title": "Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s",
@@ -15152,7 +15215,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 67,
+    "wstg": 68,
     "slsa": [
       "SLSA Provenance",
       "SLSA v1.0",

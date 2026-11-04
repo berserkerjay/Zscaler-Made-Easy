@@ -1,0 +1,72 @@
+{
+ "area": "Traffic analysis: the Data Flow Map for first-time readers (simple numbered view, legend, walk-through, traffic-weighted motion)",
+ "title": "Wave 10: the data flow map reads from the device to the destination in numbered steps, and its motion shows real upload shares or stays opt-in",
+ "files": [
+  "data_flow.py",
+  "dlp_api_server.py",
+  "static/data_flow_simple.js",
+  "static/data_flow.js",
+  "static/flow_anim.js",
+  "static/report_dataflow.html"
+ ],
+ "standards": [
+  "WCAG 2.2 SC 1.1.1",
+  "WCAG 2.2 SC 1.3.2",
+  "WCAG 2.2 SC 1.4.1",
+  "WCAG 2.2 SC 1.4.3",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 1.4.11",
+  "WCAG 2.2 SC 2.1.1",
+  "WCAG 2.2 SC 2.2.2",
+  "WCAG 2.2 SC 2.4.3",
+  "WCAG 2.2 SC 2.4.7",
+  "WCAG 2.2 SC 3.3.5",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V7.1.1",
+  "WSTG-ATHZ-02",
+  "WSTG-INPV-01",
+  "CWE-20",
+  "CWE-285",
+  "CWE-532",
+  "CWE-1287"
+ ],
+ "coverage": {
+  "before": 0.0,
+  "after": 100.0,
+  "how": "tests/test_dataflow_clarity.py: traffic shares and the route helper in Python, the traffic model and the step builder under node, and the page on the sample tenant in headless Chrome (numbered path, legend, keyboard, walk-through, both views, motion opt-in, help marks, AA contrast in both themes with glass on and off, 320 and 390 px)"
+ },
+ "checks": [
+  {"id": "W10-DF-C01", "what": "The page opens on the simple view: one path as numbered steps from the device to the destination, each with a plain sentence", "standard": "WCAG 2.2 SC 1.3.2", "result": "pass"},
+  {"id": "W10-DF-C02", "what": "Every step and legend entry has a shape and a word; the legend sits beside the steps (above them on a phone)", "standard": "WCAG 2.2 SC 1.4.1", "result": "pass"},
+  {"id": "W10-DF-C03", "what": "Tab reaches every step and focus shows its details; the walk-through moves with Next and Back and Esc returns focus", "standard": "WCAG 2.2 SC 2.1.1 · SC 2.4.3", "result": "pass"},
+  {"id": "W10-DF-C04", "what": "With ZIA Insights in scope the uploads picture is weighted by Shadow IT bytes per traffic class and moves; without it nothing is guessed and nothing moves; the full map's path-count picture is opt-in", "standard": "WCAG 2.2 SC 2.2.2 · CWE-1287", "result": "pass"},
+  {"id": "W10-DF-C05", "what": "Insights is read only when ticked on the Scope page; a failed sign-in keeps the map and masks every secret", "standard": "ASVS V4.1.3 · V7.1.1 · CWE-285 · CWE-532", "result": "pass"},
+  {"id": "W10-DF-C06", "what": "AA contrast of the new words (4.5:1) and shapes (3:1) in both themes with glass on and off; no sideways scroll at 320 and 390 px", "standard": "WCAG 2.2 SC 1.4.3 · 1.4.11 · 1.4.10", "result": "pass"}
+ ],
+ "findings": [
+  {
+   "id": "W10-DF-01",
+   "title": "The data flow map showed every diagram, table and label at once with no reading order or legend, and jumped past its own picture on load: a newcomer could not tell where to start",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V1.1.1",
+   "status": "fixed",
+   "fix": "A simple numbered view by default with a legend, one step's details at a time and a walk-through; Show all details keeps the full map",
+   "test": "tests/test_dataflow_clarity.py::test_the_simple_view_is_the_default_and_shows_the_numbered_path",
+   "commit": "ad6000c"
+  },
+  {
+   "id": "W10-DF-02",
+   "title": "The map's moving picture counted traced paths, not traffic, so its motion added nothing the still picture did not say",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V1.1.1",
+   "status": "fixed",
+   "fix": "Uploads picture weighted by ZIA Insights Shadow IT bytes per traffic class when in scope; the path-count picture starts still (opt-in)",
+   "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_moves_only_with_real_numbers",
+   "commit": "ad6000c"
+  }
+ ],
+ "tests_added": 26
+}
