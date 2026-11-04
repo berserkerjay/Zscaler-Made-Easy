@@ -8782,6 +8782,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/traffic-logs": {
+   "#tlSample": {
+    "what": "Analyses a small made-up ZIA web log for the sample tenant, so you can see the results and the true inspection coverage without logs of your own.",
+    "input": "Nothing to type. Just click it. Nothing is read from a tenant.",
+    "effect": "local"
+   },
    "#tlSslCov": {
     "what": "Opens SSL coverage in a new tab: the true share of web traffic Zscaler inspected. After you read ZIA web logs here, use the link in the SSL box to bring them along.",
     "input": "Nothing to type. Just click it.",

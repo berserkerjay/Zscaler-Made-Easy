@@ -525,6 +525,57 @@ def test_the_sample_tenant_gives_a_measured_figure_with_realistic_proportions():
     assert {"zpa_routed", "pac_direct"} <= {o["kind"] for o in t["outside"]}
 
 
+def _sample_run(**kw):
+    import data_flow
+    import offline_tenant as ot
+    creds = ot.creds_for(ot.sample_store())
+    raw, sdk_cl = ot.client_for(creds, "raw"), ot.client_for(creds, "sdk")
+    scope = data_flow.path_scope(["dlp", "zcc", "insights", "zpa"], {"ssl_inspection": "zscaler"})
+    return sc.run(raw, scope, zins=sdk_cl.zins, volume_plan={"ask": True, "window": "7d"}, **kw)
+
+
+def test_the_sample_tenant_ties_a_measured_share_to_an_exemption_rule():
+    """ASVS V1.4.4 · CWE-682: offline, Insights alone ties part of the HTTPS left encrypted to a named SSL rule (Zoom), not only to "not split"."""
+    # Act
+    t = _sample_run()["true_coverage"]
+    # Assert
+    zoom = [r for r in t["causes"] if r.get("rule") == "Do not decrypt Zoom"]
+    assert zoom and zoom[0]["pct_of"]["BYTES"] > 0 and zoom[0]["examples"] == ["Zoom"]
+    assert t["unattributed"]["pct_of"]["BYTES"] < t["units"]["BYTES"]["not_inspected_pct"]
+
+
+SAMPLE_LOGS = os.path.join(ROOT, "static", "samples", "nss-web-sample.jsonl")
+
+
+def test_the_sample_web_logs_tie_each_line_left_encrypted_to_the_sample_rules():
+    """ASVS V1.4.4 · CWE-682 · WSTG-BUSL-01: the made-up NSS web log reads cleanly and, on the sample tenant, splits what was left encrypted by rule."""
+    # Arrange
+    text = open(SAMPLE_LOGS, encoding="utf-8").read()
+    rep = tl.analyze([{"name": "sample-nss-web.jsonl", "content": text}])
+    web = rep["zia"]["zia_web"]
+    # Act
+    t = _sample_run(web_logs={"ssl": web["ssl"], "period": rep["period"], "records": web["records"]})["true_coverage"]
+    # Assert
+    assert rep["input"]["malformed"] == 0 and t["source"] == "logs" and t["units"]["BYTES"]["sum_pct"] == 100.0
+    by_rule = {r.get("rule"): r for r in t["causes"] if r.get("rule")}
+    assert {"Do not decrypt webmail", "Zscaler Recommended Exemptions", "Do not decrypt Zoom"} <= set(by_rule)
+    assert all(by_rule[n]["pct_of"]["TRANSACTIONS"] > 0 for n in by_rule)
+    assert all(re.search(r"@larkspur-freight\.example\"", line) for line in text.splitlines())
+
+
+def test_the_traffic_logs_page_offers_the_sample_web_logs():
+    """ASVS V5.3.3 · CWE-79 · WCAG 2.2 SC 3.3.2: a Try with sample web logs button reads the app's own sample file, which the app serves, and has help."""
+    # Arrange
+    js = open(os.path.join(ROOT, "static", "traffic_logs.js"), encoding="utf-8").read()
+    html = open(os.path.join(ROOT, "static", "report_traffic_logs.html"), encoding="utf-8").read()
+    cat = open(os.path.join(ROOT, "static", "help_catalog.js"), encoding="utf-8").read()
+    # Act
+    r = TestClient(srv.app).get("/static/samples/nss-web-sample.jsonl")
+    # Assert
+    assert 'id="tlSample"' in html and "fetch('/static/samples/nss-web-sample.jsonl'" in js and '"#tlSample"' in cat
+    assert r.status_code == 200 and r.text == open(SAMPLE_LOGS, encoding="utf-8").read()
+
+
 # ── The page ────────────────────────────────────────────────────────────
 def _page():
     with open(os.path.join(ROOT, "static", "report_ssl_coverage.html"), encoding="utf-8") as f:

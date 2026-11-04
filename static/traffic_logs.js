@@ -102,23 +102,41 @@
     status('Reading the files…');
     let files;
     try { files = await Promise.all(chosen.map(readFile)); } catch (e) { status(e.message, true); setEnabled('tlRun', true); return; }
+    await analyse(files, $('tlFormat').value || '', '');
+  });
+
+  // Try it without logs of your own: a small made-up ZIA NSS web log for the
+  // sample tenant (static/samples), analysed like an upload.
+  $('tlSample').addEventListener('click', async () => {
+    setEnabled('tlRun', false); setEnabled('tlSample', false);
+    status('Reading the sample web logs…');
+    try {
+      const r = await fetch('/static/samples/nss-web-sample.jsonl', { cache: 'no-store' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const text = await r.text();
+      await analyse([{ name: 'sample-nss-web.jsonl', content: text }], '', 'Sample web logs (made up, for the sample tenant). ');
+    } catch (e) { status(`Could not read the sample web logs: ${e.message}`, true); }
+    finally { setEnabled('tlSample', true); setEnabled('tlRun', chosen.length > 0); }
+  });
+
+  async function analyse(files, feedFormat, what) {
     status('Analysing… a large log takes a few seconds.');
     announce('Analysing the logs');
     try {
       const r = await fetch('/api/traffic-logs/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files, feed_format: $('tlFormat').value || '' }) });
+        body: JSON.stringify({ files, feed_format: feedFormat }) });
       const data = await r.json().catch(() => ({}));
       if (r.status === 413) throw new Error('The upload is larger than this server accepts. Gzip the logs or upload fewer at a time.');
       if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `HTTP ${r.status}`);
       show(data);
       const inp = data.input || {};
-      status(`Done: ${fmt(inp.records)} records read${inp.malformed ? `, ${fmt(inp.malformed)} lines could not be read and were skipped` : ''}.`);
+      status(`${what}Done: ${fmt(inp.records)} records read${inp.malformed ? `, ${fmt(inp.malformed)} lines could not be read and were skipped` : ''}.`);
       announce('Analysis complete.');
     } catch (e) {
       status(`Could not analyse: ${e.message}`, true);
       announce('The analysis failed. ' + e.message);
-    } finally { setEnabled('tlRun', true); }
-  });
+    } finally { setEnabled('tlRun', chosen.length > 0); }
+  }
 
   // ── Drawing ──
   function show(data) {

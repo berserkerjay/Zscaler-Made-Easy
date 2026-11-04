@@ -236,6 +236,12 @@ SSL_RULES = [
      "action": {"type": "DECRYPT", "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minClientTLSVersion": "CLIENT_TLS_1_2",
                                                      "minServerTLSVersion": "SERVER_TLS_1_2"}},
      "urlCategories": ["ANY"]},
+    # Zoom left encrypted for call quality: an exempted application with
+    # Shadow IT bytes, so SSL coverage's true coverage ties a measured share
+    # of the HTTPS left encrypted to this rule on the sample tenant. ZIA
+    # evaluates the default rule last whatever its order.
+    {"id": 706, "order": 5, "rank": 7, "name": "Do not decrypt Zoom", "state": "ENABLED", "cloudApplications": ["ZOOM"],
+     "action": {"type": "DO_NOT_DECRYPT", "doNotDecryptSubActions": {"bypassOtherPolicies": False}}},
 ]
 FIREWALL_RULES = [
     {"id": 801, "order": 1, "rank": 7, "name": "Block QUIC to force inspection", "state": "ENABLED", "action": "BLOCK_DROP",
