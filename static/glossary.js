@@ -154,6 +154,8 @@
     'incident receiver': { term: 'incident receiver', def: 'The incident receiver gets a copy of what a DLP rule caught. It puts it where Workflow Automation can see it.' },
     'quality score': { term: 'quality score', def: 'The quality score shows how well this app itself is tested. It goes from 0 to 100. Open problems pull it down.' },
     'severity': { term: 'severity', def: 'Severity says how bad a problem is. It goes from info and low up to medium, high and critical.' },
+    'forwarding profile': { term: 'forwarding profile', def: 'A forwarding profile tells Client Connector where to send traffic on each kind of network. It can send it to Zscaler or let it go straight out.' },
+    'file type control': { term: 'File Type Control', def: 'File Type Control checks the kind of file, like a zip or a spreadsheet. It can stop some kinds from being sent.' },
     'glass effect': { term: 'glass effect', def: 'The glass effect makes bars, cards and buttons see-through, like frosted glass. You can turn it off in Advanced settings.' },
   };
   // GLOSSARY-END

@@ -55,6 +55,8 @@
   }
   const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
+  const winWords = tr => { const l = String((tr.window && tr.window.label) || 'the last 7 days'); return /^last /i.test(l) ? 'the ' + l.toLowerCase() : l; };
+
   // The words a newcomer may not know, from the Simple mode glossary.
   function termDef(key) { const G = root.SIMPLE_GLOSSARY || {}; return G[key] || null; }
 
@@ -359,7 +361,7 @@
         + ' The numbered steps above show what the settings decide. With ZIA Insights in scope, this space shows how much of your real uploads takes each road.';
       tsec.appendChild(p);
     } else {
-      tsec.appendChild(el('p', 'dfs-lead', `This picture uses real numbers: the data your users uploaded to cloud apps in ${(tr.window && tr.window.label) || 'the last 7 days'}. Each stream is as wide as its share. Dots show data moving, and a red stream ends where the data is not checked.`));
+      tsec.appendChild(el('p', 'dfs-lead', `This picture uses real numbers: the data your users uploaded to cloud apps in ${winWords(tr)}. Each stream is as wide as its share. Dots show data moving, and a red stream ends where the data is not checked.`));
       const row = el('div', 'dfs-top');
       const nl = el('label', 'df-ctl'); nl.appendChild(el('span', 'lbl', 'Network'));
       const ns = el('select'); ns.id = 'dfsNet';

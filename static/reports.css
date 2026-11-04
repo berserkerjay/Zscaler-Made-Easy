@@ -896,3 +896,4 @@ summary { min-height: 24px; }
   .dfs-terms { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .dfs-btn { transition: none; } }
+.dfs-walkbar[hidden], .dfs-views[hidden] { display: none; }

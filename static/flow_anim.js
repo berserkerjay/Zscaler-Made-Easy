@@ -1586,7 +1586,7 @@
       l.label = `${DF_NODES[l.from][1]} → ${to[1]}: ${Math.round(100 * pctOf(l.value, total))}% of uploads (${humanBytes(l.value)})`;
     });
     m.ends = Object.keys(ends).map(k => Object.assign(ends[k], { share: pctOf(ends[k].bytes, total) })).sort((a, b) => b.bytes - a.bytes);
-    const win = (tr.window && tr.window.label) || 'the last 7 days';
+    const wl = String((tr.window && tr.window.label) || 'the last 7 days'), win = /^last /i.test(wl) ? 'the ' + wl.toLowerCase() : wl;
     m.label = `Where uploads go on ${nets[net] || net}: ${humanBytes(total)} uploaded to cloud apps in ${win}, by traffic class`;
     m.alt = [`${humanBytes(total)} was uploaded to cloud apps in ${win} (${tr.source || 'ZIA Insights'}). Each stream is as wide as its share of it.`,
       `On ${nets[net] || net}:`]

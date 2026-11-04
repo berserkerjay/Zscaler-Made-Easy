@@ -3064,6 +3064,71 @@ window.HELP_CATALOG = {
    }
   },
   "/report/dataflow": {
+   "#dfViewSimple": {
+    "what": "Shows the simple view: one path as numbered steps, with a legend and the details of one step at a time.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#dfViewAll": {
+    "what": "Shows every part of the map: the full reference order, every path, every table and every rule. Nothing is left out.",
+    "input": "Nothing to type. Just click it. Simple view goes back.",
+    "effect": "local"
+   },
+   ".df-about summary": {
+    "what": "Opens or closes the full description of what this map reads and what it leaves out.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#dfsPath": {
+    "what": "Picks which traced path the numbered steps show: a kind of traffic on one network.",
+    "input": "Pick one from the list. The steps, the legend and the details follow it.",
+    "effect": "local"
+   },
+   "#dfsWalk": {
+    "what": "Starts a walk-through: the map shows one step at a time, with what it decided and why. Back and Next move between steps.",
+    "input": "Nothing to type. Just click it. Click it again, or press Esc, to stop.",
+    "effect": "local"
+   },
+   "#dfsNext": {
+    "what": "Moves the walk-through to the next step and shows what it decided and why.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#dfsWalkEnd": {
+    "what": "Stops the walk-through and goes back to the step you chose before.",
+    "input": "Nothing to type. Just click it. Esc does the same.",
+    "effect": "local"
+   },
+   "#dfsSteps button.dfs-btn": {
+    "what": "One step of the path, in the order the traffic meets it. Pointing at it or focusing it shows its details; a click keeps them shown.",
+    "input": "Nothing to type. Point at it, tab to it, or click it.",
+    "effect": "local"
+   },
+   "#dfsMore": {
+    "what": "Opens Show all details at this step, with every rule and setting behind it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#dfsDetail a.dfs-term": {
+    "what": "Opens the help page's list of words in a new tab. The meaning is also shown right here, next to the word.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#dfsNet": {
+    "what": "Picks the network for the uploads picture. Insights cannot say which network was used, so it shows where all of the uploads would go on the one you pick.",
+    "input": "Pick one: Off network (remote), On trusted network (office) or On VPN.",
+    "effect": "local"
+   },
+   "#dfsFlowPlay": {
+    "what": "Pauses or plays the moving dots in the uploads picture. The list under it says the same in words.",
+    "input": "Nothing to type. Just click it. The label says what a click does now.",
+    "effect": "local"
+   },
+   "#dfsFlowStage path.fa-band": {
+    "what": "One road the uploads take, as wide as its share of the bytes. Point at it for its share; press Enter to show that path in the steps.",
+    "input": "Nothing to type. Point at it, or click it.",
+    "effect": "local"
+   },
    "a.rp-btn[href^=\"/reference/data-security-architect\"]": {
     "what": "Data Security Architect: the reference architecture this flow is measured against (inline web module; opens in a new tab)",
     "input": "Nothing to type. Just click it.",
