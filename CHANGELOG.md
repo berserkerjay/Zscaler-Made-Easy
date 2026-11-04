@@ -7,6 +7,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-04
+
+### Data flow map: a map a newcomer can read
+- **Simple view by default.** The data flow map now opens on one path as numbered steps, read from top to bottom: the device, Client Connector, forwarding, the PAC file (when it is used), Cloud App Control and URL Filtering, SSL inspection, File Type Control, Web DLP and the destination. Each step has one plain sentence ("Client Connector, the Zscaler app on the device, sends it to Zscaler.") and a decision: Allowed, Inspected, Not inspected, Blocked, Bypassed, Not sure or Not reached, each with its own shape and word, so colour is never the only clue. A short "How to read this map" box comes first; the path picker chooses any traced path.
+- **A legend beside the steps** (above them on a phone) says what every shape means. Pointing at, focusing or clicking a step shows its details only: the rule that decided it, why, its weak point and fix, and the Zscaler words it uses, each with its meaning and a link to the help page's word list. "Show this step in all details" opens the full map at that step.
+- **Walk me through it** steps through one request with Back and Next, saying at each step what it decided and why; Esc ends it.
+- **Show all details** shows the full map as before: the reference order of enforcement, the selected path's hops, visibility by category, control flows, gaps, every destination on every network, the totals and the inventory. Nothing was removed. The page no longer jumps down to the path when it opens.
+- **Where your uploads really go.** With ZIA Insights ticked on the Scope page, the map asks Insights once (Shadow IT, last 7 days) and the moving picture weights each road by the bytes users really uploaded to cloud apps, for the network you pick, with the shares in words (for example "30% reaches Zscaler but stays locked (not inspected)"). Each application is put into a traffic class by the tenant's cloud application catalogue, else by its Shadow IT category, else counted as all other web traffic; Insights cannot say which network a byte used, and the page says so. Without Insights numbers nothing is guessed: the page says why and keeps the still, numbered view. The full map's picture, whose widths count paths rather than traffic, now starts still: Play motion is an opt-in extra. Motion still pauses while the tab is hidden and honours reduced motion.
+
 ## 2026-11-01
 
 ### Pages stay quick: no piled-up scans, no "Rate limit exceeded" on your own pages
