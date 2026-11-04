@@ -343,3 +343,22 @@ def test_the_container_can_run_beside_a_local_install_on_another_host_port():
     assert 'os.environ.get("DLP_CHECK_HOST_PORT"' in src
     guide = open(os.path.join(ROOT, "INSTALL.md")).read()
     assert "DLP_CHECK_HOST_PORT=8002" in guide and "-p 127.0.0.1:8001:8000" in guide and "http://localhost:8001" in guide
+
+
+def test_the_zscaler_certificate_scripts_exist_and_the_docs_point_to_them():
+    """ASVS V14.2.1 · CWE-295 · WSTG-CONF-01: the container's TLS-inspection fix is one script per OS, documented where the container quick start is."""
+    # Arrange
+    import subprocess
+    sh = os.path.join(ROOT, "get_zscaler_cert.sh")
+    ps1 = os.path.join(ROOT, "get_zscaler_cert.ps1")
+    # Act
+    syntax = subprocess.run(["bash", "-n", sh], capture_output=True, text=True)
+    # Assert
+    assert syntax.returncode == 0, syntax.stderr
+    assert os.access(sh, os.X_OK)
+    sh_text, ps_text = open(sh, encoding="utf-8").read(), open(ps1, encoding="utf-8").read()
+    assert "certs/zscaler-root.crt" in sh_text and "BEGIN CERTIFICATE" in sh_text
+    assert "Cert:\\LocalMachine\\Root" in ps_text and "zscaler-root.crt" in ps_text
+    for doc in ("README.md", "INSTALL.md", os.path.join("certs", "README.md")):
+        text = open(os.path.join(ROOT, doc), encoding="utf-8").read()
+        assert "get_zscaler_cert.sh" in text and "get_zscaler_cert.ps1" in text, doc
