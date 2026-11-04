@@ -32,6 +32,7 @@ WEBEX_TXT = "*.webex.com\nwebex.com\n62.109.192.0/18  # Webex media\n"
 ONE_CLICK = {"id": 90, "name": "UCaaS One Click Rule", "order": 2, "state": "ENABLED", "predefined": True, "action": "ALLOW",
              "appServiceGroups": [{"id": 2, "name": "ZOOM"}, {"id": 3, "name": "WEBEX"}]}
 T443 = {"protocol": "tcp", "port": 443}
+BUNDLED = (endpoint_snapshots.vendor_list, endpoint_snapshots.m365_list)   # the real excerpts, for the page test
 
 
 @pytest.fixture(autouse=True)
@@ -315,7 +316,8 @@ await ev(`(() => { window.dlpDialog = { ask: async () => true };
   const f = window.fetch; window.__vend = []; window.fetch = (u, o) => { if (String(u).includes('/api/vendor-endpoints')) window.__vend.push([(o && o.method) || 'GET', String(u), (o && o.body) || '']); return f(u, o); }; return 1; })()`);
 out.start = await ev(`({ on: document.getElementById('advVendZoomOn').checked, fetchDisabled: document.getElementById('advVendFetch').disabled,
   removeDisabled: document.getElementById('advVendRemove').disabled, box: document.getElementById('advVendBox').textContent,
-  switchRole: document.getElementById('advVendZoomOn').getAttribute('role') })`);
+  switchRole: document.getElementById('advVendZoomOn').getAttribute('role'), gotoOn: document.getElementById('advVendGotoOn').checked,
+  gotoFetchDisabled: document.getElementById('advVendGotoFetch').disabled, gotoRole: document.getElementById('advVendGotoOn').getAttribute('role') })`);
 // Import Webex's list from a text file.
 await ev(`(() => { const s = document.getElementById('advVendProv'); s.value = 'webex'; s.dispatchEvent(new Event('change')); return 1; })()`);
 const root = (await send('DOM.getDocument', { depth: 0 })).result.root.nodeId;
@@ -333,7 +335,7 @@ await ev(`(document.getElementById('advVendRemove').click(), 1)`);
 await until(() => ev(`document.getElementById('advVendBox').textContent.includes('Removed.')`), 'the removal', 30000);
 out.removed = await ev(`({ box: document.getElementById('advVendBox').textContent, removeDisabled: document.getElementById('advVendRemove').disabled,
   calls: window.__vend.map(c => c[0] + ' ' + c[1].replace(location.origin, '')) })`);
-out.names = await ev(`['advVendZoomOn', 'advVendFetch', 'advVendProv', 'advVendFile', 'advVendImport', 'advVendRemove'].map(id => { const e = document.getElementById(id); e.disabled = false; e.focus();
+out.names = await ev(`['advVendZoomOn', 'advVendFetch', 'advVendGotoOn', 'advVendGotoFetch', 'advVendProv', 'advVendFile', 'advVendImport', 'advVendRemove'].map(id => { const e = document.getElementById(id); e.disabled = false; e.focus();
   return { id, focused: document.activeElement === e, name: ((e.labels && e.labels.length ? e.labels[0].textContent : '') || e.textContent || '').trim() }; })`);
 await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
 await sleep(300);
@@ -343,9 +345,11 @@ ws.close(); p.kill(); process.exit(0);
 """
 
 
-def test_the_advanced_settings_card_imports_switches_and_removes_with_zoom_fetching_off_by_default(tmp_path):
-    """ASVS V1.14.6 · V12.6.1 · CWE-918 · WCAG 2.2 SC 4.1.2 · SC 1.4.10: the card exists in Advanced settings, as SECURITY.md says; fetching Zoom's list is off by default and turning it on fetches nothing; a provider's list is imported from a text file and removed; every control is named and reachable; nothing scrolls sideways at 320px."""
+def test_the_advanced_settings_card_imports_switches_and_removes_with_zoom_fetching_off_by_default(tmp_path, monkeypatch):
+    """ASVS V1.14.6 · V12.6.1 · CWE-918 · WCAG 2.2 SC 4.1.2 · SC 1.4.10: the card exists in Advanced settings, as SECURITY.md says; fetching Zoom's and GoTo's lists is off by default and turning it on fetches nothing; with none kept the bundled excerpt is shown; a provider's list is imported from a text file and removed; every control is named and reachable; nothing scrolls sideways at 320px."""
     from test_findings_reflow import run_in_browser
+    monkeypatch.setattr(endpoint_snapshots, "vendor_list", BUNDLED[0])    # the page shows the excerpts as shipped
+    monkeypatch.setattr(endpoint_snapshots, "m365_list", BUNDLED[1])
     lst = tmp_path / "webex.txt"
     lst.write_text(WEBEX_TXT, encoding="utf-8")
     (tmp_path / "b").mkdir()
@@ -353,6 +357,9 @@ def test_the_advanced_settings_card_imports_switches_and_removes_with_zoom_fetch
     s = out["start"]
     assert s["on"] is False and s["fetchDisabled"] is True and s["removeDisabled"] is True and s["switchRole"] == "switch"
     assert "Zoom: no list kept" in s["box"] and "Fetching from assets.zoom.us: off" in s["box"] and "Webex: no list kept" in s["box"]
+    assert s["gotoOn"] is False and s["gotoFetchDisabled"] is True and s["gotoRole"] == "switch"
+    assert "Fetching from goto-ipblocks.live.gtc.goto.com: off" in s["box"] and "Using the excerpt that comes with the app" in s["box"]
+    assert "never a no match" in s["box"] and "no call that lists app services or app service groups" in s["box"]
     assert "Webex's list, imported" in out["imported"]["box"] and "host names" in out["imported"]["box"] and out["imported"]["removeDisabled"] is False
     assert "Fetching from assets.zoom.us: on" in out["on"]["box"] and "Nothing is fetched until you click" in out["on"]["box"]
     assert [c.split(" ")[0] + " " + c.split(" ")[1] for c in out["on"]["calls"]] == ["POST /api/vendor-endpoints/import", "PUT /api/vendor-endpoints/settings"]
