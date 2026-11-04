@@ -12267,8 +12267,38 @@ async def report_data_flow(req: DataFlowRequest):
         import traceback
         print(f"[error] data flow map: {type(e).__name__}: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"The tracer failed ({type(e).__name__}: {str(e)[:300]}). The full traceback is in server.log; please report it.")
+    # Traffic shares (optional): one ZIA Insights query when Insights is in
+    # scope, so the moving picture can weight each path by real uploads.
+    # Any failure leaves the map as it was, with the reason.
+    await asyncio.to_thread(_dataflow_traffic, req, report)
     rid = _remember_report("dataflow", report, _report_label(req))
     return _REPORTS[rid]
+
+
+def _dataflow_traffic(req: Any, report: Dict[str, Any]) -> None:
+    """report["traffic"]: the Data Flow Map's bytes per traffic class from
+    ZIA Insights (Shadow IT), read only when the Scope page ticks ZIA
+    Insights and the sign-in can read it; else why not. Read-only, never
+    raises, never names a secret."""
+    import data_flow
+    creds: Dict[str, Any] = {}
+    try:
+        sc, _ch, _src = _scope_selection(req)
+        if "insights" not in sc:
+            data_flow.attach_traffic(report, None, data_flow.TRAFFIC_NOT_IN_SCOPE)
+            return
+        creds = _tenant_creds(req)
+        if _offline_client(creds, "sdk") is None and tenant_auth.normalize(creds)["auth_method"] == tenant_auth.LEGACY:
+            data_flow.attach_traffic(report, None, data_flow.TRAFFIC_LEGACY)
+            return
+        sdk = _build_sdk_client(creds)
+        read = data_flow.read_traffic(getattr(sdk, "zins", None), scrub=lambda s: tenant_auth.mask_secrets(s, creds))
+        data_flow.attach_traffic(report, read)
+    except HTTPException as e:
+        data_flow.attach_traffic(report, None, "Traffic numbers were not read (" + tenant_auth.mask_secrets(str(e.detail), creds)[:200]
+                                 + "). The picture counts paths, not bytes.")
+    except Exception as e:  # noqa: BLE001 — traffic numbers are optional
+        data_flow.attach_traffic(report, None, f"Traffic numbers were not read ({type(e).__name__}). The picture counts paths, not bytes.")
 
 
 # ── Live DLP Feed ────────────────────────────────────────────────────
