@@ -2539,7 +2539,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#advVendGotoFetch": {
-    "what": "Fetches GoTo's IP ranges now. The GOTO and LOGMEIN app service groups in the Path analyzer and Test a list are matched with them; until a list is fetched or imported those groups show as unknown.",
+    "what": "Fetches GoTo's IP ranges now. The Path analyzer and Test a list match the GOTO and LOGMEIN app service groups with them. Until a list is fetched or imported, those groups show as unknown.",
     "input": "Nothing to type. Turn on fetching GoTo's list first. A list that fails the checks is refused and the old one stays.",
     "effect": "local"
    },
