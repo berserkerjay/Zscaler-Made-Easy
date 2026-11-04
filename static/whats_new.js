@@ -33,10 +33,11 @@ window.WHATS_NEW = {
     {
       "id": "soc-review", "release": "2026-11-04", "label": "SOC review",
       "what": "A SOC review page: admin access (who can administer ZIA, ZPA, Client Connector, ZDX and ZIdentity, full or limited rights, disabled and unused admins, API keys and clients) and logging (what is sent to your SIEM and the gaps). Unknown is never counted as fine.",
-      "changelog": ["SOC review page", "Admin access", "Logging"],
+      "changelog": ["SOC review page", "SOC review", "Admin access", "Logging"],
       "marks": [
         { "page": "/", "at": "button[onclick=\"openSocReviewTab()\"]" },
-        { "page": "/report/soc-review", "at": ".rp-hero h1" }
+        { "page": "/report/soc-review", "at": ".rp-hero h1" },
+        { "page": "/report/operations", "at": "#opSocReview" }
       ]
     },
     {
@@ -210,7 +211,7 @@ window.WHATS_NEW = {
     {
       "id": "fix-flow-url", "release": "2026-11-01", "label": "URL filtering in Fix rows from Test a list",
       "what": "Fix selected puts URL filtering rows in a custom URL category and adds that category to a matching rule, or to a new disabled rule above the rule that decided them; the preview warns when the category alone changes nothing.",
-      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing"],
+      "changelog": ["URL filtering in Fix rows from Test a list", "Fix rows from Test a list", "The category alone changes nothing"],
       "marks": [{ "page": "/report/operations", "at": "select[id^=\"lfCat\"]", "shown": "after Read from the tenant, with URL filtering rows" }]
     },
     {

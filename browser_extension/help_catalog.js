@@ -4662,6 +4662,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/operations": {
+   "#opSocReview a[href=\"/report/soc-review\"]": {
+    "what": "Opens the SOC review: who can administer each Zscaler product and what is sent to your SIEM. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#fwiFile": {
     "what": "Loads a migration plan saved from Migrate from another vendor (Palo Alto Networks). The server checks it again before the preview.",
     "input": "Optional when the plan was handed over from that page. One .json plan file under 4 MB.",
