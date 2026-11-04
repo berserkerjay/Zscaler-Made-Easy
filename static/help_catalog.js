@@ -325,7 +325,7 @@ window.HELP_CATALOG = {
     "effect": "read"
    },
    "#dlpDeployModal #dzNamePrefix": {
-    "what": "The managed-name prefix the operator set (DLP_CHECK_NAME_PREFIX, off by default): every dictionary, engine, rule and application group this plan creates, and the pack's Terraform workspace, gets it in front of its name, and an object already in the tenant under that name is reused and recognised as this app's. Trade-off: it keeps managed objects apart from the customer's own and easy to find, but names get longer (SaaS rule names allow 31 characters, so a long prefix can block a rule), anyone who names an object with the prefix makes it look like this app's, and changing or removing the prefix after a deploy makes the next deploy create new copies under the new names while the old ones stay until you remove them.",
+    "what": "The name prefix the operator set. Each name this plan creates starts with it, in the tenant and in Terraform. An object already in the tenant under that name is reused and treated as made by this app. Trade-off: it keeps your objects apart and easy to find. But names get longer, and a SaaS rule name may only have 31 letters. Anyone who uses the prefix makes an object look like this app's. If you change the prefix after a deploy, the next deploy makes new copies under the new names. The old ones stay until you remove them.",
     "input": "Nothing to type here. The operator sets it before starting the app: letters, digits, spaces and - _ . : only, at most 16 characters, starting with a letter or digit.",
     "effect": "local"
    },
@@ -9779,7 +9779,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#tmStoreRotate": {
-    "what": "Makes a new key for the app's encrypted stores, encrypts every store again with it, then forgets the old key. Store encryption is on by default (AES-256-GCM; the key is in the operating system's credential store, else in the owner-only key file beside the data); the button is off only when the server was started with the opt-out DLP_CHECK_STORE_ENCRYPTION=0.",
+    "what": "Makes a new key for the encrypted stores. Every store is encrypted again with it, then the old key is forgotten. Store encryption is on by default. The button is off only when the server was started with DLP_CHECK_STORE_ENCRYPTION=0.",
     "input": "Nothing to type. You are asked to confirm.",
     "effect": "local"
    }
