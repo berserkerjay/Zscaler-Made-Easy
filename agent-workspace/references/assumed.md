@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-523 markers.
+524 markers.
 
 | File:line | Note |
 |---|---|
@@ -124,9 +124,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_config_restore.py:79` | assumed: a rule created without it is active at once (the API's default). |
 | `ops_config_restore.py:345` | assumed: POST /staticIP/validate only checks the address and never changes the tenant, so the |
 | `ops_config_restore.py:358` | assumed: a 409, or an answer saying the address exists, is a duplicate or is already used, means |
-| `ops_config_restore.py:664` | assumed: ZPA answers ip_anchored on a server group; only an explicit false refuses it. |
-| `ops_config_restore.py:1348` | assumed: deleting in the reverse of the create order (a location, then its GRE tunnel, then its static |
-| `ops_config_restore.py:1538` | or not sent (PRA and inspection: ZPA keeps them unless they are listed for deletion, assumed). |
+| `ops_config_restore.py:653` | assumed: the ZPA tenant read for the target (the profile's ZPA) is the one the target ZIA is linked to, so a |
+| `ops_config_restore.py:666` | assumed: ZPA answers ip_anchored on a server group; only an explicit false refuses it. |
+| `ops_config_restore.py:1350` | assumed: deleting in the reverse of the create order (a location, then its GRE tunnel, then its static |
+| `ops_config_restore.py:1540` | or not sent (PRA and inspection: ZPA keeps them unless they are listed for deletion, assumed). |
 | `ops_dlp_objects.py:57` | ASSUMED: that ZIA itself refuses deleting an object something outside the |
 | `ops_dlp_objects.py:82` | NOT_CHECKED = "Anything outside the DLP rules and engines read here that uses it makes ZIA refuse the delete (assumed)." |
 | `ops_fw_import.py:31` | firewall channel). Assumed: that the API accepts an IPv4 range a-b in an IP |

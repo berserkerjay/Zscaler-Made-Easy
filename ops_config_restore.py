@@ -650,6 +650,8 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
         """A reference to the other product's object by {external_id, name}
         (a ZPA gateway's ZPA server group and segments), matched by name in
         the target; a server group must be set up for Source IP Anchoring."""
+        # assumed: the ZPA tenant read for the target (the profile's ZPA) is the one the target ZIA is linked to, so a
+        # gateway's server group and segments matched there are the ones ZIA can use.
         asked.add(target_key)
         tt = cb.BY_KEY[target_key]
         nm = str(item.get("name") or "")
