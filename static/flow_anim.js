@@ -28,6 +28,16 @@
   const SVGNS = 'http://www.w3.org/2000/svg';
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const clip = (s, n) => { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+  // Words on lines of at most n characters (a longer single word keeps a
+  // line of its own, whole): nothing is cut.
+  const wrapWords = (s, n) => {
+    const out = [];
+    String(s == null ? '' : s).split(/\s+/).filter(Boolean).forEach(w => {
+      const last = out.length - 1;
+      if (last >= 0 && (out[last] + ' ' + w).length <= n) out[last] += ' ' + w; else out.push(w);
+    });
+    return out.length ? out : [''];
+  };
   const up = s => String(s == null ? '' : s).trim().toUpperCase();
 
   // ── Pure models ──────────────────────────────────────────────────
@@ -1529,6 +1539,122 @@
     return m;
   }
 
+  // Data Flow Map report + one network → the same routes, each traffic
+  // class as wide as the bytes its users really uploaded (report.traffic,
+  // from ZIA Insights). Insights has no network dimension, so the picture
+  // is for one network at a time: where all of that data would go on it.
+  // Null when the report carries no traffic numbers (the page then keeps
+  // the still, numbered view and counts paths, never bytes).
+  const DF_END_WORD = {
+    x_cc: 'skips Zscaler (bypassed at Client Connector)', x_pac: 'skips Zscaler (the PAC file sends it direct)',
+    u_cc: 'route not known', u_pac: 'route not known', b_policy: 'blocked by Cloud App Control or URL Filtering',
+    b_ssl: 'blocked at SSL inspection', u_ssl: 'inspection not known', enc: 'reaches Zscaler but stays locked (not inspected)',
+    o_block: 'blocked by File Type Control', o_enforce: 'inspected: a DLP rule can block it', o_monitor: 'inspected: DLP only watches',
+    o_other: 'inspected: no DLP rule decides', incident: 'inspected: a DLP rule can block it',
+  };
+  // What happens to data that ends at each node, said of the path above
+  // the picture: [now (it carried uploads), would (it carried none)].
+  const DF_END_SAY = {
+    enc: ['stays locked, so it is not inspected', 'would stay locked (not inspected)'],
+    x_cc: ['skips Zscaler (bypassed at Client Connector), so it is not inspected', 'would skip Zscaler at Client Connector (bypassed, not inspected)'],
+    x_pac: ['skips Zscaler (the PAC file sends it direct), so it is not inspected', 'would skip Zscaler through the PAC file (bypassed, not inspected)'],
+    u_cc: ['takes a route the settings do not show', 'would take a route the settings do not show'],
+    u_pac: ['takes a route the settings do not show', 'would take a route the settings do not show'],
+    b_policy: ['is blocked by Cloud App Control or URL Filtering', 'would be blocked by Cloud App Control or URL Filtering'],
+    b_ssl: ['is blocked at SSL inspection', 'would be blocked at SSL inspection'],
+    u_ssl: ['may or may not be inspected: the settings do not say', 'may or may not be inspected: the settings do not say'],
+    o_block: ['is blocked by File Type Control', 'would be blocked by File Type Control'],
+    o_enforce: ['is inspected, and a DLP rule can block it', 'would be inspected, and a DLP rule could block it'],
+    o_monitor: ['is inspected, but DLP only watches', 'would be inspected, but DLP would only watch'],
+    o_other: ['is inspected, but no DLP rule decides', 'would be inspected, but no DLP rule would decide'],
+  };
+  // Roads where data is not checked (a red stream ends there) and roads
+  // that stop it: a class that took one with 0 bytes is still named.
+  const DF_UNCHECKED = ['enc', 'x_cc', 'x_pac'];
+  const DF_RISKY = DF_UNCHECKED.concat(['b_policy', 'b_ssl', 'o_block']);
+  const dfEnd = t => { const r = dfRoute(t), e = r[r.length - 1]; return e === 'incident' ? 'o_enforce' : e; };
+  const dfWindow = tr => { const wl = String((tr.window && tr.window.label) || 'the last 7 days'); return /^last /i.test(wl) ? 'the ' + wl.toLowerCase() : wl; };
+  function humanBytes(n) {
+    const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let v = Number(n) || 0, i = 0;
+    while (Math.abs(v) >= 1000 && i < u.length - 1) { v /= 1000; i++; }
+    return `${i ? fmt1(v) : Math.round(v)} ${u[i]}`;
+  }
+  function dataFlowTrafficModel(report, network) {
+    const tr = report && report.traffic;
+    if (!tr || !tr.available || !tr.classes || !Array.isArray(report.traces)) return null;
+    const nets = {};
+    (report.networks || []).forEach(n => { nets[n.key] = n.label || n.key; });
+    const net = network || ((report.networks || [])[0] || {}).key;
+    const picked = report.traces.map((t, i) => ({ t, i })).filter(x => x.t.network === net && x.t.destination && x.t.destination.kind === 'class'
+      && tr.classes[x.t.destination.class] && tr.classes[x.t.destination.class].upload > 0);
+    const total = picked.reduce((a, x) => a + tr.classes[x.t.destination.class].upload, 0);
+    if (!total) return null;
+    const m = { kind: 'dataflow-traffic', cols: DF_COLS.slice(), nodes: [], links: [], routes: [], total, unit: 'bytes', network: net, ends: [] };
+    m.cols[0] = 'Uploads';
+    const value = {}, ends = {};
+    picked.forEach(({ t, i }) => {
+      const c = tr.classes[t.destination.class], w = c.upload, route = dfRoute(t);
+      route.forEach(k => { value[k] = (value[k] || 0) + w; });
+      const keys = [];
+      for (let j = 1; j < route.length; j++) {
+        const l = riverAdd(m, route[j - 1], route[j]);
+        l.value += w; l.items.push({ i, name: `${c.label} · ${humanBytes(w)}` });
+        keys.push(l.key);
+      }
+      const endKey = route[route.length - 1] === 'incident' ? 'o_enforce' : route[route.length - 1];
+      const e = ends[endKey] = ends[endKey] || { key: endKey, label: DF_END_WORD[endKey] || DF_NODES[endKey][1], tone: DF_NODES[endKey][2], bytes: 0, classes: [] };
+      e.bytes += w; e.classes.push(c.label);
+      m.routes.push({ links: keys, weight: w, tone: DF_NODES[route[route.length - 1]][2], item: i, end: endKey });
+    });
+    DF_ORDER.forEach(k => {
+      if (!value[k]) return;
+      const d = DF_NODES[k];
+      m.nodes.push({ key: k, col: d[0], label: k === 'src' ? 'Data your users upload' : d[1], tone: d[2], exit: d[3] || '', value: value[k],
+        sub: `${Math.round(100 * pctOf(value[k], total))}% · ${humanBytes(value[k])}` });
+    });
+    m.links.forEach(l => {
+      const to = DF_NODES[l.to];
+      l.tone = to[2];
+      l.label = `${DF_NODES[l.from][1]} → ${to[1]}: ${Math.round(100 * pctOf(l.value, total))}% of uploads (${humanBytes(l.value)})`;
+    });
+    m.ends = Object.keys(ends).map(k => Object.assign(ends[k], { share: pctOf(ends[k].bytes, total) })).sort((a, b) => b.bytes - a.bytes);
+    const win = dfWindow(tr);
+    // Blind, bypassed or blocked classes nobody uploaded to: still named,
+    // so "Not inspected" in the steps is never missing from the words.
+    const zero = {}, seen = {};
+    report.traces.forEach(t => {
+      const k = t.destination && t.destination.kind === 'class' && t.destination.class, c = k && tr.classes[k];
+      if (t.network !== net || !c || c.upload > 0 || seen[k]) return;
+      seen[k] = 1;
+      const e = dfEnd(t);
+      if (DF_RISKY.indexOf(e) < 0) return;
+      (zero[e] = zero[e] || { key: e, would: DF_END_SAY[e][1], classes: [] }).classes.push(c.label);
+    });
+    m.zero = DF_RISKY.filter(k => zero[k]).map(k => zero[k]);
+    m.unchecked = m.ends.some(e => DF_UNCHECKED.indexOf(e.key) >= 0);
+    m.label = `Where uploads go on ${nets[net] || net}: ${humanBytes(total)} uploaded to cloud apps in ${win}, by traffic class`;
+    m.alt = [`${humanBytes(total)} was uploaded to cloud apps in ${win} (${tr.source || 'ZIA Insights'}). Each stream is as wide as its share of it.`,
+      `On ${nets[net] || net}:`]
+      .concat(m.ends.map(e => `${Math.round(100 * e.share)}% ${e.label} (${humanBytes(e.bytes)}: ${e.classes.join(', ')}).`))
+      .concat(m.zero.map(z => `0% ${z.would}: ${z.classes.join(', ')} (no uploads seen there in ${win}).`))
+      .concat(['Insights cannot say which network a byte used, so this shows where all of it would go on this network.']);
+    return m;
+  }
+
+  // One traced path's share of the uploads on its own network, and what
+  // happens to that data there (or would, when it carried none). Null
+  // without traffic numbers, or for a path that is not a traffic class.
+  function dataFlowPathShare(report, t) {
+    const tr = report && report.traffic;
+    const k = t && t.destination && t.destination.kind === 'class' && t.destination.class;
+    if (!tr || !tr.available || !tr.classes || !k || !tr.classes[k]) return null;
+    const m = dataFlowTrafficModel(report, t.network);
+    if (!m) return null;
+    const c = tr.classes[k], end = dfEnd(t), say = DF_END_SAY[end] || ['goes on', 'would go on'];
+    return { label: c.label, bytes: c.upload, total: m.total, share: pctOf(c.upload, m.total), end, unchecked: DF_UNCHECKED.indexOf(end) >= 0,
+      now: say[0], would: say[1], window: dfWindow(tr) };
+  }
+
   // SSL flow report + one traffic class → the SSL rules a request meets
   // in evaluation order (first match wins). Exemptions scoped to some
   // users peel packets off; the deciding rule turns the rest; the
@@ -1695,10 +1821,22 @@
     const W = 1000, BAR = 12, PADR = 150, C = model.cols.length;
     const step = C > 1 ? (W - 10 - PADR - BAR) / (C - 1) : 0;
     const SCALE = (o.height || 200) / Math.max(1, model.total);
-    const LABEL_H = 40, GAP = 12, TOP = 26;
+    const LABEL_H = 40, GAP = 12, LINE = 12, NODE_LINES = 4;
+    // Column heads wrap onto as many lines as they need (never cut short);
+    // node labels wrap onto up to four lines, each node's slot as tall as them.
+    const colCut = i => (i === C - 1 ? 20 : Math.max(8, Math.floor((step - 8) / 8.2)));
+    const nodeCut = nd => (nd.col === C - 1 ? 22 : Math.max(10, Math.floor((step - BAR - 12) / 6.6)));
+    const colLines = model.cols.map((label, i) => wrapWords(label, colCut(i)));
+    const usedCols = model.cols.map((_, i) => model.nodes.some(nd => nd.col === i));
+    const TOP = 26 + LINE * Math.max(0, Math.max.apply(null, colLines.filter((_, i) => usedCols[i]).map(l => l.length).concat([1])) - 1);
+    const nodeLines = {};
+    model.nodes.forEach(nd => {
+      const ls = wrapWords(nd.label, nodeCut(nd));
+      nodeLines[nd.key] = ls.length > NODE_LINES ? ls.slice(0, NODE_LINES - 1).concat([clip(ls.slice(NODE_LINES - 1).join(' '), nodeCut(nd))]) : ls;
+    });
     const pos = {}, colY = {};
     model.nodes.forEach(nd => {
-      const h = Math.max(3, nd.value * SCALE), slot = Math.max(h, LABEL_H);
+      const h = Math.max(3, nd.value * SCALE), slot = Math.max(h, LABEL_H, LINE * nodeLines[nd.key].length + 16);
       const y = (colY[nd.col] || TOP);
       pos[nd.key] = { x: 10 + nd.col * step, y: y + (slot - h) / 2, h };
       colY[nd.col] = y + slot + GAP;
@@ -1707,8 +1845,9 @@
     const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'group', 'aria-label': model.label || 'Traffic flow', class: 'fa-svg fa-river' });
     host.appendChild(svg);
     model.cols.forEach((label, i) => {
-      if (!model.nodes.some(nd => nd.col === i)) return;
-      const t = svgEl('text', { x: 10 + i * step, y: 14, class: 'fa-col' }, svg); t.textContent = clip(label, i === C - 1 ? 20 : Math.max(8, Math.floor((step - 8) / 8.2)));
+      if (!usedCols[i]) return;
+      const t = svgEl('text', { x: 10 + i * step, y: 14, class: 'fa-col', 'data-col': String(i) }, svg);
+      colLines[i].forEach((line, j) => { const ts = svgEl('tspan', { x: 10 + i * step, y: 14 + j * LINE }, t); ts.textContent = line; });
       const tt = svgEl('title', {}, t); tt.textContent = label;
     });
     const linkEl = {}, bands = svgEl('g', { class: 'fa-bands' }, svg);
@@ -1741,13 +1880,10 @@
       const p = pos[nd.key];
       const g = svgEl('g', { class: `fa-rnode ${nd.tone || 'idle'}${nd.exit ? ' exit' : ''}`, transform: `translate(${p.x},${p.y})`, 'data-node': nd.key }, svg);
       svgEl('rect', { width: BAR, height: p.h, rx: 2 }, g);
-      const ty = -(Math.max(p.h, LABEL_H) - p.h) / 2 + 11;
-      const words = String(nd.label), cut = nd.col === C - 1 ? 22 : Math.max(10, Math.floor((step - BAR - 12) / 6.6));
-      let l1 = words, l2 = '';
-      if (words.length > cut) { const sp = words.lastIndexOf(' ', cut); l1 = words.slice(0, sp > 0 ? sp : cut); l2 = clip(words.slice(l1.length).trim(), cut); }
-      const t1 = svgEl('text', { x: BAR + 5, y: ty, class: 'fa-t' }, g); t1.textContent = l1;
-      if (l2) { const t2 = svgEl('text', { x: BAR + 5, y: ty + 12, class: 'fa-t' }, g); t2.textContent = l2; }
-      const t3 = svgEl('text', { x: BAR + 5, y: ty + (l2 ? 25 : 13), class: 'fa-s' }, g); t3.textContent = clip(nd.sub != null ? nd.sub : `${nd.value} of ${model.total}`, cut + 3);
+      const lines = nodeLines[nd.key], cut = nodeCut(nd);
+      const ty = -(Math.max(p.h, LABEL_H, LINE * lines.length + 16) - p.h) / 2 + 11;
+      lines.forEach((line, j) => { const tl = svgEl('text', { x: BAR + 5, y: ty + j * LINE, class: 'fa-t' }, g); tl.textContent = line; });
+      const t3 = svgEl('text', { x: BAR + 5, y: ty + LINE * (lines.length - 1) + 13, class: 'fa-s' }, g); t3.textContent = clip(nd.sub != null ? nd.sub : `${nd.value} of ${model.total}`, cut + 3);
       if (nd.exit) {
         // The marker a stream leaves the flow with.
         const mk = svgEl('g', { class: `fa-mark ${nd.exit}`, transform: `translate(${-9},${p.h / 2})` }, g);
@@ -1962,7 +2098,7 @@
   const FA = {
     pathModel, parseTerm, corpusModel, pathDrillModel, deployModel, liveModel, drillSummary, hopTone,
     trafficPathModel, listFlowModel, ARCH, SAMPLE, hopPlayer, drill, graph, live, steps, trafficPath, listFlow, E,
-    dataFlowModel, dfRoute, sslWalkModel, sslCoverageModel, river, streams, ruleWalk, playButton, altList,
+    dataFlowModel, dataFlowTrafficModel, dataFlowPathShare, humanBytes, dfRoute, sslWalkModel, sslCoverageModel, river, streams, ruleWalk, playButton, altList,
   };
   // The engine's parts, for the pages that draw their own pictures with it
   // (static/flow_pages.js): one clock, one way to draw boxes and links.

@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-525 markers.
+528 markers.
 
 | File:line | Note |
 |---|---|
@@ -100,6 +100,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `data_flow.py:1021` | nis["zcc"] + " How the device forwards this traffic is not assessed; a tunnel to ZIA is assumed.", None, why="not in scope")) |
 | `data_flow.py:1027` | + (f" (the tenant has {fps_n} forwarding profiles, so none can be assumed)" if fps_n > 1 else (" and the forwarding profile list could no… |
 | `data_flow.py:1329` | f"SSL rule '{decided['name']}' has unrecognized action '{decided['action']}'. Its decryption or blocking behavior is unknown; it is not a… |
+| `data_flow.py:1646` | assumed: the Shadow IT category names ZIA Insights gives applications |
+| `data_flow.py:1662` | assumed: well-known applications whose Shadow IT category says nothing |
 | `detection_health.py:1017` | assumed from one: |
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
@@ -380,13 +382,14 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/compliance_choice.js:67` | <div class="df-hint">${E(s.reuses)}${s.assumed_profile ? ` Assumed: ${E(s.assumed_profile)}` : ''}</div> |
 | `static/compliance_choice.js:69` | ${(s.assumed_controls \|\| []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(s.assumed_cont… |
 | `static/data_flow.js:17` | assumed: ['Assumed tunnel', 'dim'], na: ['Not evaluated', 'dim'], step: ['Step', 'ok'], |
+| `static/data_flow_simple.js:70` | if (['unknown', 'conditional', 'out_of_scope', 'zpa_conditional', 'na', 'assumed'].indexOf(s) >= 0) return 'unsure'; |
 | `static/explain.js:121` | get: 'Findings per policy type with a severity, the rule and the rule that hides it, the reason in one sentence and the fix, a count per … |
 | `static/explain.js:145` | get: 'For each product: what it is in plain words, what the tenant has in tables, best-practice checks with why each matters, what to do … |
-| `static/flow_anim.js:41` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
-| `static/flow_anim.js:49` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
-| `static/flow_anim.js:200` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:4725` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:4805` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/flow_anim.js:51` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
+| `static/flow_anim.js:59` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
+| `static/flow_anim.js:210` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
+| `static/help_catalog.js:4790` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4870` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |

@@ -297,7 +297,7 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 156,
+            "fixed": 162,
             "accepted": 7,
             "records": [
               "c6-assessment",
@@ -306,6 +306,7 @@
               "c6-posture",
               "c6-zpa",
               "func-path",
+              "w10-dataflow-clarity",
               "w7-o365-endpoints",
               "w7-path-coverage",
               "w7-path-extras",
@@ -489,7 +490,7 @@
     }
   ],
   "counts": {
-    "findings": 771,
+    "findings": 777,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -508,7 +509,7 @@
       },
       "low": {
         "open": 2,
-        "fixed": 428,
+        "fixed": 434,
         "accepted": 3
       },
       "info": {
@@ -518,12 +519,12 @@
       }
     },
     "checks": {
-      "pass": 714,
+      "pass": 721,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11755
+    "tests_added": 11790
   },
   "findings": [
     {
@@ -11535,6 +11536,102 @@
       "sub_area": "auth_scope_secrets"
     },
     {
+      "id": "W10-DF-01",
+      "title": "The data flow map showed every diagram, table and label at once with no reading order or legend, and jumped past its own picture on load: a newcomer could not tell where to start",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V1.1.1",
+      "wcag": "",
+      "fix": "A simple numbered view by default with a legend, one step's details at a time and a walk-through; Show all details keeps the full map",
+      "test": "tests/test_dataflow_clarity.py::test_the_simple_view_is_the_default_and_shows_the_numbered_path",
+      "commit": "ad6000c",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-02",
+      "title": "The map's moving picture counted traced paths, not traffic, so its motion added nothing the still picture did not say",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V1.1.1",
+      "wcag": "",
+      "fix": "Uploads picture weighted by ZIA Insights Shadow IT bytes per traffic class when in scope; the path-count picture starts still (opt-in)",
+      "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_starts_still_and_moves_only_on_request",
+      "commit": "ad6000c",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-03",
+      "title": "The uploads picture never mentioned the selected path, so \"Not inspected\" in the steps read as a contradiction of \"100% inspected\" below",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V1.1.1",
+      "wcag": "",
+      "fix": "One sentence gives the selected path's share of the uploads and what happens (or would happen at 0%) to that data; blind, bypassed or blocked classes with no uploads are named as 0%; the red-stream sentence only when one is drawn",
+      "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_is_tied_to_the_path_above",
+      "commit": "65c2922",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-04",
+      "title": "The uploads picture moved by default although its dots carried nothing beyond the widths, and its column heads were cut off",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V1.1.1",
+      "wcag": "",
+      "fix": "Starts still with Play motion opt-in; river column heads and node labels wrap instead of being cut",
+      "test": "tests/test_dataflow_clarity.py::test_the_uploads_picture_labels_are_never_cut_off",
+      "commit": "65c2922",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-05",
+      "title": "Generative AI and paste-site applications (ChatGPT, Pastebin) were counted as all other web traffic",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "Shadow IT category table and a short well-known application list, both marked assumed",
+      "test": "tests/test_dataflow_clarity.py::test_generative_ai_and_paste_apps_land_in_their_own_class",
+      "commit": "b7b4782",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W10-DF-06",
+      "title": "A slow ZIA Insights read held up the whole data flow map",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-400",
+      "asvs": "V11.1.7",
+      "wcag": "",
+      "fix": "Its own 20-second limit; a late answer is dropped and the page says Insights did not answer",
+      "test": "tests/test_dataflow_clarity.py::test_a_slow_insights_read_times_out_with_a_plain_message",
+      "commit": "b7b4782",
+      "reason": "",
+      "slug": "w10-dataflow-clarity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "W10-NC-01",
       "title": "The assessment page's 2.5 s refresh rewrote Run assessment's label and attributes and rebuilt the last-run note (replacing its button) on every tick, unchanged; a press that straddled a tick lost its click",
       "severity": "low",
@@ -13761,6 +13858,38 @@
       "tests_added": 958
     },
     {
+      "slug": "w10-dataflow-clarity",
+      "area": "Traffic analysis: the Data Flow Map for first-time readers (simple numbered view, legend, walk-through, traffic-weighted motion)",
+      "title": "Wave 10: the data flow map reads from the device to the destination in numbered steps, and its motion shows real upload shares or stays opt-in",
+      "standards": [
+        "WCAG 2.2 SC 1.1.1",
+        "WCAG 2.2 SC 1.3.2",
+        "WCAG 2.2 SC 1.4.1",
+        "WCAG 2.2 SC 1.4.3",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 1.4.11",
+        "WCAG 2.2 SC 2.1.1",
+        "WCAG 2.2 SC 2.2.2",
+        "WCAG 2.2 SC 2.4.3",
+        "WCAG 2.2 SC 2.4.7",
+        "WCAG 2.2 SC 3.3.5",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V7.1.1",
+        "WSTG-ATHZ-02",
+        "WSTG-INPV-01",
+        "CWE-20",
+        "CWE-285",
+        "CWE-532",
+        "CWE-1287",
+        "CWE-400",
+        "ASVS V11.1.7"
+      ],
+      "checks": 7,
+      "findings": 6,
+      "tests_added": 35
+    },
+    {
       "slug": "w10-native-click",
       "area": "UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page",
       "title": "Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s",
@@ -15376,7 +15505,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 67,
+    "wstg": 68,
     "slsa": [
       "SLSA Provenance",
       "SLSA v1.0",

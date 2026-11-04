@@ -219,6 +219,7 @@ Find the files a change touches here, then read only those.
 | `static/compliance_choice.js` | The one compliance choice (compliance_profiles.py), shared by the ZIA |
 | `static/dashboard.js` | Dashboard layout add-on |
 | `static/data_flow.js` | Data flow map renderer |
+| `static/data_flow_simple.js` | Data flow map: the simple view for first-time readers |
 | `static/deploy_studio.js` | Policy Pack Deploy Studio |
 | `static/detection_health.js` | FP/TP detection ratio renderer |
 | `static/eval_all.js` | Evaluate All Rules: how ZIA decides |

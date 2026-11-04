@@ -51,6 +51,27 @@ window.WHATS_NEW = {
       ]
     },
     {
+      "id": "dataflow-simple-view", "release": "2026-11-04", "label": "Data flow map: simple view",
+      "what": "The data flow map opens on one path as numbered steps, with a legend beside it, the details of one step at a time and a walk-through. Show all details has the full map.",
+      "changelog": ["Simple view by default", "A legend beside the steps", "Walk me through it", "Show all details"],
+      "marks": [
+        { "page": "/report/dataflow", "at": "#dfViewSimple", "shown": "after the map is drawn" },
+        { "page": "/", "at": "button[onclick=\"openDataFlowTab()\"]" }
+      ]
+    },
+    {
+      "id": "dataflow-uploads", "release": "2026-11-04", "label": "Where your uploads really go",
+      "what": "With ZIA Insights in scope, the data flow map shows how much of the data your users uploaded takes each road, and where it is not checked.",
+      "changelog": ["Where your uploads really go"],
+      "marks": [{ "page": "/report/dataflow", "at": "#dfsTrafficH", "shown": "after the map is drawn" }]
+    },
+    {
+      "id": "bypass-motion-opt-in", "release": "2026-11-04", "label": "Bypass picture starts still",
+      "what": "The Bypass report's picture starts still: its widths count bypass items, not traffic. Play motion starts it.",
+      "changelog": ["The Bypass report's picture starts still too"],
+      "marks": [{ "page": "/report/bypass", "at": "#bpFlowH", "shown": "after the report is drawn" }]
+    },
+    {
       "id": "team-saml", "release": "2026-11-01", "label": "SAML 2.0 sign-in",
       "what": "Team servers can sign people in through the organisation's identity provider with SAML 2.0, strictly checked, matched to their own account.",
       "changelog": ["SAML 2.0 sign-in"],

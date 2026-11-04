@@ -62,7 +62,8 @@
       const host = document.createElement('div'); host.id = 'bpFlow';
       sec.appendChild(h); sec.appendChild(hint); sec.appendChild(host);
       body.insertBefore(sec, body.firstChild);
-      FP.mountStream(host, FP.bypassSpec(m), { region: 'Bypass streams', summary: m.summary,
+      FP.mountStream(host, FP.bypassSpec(m), { region: 'Bypass streams', summary: m.summary, optIn: true,
+        still: 'The picture is still: its widths count bypass items, not traffic, so moving dots would add nothing. Play motion starts it.',
         moving: 'Packets run along the path; at each bypass point some peel off, more where there are more bypass items.' });
     } catch (e) { /* the report below has every number */ }
   }

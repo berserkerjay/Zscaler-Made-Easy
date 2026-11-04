@@ -121,8 +121,8 @@ AREAS: Tuple[Dict[str, Any], ...] = (
     {"key": "functionality", "name": "Functionality", "weight": 25, "subs": (
         {"key": "traffic_analysis", "name": "Traffic analysis", "slugs": ("func-path", "c6-path", "c6-zpa", "c6-posture", "c6-checks", "c6-assessment", "w8-cloud-connector",
                                                                          "w7-path-coverage", "w7-o365-endpoints", "w7-zpa-identity", "w8-zia-governance", "w8-zpa-rbac", "w7-path-extras", "w8-zpa-policy", "w8-zia-forwarding",
-                                                                         "w9-coverage-checks"),
-         "tests": ("test_path_*.py", "test_pac_eval.py", "test_data_flow.py", "test_ssl_flow.py", "test_ssl_coverage.py",
+                                                                         "w9-coverage-checks", "w10-dataflow-clarity"),
+         "tests": ("test_path_*.py", "test_pac_eval.py", "test_data_flow.py", "test_dataflow_clarity.py", "test_ssl_flow.py", "test_ssl_coverage.py",
                    "test_insights.py", "test_bulk_test.py", "test_zpa_*.py", "test_shared_path.py", "test_qa_func_path.py",
                    "test_c6_path.py", "test_c6_zpa.py", "test_c6_posture.py", "test_c6_checks.py", "test_c6_assessment.py", "test_w8_cloud_connector.py",
                    "test_admin_rank.py", "test_rule_fields.py", "test_category_lookup*.py", "test_ucaas_oneclick.py",
