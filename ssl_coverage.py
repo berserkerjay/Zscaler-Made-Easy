@@ -715,7 +715,7 @@ def analyse(ssl_rules: List[Mapping[str, Any]], *, lookup: Optional[Mapping[str,
 
 def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan: Optional[Mapping[str, Any]] = None,
         log: Optional[Callable[[str], None]] = None, cancel: Any = None, scrub: Optional[Callable[[str], str]] = None,
-        logs: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+        web_logs: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """Read only what `scope` (data_flow.path_scope) puts in scope, then
     analyse. Stop returns {stopped} with no partial result."""
     import data_flow
@@ -776,10 +776,10 @@ def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan:
         volume = {"available": False, "reason": vp.get("reason") or "Traffic numbers were not asked for.", "bypass_note": BYPASS_NOTE}
     volume["unavailable"] = VOLUME_UNAVAILABLE
     errors = data_flow.unread_sections(diagnostics)
-    if logs:
-        _log(f"Using the uploaded ZIA web logs ({int((logs or {}).get('records') or 0):,} records) for the true inspection coverage.")
+    if web_logs:
+        _log(f"Using the uploaded ZIA web logs ({int(web_logs.get('records') or 0):,} records) for the true inspection coverage.")
     rep = analyse(ssl_rules, lookup=lookup, catalogue=catalogue, cc=cc, volume=volume if volume.get("available") else None, read_errors=errors,
-                  logs=logs, zpa_in_scope="zpa" in (scope.get("scopes") or []), no_volume_reason=str(volume.get("reason") or ""))
+                  logs=web_logs, zpa_in_scope="zpa" in (scope.get("scopes") or []), no_volume_reason=str(volume.get("reason") or ""))
     if volume.get("available"):
         volume.pop("apps", None)   # only the matches on each cause are kept
     rep.update(volume=volume, diagnostics=diagnostics, read_errors=errors,

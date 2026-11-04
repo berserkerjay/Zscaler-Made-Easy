@@ -409,6 +409,9 @@
         const known = s.inspected + s.not_inspected;
         g.appendChild(box('SSL inspected or not', null, known ? el('div', {},
           split([['Inspected', s.inspected, 'ok'], ['Not inspected', s.not_inspected, 'bad'], ['Plain HTTP', s.plain_http, 'unk']]),
+          report && report.report_id ? el('p', {}, el('a', { class: 'rp-btn', id: 'tlTrueCoverage', target: '_blank', rel: 'noopener',
+            href: `/report/sslcoverage?logs=${encodeURIComponent(report.report_id)}` }, 'True inspection coverage from these logs'),
+            el('span', { class: 'tl-dim', text: ' Opens SSL coverage, which ties each line left encrypted to the SSL rule behind it.' })) : null,
           s.reasons.length ? table(['Why not inspected', 'Count'], more(s.reasons, 10).map(c => [c.name, c.count]), [1]) : null,
           s.destinations_not_inspected.length ? table(['Not inspected: destination', 'Count'], more(s.destinations_not_inspected, 10).map(c => [destCell(Object.assign({ link: /^[A-Za-z0-9.*_-]+\.[A-Za-z0-9.-]+$/.test(c.name) }, c)), c.count]), [1]) : null)
           : el('p', { class: 'tl-dim', text: 'These records do not say whether SSL was inspected (add the SSL Inspected field, ssldecrypted, to the feed).' })));

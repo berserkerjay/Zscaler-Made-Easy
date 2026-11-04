@@ -888,6 +888,20 @@ ZINS = {
                     {"classifications": "Label printer", "classification_uuid": "lkf-iot-2", "category": "IoT", "total": 31},
                     {"classifications": "Handheld scanner", "classification_uuid": "lkf-iot-3", "category": "IoT", "total": 27}]}}}},
 }
+# ZIA Insights web traffic by protocol (WEB_TRAFFIC.protocols), one answer
+# per traffic unit, for SSL coverage's true inspection coverage. Realistic
+# proportions: most transactions are HTTPS decrypted, about a fifth stays
+# encrypted (the webmail and Finance exemptions, pinned apps), a few percent
+# is still plain HTTP, and tunnels and FTP are left unclassified (unknown).
+# The transactions add up to WebTrafficNoGrouping's total.
+ZINS_BY_UNIT = {
+    "WebProtocols": {
+        "TRANSACTIONS": _zins("WEB_TRAFFIC", "protocols", _nt(("HTTPS", 3_330_000), ("SSL", 1_050_000), ("HTTP", 290_000),
+                                                             ("TUNNEL", 140_000), ("FTP", 10_000))),
+        "BYTES": _zins("WEB_TRAFFIC", "protocols", _nt(("HTTPS", 38_400_000_000), ("SSL", 16_200_000_000), ("HTTP", 1_900_000_000),
+                                                      ("TUNNEL", 2_100_000_000), ("FTP", 40_000_000))),
+    },
+}
 # The licences (GET /subscriptions, organization_information.get_subscriptions):
 # ids as readiness.SKU_INFO knows them.
 SUBSCRIPTIONS = [{"id": sid, "subscribed": True, "status": "ACTIVE", "endDate": 1830297600000} for sid in (
@@ -1494,6 +1508,9 @@ def responses() -> Dict[str, Any]:
     r[f"{ZIA}/subscriptions"] = SUBSCRIPTIONS
     for op, body in ZINS.items():
         r[f"/zins/graphql/{op}"] = body
+    for op, units in ZINS_BY_UNIT.items():
+        for unit, body in units.items():
+            r[f"/zins/graphql/{op}/{unit}"] = body
     r.update(zwa_answers())
     for aid, devs in ZDX_AFFECTED_DEVICES.items():
         r[f"{ZDX}/alerts/{aid}/affected_devices"] = {"devices": devs, "next_offset": None}
