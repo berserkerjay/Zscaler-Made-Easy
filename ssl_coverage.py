@@ -684,8 +684,11 @@ def headline(summary: Mapping[str, Any], volume: Optional[Mapping[str, Any]]) ->
 # ── Run ─────────────────────────────────────────────────────────────────
 def analyse(ssl_rules: List[Mapping[str, Any]], *, lookup: Optional[Mapping[str, Any]] = None,
             catalogue: Optional[Mapping[str, List[str]]] = None, cc: Optional[Mapping[str, Any]] = None,
-            volume: Optional[Mapping[str, Any]] = None, read_errors: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
-    """Pure: tenant data in, report body out."""
+            volume: Optional[Mapping[str, Any]] = None, read_errors: Optional[Mapping[str, str]] = None,
+            logs: Optional[Mapping[str, Any]] = None, zpa_in_scope: bool = False, no_volume_reason: str = "") -> Dict[str, Any]:
+    """Pure: tenant data in, report body out. `logs` is the ZIA web SSL
+    section of an uploaded traffic log report (ssl_true_coverage.build)."""
+    import ssl_true_coverage
     causes = ssl_rule_causes(ssl_rules, lookup, catalogue) + zcc_causes(cc)
     if volume and volume.get("apps") is not None:
         attach_app_volume(causes, volume.get("apps") or [])
@@ -697,12 +700,22 @@ def analyse(ssl_rules: List[Mapping[str, Any]], *, lookup: Optional[Mapping[str,
                 "decided_by": (c.get("decided_by") or {}).get("name"), "exceptions": [e.get("name") for e in c.get("exceptions") or []]}
                for c in flow["classes"]]
     summary = summarise(causes, classes, volume)
+    true = ssl_true_coverage.build(causes, classes, volume, logs, zpa_in_scope=zpa_in_scope, no_volume_reason=no_volume_reason)
+    if not true.get("estimate"):
+        # One figure everywhere: the measured true share (unknown never
+        # counted as inspected) replaces the share that left it out.
+        for unit in ("TRANSACTIONS", "BYTES"):
+            u = (true.get("units") or {}).get(unit)
+            if u:
+                summary[f"inspected_pct_{unit.lower()}"] = u["inspected_pct"]
+        summary["true_source"] = true.get("source")
     return {"summary": summary, "headline": headline(summary, volume), "causes": causes, "plan": recovery_plan(causes),
-            "classes": classes}
+            "classes": classes, "true_coverage": true}
 
 
 def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan: Optional[Mapping[str, Any]] = None,
-        log: Optional[Callable[[str], None]] = None, cancel: Any = None, scrub: Optional[Callable[[str], str]] = None) -> Dict[str, Any]:
+        log: Optional[Callable[[str], None]] = None, cancel: Any = None, scrub: Optional[Callable[[str], str]] = None,
+        logs: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """Read only what `scope` (data_flow.path_scope) puts in scope, then
     analyse. Stop returns {stopped} with no partial result."""
     import data_flow
@@ -763,7 +776,10 @@ def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan:
         volume = {"available": False, "reason": vp.get("reason") or "Traffic numbers were not asked for.", "bypass_note": BYPASS_NOTE}
     volume["unavailable"] = VOLUME_UNAVAILABLE
     errors = data_flow.unread_sections(diagnostics)
-    rep = analyse(ssl_rules, lookup=lookup, catalogue=catalogue, cc=cc, volume=volume if volume.get("available") else None, read_errors=errors)
+    if logs:
+        _log(f"Using the uploaded ZIA web logs ({int((logs or {}).get('records') or 0):,} records) for the true inspection coverage.")
+    rep = analyse(ssl_rules, lookup=lookup, catalogue=catalogue, cc=cc, volume=volume if volume.get("available") else None, read_errors=errors,
+                  logs=logs, zpa_in_scope="zpa" in (scope.get("scopes") or []), no_volume_reason=str(volume.get("reason") or ""))
     if volume.get("available"):
         volume.pop("apps", None)   # only the matches on each cause are kept
     rep.update(volume=volume, diagnostics=diagnostics, read_errors=errors,
@@ -774,6 +790,11 @@ def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan:
                evidence_mode="configuration" + (" and Insights traffic numbers" if volume.get("available") else ""), status="done", logs=logs)
     if "ssl" in errors:
         rep["headline"] = f"The SSL inspection rules could not be read ({errors['ssl']}), so coverage is unknown; run it again once the API answers."
+        tc = rep.get("true_coverage") or {}
+        if tc.get("estimate"):
+            # No rules, no estimate: an empty rule list would read as "nothing decrypted".
+            tc.update(mode="none", source="none", units={}, causes=[], source_label="No estimate: the SSL inspection rules could not be read",
+                      headline="Coverage cannot be estimated: the SSL inspection rules could not be read.")
     return rep
 
 
@@ -808,6 +829,7 @@ def history_entry(rep: Mapping[str, Any]) -> Dict[str, Any]:
             "classes_total": s.get("classes_total"), "causes": s.get("causes"),
             "by_risk": dict(s.get("by_risk") or {}), "by_kind": dict(s.get("by_kind") or {}),
             "inspected_pct_bytes": s.get("inspected_pct_bytes"), "inspected_pct_transactions": s.get("inspected_pct_transactions"),
+            "true_source": s.get("true_source"),
             "plan_steps": len(((rep.get("plan") or {}).get("steps")) or [])}
 
 
