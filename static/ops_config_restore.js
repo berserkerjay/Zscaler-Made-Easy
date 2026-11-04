@@ -7,7 +7,11 @@
    against the sample tenant or a saved copy. The page does the rest of a
    restore: Preview (plan hash), the four gates, Apply, read-back, Undo.
    A typed pre-shared key goes only into the apply's `secrets`, never into
-   the operation, and is cleared from the form after the apply. */
+   the operation, and is cleared from the form after the apply.
+   Tenant-bound types (static IPs, GRE tunnels, locations, sub-locations) are
+   listed apart and sent only with "Include tenant-bound objects" ticked; the
+   Client Connector app profiles and entitlements clone only with "Include
+   Client Connector app profiles and entitlements" ticked (never a password). */
 (function () {
   'use strict';
   if (!window.OPS_PLUGINS) return;
@@ -16,7 +20,7 @@
 
   function st(S) {
     if (!S.cfg) S.cfg = { from: 'backup', backup: '', template: '', target: 'same', mode: 'update_matching', types: null, keep: false, activate: true,
-      ack: false, rollback: false, prefix: '', psk: {}, keys: {}, diffOld: '', diffNew: 'live', ignore: '', tplType: '', tplNames: '', tplName: '',
+      ack: false, rollback: false, tb: false, zccp: false, prefix: '', psk: {}, keys: {}, diffOld: '', diffNew: 'live', ignore: '', tplType: '', tplNames: '', tplName: '',
       tplStrip: '', rehearse: 'sample' };
     return S.cfg;
   }
@@ -40,8 +44,11 @@
   }
 
   function render(res, where, S, H) {
-    const E = H.E, z = st(S), product = PRODUCT[S.kind], types = writable(res, product);
-    if (z.types === null) z.types = new Set(types.map(t => t.key));
+    const E = H.E, z = st(S), product = PRODUCT[S.kind], all = writable(res, product);
+    const types = all.filter(t => !t.tenant_bound), bound = all.filter(t => t.tenant_bound);
+    S.cfgBound = new Set(bound.map(t => t.key));
+    if (z.types === null) z.types = new Set(all.map(t => t.key));
+    const typeBox = t => `<li><label><input type="checkbox" data-crtype="${E(t.key)}"${z.types.has(t.key) ? ' checked' : ''}> ${E(t.label)}</label>${t.why ? ` <span class="df-hint">${E(t.why)}</span>` : ''}</li>`;
     const tpls = res.templates || [];
     const psk = (types.find(t => t.key === 'zia.vpn_credentials') && product === 'zia');
     const singles = types.filter(t => t.singleton);
@@ -62,7 +69,12 @@
       <div class="df-hint">A clone or template writes only to the tenant of the saved profile picked in the Tenant list above.</div>
       <h3 class="op-h">3. Mode and object types</h3>
       <div class="op-row"><fieldset class="op-inline"><legend>Mode</legend>${(res.modes || []).map(m => `<label><input type="radio" name="crMode" value="${E(m.id)}"${z.mode === m.id ? ' checked' : ''}${m.id === 'full' && z.from === 'template' ? ' disabled' : ''}> ${E(m.label)}</label>`).join(' ')}</fieldset></div>
-      <ul class="op-checks">${types.map(t => `<li><label><input type="checkbox" data-crtype="${E(t.key)}"${z.types.has(t.key) ? ' checked' : ''}> ${E(t.label)}</label>${t.why ? ` <span class="df-hint">${E(t.why)}</span>` : ''}</li>`).join('') || '<li class="df-hint">Nothing of this product is in scope.</li>'}</ul>
+      <ul class="op-checks">${types.map(typeBox).join('') || '<li class="df-hint">Nothing of this product is in scope.</li>'}</ul>
+      ${bound.length ? `<div class="op-row"><label class="df-ctl"><input type="checkbox" id="crTb"${z.tb ? ' checked' : ''}><span>Include tenant-bound objects (static IP addresses, GRE tunnels, locations and their sub-locations)</span></label></div>
+        <div class="df-hint">Off by default. When ticked, each static IP address is checked with this tenant first, sub-locations come after their parent location, nothing tenant-bound is ever updated or deleted, and the apply asks you to type CREATE n TENANT-BOUND OBJECTS.</div>
+        ${z.tb ? `<ul class="op-checks" id="crTbTypes">${bound.map(typeBox).join('')}</ul>` : ''}` : ''}
+      ${product === 'zcc' ? `<div class="op-row"><label class="df-ctl"><input type="checkbox" id="crZccProfiles"${z.zccp ? ' checked' : ''}><span>Include Client Connector app profiles and entitlements (clone to another tenant, or create a missing app profile)</span></label></div>
+        <div class="df-hint">Passwords and the policy token are never read, copied or sent: a new app profile is created inactive and without any password. A clone copies only app profiles that apply to everyone, and the entitlements' switches without their group lists.</div>` : ''}
       ${singles.length ? `<details class="pa-details"><summary>Settings key by key</summary>${singles.map(t => `<div class="op-row"><label class="df-ctl"><span class="lbl">${E(t.label)}: keys to restore</span><input data-crkeys="${E(t.key)}" value="${E(z.keys[t.key] || '')}" autocomplete="off" aria-label="${E(t.label)}: keys to restore" placeholder="all keys"></label></div>`).join('')}</details>` : ''}
       <h3 class="op-h">4. Options</h3>
       <div class="op-row"><label class="df-ctl"><input type="checkbox" id="crKeep"${z.keep ? ' checked' : ''}><span>Keep each rule's state from the source (off: new rules are created disabled)</span></label></div>
@@ -139,6 +151,8 @@
     where.querySelectorAll('input[data-crtype]').forEach(cb => cb.addEventListener('change', () => { cb.checked ? z.types.add(cb.dataset.crtype) : z.types.delete(cb.dataset.crtype); }));
     where.querySelectorAll('input[data-crkeys]').forEach(i => i.addEventListener('input', () => { z.keys[i.dataset.crkeys] = i.value; }));
     const val = (id, key) => { const el = $(id); if (el) el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', e => { z[key] = el.type === 'checkbox' ? e.target.checked : e.target.value; }); };
+    const tb = $('crTb'); if (tb) tb.addEventListener('change', () => { z.tb = tb.checked; again('crTb'); });
+    val('crZccProfiles', 'zccp');
     val('crTemplate', 'template'); val('crPrefix', 'prefix'); val('crKeep', 'keep'); val('crActivate', 'activate'); val('crAck', 'ack'); val('crRollback', 'rollback');
     val('crDiffOld', 'diffOld'); val('crDiffNew', 'diffNew'); val('crIgnore', 'ignore'); val('crTplType', 'tplType'); val('crTplNames', 'tplNames');
     val('crTplName', 'tplName'); val('crTplStrip', 'tplStrip');
@@ -209,9 +223,11 @@
     if (target === 'other' && !pid && !rehearsal) throw new Error("A clone or template writes only to a saved profile's tenant: pick it in the Tenant list above.");
     const keys = {};
     Object.entries(z.keys).forEach(([k, v]) => { const list = String(v || '').split(/[\s,]+/).filter(Boolean); if (list.length) keys[k] = list; });
-    const spec = { type: S.kind, source, mode: z.mode, target, target_profile_id: target === 'other' ? pid : '', types: [...z.types],
+    const spec = { type: S.kind, source, mode: z.mode, target, target_profile_id: target === 'other' ? pid : '', types: [...z.types].filter(k => (z.tb && z.from !== 'template') || !(S.cfgBound || new Set()).has(k)),
       keep_state: z.keep, activate: product !== 'zia' || z.activate, licence_ack: z.ack, rollback_on_stop: z.rollback, psk: Object.keys(z.psk) };
     if (z.from === 'template') spec.prefix = z.prefix;
+    if (z.tb && product === 'zia' && z.from !== 'template') spec.include_tenant_bound = true;
+    if (z.zccp && product === 'zcc' && z.from !== 'template') spec.include_zcc_profiles = true;
     if (Object.keys(keys).length) spec.settings_keys = keys;
     if (!spec.types.length) throw new Error('Tick at least one object type.');
     return spec;

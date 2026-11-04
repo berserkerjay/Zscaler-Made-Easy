@@ -1825,6 +1825,13 @@ def ref_items(value: Any) -> Tuple[List[Tuple[str, str]], str]:
     return [(str(value), "")], "scalar"
 
 
+def xref_items(value: Any) -> List[Dict[str, Any]]:
+    """The {external_id, name} items of a reference to the other product's
+    objects (a ZPA gateway's server group, a dict, or its segments, a list)."""
+    items = value if isinstance(value, list) else ([value] if isinstance(value, dict) else [])
+    return [x for x in items if isinstance(x, dict)]
+
+
 def refs_of(t: Dict[str, Any]) -> Dict[str, str]:
     """The reference fields of a type: its own list (`uses`), else every
     reference field of its product (rules)."""
@@ -1859,6 +1866,8 @@ def normal(t: Dict[str, Any], row: Dict[str, Any], idx: Dict[str, Dict[str, str]
             out[k] = operand_names(v, idx)
         elif k in t["nested_refs"] and isinstance(v, list):
             out[k] = _norm_value(_nested_names(t, k, v, idx), k, ignore)
+        elif k in t["xrefs"]:
+            out[k] = sorted(str(x.get("name") or x.get("external_id") or "") for x in xref_items(v))
         elif k in refs:
             out[k] = _ref_names(v, refs[k], idx)
         elif t["expr"] and k == t["expr"][0] and isinstance(v, str):

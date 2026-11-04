@@ -420,6 +420,8 @@ def raw_form(t: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, Any]:
             out[k] = cb.condition_canon(v)
         elif k in refs:
             out[k] = sorted(i for i, _n in cb.ref_items(v)[0])
+        elif k in t["xrefs"]:
+            out[k] = sorted(str(x.get("external_id") or "") for x in cb.xref_items(v))
         else:
             out[k] = cb._norm_value(_clean(v), k, ())
     return out
@@ -771,11 +773,15 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
             out["conditions"] = remap_conditions(out["conditions"], why, waits)
         for f, target in t["xrefs"].items():
             v = out.get(f)
-            if same or v in (None, "", [], {}):
-                continue   # the same tenant: its own ZPA objects, kept as they are
+            if v in (None, "", [], {}):
+                continue
             got = []
             for it in (v if isinstance(v, list) else [v]):
-                kind, val = resolve_x(target, it) if isinstance(it, dict) else ("unresolved", f"its {f.replace('_', ' ')} is not readable")
+                if same and isinstance(it, dict):
+                    # the same tenant: its own ZPA objects, by the ids it holds (only the reference, not the SDK's echo)
+                    kind, val = "id", {k: it[k] for k in ("external_id", "name") if it.get(k) not in (None, "")}
+                else:
+                    kind, val = resolve_x(target, it) if isinstance(it, dict) else ("unresolved", f"its {f.replace('_', ' ')} is not readable")
                 if kind == "id":
                     got.append(val)
                 else:
