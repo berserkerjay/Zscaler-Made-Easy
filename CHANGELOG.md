@@ -29,6 +29,10 @@ lists what each batch of changes did, newest first.
 - A Client Connector setting (an entitlement, privacy or device cleanup) is now read back after a restore, as every object is.
 - A restore or clone preview no longer lists a field the update does not send (one a clone leaves out, or one the source does not have) as changed to nothing: it is listed as kept, with the target's value, and the result never reports it applied or verified.
 
+### Integration fixes
+- The help and new marks no longer rewrite their names and descriptions when nothing about them changed: a page's own late update (a status line filled after a slow read) asked the marks to look again, and each look set every mark's name anew, so Advanced settings kept changing for a moment after it had settled.
+- The sample tenant's incident times are read from one clock reading per run, so two reads of the sample a second apart compare as identical.
+
 ## 2026-11-01
 
 ### Pages stay quick: no piled-up scans, no "Rate limit exceeded" on your own pages

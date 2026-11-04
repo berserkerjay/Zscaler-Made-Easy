@@ -445,7 +445,11 @@ out.quiet = await ev(`new Promise(r => { let n = 0;
   const mo = new MutationObserver(ms => { ms.forEach(m => {
     if (m.type === 'attributes' ? (ATTRS.includes(m.attributeName) || isMark(m.target)) : ([...m.addedNodes].some(isMark) || [...m.removedNodes].some(isMark))) n++; }); });
   mo.observe(document.body, { subtree: true, childList: true, attributes: true });
-  setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
+  // The page's own late change (a status line filled after a slow read)
+  // asks the marks to rescan: a rescan of settled marks changes nothing.
+  const own = document.createElement('p'); own.textContent = 'status'; document.body.appendChild(own);
+  setTimeout(() => { own.textContent = 'status, later'; own.className = 'later'; }, 300);
+  setTimeout(() => { mo.disconnect(); own.remove(); r(n); }, 1500); })`);
 out.quietPage = quietPage;
 
 if (PR.pick) {
@@ -658,7 +662,7 @@ def test_no_sideways_scroll_at_320px(marks_browser, page):
 
 
 def test_placing_the_marks_settles(marks_browser):
-    """CWE-835 (loop with unreachable exit) · ASVS V11.1.4: on a page with a * and a ? in one title, nothing changes the page once the marks are placed (no rescan loop)."""
+    """CWE-835 (loop with unreachable exit) · ASVS V11.1.4: on a page with a * and a ? in one title, nothing changes the marks once they are placed (no rescan loop), even when the page's own late content asks for a rescan."""
     assert marks_browser["quiet"] == 0, (marks_browser["quietPage"], marks_browser["quiet"])
 
 
