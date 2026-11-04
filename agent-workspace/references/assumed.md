@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-519 markers.
+525 markers.
 
 | File:line | Note |
 |---|---|
@@ -100,10 +100,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `detection_health.py:1017` | assumed from one: |
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
-| `dlp_api_server.py:3853` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
-| `dlp_api_server.py:9426` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
-| `dlp_api_server.py:9428` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
-| `dlp_api_server.py:9561` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
+| `dlp_api_server.py:3954` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
+| `dlp_api_server.py:9527` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
+| `dlp_api_server.py:9529` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
+| `dlp_api_server.py:9662` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
 | `dlp_assessment_full_auto.py:200` | times of a provider credential are assumed (not named by the SDK model). |
 | `dns_forward_zones.py:50` | * Assumed (not in the SDK or Zscaler's API reference): that the resolver |
 | `editions.py:12` | tenants, and are ASSUMED (not in the SDK). The ZDX edition is not exposed by |
@@ -353,34 +353,40 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `rule_fields.py:125` | timers) and metadata. restrictionType is taken as metadata (assumed: |
 | `rule_migrator.py:1067` | ASSUMED (not verified against the SDK or Zscaler's documentation): the |
 | `sample_tenant.py:355` | assumed: the API sends lastModifiedBy on every tunnel. The SDK model (zscaler/zia/models/gre_tunnels.py) |
-| `sample_tenant.py:434` | WebPolicy model (assumed: the readers ask for it, and a device reports it). |
-| `sample_tenant.py:476` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
-| `sample_tenant.py:708` | not in the SDK: its shapes are ops_zdx's (assumed there). |
-| `sample_tenant.py:793` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
-| `sample_tenant.py:1037` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
-| `sample_tenant.py:1372` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
+| `sample_tenant.py:440` | WebPolicy model (assumed: the readers ask for it, and a device reports it). |
+| `sample_tenant.py:482` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
+| `sample_tenant.py:724` | not in the SDK: its shapes are ops_zdx's (assumed there). |
+| `sample_tenant.py:809` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
+| `sample_tenant.py:1053` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
+| `sample_tenant.py:1390` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
 | `scope_permissions.py:100` | "Reports (System Audit Report; assumed name)", |
 | `scope_permissions.py:101` | "Alerts (alert subscriptions; assumed name)", |
 | `scope_permissions.py:103` | "Organization (subscriptions; assumed name)", |
-| `scope_permissions.py:385` | "Remote Assistance (assumed name)", |
-| `scope_permissions.py:451` | "/zia/api/v1/proxies", "/zia/api/v1/proxyGateways", "/zia/api/v1/rootCertificates (assumed path)", "/zia/api/v1/forwardingRules", |
-| `scope_permissions.py:538` | "customer_id_note": "The Microsegmentation customer ID; the ZPA customer ID is used when none is given (assumed).", |
+| `scope_permissions.py:386` | "Remote Assistance (assumed name)", |
+| `scope_permissions.py:454` | "/zia/api/v1/proxies", "/zia/api/v1/proxyGateways", "/zia/api/v1/rootCertificates (assumed path)", "/zia/api/v1/forwardingRules", |
+| `scope_permissions.py:541` | "customer_id_note": "The Microsegmentation customer ID; the ZPA customer ID is used when none is given (assumed).", |
 | `shadow_rules.py:185` | set (time windows: a window list is not assumed to be a union). |
 | `shadow_rules.py:363` | assumed, so only the same engines count as the same content.""" |
 | `shadow_rules.py:609` | one names (rules are assumed to be first match per application and |
 | `shadow_rules.py:926` | "The Inline Web DLP evaluation mode could not be read, so rule order (the default) is assumed; if the tenant runs Evaluate All " |
 | `siem_queries.py:17` | patterns are assumed placeholders the admin replaces. |
+| `soc_review.py:244` | (assumed: the SDK documents READ_WRITE as an example, not the list).""" |
+| `soc_review.py:262` | """"full", "read_only" or "scoped" from a role name alone (assumed: |
+| `soc_review.py:404` | kind = "read_only"   # assumed: editEnabled false means the admin cannot change anything |
+| `soc_review.py:667` | The NSS server type that carries each family (assumed: firewall NSS servers carry the DNS feed too). |
+| `soc_review.py:705` | """The siem_queries language for a Cloud NSS SIEM type (assumed spellings: SPLUNK, AZURE_SENTINEL / SENTINEL, ELASTIC).""" |
+| `soc_review.py:848` | "may not be listed by the API (assumed), so whether they stream is not known here.", |
 | `static/aiguard_page.js:75` | <div class="df-hint">LLM providers AI Guard knows: ${E((d.providers \|\| []).join(', ') \|\| 'none')}. The owners of the applications are cou… |
 | `static/compliance_choice.js:67` | <div class="df-hint">${E(s.reuses)}${s.assumed_profile ? ` Assumed: ${E(s.assumed_profile)}` : ''}</div> |
 | `static/compliance_choice.js:69` | ${(s.assumed_controls \|\| []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(s.assumed_cont… |
 | `static/data_flow.js:17` | assumed: ['Assumed tunnel', 'dim'], na: ['Not evaluated', 'dim'], step: ['Step', 'ok'], |
 | `static/explain.js:121` | get: 'Findings per policy type with a severity, the rule and the rule that hides it, the reason in one sentence and the fix, a count per … |
-| `static/explain.js:145` | get: 'For each product: what it is in plain words, what the tenant has in tables, best-practice checks with why each matters, what to do … |
+| `static/explain.js:153` | get: 'For each product: what it is in plain words, what the tenant has in tables, best-practice checks with why each matters, what to do … |
 | `static/flow_anim.js:41` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
 | `static/flow_anim.js:49` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
 | `static/flow_anim.js:200` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:4715` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:4795` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4752` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4832` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |

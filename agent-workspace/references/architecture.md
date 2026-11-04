@@ -141,6 +141,7 @@ Find the files a change touches here, then read only those.
 | `server_tls.py` | Built-in HTTPS for the server (optional; off by default). |
 | `shadow_rules.py` | Shadowed and unreachable rules: rules that can never match, or never act. |
 | `siem_queries.py` | SIEM query templates for the questions the traffic and session log page answers. |
+| `soc_review.py` | SOC review: who can administer the tenant (RBAC) and what leaves it as logs (telemetry). |
 | `ssl_coverage.py` | SSL coverage investigation: how much traffic is NOT inspected, why, and |
 | `ssl_flow.py` | SSL Inspection Flow — what is decrypted, what is not, and where inline |
 | `sso.py` | Optional SSO (OpenID Connect, Authorization Code + PKCE) — off by |
@@ -274,6 +275,7 @@ Find the files a change touches here, then read only those.
 | `static/sidebar_order.js` | Sidebar order: drag, keyboard and a per-browser saved order |
 | `static/simple.js` | Simple mode (/simple) |
 | `static/simple_entry.js` | Simple mode, from the assessment page |
+| `static/soc_review.js` | SOC review (static/report_soc_review.html): the RBAC review and the |
 | `static/ssl_flow.js` | SSL inspection flow renderer: a live, three-column flow diagram |
 | `static/tenant_health.js` | Tenant health on /report/health (#th): ZIA changes waiting for |
 | `static/tool_tabs.js` | Tools open in their own tab |
@@ -322,6 +324,7 @@ Find the files a change touches here, then read only those.
 | `static/report_queue.html` | Change queue — Zscaler Made Easy |
 | `static/report_self_heal.html` | Self-healing — Zscaler Made Easy |
 | `static/report_shadow.html` | Shadowed rules — Zscaler Made Easy |
+| `static/report_soc_review.html` | SOC review — Zscaler Made Easy |
 | `static/report_ssl_coverage.html` | SSL coverage — Zscaler Made Easy |
 | `static/report_sslflow.html` | SSL inspection flow — Zscaler Made Easy |
 | `static/report_team.html` | Team server — Zscaler Made Easy |
