@@ -8621,6 +8621,31 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "#scLogsDrop": {
+    "what": "Stops using the web logs you uploaded. The next check uses ZIA Insights, or an estimate from your rules.",
+    "input": "Nothing to type. Just click it. It shows when you came from the Traffic and session logs page.",
+    "effect": "local"
+   },
+   "#scTrueH": {
+    "what": "The true share of web traffic Zscaler can see inside: plain HTTP plus HTTPS it decrypted, out of all of it. Unknown traffic never counts as inspected. Without traffic numbers it is an estimate, and it says so.",
+    "input": "Nothing to type. It shows after a check.",
+    "effect": "local"
+   },
+   "#scTrue button[data-unit=\"BYTES\"]": {
+    "what": "Shows the true coverage by amount of data (bytes).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#scTrue button[data-unit=\"TRANSACTIONS\"]": {
+    "what": "Shows the true coverage by number of requests (transactions).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#scTrue a.sc-fix": {
+    "what": "Opens the builder in Bulk changes that fixes this cause, in a new tab. Nothing changes until you preview and apply it there.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#scBody details.pa-details summary": {
     "what": "Shows or hides the list of what was read from the tenant during the check.",
     "input": "Nothing to type. Just click it.",
@@ -8742,6 +8767,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/traffic-logs": {
+   "#tlTrueCoverage": {
+    "what": "Opens SSL coverage with these logs. It gives the true share of web traffic that was inspected and ties each line left encrypted to the SSL rule behind it.",
+    "input": "Nothing to type. Just click it. It shows when the logs say whether SSL was inspected.",
+    "effect": "local"
+   },
    "#tlWatchBox > summary": {
     "what": "Opens the daily report settings: a report made once a day from log files in a folder you name.",
     "input": "Nothing to type. Just click it.",

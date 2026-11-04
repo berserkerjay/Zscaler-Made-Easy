@@ -7,6 +7,16 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-04
+
+### SSL coverage: one true inspection figure, tied to its causes
+- **True inspection coverage** on the SSL coverage page: one figure for how much web traffic Zscaler really saw inside, by transactions and by bytes, with the time window. All web traffic is split into four parts that always add up to exactly 100%: plain HTTP (seen without decryption), HTTPS decrypted and inspected, HTTPS not inspected, and unknown. The figure is plain HTTP plus decrypted HTTPS; unknown traffic is never counted as inspected, so with some unknown the page gives a range ("between 68.7% and 72.4%"). The page's other "inspected" numbers and the run history now use this same figure.
+- Each share left encrypted is tied to its cause: the SSL rule (by name and order) that leaves its URL category or cloud application encrypted, the catch-all or default rule, or Zscaler's certificate-pinned exemptions, biggest first, each with why, what to change and a link to the Bulk changes builder that fixes it (Edit a rule, Client Connector tunnel exclusions or bypass apps, forwarding profiles, PAC files). With ZIA Insights alone the split is by the Shadow IT bytes of exempted applications (an upper bound, labelled an estimate) and the rest is shown as not split, with the rules that may be behind it.
+- **True coverage from your web logs**: the Traffic and session logs page opens SSL coverage with uploaded ZIA NSS web logs, whose lines say whether each was decrypted; every line left encrypted is tied to its rule, by transactions and by bytes (request plus response size). The logs are checked before anything is read: a report no longer in memory, not yours, or without ZIA web lines is refused.
+- Traffic that never reaches ZIA (Client Connector and PAC bypasses, a forwarding profile that sends a network direct, private applications on ZPA) is listed apart with its cause and fix and is in no percentage.
+- Without traffic numbers the page shows an estimate from your SSL rules and a typical traffic mix, marked "Estimate, not measured", and says what is needed for the measured figure (ZIA Insights in scope with a OneAPI API client, or NSS web logs).
+- The sample tenant answers web traffic by protocol in transactions and in bytes with realistic proportions, so the measured figure shows offline.
+
 ## 2026-11-01
 
 ### Pages stay quick: no piled-up scans, no "Rate limit exceeded" on your own pages
