@@ -13,9 +13,14 @@ reference inside the pack (an engine's D:<dictionary>, a rule's engines,
 application groups and parent rule) is rewritten with it. References to
 Zscaler's predefined dictionaries and engines are never prefixed.
 
-Reuse by name works on the prefixed name: an object already in the tenant
-under the prefixed name is reused, and recognised as this app's (provenance)
-even if its description tag was edited away. The trade-off (in-app help):
+Every pack name gets the prefix, even one that already starts with the same
+text ("PCI Card Numbers" under the prefix "PCI" becomes "PCIPCI Card
+Numbers"): a name that happens to start with the prefix is not proof that
+it was prefixed. Reuse by name works on the prefixed name, but a name is
+never provenance: an object under the prefixed name without this app's
+tag is reused with the usual "adopted" warning, and a removal keeps it
+unless this app's tag or a deployment record for this tenant says this
+app made it (pack_removal). The trade-off (in-app help):
 a prefix makes managed objects easy to find and keeps them apart from the
 customer's own, but names get longer (the SaaS rule limit is 31 characters)
 and changing or removing the prefix after a deploy makes the next deploy
@@ -33,6 +38,9 @@ MAX_LEN = 16
 # No brackets (a provenance tag is "[... pack ...]"), quotes, slashes or
 # control characters, so a prefix can never forge a tag or break a name.
 _ALLOWED = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.:\-]*")
+# The engine expression keywords: a prefix holding one as a whole word would
+# put it into every D:<dictionary> reference ("D:X OR PCI Card Numbers").
+_KEYWORD = re.compile(r"(?<![A-Za-z0-9_])(?:AND|OR|NOT)(?![A-Za-z0-9_])", re.IGNORECASE)
 
 
 class PrefixError(ValueError):
@@ -52,6 +60,8 @@ def problem(prefix: Any) -> Optional[str]:
                 "or a digit")
     if "  " in prefix:
         return "the managed-name prefix may not hold two spaces in a row"
+    if _KEYWORD.search(prefix):
+        return "the managed-name prefix may not hold the words AND, OR or NOT (they are engine expression keywords)"
     import pack_deploy
     if pack_deploy.TOOL_NAME_RE.search(prefix):
         return "the managed-name prefix may not be the tool's own name"
@@ -76,9 +86,12 @@ def has(name: Any, prefix: str) -> bool:
 
 
 def add(name: Any, prefix: str) -> str:
-    """`name` with the prefix (unchanged when it already carries it, so a pack built with it is not prefixed twice)."""
+    """`name` with the prefix, always: a pack name that already starts with the
+    same text is prefixed too, so no customer object is taken for this app's
+    just because its name starts the same way. The prefix is applied once,
+    where a pack is loaded."""
     name = str(name or "")
-    if not prefix or not name or has(name, prefix):
+    if not prefix or not name:
         return name
     return prefix + name
 
@@ -134,8 +147,9 @@ def apply(dictionaries: List[Dict[str, Any]], engines: List[Dict[str, Any]], pol
 
 
 def ours_by_name(name: Any, pack_names: Set[str], prefix: str) -> bool:
-    """An object found under the prefixed name of one of the pack's objects
-    is recognised as this app's, whatever its description says."""
+    """An object found under the prefixed name of one of the pack's objects.
+    A name match only: pack_removal keeps such an object unless this app's
+    tag or a deployment record for this tenant says this app made it."""
     return bool(prefix) and has(name, prefix) and str(name) in pack_names
 
 
@@ -145,4 +159,6 @@ def preview(prefix: str) -> Dict[str, Any]:
         return {"on": False, "prefix": "", "note": "Off: objects keep the names the policy pack gives them."}
     return {"on": True, "prefix": prefix,
             "note": (f"Every dictionary, engine, rule and application group this plan creates is named with \"{prefix}\" in front; "
-                     f"an object already in the tenant under that name is reused and recognised as this app's.")}
+                     f"an object already in the tenant under that name is reused. A name alone does not prove this app made it: "
+                     f"without this app's tag it is shown as adopted, and Remove a pack keeps it unless a deployment record "
+                     f"for this tenant lists it.")}

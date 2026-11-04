@@ -1479,7 +1479,7 @@ function _dzRemovalPreview() {
   const row = i => `<div class="dz-row ${i.status === 'keep' ? 'st-reuse' : 'st-fail'}">
     <span class="ic" aria-hidden="true">${i.status === 'keep' ? '↺' : '🗑'}</span>
     <div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}${i.channel ? ` <span class="dz-chip kind-channel">${_dzE(_dzChan(i.channel))}</span>` : ''}</div>
-      <div class="rs">${i.status === 'keep' ? `Kept — ${_dzE(i.keep)}` : (i.match === 'name' ? 'Removed — matched by name (no Zscaler Made Easy tag; confirm it is yours)' : i.match === 'prefix' ? 'Removed — found under the managed-name prefix, so recognised as this app’s' : 'Removed — carries this pack’s Zscaler Made Easy tag')}</div></div>
+      <div class="rs">${i.status === 'keep' ? `Kept — ${_dzE(i.keep)}` : (i.match === 'name' ? 'Removed — matched by name (no Zscaler Made Easy tag; confirm it is yours)' : i.match === 'prefix' ? 'Removed — found under the managed-name prefix and listed in a deployment record for this tenant' : 'Removed — carries this pack’s Zscaler Made Easy tag')}</div></div>
   </div>`;
   const removeSorted = remove.slice().sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9) || a.name.localeCompare(b.name));
   body.innerHTML = `
@@ -1655,7 +1655,7 @@ function _dzRemovalReport() {
     <tr class="${i.status}">
       <td>${esc(RM_KIND[i.kind] || i.kind)}</td><td>${esc(i.name)}</td><td>${esc(i.channel || '')}</td>
       <td><b>${i.status === 'remove' ? 'Remove' : 'Keep'}</b></td>
-      <td>${i.status === 'keep' ? esc(i.keep) : (i.match === 'name' ? 'Matched by name only (no Zscaler Made Easy tag) — confirm ownership' : i.match === 'prefix' ? 'Found under the managed-name prefix — recognised as this app’s' : 'Carries this pack’s Zscaler Made Easy provenance tag')}</td>
+      <td>${i.status === 'keep' ? esc(i.keep) : (i.match === 'name' ? 'Matched by name only (no Zscaler Made Easy tag) — confirm ownership' : i.match === 'prefix' ? 'Found under the managed-name prefix and listed in a deployment record for this tenant' : 'Carries this pack’s Zscaler Made Easy provenance tag')}</td>
     </tr>`).join('');
   const remove = items.filter(i => i.status === 'remove').length, keep = items.length - remove;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Removal plan — ${esc(R.pack.name || R.id)}</title>

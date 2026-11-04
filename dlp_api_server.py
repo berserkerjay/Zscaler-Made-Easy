@@ -3666,6 +3666,17 @@ async def _start_dh_refresh() -> None:
         _DH_REFRESH_STATE["last_status"] = "disabled"
 
 
+def _recorded_in_tenant(creds: Dict[str, str]) -> List[Tuple[str, str]]:
+    """(kind, id) of what this tenant's deployment records say the app
+    created: the only proof, besides the tag, that lets a removal delete an
+    object found under the managed-name prefix (pack_removal)."""
+    try:
+        import deployments
+        return deployments.created_in(lambda rec: _same_tenant(rec, creds))
+    except Exception:  # noqa: BLE001 - no readable record: prefix matches are kept
+        return []
+
+
 def _deployment_for_removal(req: "PackRemovalRequest", creds: Dict[str, str]) -> Dict[str, Any]:
     """The recorded deployment a removal names, checked against the tenant
     the credentials point at."""
@@ -3728,7 +3739,8 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal_selected(client, req.rules))
         _cq_remember("pack_removal", out, req, creds)   # lets "Request approval" file exactly this plan
     else:
-        out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
+        recorded = _recorded_in_tenant(creds)
+        out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all), recorded=recorded))
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
     return _mark_rehearsal(out, _rehearsal(creds))
@@ -3996,7 +4008,7 @@ def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Di
                                               confirm_text=req.confirm_phrase)
     else:
         result = pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel, everything=bool(req.all),
-                                     confirm_text=req.confirm_phrase)
+                                     confirm_text=req.confirm_phrase, recorded=_recorded_in_tenant(_tenant_creds(req)))
     result["logs"] = logs
     if result.get("status") in ("blocked", "stale"):
         result["message"] = "; ".join(result.get("blockers") or [

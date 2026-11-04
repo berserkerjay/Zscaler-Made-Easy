@@ -325,8 +325,8 @@ window.HELP_CATALOG = {
     "effect": "read"
    },
    "#dlpDeployModal #dzNamePrefix": {
-    "what": "The name prefix the operator set. Each name this plan creates starts with it, in the tenant and in Terraform. An object already in the tenant under that name is reused and treated as made by this app. Trade-off: it keeps your objects apart and easy to find. But names get longer, and a SaaS rule name may only have 31 letters. Anyone who uses the prefix makes an object look like this app's. If you change the prefix after a deploy, the next deploy makes new copies under the new names. The old ones stay until you remove them.",
-    "input": "Nothing to type here. The operator sets it before starting the app: letters, digits, spaces and - _ . : only, at most 16 characters, starting with a letter or digit.",
+    "what": "The name prefix the operator set. Each name this plan creates starts with it, in the tenant and in Terraform. An object already in the tenant under that name is reused. But a name alone does not prove this app made it. Without this app's tag it is shown as adopted. Remove a pack keeps it unless a deployment record for this tenant lists it. Trade-off: it keeps your objects apart and easy to find. But names get longer, and a SaaS rule name may only have 31 letters. If you change the prefix after a deploy, the next deploy makes new copies under the new names. The old ones stay until you remove them.",
+    "input": "Nothing to type here. The operator sets it before starting the app: letters, digits, spaces and - _ . : only, at most 16 characters, starting with a letter or digit. The words AND, OR and NOT are not allowed.",
     "effect": "local"
    },
    "#dlpDeployModal #dzBody button[onclick*=\"openToolTab('terraform'\"]": {

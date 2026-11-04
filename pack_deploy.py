@@ -1708,18 +1708,18 @@ def _plan_hash(pack_ids: Sequence[str], options: Dict[str, Any], items: Sequence
 
 
 def _mark_prefixed(items: Sequence[Dict[str, Any]], prefix: str) -> None:
-    """Provenance under the managed-name prefix: an object the tenant already
-    holds under the prefixed name of a pack object is this app's (reused, and
-    never "adopted" from the customer), even if its description tag was
-    edited away. The preview shows the pack's own name beside it."""
+    """The managed-name prefix in the preview: each object's name in the pack
+    beside its prefixed name. A name is never provenance: an object the
+    tenant already holds under the prefixed name without this app's tag
+    keeps the "adopted" warning, and a removal keeps it (pack_removal)."""
     for item in items:
         if item.get("kind") == "tweak" or not np_.has(item.get("name"), prefix):
             continue
         item["pack_name"] = np_.strip(item["name"], prefix)
         if item.get("tenant") and item.get("status") in (REUSE, REUSE_DIFFERS, RESTORE):
-            item["ours"] = "prefix"
-            item["adopt"] = False
-            item["reason"] = (item.get("reason") or "").rstrip() + f" Found under the managed-name prefix \"{prefix}\", so it is recognised as this app's."
+            item["reason"] = ((item.get("reason") or "").rstrip()
+                              + f" Found under the managed-name prefix \"{prefix}\". The name alone does not prove this app made it:"
+                              " Remove a pack deletes it only if it carries this app's tag or a deployment record lists it.")
 
 
 def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -1738,7 +1738,6 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
     }
     if item.get("pack_name"):
         out["pack_name"] = item["pack_name"]          # the name in the pack, before the managed-name prefix
-        out["ours"] = item.get("ours")
     if item.get("rank_plan"):
         rp = item["rank_plan"]
         out["rank_plan"] = {k: rp.get(k) for k in ("rank", "order", "asked_order", "why", "warning", "assumed", "state")}

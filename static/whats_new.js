@@ -41,7 +41,7 @@ window.WHATS_NEW = {
     },
     {
       "id": "managed-name-prefix", "release": "2026-11-04", "label": "Managed-name prefix",
-      "what": "An optional prefix the operator sets (DLP_CHECK_NAME_PREFIX) goes in front of every name a policy pack deploys or builds; the plan shows it, and objects under the prefixed name are reused and recognised as this app's.",
+      "what": "An optional prefix the operator sets (DLP_CHECK_NAME_PREFIX) goes in front of every name a policy pack deploys or builds; the plan shows it, and objects under the prefixed name are reused, but a removal deletes one only when it carries this app's tag or a deployment record lists it.",
       "changelog": ["Managed-name prefix"],
       "marks": [{ "page": "/", "at": "#dlpDeployModal #dzNamePrefix", "shown": "in the deploy preview when the operator set a prefix" }]
     },
