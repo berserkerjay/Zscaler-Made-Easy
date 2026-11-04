@@ -885,12 +885,23 @@ what you get, what to do next.
   back and Undo puts back exactly what was applied (or, if asked before
   applying, an automatic rollback of a stopped run). A clone remaps every
   reference by name, lists what cannot be cloned and why and the manual
-  steps (locations, static IPs, GRE tunnels, the proxy gateway), compares
+  steps (the proxy gateway, which the API only lists), compares
   the two tenants' subscriptions first, never copies a secret (a VPN
   credential needs its pre-shared key typed; it reaches the write in memory
   only), and writes only to the tenant of the saved profile the person has
   open. Settings can be restored key by key; a re-push plan for what did
-  not arrive is offered after the read-back. **Templates** are picked
+  not arrive is offered after the read-back. PAC files (created only),
+  Endpoint DLP and SaaS Security API DLP rules (after the engines,
+  dictionaries and notification templates they use; SaaS application
+  tenants and domain profiles matched by name) and ZPA gateways (their ZPA
+  server group and segments matched by name in the target's ZPA) restore
+  and clone like the rest. Tenant-bound objects (static IPs, GRE tunnels,
+  locations and their sub-locations, each after its parent) are written
+  only with their own tick and typed CREATE n TENANT-BOUND OBJECTS. Client
+  Connector app profiles and entitlements clone to another tenant only
+  with their own tick and typed CLONE n CLIENT CONNECTOR OBJECTS: profiles
+  that apply to everyone, created inactive, never with a password or the
+  policy token. **Templates** are picked
   objects (with what they use), ids removed, names carrying a prefix chosen
   when they are applied. On the sample tenant or a snapshot, a restore is a
   rehearsal: plan only.
