@@ -1108,7 +1108,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#authBtn": {
-    "what": "Signs in to the tenant with these values and nothing else: it reads nothing from the tenant. Run the assessment from the Scope page. Once signed in, every page (Simple mode too) reads this tenant without asking again; the server keeps the sign-in in memory only, for this browser, until 30 minutes without use or 8 hours at most. Changes to the tenant still need the sign-in details.",
+    "what": "Signs in to the tenant with these values and nothing else: it reads nothing from the tenant. Run the assessment from the Scope page. Once you are signed in, every page reads this tenant without asking again. Simple mode does too. The server keeps the sign-in in memory only, for this browser. It ends after 30 minutes without use, or 8 hours at most. Changes still need the sign-in details.",
     "input": "The sign-in fields above must be filled in first: vanity domain, client ID and secret for OneAPI, or username, password and API key for the classic API.",
     "effect": "read"
    },

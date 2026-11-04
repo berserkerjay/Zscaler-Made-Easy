@@ -33,7 +33,7 @@ window.WHATS_NEW = {
     {
       "id": "shared-signin", "release": "2026-11-04", "label": "Sign in once",
       "what": "Sign in once: after Authenticate (or an assessment), every page, Simple mode too, reads that tenant without asking again. The server keeps the sign-in in memory only, for you and this browser, until 30 minutes without use or 8 hours at most; Sign out of tenant forgets it. Changes still need the sign-in details.",
-      "changelog": ["Sign in once", "Sign out of tenant", "Authenticate"],
+      "changelog": ["Sign in once", "Sign out of tenant", "Authenticate", "Signed-in tenant"],
       "marks": [
         { "page": "/report/advanced", "at": "#advTenantSessionH" },
         { "page": "/", "at": "#authSignOutBtn", "shown": "after signing in with Authenticate" },
