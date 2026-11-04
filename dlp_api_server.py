@@ -12269,10 +12269,30 @@ async def report_data_flow(req: DataFlowRequest):
         raise HTTPException(status_code=500, detail=f"The tracer failed ({type(e).__name__}: {str(e)[:300]}). The full traceback is in server.log; please report it.")
     # Traffic shares (optional): one ZIA Insights query when Insights is in
     # scope, so the moving picture can weight each path by real uploads.
-    # Any failure leaves the map as it was, with the reason.
-    await asyncio.to_thread(_dataflow_traffic, req, report)
+    # Any failure, or no answer within its own time limit, leaves the map
+    # as it was, with the reason.
+    await _dataflow_traffic_bounded(req, report)
     rid = _remember_report("dataflow", report, _report_label(req))
     return _REPORTS[rid]
+
+
+# The Insights read gets its own time limit, so a slow Insights answer
+# never holds up the whole map.
+DATAFLOW_TRAFFIC_TIMEOUT_S = 20
+
+
+async def _dataflow_traffic_bounded(req: Any, report: Dict[str, Any]) -> None:
+    """_dataflow_traffic within DATAFLOW_TRAFFIC_TIMEOUT_S. The read works
+    on its own copy of what it needs, so an answer that comes after the
+    time limit is dropped and never changes the report."""
+    import data_flow
+    part: Dict[str, Any] = {"traces": report.get("traces") or [], "snapshot": report.get("snapshot") or {}}
+    try:
+        await asyncio.wait_for(asyncio.to_thread(_dataflow_traffic, req, part), timeout=DATAFLOW_TRAFFIC_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        data_flow.attach_traffic(report, None, data_flow.traffic_timeout_reason(DATAFLOW_TRAFFIC_TIMEOUT_S))
+        return
+    report["traffic"] = part.get("traffic") or data_flow.traffic_unavailable(data_flow.TRAFFIC_NOT_IN_SCOPE)
 
 
 def _dataflow_traffic(req: Any, report: Dict[str, Any]) -> None:

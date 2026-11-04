@@ -1633,13 +1633,45 @@ TRAFFIC_WINDOW = "7d"
 TRAFFIC_APPS_MAX = 200
 TRAFFIC_FALLBACK = "general"
 TRAFFIC_BASIS = ("Bytes uploaded to cloud applications in ZIA Insights (Shadow IT), put into the map's traffic classes by the "
-                 "application's name in the tenant's cloud application catalogue, else by its Shadow IT category, else counted "
+                 "application's name in the tenant's cloud application catalogue, else by a short list of well-known applications "
+                 "(such as ChatGPT and Pastebin), else by its Shadow IT category, else counted "
                  "as all other web traffic. Insights cannot say which network a byte used, so each network shows where all of "
                  "it would go on that network. Web traffic outside cloud applications is not counted.")
 TRAFFIC_NOT_IN_SCOPE = ("Traffic numbers were not read: ZIA Insights is not in scope on the Scope page. "
                         "The map shows settings only, and the picture counts paths, not bytes.")
 TRAFFIC_LEGACY = ("Traffic numbers were not read: they need a OneAPI API client, and the classic ZIA API sign-in cannot read "
                   "ZIA Insights. The map shows settings only.")
+
+
+# assumed: the Shadow IT category names ZIA Insights gives applications
+# (compared loosely: letters and digits, upper case) and the traffic class
+# each one carries. Zscaler does not publish this list; the names come from
+# the Insights console and the sample tenant, so an unlisted category falls
+# back to the cloud application class names, then to "All other web traffic".
+SHADOW_IT_CATEGORY_CLASS: Dict[str, str] = {
+    "FILESHARE": "file_share", "FILESHARING": "file_share", "ONLINESTORAGE": "file_share", "CLOUDSTORAGE": "file_share",
+    "WEBMAIL": "webmail", "EMAIL": "webmail", "PERSONALEMAIL": "webmail",
+    "GENERATIVEAI": "ai_ml", "GENAI": "ai_ml", "AIML": "ai_ml", "AIMLAPPLICATIONS": "ai_ml", "AIMLAPPS": "ai_ml",
+    "ARTIFICIALINTELLIGENCE": "ai_ml",
+    "SOCIALNETWORKING": "social", "SOCIALMEDIA": "social",
+    "ENTERPRISECOLLABORATION": "collab", "COLLABORATION": "collab", "INSTANTMESSAGING": "collab", "ONLINECHAT": "collab",
+    "PASTESITES": "forums", "PASTEBIN": "forums", "BLOGS": "forums", "BLOG": "forums", "DISCUSSIONFORUMS": "forums", "FORUMS": "forums",
+    "REMOTEACCESS": "remote", "REMOTEACCESSTOOLS": "remote", "ANONYMIZER": "remote", "P2P": "remote", "DNSOVERHTTPS": "remote",
+    "FINANCE": "privacy", "HEALTHCARE": "privacy", "HEALTH": "privacy", "GOVERNMENT": "privacy",
+}
+# assumed: well-known applications whose Shadow IT category says nothing
+# about their class (the sample lists ChatGPT under "System and
+# Development" and Pastebin under "Consumer"). Used only when the tenant's
+# cloud application catalogue does not name the application.
+KNOWN_APP_CLASS: Dict[str, str] = {
+    "CHATGPT": "ai_ml", "OPENAI": "ai_ml", "OPENAICHATGPT": "ai_ml", "GOOGLEGEMINI": "ai_ml", "GEMINI": "ai_ml", "GOOGLEBARD": "ai_ml",
+    "CLAUDE": "ai_ml", "ANTHROPICCLAUDE": "ai_ml", "MICROSOFTCOPILOT": "ai_ml", "COPILOT": "ai_ml", "PERPLEXITY": "ai_ml",
+    "PERPLEXITYAI": "ai_ml", "DEEPSEEK": "ai_ml", "MISTRALAI": "ai_ml", "POE": "ai_ml", "CHARACTERAI": "ai_ml",
+    "PASTEBIN": "forums", "PASTEBINCOM": "forums", "GITHUBGIST": "forums", "HASTEBIN": "forums", "JUSTPASTEIT": "forums",
+    "CONTROLC": "forums", "PRIVATEBIN": "forums", "RENTRY": "forums", "GHOSTBIN": "forums",
+    "WETRANSFER": "file_share", "MEGA": "file_share", "DROPBOX": "file_share", "BOX": "file_share", "SENDANYWHERE": "file_share",
+    "GMAIL": "webmail", "YAHOOMAIL": "webmail", "OUTLOOKCOM": "webmail", "PROTONMAIL": "webmail", "AOLMAIL": "webmail",
+}
 
 
 def _app_key(v: Any) -> str:
@@ -1674,6 +1706,11 @@ def read_traffic(zins: Any, *, window_key: str = TRAFFIC_WINDOW, scrub: Any = No
             "error": r.get("error") or ""}
 
 
+def traffic_timeout_reason(seconds: float) -> str:
+    return (f"Traffic numbers were not read: ZIA Insights did not answer within {seconds:g} seconds, so the map is shown "
+            "without them. The picture counts paths, not bytes. Try again later.")
+
+
 def traffic_unavailable(reason: str) -> Dict[str, Any]:
     return {"available": False, "reason": str(reason)[:400]}
 
@@ -1681,8 +1718,10 @@ def traffic_unavailable(reason: str) -> Dict[str, Any]:
 def traffic_shares(traces: Sequence[Dict[str, Any]], apps: Sequence[Dict[str, Any]], catalogue: Optional[Dict[str, Any]] = None,
                    window: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Bytes per traffic class from Shadow IT rows. An application goes to
-    the first traffic class whose catalogue applications name it, else
-    whose cloud application classes match its Shadow IT category, else to
+    the first traffic class whose catalogue applications name it, else the
+    class of a well-known application of that name (KNOWN_APP_CLASS), else
+    the class its Shadow IT category carries (SHADOW_IT_CATEGORY_CLASS),
+    else a class whose cloud application classes match that category, else
     "All other web traffic"; each byte is counted once. Negative, missing
     or non-numeric amounts count as 0."""
     classes: Dict[str, Dict[str, Any]] = {}
@@ -1707,7 +1746,10 @@ def traffic_shares(traces: Sequence[Dict[str, Any]], apps: Sequence[Dict[str, An
         up = _nonneg(a.get("data_uploaded"))
         tot = _nonneg(a.get("data_consumed")) or up + _nonneg(a.get("data_downloaded"))
         nk, ck = _app_key(name), _app_key(a.get("application_category"))
+        known = KNOWN_APP_CLASS.get(nk)
+        by_cat = SHADOW_IT_CATEGORY_CLASS.get(ck)
         key = next((k for k, c in classes.items() if nk and nk in c["names"]), None) \
+            or (known if known in classes else None) or (by_cat if by_cat in classes else None) \
             or next((k for k, c in classes.items() if ck and ck in c["cats"]), None) or fallback
         bucket = classes[key] if key else unmatched
         bucket["upload"] += up
@@ -1836,6 +1878,40 @@ def to_markdown(report: Dict[str, Any], label: str = "") -> str:
         for p in t["packs"]:
             lines.append(f"- Pack {p['name']}: {p['coverage']}" + (f" — {p['weak_point']}" if p.get("weak_point") else ""))
         lines.append("")
+    lines.extend(_traffic_markdown(report.get("traffic") or {}))
     import dlp_analysis
     lines.extend(dlp_analysis.markdown(raw))
     return "\n".join(lines)
+
+
+def _human_bytes(n: Any) -> str:
+    v, i, units = _nonneg(n), 0, ["B", "KB", "MB", "GB", "TB", "PB"]
+    while v >= 1000 and i < len(units) - 1:
+        v /= 1000
+        i += 1
+    return f"{v:.1f} {units[i]}" if i else f"{round(v)} {units[i]}"
+
+
+def _traffic_markdown(tr: Dict[str, Any]) -> List[str]:
+    """The traffic shares (the same numbers as the JSON export's
+    "traffic"), or why there are none. Strings are already inert."""
+    out = ["## Where uploads go (ZIA Insights)", ""]
+    if not tr.get("available"):
+        return out + [str(tr.get("reason") or TRAFFIC_NOT_IN_SCOPE), ""]
+    total = _nonneg(tr.get("total_upload"))
+    win = (tr.get("window") or {}).get("label") or (tr.get("window") or {}).get("key") or TRAFFIC_WINDOW
+    out.append(f"{_human_bytes(total)} uploaded to cloud applications ({win}, {tr.get('source') or 'ZIA Insights'}), "
+               f"{tr.get('apps_read', 0)} applications read. Share of the uploads by traffic class; what happens to it on each "
+               "network is in the paths above.")
+    out.append("")
+    rows = sorted((tr.get("classes") or {}).values(), key=lambda c: -_nonneg(c.get("upload")))
+    for c in rows:
+        up = _nonneg(c.get("upload"))
+        pct = round(100 * up / total) if total else 0
+        apps = ", ".join(str(a) for a in c.get("apps") or [])
+        out.append(f"- {c.get('label')}: {pct}% ({_human_bytes(up)} uploaded)" + (f" — {apps}" if apps else ""))
+    un = tr.get("unmatched") or {}
+    if _nonneg(un.get("upload")):
+        out.append(f"- Not put in any traffic class: {_human_bytes(un.get('upload'))} uploaded")
+    out += ["", f"Basis: {tr.get('basis') or TRAFFIC_BASIS}", ""]
+    return out
