@@ -522,8 +522,10 @@ def cross(rep: Dict[str, Any], data: Dict[str, Any], st: Dict[str, Dict[str, Any
                     hit, how = by_udid[c["udid"].lower()], "udid"
                 elif c.get("name") and c["name"].casefold() in by_name:
                     hit, how = by_name[c["name"].casefold()], "name (inferred)"
+                # resolved: True found, False not in the full device posture list, None not known (that list was not read in full).
                 rows.append({"name": c["name"], "udid": c.get("udid") or "", "device_posture": hit["name"] if hit else None,
-                             "family": hit["label"] if hit else None, "matched_by": how})
+                             "family": hit["label"] if hit else None, "matched_by": how,
+                             "resolved": True if hit else (False if zpa_postures_complete else None)})
             levels[lvl] = rows
         users = [{"id": a["id"], "name": a["name"], "platform": a["platform"], "active": a["active"]} for a in apps if a["zia_posture_id"] and a["zia_posture_id"] == p["id"]]
         zia_view.append({"id": p["id"], "name": p["name"], "platform": p["platform"], "platform_label": p["platform_label"],
@@ -549,6 +551,7 @@ def cross(rep: Dict[str, Any], data: Dict[str, Any], st: Dict[str, Dict[str, Any
             used = None
         dev_view.append({"id": p["id"], "name": p["name"], "family": p["label"], "enforces": p["enforces"],
                          "platforms": plat_keys(p.get("platforms") or []),
+                         "platform_labels": [PLATFORM_LABEL.get(k, k) for k in plat_keys(p.get("platforms") or [])],
                          "defined_in": "Client Connector (device posture)", "read_via": "ZPA API",
                          "zpa_rules": [{"rule": u["rule"], "policy": u["policy_label"], "order": u.get("order"), "action": u.get("action"),
                                         "sense": u["sense"], "disabled": u.get("disabled")} for u in zpa_uses] if access_read else None,

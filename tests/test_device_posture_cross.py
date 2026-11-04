@@ -243,6 +243,8 @@ def test_zpa_posture_read_failing_keeps_the_rest(monkeypatch):
     assert rep["products"]["zpa"]["status"] == "partial" and "posture profiles" in rep["products"]["zpa"]["reason"]
     assert rep["cross"]["device_postures"] == [] and not _ids(rep, "XP-04")
     assert any("device posture list was not read" in n for n in rep["cross"]["not_assessed"])
+    crit = [c for z in rep["cross"]["zia_postures"] for rows in z["levels"].values() for c in rows]
+    assert crit and all(c["resolved"] is None for c in crit), "not found in an unread list is unknown, never missing"
 
 
 def test_zpa_posture_list_empty_makes_every_named_check_missing():
@@ -250,6 +252,7 @@ def test_zpa_posture_list_empty_makes_every_named_check_missing():
     rep = build(zpa_posture_empty)
     assert rep["products"]["zpa"]["status"] == "read" and rep["cross"]["device_postures"] == []
     assert {f["object"] for f in _ids(rep, "XP-04")} == {"Larkspur laptops (Windows)", "Driver phones (iOS)"}
+    assert all(c["resolved"] is False for z in rep["cross"]["zia_postures"] for rows in z["levels"].values() for c in rows)
 
 
 def test_zpa_unlicensed_is_said_not_raised():
