@@ -815,6 +815,10 @@ class Analysis:
                 "threats": 0, "threat_names": BoundedCounter(5000), "threat_cats": BoundedCounter(500), "threat_users": BoundedCounter(),
                 "threat_dests": BoundedCounter(), "threat_actions": Counter(),
                 "ssl": Counter(), "ssl_reasons": BoundedCounter(500), "ssl_dests_no": BoundedCounter(),
+                # Bytes per SSL bucket (reqsize + respsize) and the not-inspected
+                # transactions and bytes per (URL category, cloud app): what
+                # ssl_true_coverage needs to tie each one to the SSL rule behind it.
+                "ssl_bytes": Counter(), "ssl_no_by": BoundedCounter(5000), "ssl_no_by_bytes": BoundedCounter(5000),
                 "dns_cats": BoundedCounter(2000)}
 
     # -- time
@@ -1071,16 +1075,22 @@ class Analysis:
             a["threat_users"].add(r.get("login", ""))
             a["threat_dests"].add(dest)
         ssl = (r.get("ssldecrypted") or "").strip().lower()
+        size = int(_num(r.get("reqsize")) + _num(r.get("respsize")))
         if ssl in ("yes", "no", "1", "0", "true", "false"):
             inspected = ssl in ("yes", "1", "true")
-            a["ssl"]["inspected" if inspected else "not_inspected"] += 1
+            bucket = "inspected" if inspected else "not_inspected"
             if not inspected:
                 a["ssl_reasons"].add(r.get("externalspr") or "(no reason in the log)")
                 a["ssl_dests_no"].add(dest)
+                key = f"{_s(cat)[:120]}\x1f{'' if _blank(r.get('appname')) else _s(r.get('appname'))[:120]}"
+                a["ssl_no_by"].add(key)
+                a["ssl_no_by_bytes"].add(key, size)
         elif proto == "HTTP":
-            a["ssl"]["plain_http"] += 1
+            bucket = "plain_http"
         else:
-            a["ssl"]["not_logged"] += 1
+            bucket = "not_logged"
+        a["ssl"][bucket] += 1
+        a["ssl_bytes"][bucket] += size
         return t
 
     def _zia_fw(self, r: Dict[str, Any]) -> Optional[datetime]:
@@ -1330,7 +1340,11 @@ class Analysis:
                                 "categories": _rows(a["threat_cats"]), "users": _rows(a["threat_users"]), "destinations": _rows(a["threat_dests"])},
                     "ssl": {"inspected": ssl.get("inspected", 0), "not_inspected": ssl.get("not_inspected", 0),
                             "plain_http": ssl.get("plain_http", 0), "not_logged": ssl.get("not_logged", 0),
-                            "reasons": _rows(a["ssl_reasons"]), "destinations_not_inspected": _rows(a["ssl_dests_no"])} if k == "zia_web" else None,
+                            "reasons": _rows(a["ssl_reasons"]), "destinations_not_inspected": _rows(a["ssl_dests_no"]),
+                            "bytes": {b: int(a["ssl_bytes"].get(b, 0)) for b in ("inspected", "not_inspected", "plain_http", "not_logged")},
+                            "not_inspected_by": [{"category": key.split("\x1f")[0], "app": (key.split("\x1f") + [""])[1], "count": n,
+                                                  "bytes": int(a["ssl_no_by_bytes"].c.get(key, 0))} for key, n in a["ssl_no_by"].top(TOP)]}
+                    if k == "zia_web" else None,
                     "new_destinations": newd,
                 }
         rep["anomalies"] = anomalies
