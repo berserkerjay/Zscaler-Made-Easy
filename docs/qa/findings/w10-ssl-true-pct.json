@@ -23,5 +23,5 @@
   "Verified against zscaler-sdk-python 1.11.3 (as ssl_coverage.py already is): zins web_traffic.get_protocols with traffic_unit TRANSACTIONS and BYTES, shadow_it.get_apps.",
   "Assumed (marked in the code): the typical traffic mix of the policy estimate (ASSUMED_MIX, about 5% plain HTTP); that ZPA application segments' traffic never reaches ZIA's SSL inspection; the NSS ssldecrypted, reqsize and respsize fields as traffic_logs.py already reads them."
  ],
- "tests_added": 33
+ "tests_added": 37
 }
