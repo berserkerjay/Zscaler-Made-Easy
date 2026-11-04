@@ -152,7 +152,10 @@ jobs:
             echo "== $d"
             # An init failure (a provider version the registry does not have) prints its own tail.
             out="$(terraform -chdir="$d" init -backend=false -input=false -no-color 2>&1)" || { printf '%s\n' "$out" | tail -n 15; rc=1; continue; }
-            terraform -chdir="$d" validate -no-color || rc=1
+            # One line per diagnostic (file:line, resource, summary, detail), so every error fits a short log tail.
+            res="$(terraform -chdir="$d" validate -json -no-color)" || true
+            printf '%s' "$res" | jq -r '.diagnostics[] | "\(.severity) \(.range.filename // "-"):\(.range.start.line // 0) \(.snippet.context // "") \(.summary): \(.detail // "" | gsub("\n"; " ") | .[0:220])"'
+            [ "$(printf '%s' "$res" | jq -r .valid)" = "true" ] || rc=1
           done
           exit $rc
 
