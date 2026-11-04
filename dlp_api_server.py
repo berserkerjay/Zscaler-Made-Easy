@@ -1808,7 +1808,7 @@ def _regenerate_terraform(pack_id: str, pack_dir: str) -> str:
     beside the pack (as for uploads) for a copy rebuilt in the library."""
     try:
         import pack_terraform
-        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
+        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir}, name_prefix="")
         shipped = os.path.realpath(os.path.dirname(pack_dir)) == os.path.realpath(_APP_DIR)
         out_dir = os.path.join(_APP_DIR, "terraform", pack_id) if shipped else os.path.join(pack_dir, "terraform")
         pack_terraform.write_workspace(files, out_dir)
@@ -6136,7 +6136,7 @@ def _transcribe_pack_to_terraform(pack_id: str, pack_dir: str) -> Dict[str, Any]
     <pack_dir>/terraform/. Returns what was written, or the error."""
     try:
         import pack_terraform
-        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
+        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir}, name_prefix="")
         out_dir = os.path.join(pack_dir, "terraform")
         pack_terraform.write_workspace(files, out_dir)
         resources = sum(len(re.findall(r'(?m)^resource "', body)) for body in files.values())

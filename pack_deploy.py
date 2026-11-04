@@ -59,6 +59,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+import name_prefix as np_
 import pack_channels as pc
 import pack_ops as ops
 import admin_rank
@@ -474,11 +475,16 @@ def _check_fields(obj: Dict[str, Any], schema: Dict[str, Any], where: str) -> No
             raise PackFileError(f"{where}: '{key}' of '{str(obj.get('name'))[:80]}' has the wrong type ({type(v).__name__})")
 
 
-def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict[str, Sequence[str]]] = None) -> List[Dict[str, Any]]:
+def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict[str, Sequence[str]]] = None,
+                 name_prefix: Optional[str] = None) -> List[Dict[str, Any]]:
     """Load every selected pack. `packs` items need `id` and `dir`.
     `channel_targets` (pack id → DLP channels) narrows or extends the
     pack's rules per channel; see pack_channels.apply_channel_targets.
-    A pack file that is not a pack raises PackFileError (load_pack_file)."""
+    `name_prefix` (default: the operator's DLP_CHECK_NAME_PREFIX, off when
+    unset; name_prefix.py) goes in front of every object's name and every
+    reference to one. A pack file that is not a pack raises PackFileError
+    (load_pack_file); a prefix that is not valid, name_prefix.PrefixError."""
+    prefix = np_.configured() if name_prefix is None else name_prefix
     sources = []
     for p in packs:
         configs = _resolve_configs(p["dir"])
@@ -500,6 +506,9 @@ def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict
         policies, note = pc.apply_channel_targets(
             policies, targets, pack_name=meta.get("name", p["id"]), prefix=(baseline or {}).get("prefix") or "",
             engine_names=[e.get("name") for e in engines if e.get("name")], pack_id=p["id"])
+        app_groups = files["endpoint_application_groups.json"]
+        if prefix:
+            dictionaries, engines, policies, app_groups = np_.apply(dictionaries, engines, policies, app_groups, prefix)
         sources.append({
             "id": p["id"],
             "name": meta.get("name", p["id"]),
@@ -507,7 +516,8 @@ def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict
             "dictionaries": dictionaries,
             "engines": engines,
             "policies": policies,
-            "app_groups": files["endpoint_application_groups.json"],
+            "app_groups": app_groups,
+            "name_prefix": prefix,
             "tweaks": meta.get("confidence_tweaks"),
             "baseline": baseline,
             "version": str(meta.get("version") or ""),
@@ -1697,6 +1707,21 @@ def _plan_hash(pack_ids: Sequence[str], options: Dict[str, Any], items: Sequence
     return hashlib.sha256(_canonical(core).encode("utf-8")).hexdigest()
 
 
+def _mark_prefixed(items: Sequence[Dict[str, Any]], prefix: str) -> None:
+    """Provenance under the managed-name prefix: an object the tenant already
+    holds under the prefixed name of a pack object is this app's (reused, and
+    never "adopted" from the customer), even if its description tag was
+    edited away. The preview shows the pack's own name beside it."""
+    for item in items:
+        if item.get("kind") == "tweak" or not np_.has(item.get("name"), prefix):
+            continue
+        item["pack_name"] = np_.strip(item["name"], prefix)
+        if item.get("tenant") and item.get("status") in (REUSE, REUSE_DIFFERS, RESTORE):
+            item["ours"] = "prefix"
+            item["adopt"] = False
+            item["reason"] = (item.get("reason") or "").rstrip() + f" Found under the managed-name prefix \"{prefix}\", so it is recognised as this app's."
+
+
 def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
     d = item.get("definition", {}) or {}
     out = {
@@ -1711,6 +1736,9 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
         "extension": bool(d.get("extension")),
         "pruned": item.get("pruned") or [],
     }
+    if item.get("pack_name"):
+        out["pack_name"] = item["pack_name"]          # the name in the pack, before the managed-name prefix
+        out["ours"] = item.get("ours")
     if item.get("rank_plan"):
         rp = item["rank_plan"]
         out["rank_plan"] = {k: rp.get(k) for k in ("rank", "order", "asked_order", "why", "warning", "assumed", "state")}
@@ -1904,7 +1932,13 @@ def preflight_plan(
 
     targets_norm = {pid: pc.normalize_targets(t) for pid, t in (channel_targets or {}).items() if pc.normalize_targets(t) is not None}
     try:
-        sources = load_sources(packs, targets_norm)
+        prefix = np_.configured()
+    except np_.PrefixError as e:
+        # A managed-name prefix that is not valid stops the plan before the tenant is read; it is never dropped silently.
+        return {"status": "blocked", "blockers": [str(e)], "items": [], "warnings": [], "impacts": [], "summary": {}, "packs": [],
+                "plan_hash": "", "tenant": {"reachable": False}, "name_prefix": {"on": False, "prefix": "", "problem": str(e)}}
+    try:
+        sources = load_sources(packs, targets_norm, name_prefix=prefix)
     except PackFileError as e:
         # An untrusted pack file that is not a pack: refused before the tenant is read.
         return {"status": "blocked", "blockers": [f"The pack cannot be used: {e}. Fix or re-upload it, then run the preflight again."],
@@ -1929,6 +1963,8 @@ def preflight_plan(
         tenant = fetch_tenant(client, need, log=log)
     options = {"use_rank_0": bool(use_rank_0), "apply_tweaks": bool(apply_tweaks), "restore_drift": bool(restore_drift),
                "channel_targets": {k: sorted(v) for k, v in sorted(targets_norm.items())}}
+    if prefix:
+        options["name_prefix"] = prefix   # part of the approved plan (plan_hash)
 
     blockers: List[str] = []
     rank_setting: Dict[str, Any] = {"state": ri.OUT_OF_SCOPE, "why": "", "source": ""}
@@ -1978,6 +2014,8 @@ def preflight_plan(
 
     all_items = (list(merged["dictionary"].values()) + list(merged["engine"].values())
                  + list(merged["app_group"].values()) + list(merged["policy"].values()) + tweak_items)
+    if prefix:
+        _mark_prefixed(all_items, prefix)
 
     summary: Dict[str, Any] = {}
     for kind in ("dictionary", "engine", "app_group", "policy", "tweak"):
@@ -2079,6 +2117,7 @@ def preflight_plan(
                                 ranks={"state": ri.state_of(rank_setting), "rules": sorted([p["name"], p["rank"], p.get("order")] for p in placements)}
                                 if placements else None) if tenant["reachable"] else "",
         "admin_ranking": ri.summary(rank_setting, placements) if placements else None,
+        "name_prefix": np_.preview(prefix),
         "elapsed_seconds": round(time.time() - started, 2),
         # Internal — stripped by the API layer, consumed by apply().
         "_internal": {"merged": merged, "tweaks": tweak_items, "tenant": tenant, "sources": sources},

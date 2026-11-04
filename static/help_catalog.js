@@ -324,6 +324,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Sign in to the tenant first.",
     "effect": "read"
    },
+   "#dlpDeployModal #dzNamePrefix": {
+    "what": "The managed-name prefix the operator set (DLP_CHECK_NAME_PREFIX, off by default): every dictionary, engine, rule and application group this plan creates, and the pack's Terraform workspace, gets it in front of its name, and an object already in the tenant under that name is reused and recognised as this app's. Trade-off: it keeps managed objects apart from the customer's own and easy to find, but names get longer (SaaS rule names allow 31 characters, so a long prefix can block a rule), anyone who names an object with the prefix makes it look like this app's, and changing or removing the prefix after a deploy makes the next deploy create new copies under the new names while the old ones stay until you remove them.",
+    "input": "Nothing to type here. The operator sets it before starting the app: letters, digits, spaces and - _ . : only, at most 16 characters, starting with a letter or digit.",
+    "effect": "local"
+   },
    "#dlpDeployModal #dzBody button[onclick*=\"openToolTab('terraform'\"]": {
     "what": "Hand this pack to a platform team as a Terraform workspace (official zscaler/zia provider): what you get, how to run it, download. Opens in a new tab.",
     "input": "Nothing to type. Just click it.",

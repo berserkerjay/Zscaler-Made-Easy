@@ -26,6 +26,7 @@ import pack_channels as pc
 import pack_deploy as pd
 import pack_ops as ops
 from dlp_importer import _resolve_configs, heal_predefined_names
+import name_prefix as np_
 
 # The in-app deploy and the Terraform hand-off tag every object with
 # "[<assessor> baseline <id> ...]" or "[<assessor> pack <id> ...]" at the end
@@ -96,7 +97,7 @@ def _is_custom_dictionary(d: Any, how: Optional[str] = None) -> bool:
         return bool(custom)   # the tenant said so, either way
     # No flag at all in this listing: our tag on a dictionary whose name is
     # not one of Zscaler's localised predefined names means it is ours.
-    return how == "tag" and not pd._field(d, "name_l10n_tag", "nameL10nTag", default=False)
+    return how in ("tag", "prefix") and not pd._field(d, "name_l10n_tag", "nameL10nTag", default=False)
 
 
 def _read_summary(snap: Dict[str, Any]) -> Dict[str, Any]:
@@ -176,6 +177,10 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     tag (whatever pack id or version wrote it) plus the names of every
     given pack and of the objects earlier pack versions shipped."""
     try:
+        np_.configured()
+    except np_.PrefixError as e:
+        return {"status": "blocked", "found": False, "items": [], "summary": {}, "warnings": [], "plan_hash": "", "blockers": [str(e)]}
+    try:
         for p in packs:
             _defs(p)
             pd.load_pack_file(_resolve_configs(p["dir"]), "endpoint_application_groups.json", p.get("id"))
@@ -199,6 +204,12 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
 
     # Pack definitions and provenance marks.
     def_dicts, def_engines, def_policies = set(), set(), set()
+    # With a managed-name prefix (name_prefix.py) the deploy named every
+    # object "<prefix><name>": an object under that name is this app's (a
+    # "prefix" match, removed like a tagged one); one under the pack's plain
+    # name (deployed before the prefix was set) stays a name-only match.
+    prefix = np_.configured()
+    pref_names: set = set()
     pack_ids: List[str] = []
     for p in packs:
         pack_ids.append(p["id"])
@@ -206,6 +217,10 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         def_dicts |= {x["name"] for x in d if x.get("name")}
         def_engines |= {x["name"] for x in e if x.get("name")}
         def_policies |= {x["name"] for x in pol if x.get("name")}
+        if prefix:
+            groups0 = pd.load_pack_file(_resolve_configs(p["dir"]), "endpoint_application_groups.json", p.get("id"))
+            pd_, pe_, pp_, pg_ = np_.apply(d, e, pol, groups0, prefix)
+            pref_names |= {x["name"] for x in pd_ + pe_ + pp_ + pg_ if x.get("name")}
     # The app's own historical names (packs renamed their objects over
     # time) are always in scope: an object under an old name is Zscaler Made Easy's
     # whether one pack or everything is being removed. It is reported as a
@@ -223,6 +238,8 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
             return "tag"
         if any(pd.has_mark(desc, pack_id=pid) for pid in pack_ids):
             return "tag"
+        if np_.ours_by_name(name, pref_names, prefix):
+            return "prefix"
         return "name" if name in def_names else None
 
     # ---- rules across every channel ----------------------------------------

@@ -708,6 +708,13 @@ async function _dzRunPreflight() {
   }
 }
 
+// The operator's managed-name prefix (DLP_CHECK_NAME_PREFIX, off by default):
+// shown in the preview whenever it is on, so the names below are not a surprise.
+function _dzNamePrefix(np) {
+  if (!np || !np.on) return '';
+  return `<div class="dz-card sev-info" id="dzNamePrefix" role="note" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Managed-name prefix: ${_dzE(np.prefix)}</div><div class="d">${_dzE(np.note)}</div></div></div>`;
+}
+
 function _dzRow(i, statusKey, extra) {
   const st = DZ_STATUS[statusKey] || { label: statusKey, cls: 'st-reuse', icon: '•' };
   const reason = extra || i.reason || i.error || '';
@@ -717,7 +724,7 @@ function _dzRow(i, statusKey, extra) {
   const stored = i.stored ? `Read back: ${i.stored}.` : '';
   return `<div class="dz-row ${st.cls}">
     <span class="ic" aria-hidden="true">${st.icon}</span>
-    <div><div class="nm">${_dzE(i.name)}</div>${reason ? `<div class="rs">${_dzE(reason)}</div>` : ''}${rankLine ? `<div class="rs dz-rank">${_dzE(rankLine)}</div>` : ''}${rk && rk.warning ? `<div class="rs dz-rank-warn">${_dzE(rk.warning)}</div>` : ''}${stored ? `<div class="rs dz-rank-warn">${_dzE(stored)}</div>` : ''}</div>
+    <div><div class="nm">${_dzE(i.name)}</div>${i.pack_name ? `<div class="rs">In the pack: ${_dzE(i.pack_name)}</div>` : ''}${reason ? `<div class="rs">${_dzE(reason)}</div>` : ''}${rankLine ? `<div class="rs dz-rank">${_dzE(rankLine)}</div>` : ''}${rk && rk.warning ? `<div class="rs dz-rank-warn">${_dzE(rk.warning)}</div>` : ''}${stored ? `<div class="rs dz-rank-warn">${_dzE(stored)}</div>` : ''}</div>
     <div class="tags"><span class="dz-chip kind-${i.kind}" title="${_dzE(DZ_KIND_HELP[i.kind] || '')}">${DZ_KIND[i.kind] || i.kind}</span>${i.detail && i.detail.channel ? `<span class="dz-chip kind-channel" title="${_dzE(DZ_CHANNEL_HELP[i.detail.channel] || '')}">${_dzE(_dzChan(i.detail.channel))}</span>` : ''}${i.extension ? `<span class="dz-chip kind-baseline" title="Added by your channel selection: a monitor-only rule carrying the pack's engines on a channel the pack ships no rule for.">channel add-on</span>` : ''}${i.detail && i.detail.target_action ? `<span class="dz-chip" title="Ships monitor-only (${_dzE(i.detail.action)}) and DISABLED like every pack rule; it was designed to ${_dzE(i.detail.target_action)}. The journey card names it as the hardening step once incidents are reviewed.">target ${_dzE(i.detail.target_action)}</span>` : ''}<span class="dz-chip" title="${_dzE(st.help || '')}">${st.label}</span>${(i.packs || []).slice(0, 2).map(p => `<span class="dz-chip" title="Defined by pack ${_dzE(p)}">${_dzE(p)}</span>`).join('')}</div>
   </div>`;
 }
@@ -822,6 +829,7 @@ function _dzRenderReview() {
       <button type="button" class="dz-btn" onclick="_dzPlanDownload('pdf')">Plan (PDF)</button>
       <button type="button" class="dz-btn" onclick="_dzPlanDownload('xlsx')">Plan (Excel)</button></div>` : ''}
     ${(R.blockers || []).map(b => `<div class="dz-card sev-error" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Blocked</div><div class="d">${_dzE(b)}</div></div></div>`).join('')}
+    ${_dzNamePrefix(R.name_prefix)}
     ${R.rehearsal ? `<div class="dz-card sev-info" id="dzRehearsal" role="note" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">${_dzE(R.rehearsal.note)}</div><div class="d">${_dzE(R.rehearsal.apply)}</div></div></div>` : ''}
     ${_dzRateCheck(R.rate_forecast, R.status === 'blocked')}
     <details class="dz-fold dz-howto"><summary><div class="dz-h">How to read this plan</div></summary>
@@ -1471,7 +1479,7 @@ function _dzRemovalPreview() {
   const row = i => `<div class="dz-row ${i.status === 'keep' ? 'st-reuse' : 'st-fail'}">
     <span class="ic" aria-hidden="true">${i.status === 'keep' ? '↺' : '🗑'}</span>
     <div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}${i.channel ? ` <span class="dz-chip kind-channel">${_dzE(_dzChan(i.channel))}</span>` : ''}</div>
-      <div class="rs">${i.status === 'keep' ? `Kept — ${_dzE(i.keep)}` : (i.match === 'name' ? 'Removed — matched by name (no Zscaler Made Easy tag; confirm it is yours)' : 'Removed — carries this pack’s Zscaler Made Easy tag')}</div></div>
+      <div class="rs">${i.status === 'keep' ? `Kept — ${_dzE(i.keep)}` : (i.match === 'name' ? 'Removed — matched by name (no Zscaler Made Easy tag; confirm it is yours)' : i.match === 'prefix' ? 'Removed — found under the managed-name prefix, so recognised as this app’s' : 'Removed — carries this pack’s Zscaler Made Easy tag')}</div></div>
   </div>`;
   const removeSorted = remove.slice().sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9) || a.name.localeCompare(b.name));
   body.innerHTML = `
@@ -1647,7 +1655,7 @@ function _dzRemovalReport() {
     <tr class="${i.status}">
       <td>${esc(RM_KIND[i.kind] || i.kind)}</td><td>${esc(i.name)}</td><td>${esc(i.channel || '')}</td>
       <td><b>${i.status === 'remove' ? 'Remove' : 'Keep'}</b></td>
-      <td>${i.status === 'keep' ? esc(i.keep) : (i.match === 'name' ? 'Matched by name only (no Zscaler Made Easy tag) — confirm ownership' : 'Carries this pack’s Zscaler Made Easy provenance tag')}</td>
+      <td>${i.status === 'keep' ? esc(i.keep) : (i.match === 'name' ? 'Matched by name only (no Zscaler Made Easy tag) — confirm ownership' : i.match === 'prefix' ? 'Found under the managed-name prefix — recognised as this app’s' : 'Carries this pack’s Zscaler Made Easy provenance tag')}</td>
     </tr>`).join('');
   const remove = items.filter(i => i.status === 'remove').length, keep = items.length - remove;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Removal plan — ${esc(R.pack.name || R.id)}</title>
