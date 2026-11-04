@@ -433,9 +433,12 @@ def _pack_meta(pack_dir: str) -> Dict[str, Any]:
     return meta
 
 
-def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = None) -> Dict[str, Any]:
+def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = None,
+              name_prefix_override: Optional[str] = None) -> Dict[str, Any]:
     """`channel_targets` (web/endpoint/saas/email) narrows or extends the
-    pack's rules per channel exactly as Deploy Policy Packs does."""
+    pack's rules per channel exactly as Deploy Policy Packs does. Names carry
+    the managed-name prefix (DLP_CHECK_NAME_PREFIX) unless
+    `name_prefix_override` gives another ("" for the pack's own names)."""
     import pack_deploy   # the app's one pack-file reader (load_pack_file); imported here, as elsewhere in this module
     configs = _resolve_configs(pack["dir"])
 
@@ -452,13 +455,20 @@ def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = N
     policies, note = pc.apply_channel_targets(policies, channel_targets, pack_name=meta.get("name", pack["id"]),
                                               prefix=b.get("prefix") or "", engine_names=[e.get("name") for e in engines if e.get("name")],
                                               pack_id=pack["id"])
+    # The operator's managed-name prefix (name_prefix.py, off by default), as Deploy Policy Packs applies it.
+    import name_prefix
+    app_groups = read("endpoint_application_groups.json")
+    prefix = name_prefix.configured() if name_prefix_override is None else name_prefix_override
+    if prefix:
+        dictionaries, engines, policies, app_groups = name_prefix.apply(dictionaries, engines, policies, app_groups, prefix)
     return {
         "id": pack["id"],
         "meta": meta,
+        "name_prefix": prefix,
         "dictionaries": dictionaries,
         "engines": engines,
         "policies": policies,
-        "app_groups": read("endpoint_application_groups.json"),
+        "app_groups": app_groups,
         "channel_note": note,
         "renamed": renamed,
     }
@@ -497,15 +507,17 @@ def _provenance(meta: Dict[str, Any], pack_id: str, base: str, *, limit: Optiona
 
 def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
              backend: Optional[Dict[str, str]] = None, channel_targets: Optional[Sequence[str]] = None,
-             assessor: str = "", namespace: str = "") -> Dict[str, str]:
+             assessor: str = "", namespace: str = "", name_prefix: Optional[str] = None) -> Dict[str, str]:
     """Build the workspace files for one pack. `report` (a public preflight
     report for exactly this pack) switches on gap mode. `channel_targets`
     applies the same per-channel choice as Deploy Policy Packs. `assessor`
     is the name each object's provenance tag carries. `namespace` points
     the provider at a private registry mirror (registry.example.com/zscaler),
-    as the whole-tenant export's option does; ValueError when malformed."""
+    as the whole-tenant export's option does; ValueError when malformed.
+    `name_prefix`: the managed-name prefix (None: DLP_CHECK_NAME_PREFIX; ""
+    for the pack's own names, as the workspace kept in terraform/<pack> is)."""
     source = provider_source(namespace)
-    src = load_pack(pack, channel_targets)
+    src = load_pack(pack, channel_targets, name_prefix_override=name_prefix)
     meta, pack_id = src["meta"], src["id"]
     import pack_deploy
     named = pack_deploy.assessor_name(assessor)

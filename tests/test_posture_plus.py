@@ -10,6 +10,7 @@ import os
 import re
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import continuous_eval as ce
@@ -204,7 +205,7 @@ def test_alert_threshold_and_settings():
     c = _client()
     r = c.put("/api/posture/settings", json={"score_drop_points": 3, "notify_score_drop": True})
     assert r.status_code == 200 and c.get("/api/posture/settings").json() == {"score_drop_points": 3, "notify_score_drop": True}
-    assert "posture_settings" in open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    assert "posture_settings" in read_store_text(os.environ["DLP_CHECK_AUDIT"])
 
 
 def _profile_with_drop():

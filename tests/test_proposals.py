@@ -1,5 +1,6 @@
 """Continuous evaluation, phase 2: proposals with evidence and the approval queue."""
 from datetime import datetime, timedelta, timezone
+from conftest import read_store_text
 
 from fastapi.testclient import TestClient
 
@@ -84,7 +85,7 @@ def test_queue_merges_remembers_dismissals_and_snoozes(tmp_path, monkeypatch):
     assert next(x for x in pr.list_queue("acme") if x["id"] == retire["id"])["status"] == "open"
     assert "Promote Old-Monitor" in pr.to_markdown("acme", pr.list_queue("acme", include_closed=True))
     # Decisions are audited, without secrets.
-    log = (tmp_path / "audit.log").read_text()
+    log = read_store_text(tmp_path / "audit.log")
     assert "proposal_decision" in log and "rule is seasonal" in log
 
 

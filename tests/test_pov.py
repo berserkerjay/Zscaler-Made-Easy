@@ -16,6 +16,7 @@ import re
 import stat
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import corpus_engines
@@ -95,7 +96,7 @@ def test_a_pov_lives_in_the_profile_folder_owner_only_with_no_secret(app):
     pid = _profile()
     _start(app, pid)
     path = tenant_profiles.pov_path(pid)
-    text = open(path, encoding="utf-8").read()
+    text = read_store_text(path)
     assert os.path.dirname(os.path.dirname(path)) == os.path.dirname(tenant_profiles.store_path())
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
     assert SECRET not in text and "client_secret" not in text and json.loads(text)["tenant"] == {"label": "acme (production)"}
@@ -107,7 +108,7 @@ def test_a_secret_typed_into_a_note_is_masked_before_it_is_kept(app):
     p = _start(app, pid)
     r = app.post("/api/pov/update", json=dict(CREDS, profile_id=pid, rev=p["rev"], changes={"notes": [{"text": f"key is {SECRET}"}]}))
     assert r.status_code == 200, r.text
-    assert SECRET not in open(tenant_profiles.pov_path(pid), encoding="utf-8").read()
+    assert SECRET not in read_store_text(tenant_profiles.pov_path(pid))
 
 
 def test_deleting_the_profile_deletes_its_pov(app):
@@ -387,7 +388,7 @@ def test_every_pov_change_is_audited_without_its_text(app):
     p = _start(app, pid)
     app.post("/api/pov/update", json={"profile_id": pid, "rev": p["rev"], "changes": {"notes": [{"text": "customer-private remark"}]}})
     app.post("/api/pov/delete", json={"profile_id": pid, "confirm": True})
-    log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    log = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     actions = [json.loads(x).get("action") for x in log.splitlines() if '"event":"pov"' in x]
     assert actions == ["create", "update", "delete"] and "customer-private remark" not in log
 

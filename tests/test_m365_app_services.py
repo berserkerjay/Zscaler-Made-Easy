@@ -22,6 +22,7 @@ import re
 from pathlib import Path
 
 import pytest
+from conftest import read_store_text
 import requests
 import requests.adapters
 from requests.models import Response
@@ -634,7 +635,7 @@ def test_the_api_reads_switches_imports_and_removes_and_audits_each_change():
     assert ok.status_code == 200 and ok.json()["version"] == VERSION and ok.json()["source"] == "imported"
     assert c.put("/api/m365-endpoints/settings", json={"enabled": True}).json()["enabled"] is True
     assert c.delete("/api/m365-endpoints").json()["present"] is False
-    log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    log = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     for event in ("m365_endpoints_import", "m365_endpoints_settings", "m365_endpoints_remove"):
         assert event in log
 

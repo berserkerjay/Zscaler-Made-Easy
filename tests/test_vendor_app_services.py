@@ -16,6 +16,7 @@ import ipaddress
 import os
 
 import pytest
+from conftest import read_store_text
 import requests
 import requests.adapters
 from requests.models import Response
@@ -288,7 +289,7 @@ def test_the_api_imports_switches_and_removes_and_audits_each_change():
                 if p["id"] == "zoom")["enabled"] is True
     assert not next(p for p in c.delete("/api/vendor-endpoints/webex").json()["providers"] if p["id"] == "webex")["present"]
     assert c.delete("/api/vendor-endpoints/nope").status_code == 400
-    log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    log = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     for event in ("vendor_endpoints_import", "vendor_endpoints_settings", "vendor_endpoints_remove"):
         assert event in log
 

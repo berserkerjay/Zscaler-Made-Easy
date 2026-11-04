@@ -18,6 +18,7 @@ import re
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 from starlette.routing import Mount, Route, WebSocketRoute
 
@@ -264,7 +265,7 @@ def test_a_non_ascii_token_is_a_401_that_is_audited_not_a_500(gate_on, monkeypat
     monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
     status, body = _asgi("GET", "/api/health", [("host", "127.0.0.1:8000"), (security.UI_TOKEN_HEADER, header)])
     assert status == 401 and b"token_required" in body
-    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(log).splitlines()]
     assert [e["reason"] for e in events if e["event"] == "auth_denied"] == ["invalid UI token"]
 
 
@@ -520,14 +521,14 @@ def test_a_failed_unlock_is_audited_as_denied_and_never_credited_to_the_token_ho
     log = tmp_path / "audit.log"
     monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
     assert gate_on.post("/api/auth/unlock", json={"token": WRONG}).status_code == 401
-    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(log).splitlines()]
     denied = [e for e in events if e["event"] == "auth_denied"]
     assert [(e["path"], e["actor"]) for e in denied] == [("/api/auth/unlock", security.NOT_SIGNED_IN)]
     assert {e["actor"] for e in events} == {security.NOT_SIGNED_IN}, "no line credits the attempt to the local UI token"
-    assert WRONG not in log.read_text(encoding="utf-8") and TOKEN not in log.read_text(encoding="utf-8")
+    assert WRONG not in read_store_text(log) and TOKEN not in read_store_text(log)
     # Boundary: a request that does carry the token is still credited to it.
     assert gate_on.post("/api/tenant/check", json={}, headers={security.UI_TOKEN_HEADER: TOKEN}).status_code != 401
-    last = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    last = json.loads(read_store_text(log).splitlines()[-1])
     assert last["actor"] == security.LOCAL_TOKEN_ACTOR
 
 

@@ -13,6 +13,7 @@ import os
 import threading
 
 import pytest
+from conftest import audit_events, read_store_text
 
 import deployments
 import pack_deploy as pd
@@ -44,11 +45,7 @@ def alpha(tmp_path):
 
 def _audit_lines():
     import audit
-    try:
-        with open(audit.path(), encoding="utf-8") as f:
-            return [json.loads(x) for x in f if x.strip()]
-    except OSError:
-        return []
+    return audit_events(audit.path())
 
 
 # ---------------------------------------------------------------------------
@@ -353,8 +350,7 @@ def test_every_deploy_write_is_audited_without_secrets(alpha, no_activation):
     writes = [e for e in _audit_lines() if e.get("event") == "object_write"]
     assert sorted(e["name"] for e in writes) == ["Alpha Dict", "Alpha Engine", "SSN Clone", "Z-Alpha-Monitor"]
     import audit
-    with open(audit.path(), encoding="utf-8") as f:
-        assert CANARY not in f.read()
+    assert CANARY not in read_store_text(audit.path())
 
 
 def test_a_proposal_rule_write_is_audited_with_its_run_and_tenant(tmp_path, monkeypatch):

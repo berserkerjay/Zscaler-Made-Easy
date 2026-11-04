@@ -21,6 +21,7 @@ import re
 import uuid
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import admin_ops as ao
@@ -435,7 +436,7 @@ def test_every_sanction_write_leaves_an_audit_entry(tmp_path):
     """ASVS V7.1.3 · V7.2.1 · CWE-778: the bulk update is one object_write audit entry (kind, the ids, the names, the result)."""
     s = _store()
     _apply(_sdk(s), {"type": osn.T_SANCTION, "targets": [{"id": _ids()["WeTransfer"], "to": "sanctioned"}]})
-    rows = [json.loads(x) for x in (tmp_path / "audit.log").read_text().splitlines()]
+    rows = [json.loads(x) for x in read_store_text(tmp_path / "audit.log").splitlines()]
     w = [r for r in rows if r.get("event") == "object_write"]
     assert len(w) == 1 and w[0]["object_type"] == "cloud_app_sanction" and w[0]["result"] == "ok" and w[0]["id"] == str(_ids()["WeTransfer"])
     assert w[0]["name"] == "WeTransfer"
@@ -476,7 +477,7 @@ def test_the_bulk_changes_routes_gate_preview_apply_record_and_undo(monkeypatch,
     r = c.post("/api/operations/apply", json=dict(BODY, operation=u["operation"], plan_hash=u["plan_hash"], confirm=True,
                                                   confirm_text=u["confirm_phrase"], undo_of=op_id))
     assert r.status_code == 200 and r.json()["status"] == "applied" and _state_of(s, "WeTransfer") == "Unsanctioned"
-    log = (tmp_path / "audit.log").read_text()
+    log = read_store_text(tmp_path / "audit.log")
     assert "s3cret" not in log
     assert any(json.loads(x).get("actor") for x in log.splitlines() if '"object_write"' in x), "each write names who ran it"
 

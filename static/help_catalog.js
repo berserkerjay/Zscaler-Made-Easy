@@ -324,6 +324,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Sign in to the tenant first.",
     "effect": "read"
    },
+   "#dlpDeployModal #dzNamePrefix": {
+    "what": "The name prefix the operator set. Each name this plan creates starts with it, in the tenant and in Terraform. An object already in the tenant under that name is reused. But a name alone does not prove this app made it. Without this app's tag it is shown as adopted. Remove a pack keeps it unless a deployment record for this tenant lists it. Trade-off: it keeps your objects apart and easy to find. But names get longer, and a SaaS rule name may only have 31 letters. If you change the prefix after a deploy, the next deploy makes new copies under the new names. The old ones stay until you remove them.",
+    "input": "Nothing to type here. The operator sets it before starting the app: letters, digits, spaces and - _ . : only, at most 16 characters, starting with a letter or digit. The words AND, OR and NOT are not allowed.",
+    "effect": "local"
+   },
    "#dlpDeployModal #dzBody button[onclick*=\"openToolTab('terraform'\"]": {
     "what": "Hand this pack to a platform team as a Terraform workspace (official zscaler/zia provider): what you get, how to run it, download. Opens in a new tab.",
     "input": "Nothing to type. Just click it.",
@@ -9986,7 +9991,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#tmStoreRotate": {
-    "what": "Makes a new key for the app's encrypted stores, encrypts every store again with it, then forgets the old key. Only when store encryption is on.",
+    "what": "Makes a new key for the encrypted stores. Every store is encrypted again with it, then the old key is forgotten. Store encryption is on by default. The button is off only when the server was started with DLP_CHECK_STORE_ENCRYPTION=0.",
     "input": "Nothing to type. You are asked to confirm.",
     "effect": "local"
    }

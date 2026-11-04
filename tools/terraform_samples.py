@@ -49,7 +49,7 @@ def main(out: str) -> int:
     pt.write_workspace(vm.workspace_files(tf, report, vm.VENDORS["symantec"]["name"], "sample.xml"), os.path.join(out, "vendor_hcl"))
     with tempfile.TemporaryDirectory() as d:
         pack = control_pack(Path(d), meta=dict(BASELINE_META, name="Containment sample"))
-        files = pt.generate(pack)
+        files = pt.generate(pack, name_prefix="")
         kinds = set(re.findall(r'(?m)^resource "(zia_[a-z_]+)"', files["rules.tf"]))
         want = {"zia_cloud_app_control_rule", "zia_file_type_control_rules", "zia_url_filtering_rules", "zia_ssl_inspection_rules"}
         if not want <= kinds:
@@ -58,7 +58,7 @@ def main(out: str) -> int:
         pt.write_workspace(files, os.path.join(out, "containment"))
     with tempfile.TemporaryDirectory() as d:
         pack = endpoint_pack(Path(d), meta=dict(BASELINE_META, name="Endpoint sample"))
-        pt.write_workspace(pt.generate(pack), os.path.join(out, "endpoint"))
+        pt.write_workspace(pt.generate(pack, name_prefix=""), os.path.join(out, "endpoint"))
     import offline_tenant as ot
     import tenant_terraform as tt
     st = ot.sample_store(reset=True)

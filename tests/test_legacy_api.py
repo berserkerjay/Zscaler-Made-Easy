@@ -9,6 +9,7 @@ import os
 import re
 
 import pytest
+from conftest import read_store_text
 
 import tenant_auth as ta
 import zscaler_clouds as zc
@@ -319,12 +320,12 @@ def test_the_connection_test_and_the_assessment_accept_the_classic_sign_in(store
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["auth_method"] == "legacy" and body["tenant_label"] == "classic API (zscalerten)" and any("ZIA only" in p for p in body["problems"])
-    entry = json.loads(log.read_text().splitlines()[-1])
-    assert entry["body"]["password"] == "[redacted]" and entry["body"]["api_key"] == "[redacted]" and "Pa55word!" not in log.read_text()
+    entry = json.loads(read_store_text(log).splitlines()[-1])
+    assert entry["body"]["password"] == "[redacted]" and entry["body"]["api_key"] == "[redacted]" and "Pa55word!" not in read_store_text(log)
     # User rule 3: the audit log is a record, so neither the admin login nor
     # a stale vanity domain is written in clear.
     assert entry["body"]["username"] == "[redacted]" and entry["body"]["vanity_domain"] == "[redacted]"
-    assert "api-admin@acme.com" not in log.read_text() and "acmecorp" not in log.read_text()
+    assert "api-admin@acme.com" not in read_store_text(log) and "acmecorp" not in read_store_text(log)
     # The assessment builds the raw client with the classic sign-in.
     made = {}
 

@@ -14,6 +14,7 @@ import zipfile
 from types import SimpleNamespace
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 from zscaler.zins.zins_service import ZInsService
 
@@ -263,7 +264,7 @@ def test_the_job_reads_reports_exports_and_keeps_history_without_secrets(monkeyp
     assert res["summary"]["by_risk"]["high"] == 8 and res["plan"]["steps"][0]["cause_id"] == "ssl-9"
     assert any("In scope, from the Scope page" in line for line in snap["all_logs"])
     assert "/zia/sslInspectionRules" in cl.reads and "/zia/pacFiles" in cl.reads and not any("webDlpRules" in e for e in cl.reads)
-    assert SECRET not in json.dumps(snap) and SECRET not in open(os.environ["DLP_CHECK_SSL_COVERAGE_STATE"]).read()
+    assert SECRET not in json.dumps(snap) and SECRET not in read_store_text(os.environ["DLP_CHECK_SSL_COVERAGE_STATE"])
     assert len(res["history"]) == 1 and res["history"][0]["inspected_pct_bytes"] == 90.0
     rid = res["report_id"]
     assert c.get(f"/api/ssl-coverage/{rid}").json()["summary"] == res["summary"]
@@ -331,7 +332,7 @@ def test_history_is_small_per_tenant_and_scrubs_classic_logins(tmp_path):
         sc.record("acme (production)", rep, p)
     assert len(sc.load_history("acme (production)", p)) == sc.HISTORY_KEEP
     sc.record("admin@acme.example (zscalerten, classic API)", rep, p)
-    raw = open(p).read()
+    raw = read_store_text(p)
     assert "admin@acme.example" not in raw and "classic API (zscalerten)" in raw
     assert sc.load_history("nobody", p) == [] and sc.load_history("x", str(tmp_path / "missing.json")) == []
     e = sc.load_history("acme (production)", p)[-1]

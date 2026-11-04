@@ -60,6 +60,7 @@ Find the files a change touches here, then read only those.
 | `m365_endpoints.py` | Microsoft's published Microsoft 365 endpoint list: kept on disk, checked |
 | `mcp_tools.py` | Read-only analysis tools for AI assistants (the MCP server's live analysis). |
 | `md_safe.py` | One way to put untrusted text into a Markdown export. |
+| `name_prefix.py` | Managed-name prefix: an optional, operator-chosen text put in front of |
 | `native_zscaler.py` | Native Zscaler JSON → pack definitions. |
 | `offline_tenant.py` | Offline tenants: the sample tenant and saved snapshots, served to every |
 | `open_source.py` | The open-source note every Zscaler Made Easy document carries: Apache-2.0, built from information Zscaler and third parties provide. |
@@ -150,7 +151,7 @@ Find the files a change touches here, then read only those.
 | `sso.py` | Optional SSO (OpenID Connect, Authorization Code + PKCE) — off by |
 | `sso_saml.py` | Team server SAML 2.0 sign-in (SP-initiated Web Browser SSO profile, |
 | `standalone_main.py` | Entry point of the standalone (no-install) edition of Zscaler Made Easy. |
-| `store_crypto.py` | Encryption at rest for the app's own local stores (optional; off by |
+| `store_crypto.py` | Encryption at rest for the app's own local stores: ON by default. |
 | `sync_jobs.py` | Scheduled sync, done safely: plans for a person to approve, never an |
 | `syslog_listener.py` | An optional syslog listener for ZIA NSS and ZPA LSS log lines (off by default). |
 | `team_api.py` | The team server's own routes (team_server.py): sign-in with a local |

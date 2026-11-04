@@ -15,6 +15,7 @@ import os
 import time
 
 import pytest
+from conftest import read_store_text
 
 from test_pack_export import ALL_DLP_IN_SCOPE, ReadOnly, _empty_target, _source, _wait
 from test_pdf_writer import parse_pdf, strings
@@ -184,7 +185,7 @@ def test_the_inventory_is_a_read_only_job_and_lists_who_uses_what(client, monkey
     assert SECRET.encode() not in blob and b"abc123456789" not in blob
     fin = [e for e in audit.tail(1000) if e.get("event") == "job_finished" and e.get("job_id") == snap["job_id"]]
     assert len(fin) == 1 and fin[0]["kind"] == "inventory" and fin[0]["tenant"] == "acme (production)"
-    assert SECRET not in open(audit.path(), encoding="utf-8").read()
+    assert SECRET not in read_store_text(audit.path())
 
 
 def test_the_inventory_reads_only_the_channels_in_scope(client, monkeypatch):

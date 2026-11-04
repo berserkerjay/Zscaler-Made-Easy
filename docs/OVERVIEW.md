@@ -681,6 +681,16 @@ what you get, what to do next.
   Level 2, Federal Zero Trust, IRS Publication 1075, GovRAMP or a
   framework profile): each of the profile's controls met, partially met,
   not met or not tested, from the checks behind it, with a CSV.
+- **SOC review** — two read-only reviews for an audit or a SOC
+  hand-over. Admin access: for ZIA, ZPA, Client Connector, ZDX and
+  ZIdentity, the admins and roles, who has full and who has limited
+  rights, admins that are disabled or unused, and the API keys and
+  clients with their scopes. Logging: the ZIA Cloud NSS feeds, NSS
+  servers and collectors, the ZPA Log Streaming Service and the Client
+  Connector log settings, and where the logs go.
+  Each finding has a status (Fix, Review, As recommended, Unknown, Not
+  applicable). Where: /report/soc-review, from Operations; the AI
+  assistant's MCP server answers the same two reviews.
 
 ### Close the gaps
 

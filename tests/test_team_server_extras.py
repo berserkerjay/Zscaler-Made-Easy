@@ -145,8 +145,8 @@ def test_every_store_is_sealed_readable_and_survives_key_rotation(team_on, monke
     team._CACHE.update(key=None, data=None)
     read_everything()
     assert any(e.get("event") == "store_key_rotated" for e in audit.tail(50))
-    # turning the setting off never locks data away: sealed stores still read
-    monkeypatch.delenv("DLP_CHECK_STORE_ENCRYPTION")
+    # turning the setting off (the opt-out) never locks data away: sealed stores still read
+    monkeypatch.setenv("DLP_CHECK_STORE_ENCRYPTION", "0")
     team._CACHE.update(key=None, data=None)
     read_everything()
 
@@ -169,8 +169,9 @@ def test_a_tampered_or_keyless_store_is_refused_and_self_healing_does_not_eat_se
         store_crypto.open_text("ZMEENC1:deadbeef:AAAA")
 
 
-def test_store_encryption_is_off_by_default(team_on):
-    """ASVS V14.1.1 · CWE-1188: off by default, every store is the plain JSON it always was."""
+def test_store_encryption_opt_out_keeps_plain_json(team_on, monkeypatch):
+    """ASVS V14.1.1 · CWE-1188: with the opt-out (DLP_CHECK_STORE_ENCRYPTION=0; on is the default, tests/test_store_encryption_default.py) every store is the plain JSON it always was."""
+    monkeypatch.setenv("DLP_CHECK_STORE_ENCRYPTION", "0")
     _profile("Plainco", "plainco.example")
     assert json.load(open(tenant_profiles.store_path(), encoding="utf-8"))["profiles"]["plainco"]["name"] == "Plainco"
     assert store_crypto.seal_text("x") == "x"

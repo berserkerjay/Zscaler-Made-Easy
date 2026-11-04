@@ -27,6 +27,7 @@ from test_continuous_eval import _env
 from test_continuous_eval_unread_and_classic import _fake_inventory, _legacy_profile
 
 import pytest
+from conftest import read_store_json, read_store_text
 
 @pytest.fixture(autouse=True)
 def _remember_secrets_in_the_profile_file(monkeypatch):
@@ -138,12 +139,9 @@ def test_a_classic_profile_named_by_its_admin_login_never_names_the_digest(tmp_p
     texts = [json.dumps(d, default=str), ce.to_markdown(d)]
     for f in glob.glob(os.path.join(os.environ["DLP_CHECK_DIGESTS"], "*")):
         texts.append(os.path.basename(f))
-        with open(f, encoding="utf-8") as fh:
-            texts.append(fh.read())
-    with open(os.environ["DLP_CHECK_PROFILES"], encoding="utf-8") as f:
-        texts.append(json.dumps(json.load(f)["profiles"]["classic-api-zscalerten"]["name"]))
-    with open(os.environ["DLPCHECK_PROPOSALS_FILE"], encoding="utf-8") as f:
-        texts.append(f.read())
+        texts.append(read_store_text(f))
+    texts.append(json.dumps(read_store_json(os.environ["DLP_CHECK_PROFILES"])["profiles"]["classic-api-zscalerten"]["name"]))
+    texts.append(read_store_text(os.environ["DLPCHECK_PROPOSALS_FILE"]))
     for text in texts:
         assert LOGIN not in text and "api-admin-acme-com" not in text
     # The secrets came along and the decision carried over.

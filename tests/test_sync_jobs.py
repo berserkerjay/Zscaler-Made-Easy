@@ -13,6 +13,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import read_store_json
 from fastapi.testclient import TestClient
 
 import admin_ops as ao
@@ -248,7 +249,7 @@ def test_the_timer_runs_due_jobs_in_the_owners_name_and_only_plans(monkeypatch, 
     monkeypatch.setattr(srv, "_cq_tenant", srv._cq_tenant)
     due = sync_jobs.create_job(_job(interval_hours=4), by="alice@example.com")
     later = sync_jobs.create_job(_job(name="Later", interval_hours=24), by="carol@example.com")
-    data = json.load(open(sync_jobs.store_path()))
+    data = read_store_json(sync_jobs.store_path())
     data["jobs"][due["id"]]["next_run_at"] = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
     json.dump(data, open(sync_jobs.store_path(), "w"))
     ran = srv._sync_tick()

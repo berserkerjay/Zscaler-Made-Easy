@@ -26,6 +26,7 @@ import pack_channels as pc
 import pack_deploy as pd
 import pack_ops as ops
 from dlp_importer import _resolve_configs, heal_predefined_names
+import name_prefix as np_
 
 # The in-app deploy and the Terraform hand-off tag every object with
 # "[<assessor> baseline <id> ...]" or "[<assessor> pack <id> ...]" at the end
@@ -63,6 +64,11 @@ _DICT_ID_RE = re.compile(r"D(\d+)\.S")
 # provenance tag) may be the customer's own: a removal never deletes it on
 # a name alone (deny by default). The rule picker removes it when the
 # operator picks it by hand.
+# An object under the managed-name prefix (name_prefix.py) without this app's
+# tag: anyone can name an object that way, so a name is not provenance. Only
+# a deployment record for this tenant listing its id makes it removable.
+PREFIX_ONLY_KEEP = ("found under the managed-name prefix but without the Zscaler Made Easy tag and in no deployment record for "
+                    "this tenant: may be the customer's own, so it is kept; pick it in the rule picker if it is yours")
 NAME_ONLY_KEEP = "matched by name only (no Zscaler Made Easy tag): may be the customer's own, so it is kept; pick it in the rule picker if it is yours"
 
 UNDO_ORDER = pd.UNDO_ORDER   # ("policy", "app_group", "engine", "dictionary")
@@ -96,7 +102,7 @@ def _is_custom_dictionary(d: Any, how: Optional[str] = None) -> bool:
         return bool(custom)   # the tenant said so, either way
     # No flag at all in this listing: our tag on a dictionary whose name is
     # not one of Zscaler's localised predefined names means it is ours.
-    return how == "tag" and not pd._field(d, "name_l10n_tag", "nameL10nTag", default=False)
+    return how in ("tag", "prefix") and not pd._field(d, "name_l10n_tag", "nameL10nTag", default=False)
 
 
 def _read_summary(snap: Dict[str, Any]) -> Dict[str, Any]:
@@ -168,13 +174,22 @@ def _with_rate(plan: Dict[str, Any], client: Any = None) -> Dict[str, Any]:
 
 
 def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optional[Dict[str, Any]] = None,
-                 everything: bool = False) -> Dict[str, Any]:
+                 everything: bool = False, recorded: Optional[Iterable[Tuple[str, str]]] = None) -> Dict[str, Any]:
     """Preview the removal of one or more deployed packs. Returns items
     (each remove | keep | not-found), a summary, and a plan_hash the apply
     step must echo. With `everything`, the scope is everything Zscaler Made Easy
     ever put in the tenant: any object carrying a Zscaler Made Easy provenance
     tag (whatever pack id or version wrote it) plus the names of every
-    given pack and of the objects earlier pack versions shipped."""
+    given pack and of the objects earlier pack versions shipped.
+    `recorded`: (kind, id) of every object a deployment record for THIS
+    tenant says this app created (deployments.py; the caller checks the
+    tenant). An object found only under the managed-name prefix is removed
+    only when it is listed there; otherwise it is kept (PREFIX_ONLY_KEEP)."""
+    recorded_ids = {(str(k), str(i)) for k, i in (recorded or ())}
+    try:
+        np_.configured()
+    except np_.PrefixError as e:
+        return {"status": "blocked", "found": False, "items": [], "summary": {}, "warnings": [], "plan_hash": "", "blockers": [str(e)]}
     try:
         for p in packs:
             _defs(p)
@@ -199,6 +214,13 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
 
     # Pack definitions and provenance marks.
     def_dicts, def_engines, def_policies = set(), set(), set()
+    # With a managed-name prefix (name_prefix.py) the deploy named every
+    # object "<prefix><name>": an object under that name is a "prefix" match,
+    # which is still only a name: it is removed only when a deployment record
+    # for this tenant lists it (or it carries the tag, a "tag" match). One
+    # under the pack's plain name stays a name-only match.
+    prefix = np_.configured()
+    pref_names: set = set()
     pack_ids: List[str] = []
     for p in packs:
         pack_ids.append(p["id"])
@@ -206,6 +228,10 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         def_dicts |= {x["name"] for x in d if x.get("name")}
         def_engines |= {x["name"] for x in e if x.get("name")}
         def_policies |= {x["name"] for x in pol if x.get("name")}
+        if prefix:
+            groups0 = pd.load_pack_file(_resolve_configs(p["dir"]), "endpoint_application_groups.json", p.get("id"))
+            pd_, pe_, pp_, pg_ = np_.apply(d, e, pol, groups0, prefix)
+            pref_names |= {x["name"] for x in pd_ + pe_ + pp_ + pg_ if x.get("name")}
     # The app's own historical names (packs renamed their objects over
     # time) are always in scope: an object under an old name is Zscaler Made Easy's
     # whether one pack or everything is being removed. It is reported as a
@@ -223,7 +249,13 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
             return "tag"
         if any(pd.has_mark(desc, pack_id=pid) for pid in pack_ids):
             return "tag"
+        if np_.ours_by_name(name, pref_names, prefix):
+            return "prefix"
         return "name" if name in def_names else None
+
+    def prefix_keep(kind: str, oid: Any) -> Optional[str]:
+        # A prefix match is a name match: kept unless a deployment record for this tenant lists the id.
+        return None if (kind, str(oid)) in recorded_ids else PREFIX_ONLY_KEEP
 
     # ---- rules across every channel ----------------------------------------
     rule_items: List[Dict[str, Any]] = []
@@ -245,6 +277,8 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
             })
             if how == "name":
                 rule_items[-1]["keep"] = NAME_ONLY_KEEP
+            elif how == "prefix" and prefix_keep("policy", r.get("id")):
+                rule_items[-1]["keep"] = PREFIX_ONLY_KEEP
     remove_rule_ids = {str(i["id"]) for i in rule_items if not i.get("keep")}
 
     # ---- endpoint application groups ---------------------------------------
@@ -263,6 +297,8 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
             group_items.append({"kind": "app_group", "channel": None, "id": g.get("id"), "name": name, "match": how})
             if how == "name":
                 group_items[-1]["keep"] = NAME_ONLY_KEEP
+            elif how == "prefix" and prefix_keep("app_group", g.get("id")):
+                group_items[-1]["keep"] = PREFIX_ONLY_KEEP
 
     # ---- engines ------------------------------------------------------------
     engine_items: List[Dict[str, Any]] = []
@@ -283,6 +319,8 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         keep_reason = None
         if how == "name":
             keep_reason = NAME_ONLY_KEEP
+        elif how == "prefix" and prefix_keep("engine", eid):
+            keep_reason = PREFIX_ONLY_KEEP
         elif eid in engine_ids_used_by_survivors:
             keep_reason = "still used by a rule outside this pack"
         item = {"kind": "engine", "channel": None, "id": pd._field(e, "id"), "name": name, "match": how,
@@ -312,6 +350,8 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         item = {"kind": "dictionary", "channel": None, "id": pd._field(d, "id"), "name": name, "match": how}
         if how == "name":
             item["keep"] = NAME_ONLY_KEEP
+        elif how == "prefix" and prefix_keep("dictionary", did):
+            item["keep"] = PREFIX_ONLY_KEEP
         elif did in dict_ids_used_by_survivors:
             item["keep"] = "still used by an engine outside this pack"
         dict_items.append(item)
@@ -319,6 +359,12 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     items = rule_items + group_items + engine_items + dict_items
     for it in items:
         it["status"] = "keep" if it.get("keep") else "remove"
+        if it.get("match") == "prefix" and it.get("keep") == PREFIX_ONLY_KEEP:
+            warnings.append(f"{it['kind']} '{it['name']}' is under the managed-name prefix but carries no Zscaler Made Easy tag and is in "
+                            "no deployment record for this tenant, so it is kept: a name alone does not prove this app made it. "
+                            "If it is yours, pick it in the rule picker to remove it.")
+        elif it.get("match") == "prefix":
+            it["provenance"] = "deployment record"
         if it.get("match") == "name":
             warnings.append(f"{it['kind']} '{it['name']}' matched by name only (no Zscaler Made Easy tag), so it is kept: "
                             "it may be the customer's own. If it is yours, pick it in the rule picker to remove it.")
@@ -786,7 +832,8 @@ def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_
 
 def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
            log: pd.LogFn = None, settle_seconds: float = 45.0, everything: bool = False,
-           cancel: Optional[threading.Event] = None, confirm_text: Optional[str] = None) -> Dict[str, Any]:
+           cancel: Optional[threading.Event] = None, confirm_text: Optional[str] = None,
+           recorded: Optional[Iterable[Tuple[str, str]]] = None) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal. Re-reads the tenant,
     verifies the plan_hash still matches, then deletes each object in
     reverse dependency order, re-checking that the id still carries the
@@ -796,7 +843,8 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     anything of the pack is still there. `cancel` (the operator's Stop)
     and a refusal no later delete can get past stop the remaining deletes;
     the result's `stopped` says why."""
-    return _execute(client, lambda c=client: plan_removal(c, packs, everything=everything),
+    recorded = list(recorded or ())
+    return _execute(client, lambda c=client: plan_removal(c, packs, everything=everything, recorded=recorded),
                     plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel,
                     require_hash=True, confirm_text=confirm_text)
 

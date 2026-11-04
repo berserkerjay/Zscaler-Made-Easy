@@ -25,6 +25,7 @@ import threading
 import time
 
 import pytest
+from conftest import read_store_json, read_store_text
 from fastapi.testclient import TestClient
 
 import audit
@@ -255,7 +256,7 @@ def test_permissions_on_secrets_and_stores_are_set_back_to_owner_only(env, tmp_p
     assert r["status"] == sh.HEALED
     assert os.stat(pr.store_path()).st_mode & 0o777 == 0o600 and os.stat(cfg).st_mode & 0o777 == 0o600
     assert os.stat(dd).st_mode & 0o777 == 0o700
-    assert json.load(open(pr.store_path()))["tenants"]["acme"], "content untouched"
+    assert read_store_json(pr.store_path())["tenants"]["acme"], "content untouched"
     assert sh.check_permissions()["status"] == sh.OK
 
 
@@ -582,7 +583,7 @@ def test_scan_job_reads_only_and_raises_the_proposals(env, baseline_pack, monkey
     _no_writes(client)
     view = c.post("/api/self-heal/tenant/view", json={**CREDS, **DLP_SCOPE}).json()
     assert view["open"] == 1 and view["items"][0]["kind"] == "heal_drift"
-    for text in (json.dumps(snap), json.dumps(view), c.get("/api/self-heal").text, open(audit.path(), encoding="utf-8").read()):
+    for text in (json.dumps(snap), json.dumps(view), c.get("/api/self-heal").text, read_store_text(audit.path())):
         assert SECRET not in text
 
 

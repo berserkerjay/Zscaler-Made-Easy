@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-04": "Sign in once on every page, clone breadth in restore and clone, a data flow map a newcomer can read, true SSL inspection coverage, device posture across products and in the Path analyzer, the whole POV build simulated, lighter glass on slow computers, the SOC review, and app service groups out of the box",
+    "2026-11-04": "Sign in once on every page, clone breadth in restore and clone, a data flow map a newcomer can read, true SSL inspection coverage, device posture across products and in the Path analyzer, the whole POV build simulated, lighter glass on slow computers, the SOC review, app service groups out of the box, and encrypted stores on by default with a managed-name prefix",
     "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin, rehearse then simulate, Fix selected that changes the answer (URL filtering and ZPA), manual what-if inputs, other providers' endpoint lists, outside-tool gaps closed, and more of the tenant read and scored"
   },
   "skipped": {
@@ -134,6 +134,21 @@ window.WHATS_NEW = {
         { "page": "/report/advanced", "at": "#advVendGotoOn" },
         { "page": "/report/advanced", "at": "#advVendZs" }
       ]
+    },
+    {
+      "id": "store-encryption-default", "release": "2026-11-04", "label": "Encrypted stores on by default",
+      "what": "The app's files on disk are encrypted (AES-256-GCM) without a setting; files an earlier version wrote are encrypted once at the first start, with a verified backup first. DLP_CHECK_STORE_ENCRYPTION=0 opts out.",
+      "changelog": ["Encrypted stores on by default"],
+      "marks": [
+        { "page": "/report/advanced", "at": "#advStoreH" },
+        { "page": "/report/team", "at": "#tmStoreRotate", "shown": "for administrators on a team server" }
+      ]
+    },
+    {
+      "id": "managed-name-prefix", "release": "2026-11-04", "label": "Managed-name prefix",
+      "what": "An optional prefix the operator sets (DLP_CHECK_NAME_PREFIX) goes in front of every name a policy pack deploys or builds; the plan shows it, and objects under the prefixed name are reused, but a removal deletes one only when it carries this app's tag or a deployment record lists it.",
+      "changelog": ["Managed-name prefix"],
+      "marks": [{ "page": "/", "at": "#dlpDeployModal #dzNamePrefix", "shown": "in the deploy preview when the operator set a prefix" }]
     },
     {
       "id": "team-saml", "release": "2026-11-01", "label": "SAML 2.0 sign-in",

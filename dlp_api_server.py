@@ -1843,7 +1843,7 @@ def _regenerate_terraform(pack_id: str, pack_dir: str) -> str:
     beside the pack (as for uploads) for a copy rebuilt in the library."""
     try:
         import pack_terraform
-        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
+        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir}, name_prefix="")
         shipped = os.path.realpath(os.path.dirname(pack_dir)) == os.path.realpath(_APP_DIR)
         out_dir = os.path.join(_APP_DIR, "terraform", pack_id) if shipped else os.path.join(pack_dir, "terraform")
         pack_terraform.write_workspace(files, out_dir)
@@ -3839,6 +3839,17 @@ async def _start_dh_refresh() -> None:
         _DH_REFRESH_STATE["last_status"] = "disabled"
 
 
+def _recorded_in_tenant(creds: Dict[str, str]) -> List[Tuple[str, str]]:
+    """(kind, id) of what this tenant's deployment records say the app
+    created: the only proof, besides the tag, that lets a removal delete an
+    object found under the managed-name prefix (pack_removal)."""
+    try:
+        import deployments
+        return deployments.created_in(lambda rec: _same_tenant(rec, creds))
+    except Exception:  # noqa: BLE001 - no readable record: prefix matches are kept
+        return []
+
+
 def _deployment_for_removal(req: "PackRemovalRequest", creds: Dict[str, str]) -> Dict[str, Any]:
     """The recorded deployment a removal names, checked against the tenant
     the credentials point at."""
@@ -3901,7 +3912,8 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal_selected(client, req.rules))
         _cq_remember("pack_removal", out, req, creds)   # lets "Request approval" file exactly this plan
     else:
-        out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
+        recorded = _recorded_in_tenant(creds)
+        out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all), recorded=recorded))
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
     return _mark_rehearsal(out, _rehearsal(creds))
@@ -4169,7 +4181,7 @@ def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Di
                                               confirm_text=req.confirm_phrase)
     else:
         result = pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel, everything=bool(req.all),
-                                     confirm_text=req.confirm_phrase)
+                                     confirm_text=req.confirm_phrase, recorded=_recorded_in_tenant(_tenant_creds(req)))
     result["logs"] = logs
     if result.get("status") in ("blocked", "stale"):
         result["message"] = "; ".join(result.get("blockers") or [
@@ -6349,7 +6361,7 @@ def _transcribe_pack_to_terraform(pack_id: str, pack_dir: str) -> Dict[str, Any]
     <pack_dir>/terraform/. Returns what was written, or the error."""
     try:
         import pack_terraform
-        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
+        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir}, name_prefix="")
         out_dir = os.path.join(pack_dir, "terraform")
         pack_terraform.write_workspace(files, out_dir)
         resources = sum(len(re.findall(r'(?m)^resource "', body)) for body in files.values())
@@ -15917,6 +15929,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if problem:
         print(f"\n  Could not start: {problem}\n", file=sys.stderr)
         return 2
+    # Encrypted stores are on by default (store_crypto): stores an earlier
+    # version wrote in plain text are encrypted once, here, before anything is
+    # served (a verified backup first; resumable; never stops the app).
+    import store_crypto
+    store_crypto.startup(print)
     all_interfaces = "0.0.0.0"  # nosec B104 # compared below to word the address and a notice; binds nothing
     # Inside the container the server listens on 0.0.0.0 and docker-compose
     # publishes it on the host's 127.0.0.1 only, so the address a person

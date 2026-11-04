@@ -16,6 +16,7 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import read_store_text
 
 import admin_ops as ao
 import ops_zcc as oz
@@ -144,7 +145,7 @@ def test_the_install_route_never_logs_the_policy_token(monkeypatch, tmp_path, ca
     assert r.status_code == 200 and TOKEN in r.json()["command"]
     assert TOKEN not in caplog.text
     audit = tmp_path / "audit.log"
-    assert not audit.exists() or TOKEN not in audit.read_text()
+    assert not audit.exists() or TOKEN not in read_store_text(audit)
 
 
 @pytest.mark.parametrize("ret, why", [

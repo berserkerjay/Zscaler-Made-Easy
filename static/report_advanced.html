@@ -130,6 +130,8 @@
           <h3 class="adv-qs-h" id="advLicH">Licence</h3>
           <p class="adv-lead" id="advOpenSource"><strong>Open source.</strong> Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.</p>
           <p class="adv-lead">The full licence is the LICENSE file in the app folder. NOTICE and THIRD_PARTY_NOTICES.md, beside it, list what the app is built with and each part's own licence.</p>
+          <h3 class="adv-qs-h" id="advStoreH">Encrypted stores</h3>
+          <p class="adv-lead" id="advStoreNote">On by default: what this app keeps on disk about your tenants (profiles, snapshots, configuration backups, sync jobs, saved reports, the audit log) is encrypted with AES-256-GCM. The key is in this computer's credential store, or, where there is none (Linux, the container), in the owner-only file <code>store_keys.json</code> beside the data: keep it with the data. Files an earlier version wrote are encrypted once at the first start, after a verified backup. To opt out, start the app with <code>DLP_CHECK_STORE_ENCRYPTION=0</code>; INSTALL.md, "Encrypted stores", says more.</p>
         </section>
 
         <section id="plugins" aria-labelledby="advPlugH">

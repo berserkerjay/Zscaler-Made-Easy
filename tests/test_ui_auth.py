@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from conftest import read_store_text
 
 from fastapi.testclient import TestClient
 
@@ -88,7 +89,7 @@ def test_rejected_tokens_are_written_to_the_audit_log(monkeypatch, tmp_path):
     assert c.get("/api/health").status_code == 401
     assert c.get("/?token=guess-two", follow_redirects=False).status_code == 401
     assert c.get("/api/health", headers={"X-DLP-Check-Token": "test-token-abc123"}).status_code == 200
-    text = log.read_text(encoding="utf-8")
+    text = read_store_text(log)
     events = [json.loads(ln) for ln in text.splitlines()]
     denied = [e for e in events if e["event"] == "auth_denied"]
     assert [(e["path"], e["reason"]) for e in denied] == [
@@ -114,12 +115,12 @@ def test_without_sso_the_audit_actor_is_the_local_ui_token(monkeypatch, tmp_path
     r = c.post(f"/api/proposals/acme/{pid}/decide", json={"decision": "dismiss", "by": "Mallory"},
                headers={"X-DLP-Check-Token": "test-token-abc123"})
     assert r.status_code == 200 and r.json()["decided_by"] == "local UI token"
-    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(log).splitlines()]
     assert {e["actor"] for e in events if e["event"] in ("api", "proposal_decision")} == {"local UI token"}
     assert "Mallory" not in json.dumps([e for e in events if e["event"] == "proposal_decision"])
     monkeypatch.setenv("ZSCALER_UI_AUTH", "0")
     TestClient(srv.app).post("/api/tenant/check", json={})
-    assert json.loads(log.read_text(encoding="utf-8").splitlines()[-1])["actor"] == "local, no UI token"
+    assert json.loads(read_store_text(log).splitlines()[-1])["actor"] == "local, no UI token"
 
 
 def test_a_failed_audit_write_is_reported_loudly(monkeypatch, tmp_path, capsys):

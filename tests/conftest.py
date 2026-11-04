@@ -27,6 +27,15 @@ scrub_app_env(os.environ)
 # The UI token guards every API call from a browser; the test suite talks to
 # the app directly, so it is off here. tests/test_ui_auth.py switches it on.
 os.environ["ZSCALER_UI_AUTH"] = "0"
+# Encrypted stores (store_crypto.py) are ON in the suite, as they ship: a
+# test that reads a store file opens it through read_store_text /
+# read_store_json / audit_events below. Only a test whose subject is the
+# plain format (the opt-out, unseal-all, old-format readers) sets
+# DLP_CHECK_STORE_ENCRYPTION=0 itself. DLP_TEST_STORE_ENCRYPTION=0 runs the
+# whole suite with the opt-out instead (the plain path's own CI run).
+PLAIN_STORE_RUN = os.environ.get("DLP_TEST_STORE_ENCRYPTION", "").strip().lower() in ("0", "off", "false", "no")
+if PLAIN_STORE_RUN:
+    os.environ["DLP_CHECK_STORE_ENCRYPTION"] = "0"
 # Self-healing's startup run and timer (self_heal.py) stay off in tests: a
 # test runs the checks itself, on its own temporary files.
 os.environ["DLP_CHECK_SELF_HEAL_MINUTES"] = "0"
@@ -71,6 +80,60 @@ os.environ.update(point_stores_at(SESSION_DATA))
 
 
 import pytest  # noqa: E402
+
+
+# ── Reading a store the way the app does (encrypted stores are on) ──────
+def read_store_text(path) -> str:
+    """A store file's content, opened: a sealed file (one line) or a file
+    sealed line by line (the audit log) through store_crypto.open_text; a
+    plain file as it is. StoreLocked when a sealed line does not open."""
+    import store_crypto
+    with open(path, "r", encoding="utf-8") as f:
+        raw = f.read()
+    return "".join(store_crypto.open_text(ln.rstrip("\n")) + ("\n" if ln.endswith("\n") else "")
+                   for ln in raw.splitlines(keepends=True))
+
+
+def read_any_text(path) -> str:
+    """read_store_text, or the raw text (undecodable bytes replaced) for a
+    file that is not text or a sealed file that does not open: for scans of
+    every file in a folder (secret canaries), which must see opened content."""
+    try:
+        return read_store_text(path)
+    except (UnicodeDecodeError, ValueError, RuntimeError):
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+
+
+def read_store_json(path):
+    """json.load for a store file, opened first (read_store_text)."""
+    import json
+    return json.loads(read_store_text(path))
+
+
+def audit_lines(path=None):
+    """The audit log's lines, each opened (it is sealed line by line)."""
+    import audit
+    try:
+        text = read_store_text(path or audit.path())
+    except FileNotFoundError:
+        return []
+    return [ln for ln in text.splitlines() if ln.strip()]
+
+
+def audit_events(path=None):
+    """The audit log's events (dicts), opened."""
+    import json
+    return [json.loads(ln) for ln in audit_lines(path)]
+
+
+def is_store_bookkeeping(name) -> bool:
+    """A file store encryption keeps beside the data (the key file, the
+    migration journal and its backup folder, the key-change lock), not a
+    store of its own."""
+    import store_crypto
+    return os.path.basename(str(name).rstrip("/\\")) in ("store_keys.json", store_crypto.MIGRATION_FILE, store_crypto.BACKUP_DIR,
+                                                         store_crypto.LOCK_NAME)
 
 
 # Every test process is hermetic: a forgotten SDK/request mock must never

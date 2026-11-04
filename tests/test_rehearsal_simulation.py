@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 
 import pytest
+from conftest import read_store_text
 
 from test_pov_rehearsal import POV_PARTS, SCOPE, SOURCES, _use_sample, offline  # noqa: F401 (fixture)
 
@@ -214,7 +215,7 @@ def test_a_simulation_store_is_a_copy_and_the_live_kind_is_refused():
 def _audit(tmp_path):
     import json
     p = tmp_path / "audit.log"
-    return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()] if p.exists() else []
+    return [json.loads(x) for x in read_store_text(p).splitlines() if x.strip()] if p.exists() else []
 
 
 def test_the_audit_entries_of_a_simulated_apply_say_simulation_and_nothing_is_recorded(offline, tmp_path):
