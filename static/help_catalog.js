@@ -4625,6 +4625,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/operations": {
+   "#opObjects a[href=\"/report/vendor#panos\"]": {
+    "what": "Opens Migrate from another vendor, where you build the migration plan this operation loads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#opSslCov": {
     "what": "Opens SSL coverage in a new tab. It shows how much web traffic Zscaler really inspects. It names the rule or bypass that leaves the rest locked, with a link back here to fix it.",
     "input": "Nothing to type. Just click it.",
