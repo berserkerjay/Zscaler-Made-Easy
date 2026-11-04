@@ -10,6 +10,8 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17 skipped, 3071 s.
 
+- Records with no area in the formula: w10-pov-followups. Their open findings still count toward the cap.
+
 ## Scores by area
 
 | Area | Sub-area | Score | Tests | Findings (open) | Standards covered | Based on |
@@ -30,8 +32,8 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
 | high | 0 | 20 | 0 |
-| medium | 0 | 194 | 0 |
-| low | 2 | 421 | 3 |
+| medium | 0 | 195 | 0 |
+| low | 2 | 426 | 3 |
 | info | 0 | 71 | 50 |
 
 ### Regression
@@ -810,6 +812,17 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | W8-SHADOW-03 | The sample tenant and snapshots had no answer for any Insights question, so Traffic insights showed every section as an error offline | info | CWE-754 | V1.14.1 | fixed | Builders | offline_tenant answers POST /zins/graphql per operation from /zins/graphql/&lt;operation&gt; (sample data and snapshot capture), honouring the Shadow IT application filter | tests/test_shadow_it.py::test_a_snapshot_keeps_the_insights_answers_per_question_without_the_per_user_one |
 | W8-TS-03 | tests/test_new_marks.py hard-coded the 2026-10-28 marks (Test a list, the protocol field), so adding any newer release broke it | info | CWE-1164 | V1.14.1 | fixed | Builders | the browser checks target the releases still marked (live motion, the ZIA platform scope box) and compute the next release date from the manifest | tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out |
 
+### Other
+
+| Id | Title | Severity | CWE | ASVS | Status | Sub-area | Fix or reason | Test |
+|---|---|---|---|---|---|---|---|---|
+| W10-PF-06 | Glass pages: the drift re-drew every blurred layer about fifteen times a second at rest, and every scrolled frame re-blurred every in-flow card (14 times the glass-off drawing time on two cores) | medium | CWE-400 | V1.14.1 | fixed | Other | The drift steps once a second on both layers together; while scrolling, in-flow cards and chrome drop their blur and the drift holds | tests/test_glass_perf_browser.py |
+| W10-PF-01 | A simulated POV build stopped at the ZIA baseline: Cloud App Control rules of different types got the same id on the copy, so the read-back compared the wrong rule | low | CWE-706 | V1.4.1 | fixed | Other | A Cloud App Control rule id is one number space across rule types on the offline tenant | tests/test_offline_tenant.py::test_cloud_app_control_rule_ids_are_one_space_across_rule_types |
+| W10-PF-02 | ZPA policy rules, Client Connector profiles, ZDX probes and ZIA settings could not be written to a simulation (no policy set, no edit routes) | low | CWE-754 | V1.14.1 | fixed | Other | The offline tenant answers policy sets, routes rule writes to the type's list, models the Client Connector edits, the ZDX configuration and settings PUTs | tests/test_rehearsal_simulation.py::test_a_rehearsed_pov_build_applies_to_the_simulation_end_to_end |
+| W10-PF-03 | A simulation of a snapshot answered URL lookups from the sample's table, so a plan rehearsed on the snapshot changed on its simulation (plan_changed) | low | CWE-441 | V1.14.1 | fixed | Other | A simulation answers a URL lookup as the tenant it copies did | tests/test_offline_tenant.py::test_a_simulation_of_a_snapshot_has_no_url_lookup_as_its_snapshot |
+| W10-PF-04 | The Team server page's SAML form scrolled sideways by 70px at 320px (a grid item's minimum is its content: the file picker) | low | CWE-1050 | V1.14.1 | fixed | Other | The form's grid items may shrink (min-width 0, minmax(0, 1fr)) and the file picker fits | tests/test_team_login_browser.py::test_both_themes_keep_aa_contrast_and_reflow_at_320px |
+| W10-PF-05 | "Or type the identity provider's values" on the Team server page had no help entry or mark | low | CWE-1059 | V1.14.1 | fixed | Other | A help catalogue entry (both copies) | tests/test_team_login_browser.py::test_the_administrator_sees_the_sign_in_section_with_saml_and_passkey_controls_open |
+
 ### Records
 
 | Record | Area | Title | Checks | Findings | Tests added |
@@ -848,6 +861,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
 | w10-native-click | UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page | Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s | 10 | 6 | 13 |
+| w10-pov-followups | POV follow-ups: the simulated POV build, the sample tenant's PRA credential pools and ZPA isolation profiles, browser tests of the Team server page and the sign-in screens, and the glass effect's drawing cost | Wave 10: every POV part simulates on the in-memory copy, more sample data, the sign-in screens tested in a browser, lighter glass on slow computers | 5 | 6 | 32 |
 | w7-admin-zia-zid | Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients) | Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once | 9 | 2 | 67 |
 | w7-admin-zpa-zcc-zdx | w7-admin-zpa-zcc-zdx | Day-to-day admin for ZPA (connectors, Service Edges, PRA and user portals, provisioning keys, Browser Access certificates), Client Connector (device removal single and bulk, bypass apps, entitlements) and ZDX (deep trace, read-only views) | 10 | 6 | 94 |
 | w7-federal-compliance | Federal compliance profiles, one compliance choice and the compliance pack: ZIA security baseline, AI Guard detection policy, policy packs (IRS 1075 FTI Pack), the Compliance page, the POV planner and Simple mode | Six federal profiles with sourced control catalogues that change rules where the source justifies it, every created rule mapped to a control or a reason code, and local compliance pack exports with synthetic DLP test data | 7 | 2 | 114 |
