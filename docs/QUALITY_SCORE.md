@@ -10,7 +10,7 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17 skipped, 3071 s.
 
-- Records with no area in the formula: w10-device-posture, w10-pov-followups, w10-tf-validate. Their open findings still count toward the cap.
+- Records with no area in the formula: w10-device-posture, w10-pov-followups, w10-soc-review, w10-tf-validate. Their open findings still count toward the cap.
 
 ## Scores by area
 
@@ -884,6 +884,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | w10-native-click | UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page | Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s | 10 | 6 | 13 |
 | w10-pov-followups | POV follow-ups: the simulated POV build, the sample tenant's PRA credential pools and ZPA isolation profiles, browser tests of the Team server page and the sign-in screens, and the glass effect's drawing cost | Wave 10: every POV part simulates on the in-memory copy, more sample data, the sign-in screens tested in a browser, lighter glass on slow computers | 5 | 6 | 32 |
 | w10-shared-signin | Auth, scope and secrets: the signed-in tenant (one sign-in, kept in server memory, used by every page's tenant reads) | Wave 10: sign in once; the verified sign-in is kept in memory for the person and browser, for reads only, with idle and hard expiry | 11 | 5 | 46 |
+| w10-soc-review | SOC review: admin access (RBAC) and logging (telemetry) across ZIA, ZPA, Client Connector, ZDX and ZIdentity (soc_review.py, static/report_soc_review.html, /api/soc-review/*, the MCP tools rbac_review and telemetry_review) | Wave 10: a dedicated, read-only SOC review of who can administer the tenant and what it streams, with unknown never reported as a pass | 9 | 0 | 28 |
 | w10-ssl-true-pct | Traffic analysis: SSL coverage's true inspection coverage (ssl_true_coverage.py over ssl_coverage.py, traffic_logs.py and the sample tenant) | One true inspection figure: four parts adding up to 100% per unit, unknown never counted as inspected, each encrypted share tied to its cause, estimate always labelled | 8 | 2 | 37 |
 | w10-tf-validate | Whole-tenant Terraform export: terraform validate against the zia, zpa, ztc and zcc providers in CI (blocking); ACME test clock | Wave 10: the sample tenant's whole-tenant export validates against every provider, and the CI step that proves it is blocking | 4 | 5 | 6 |
 | w7-admin-zia-zid | Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients) | Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once | 9 | 2 | 67 |

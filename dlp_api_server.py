@@ -3309,6 +3309,107 @@ async def ztw_export(report_id: str, format: str = "xlsx"):
                     headers={"Content-Disposition": f"attachment; filename=cloud_branch_connector_{ts}.xlsx"})
 
 
+# ── SOC review (read-only, soc_review): who can administer the tenant
+# (RBAC: admins, roles, full vs scoped rights, stale admins, API keys and
+# clients, findings) and what leaves it as logs (telemetry: Cloud NSS feeds,
+# NSS servers and collectors, ZPA Log Streaming Service, Client Connector
+# log settings, SIEM destinations, gaps). The RBAC review needs RBAC ticked
+# on the Scope page (and ZPA, Client Connector or ZIdentity for theirs); the
+# telemetry review needs ZIA platform, ZPA, Client Connector or ZDX. Kept as
+# reports "socrbac-…" and "soctel-…"; never holds a secret.
+class SocReviewRequest(MigrateRequest):
+    """Body of a SOC review: tenant credentials and the Scope page
+    selection; refused (400) before sign-in when nothing it reads is ticked."""
+
+
+SOC_PARTS = {"rbac": ("socrbac", "RBAC review"), "telemetry": ("soctel", "Telemetry review")}
+
+
+@app.get("/report/soc-review")
+async def report_soc_review_page():
+    """SOC review (static/report_soc_review.html)."""
+    page = os.path.join(STATIC_DIR, "report_soc_review.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _soc_scope(req: Any, part: str) -> Dict[str, Any]:
+    """The Scope rule of a SOC review, before any sign-in: 400 when nothing
+    the review reads is ticked."""
+    import soc_review
+    if part == "rbac":
+        return _require_in_scope(req, soc_review.RBAC_SCOPE, "The RBAC review")
+    sc, ch, source = _scope_selection(req)
+    if not soc_review.telemetry_in_scope(sc):
+        raise HTTPException(status_code=400, detail="The telemetry review is not in scope: on the Scope page tick ZIA platform, ZPA, "
+                                                    "Client Connector or ZDX, then run it again. Nothing was read.")
+    return {"scopes": sc, "channels": ch, "source": source}
+
+
+def _run_soc(part: str, client: Any, label: str, creds: Dict[str, Any], sel: Dict[str, Any], log, cancel) -> Dict[str, Any]:
+    """Run one SOC review on a signed-in (or offline) assessment client.
+    Stop ends it with nothing more read and no partial result kept."""
+    import soc_review
+    prefix, what = SOC_PARTS[part]
+    logs: List[str] = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    _log(f"{what} of {label}: reading. Nothing is written to the tenant."
+         + (f" In scope, from {sel.get('source')}: {', '.join(sel.get('scopes') or [])}." if sel.get("source") else ""))
+    fn = soc_review.rbac_review if part == "rbac" else soc_review.telemetry_review
+    try:
+        rep = fn(client, sel.get("scopes") or [], log=_log, cancel=cancel, creds=creds)
+    except soc_review.Stopped:
+        _log("STOPPED — you clicked Stop; nothing more was read and no partial result is kept.")
+        return {"stopped": soc_review.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    finally:
+        _close_quietly(client)
+    rid = _remember_report(prefix, rep, label)
+    return dict(_REPORTS[rid], status="done", logs=logs)
+
+
+async def _soc_start(part: str, req: SocReviewRequest, request: Request) -> Dict[str, Any]:
+    import pack_jobs
+    sel = _soc_scope(req, part)   # before signing in (user rule 1)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_signed_in_raw, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start(SOC_PARTS[part][0], lambda log, cancel: _run_soc(part, client, label, creds, sel, log, cancel),
+                          label=f"{SOC_PARTS[part][1]} {label}"[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/soc-review/rbac/start")
+async def soc_rbac_start(req: SocReviewRequest, request: Request):
+    """The RBAC review as a job the page follows: admins, roles, rights, API
+    keys and clients of ZIA, ZPA, Client Connector, ZDX and ZIdentity, and the
+    findings. Read-only (GET only). Poll GET /api/dlp-packs/jobs/{job_id}."""
+    return await _soc_start("rbac", req, request)
+
+
+@app.post("/api/soc-review/telemetry/start")
+async def soc_telemetry_start(req: SocReviewRequest, request: Request):
+    """The telemetry review as a job: log streams, log settings, SIEM
+    destinations and gaps. Read-only (GET only). Poll GET /api/dlp-packs/jobs/{job_id}."""
+    return await _soc_start("telemetry", req, request)
+
+
+@app.get("/api/soc-review/report/{report_id}")
+async def soc_review_report(report_id: str):
+    """A kept SOC review (RBAC or telemetry)."""
+    rep = _REPORTS.get(report_id or "")
+    if not rep or not str(report_id).startswith(("socrbac-", "soctel-")):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Read it again.")
+    return rep
+
+
 # ── Other Zscaler products (read-only): Zero Trust Branch, EASM, Business
 # Insights, Zero Trust Cellular and Microsegmentation (other_products). Each
 # is read only when its own Scope page key is ticked; kept as report

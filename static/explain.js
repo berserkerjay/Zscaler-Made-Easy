@@ -137,6 +137,14 @@
     get: 'Findings with what was found, why it matters and how to fix it; tables of groups, connectors, forwarding rules, gateways, locations, roles, API keys (values never read) and cloud accounts; admins as counts only; a link per group and per rule into the Path analyzer\'s workload trace that reuses the read; Excel and JSON exports.',
     next: 'Add a second connector to single-connector groups, narrow or remove DIRECT rules, turn on Fail Closed, activate pending changes, then read again.',
   };
+  X.socreview = {
+    group: 'Find the gaps', name: 'SOC review', href: '/report/soc-review',
+    what: 'Two read-only reviews. Admin access reads, for ZIA, ZPA, Client Connector, ZDX and ZIdentity, the admins and roles, who has full and who has limited rights, admins that are disabled or unused, and the API keys and clients with their scopes. Logging reads the ZIA Cloud NSS feeds, NSS servers and collectors, the ZPA Log Streaming Service and the Client Connector log settings, and where the logs go.',
+    why: 'Every full-access admin and every API client with full rights can switch security off; an admin left on a disabled account is a way in nobody watches. A product whose logs reach no SIEM is a blind spot when something happens.',
+    when: 'Before an audit (SOC 2, ISO 27001, NIST AC-2 and AU-6), when a SOC team takes over the tenant, and every quarter as an access and logging review.',
+    get: 'Findings with a status each (Fix, Review, As recommended, Unknown, Not applicable): too many full-access admins, admins with no second factor, disabled or unused admins, rights broader than they are used, products with nothing streamed, disabled feeds and missing log types. Tables of admins, roles, API keys and clients, log streams, NSS servers and destinations, and the assessment checks it reuses. Unknown is never counted as fine.',
+    next: 'Cut full access to two or three people, give automation read-only roles, remove rights from disabled accounts, add the missing log feeds and turn disabled ones back on, then read again.',
+  };
   X.otherproducts = {
     group: 'Find the gaps', name: 'Other Zscaler products', href: '/report/other-products',
     what: 'Reads, only for the products ticked on the Scope page, Zero Trust Branch (sites, templates, alarms, API key names and ages, hubs, the ransomware kill switch), External attack surface (organizations, findings, lookalike domains), Business Insights (custom applications, scheduled reports), Zero Trust Cellular (account, regions, anomaly policies, SIM counts) and Microsegmentation (agents, agent groups, provisioning key names, policy and default rules, resource protection).',
@@ -498,7 +506,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/aiguard': 'aiguard', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate', '/report/plugin': 'plugin', '/report/team': 'team',
-      '/report/logs': 'logs', '/report/ztw': 'ztw', '/report/other-products': 'otherproducts', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
+      '/report/logs': 'logs', '/report/ztw': 'ztw', '/report/soc-review': 'socreview', '/report/other-products': 'otherproducts', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
   }
 
@@ -547,7 +555,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'aiguard', 'ztw', 'otherproducts', 'fleet', 'health', 'compliance', 'posture',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'aiguard', 'ztw', 'socreview', 'otherproducts', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'plugin', 'team', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
     'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'trafficlogs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];

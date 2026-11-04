@@ -1681,6 +1681,9 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     + [(_ZIA, f"/zia/{x}") for x in ("dnsApplicationGroups", "httpHeaderProfile", "httpHeaderActionProfile")]
     + [(("zpa",), f"/zpa/{x}") for x in ("ipRanges", "cbiconfig/certificates")]
     + [(("ztw",), "/ztw/api/v1/ipGroups")]
+    # The SOC review (soc_review.py, 2026-11-04): ZPA Log Streaming Service configurations, the
+    # Client Connector portal roles and ZIdentity's API clients (names, status, scopes; never a secret).
+    + [(("zpa",), "/zpa/lssConfig"), (("rbac",), "/zcc/adminRoles"), (("zidentity",), "/zid/api-clients")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}

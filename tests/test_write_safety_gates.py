@@ -474,6 +474,8 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/zpa/diagnose"): "reads",
     ("POST", "/api/browser-security/start"): "reads",
     ("POST", "/api/ztw/start"): "reads the Cloud & Branch Connector configuration (list and get calls only); no write method is called",
+    ("POST", "/api/soc-review/rbac/start"): "reads admins, roles, API keys and clients (soc_review.Guard: GET only, no write method exposed)",
+    ("POST", "/api/soc-review/telemetry/start"): "reads log feeds, NSS servers, LSS configurations and log settings (soc_review.Guard: GET only)",
     ("POST", "/api/other-products/start"): "reads",
     ("POST", "/api/device-posture/start"): "reads",
     ("POST", "/api/rate-check"): "local forecast",

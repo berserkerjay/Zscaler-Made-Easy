@@ -1,0 +1,84 @@
+{
+ "area": "SOC review: admin access (RBAC) and logging (telemetry) across ZIA, ZPA, Client Connector, ZDX and ZIdentity (soc_review.py, static/report_soc_review.html, /api/soc-review/*, the MCP tools rbac_review and telemetry_review)",
+ "title": "Wave 10: a dedicated, read-only SOC review of who can administer the tenant and what it streams, with unknown never reported as a pass",
+ "standards": [
+  "ASVS V1.4.1",
+  "ASVS V2.8.1",
+  "ASVS V4.1.3",
+  "ASVS V4.2.1",
+  "ASVS V7.1.1",
+  "ASVS V7.3.1",
+  "ASVS V8.3.4",
+  "CWE-200",
+  "CWE-250",
+  "CWE-269",
+  "CWE-272",
+  "CWE-285",
+  "CWE-308",
+  "CWE-359",
+  "CWE-532",
+  "CWE-754",
+  "CWE-778",
+  "CWE-1188",
+  "WSTG-ATHZ-02",
+  "WSTG-ATHZ-03"
+ ],
+ "checks": [
+  {
+   "id": "W10-SOC-C01",
+   "what": "The RBAC review lists each product's admins with full, limited or read-only rights; ZDX admins come from ZIdentity entitlements",
+   "standard": "ASVS V1.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SOC-C02",
+   "what": "A local ZPA admin without a second factor is Fix; disabled admins still holding rights are Fix; a full-access API key is Review",
+   "standard": "ASVS V2.8.1",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SOC-C03",
+   "what": "More than three enabled full-access admins in a product is Review; three is As recommended",
+   "standard": "ASVS V1.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SOC-C04",
+   "what": "What the API does not report (second factor, last sign-in, ZDX streaming) and INFO or ERROR check results are Unknown or N/A, never a pass",
+   "standard": "CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SOC-C05",
+   "what": "The telemetry review names disabled feeds, unhealthy NSS servers, missing ZIA and ZPA log types and products with nothing streamed",
+   "standard": "ASVS V7.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SOC-C06",
+   "what": "A Cloud NSS feed's token, URL path and query, headers and secret fields never reach the answer: the destination is the host name only",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SOC-C07",
+   "what": "Only ticked services are read (the review client refuses the others without a request) and has no write method; Stop ends the review",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SOC-C08",
+   "what": "Both start routes refuse a selection with nothing they read before any client is built; another report kind's id is a 404",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SOC-C09",
+   "what": "The MCP tools rbac_review and telemetry_review are registered read-only and non-destructive, take no secret, number admins instead of naming them and refuse what the server scope does not tick",
+   "standard": "ASVS V1.4.1",
+   "result": "pass"
+  }
+ ],
+ "findings": [],
+ "tests_added": 28
+}

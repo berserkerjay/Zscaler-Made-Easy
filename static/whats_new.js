@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-04": "Sign in once: every page, Simple mode too, uses the tenant you signed in to",
+    "2026-11-04": "Sign in once on every page, clone breadth in restore and clone, a data flow map a newcomer can read, true SSL inspection coverage, device posture across products and in the Path analyzer, the whole POV build simulated, lighter glass on slow computers, and the SOC review",
     "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin, rehearse then simulate, Fix selected that changes the answer (URL filtering and ZPA), manual what-if inputs, other providers' endpoint lists, outside-tool gaps closed, and more of the tenant read and scored"
   },
   "skipped": {
@@ -114,6 +114,16 @@ window.WHATS_NEW = {
       "what": "The glass effect draws far less on a computer without a graphics card: the backdrop moves once a second, and cards in the page drop their blur while you scroll. It looks the same.",
       "changelog": ["Lighter glass on slow computers"],
       "marks": [{ "page": "/report/advanced", "at": "#advGlass" }]
+    },
+    {
+      "id": "soc-review", "release": "2026-11-04", "label": "SOC review",
+      "what": "A SOC review page: admin access (who can administer ZIA, ZPA, Client Connector, ZDX and ZIdentity, full or limited rights, disabled and unused admins, API keys and clients) and logging (what is sent to your SIEM and the gaps). Unknown is never counted as fine.",
+      "changelog": ["SOC review page", "SOC review", "Admin access", "Logging"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openSocReviewTab()\"]" },
+        { "page": "/report/soc-review", "at": ".rp-hero h1" },
+        { "page": "/report/operations", "at": "#opSocReview" }
+      ]
     },
     {
       "id": "team-saml", "release": "2026-11-01", "label": "SAML 2.0 sign-in",

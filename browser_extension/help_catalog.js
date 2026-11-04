@@ -746,6 +746,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
     "effect": "nav"
    },
+   ".tool-group button[onclick=\"openSocReviewTab()\"]": {
+    "what": "Reads who can administer each Zscaler product and what is sent to your SIEM, and names each gap with a fix. Only what the Scope page ticks is read. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click a Read button in the new tab.",
+    "effect": "nav"
+   },
    ".tool-group button[onclick=\"openOtherProductsTab()\"]": {
     "what": "Reads Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation. Only the ones ticked on the Scope page are read. Lists what the tenant has and checks it. Read-only. Opens in a new tab.",
     "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
@@ -2927,6 +2932,38 @@ window.HELP_CATALOG = {
     "effect": "local"
    }
   },
+  "/report/soc-review": {
+   "#scTenant": {
+    "what": "Picks which tenant sign-in the SOC review uses.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or what is saved on this computer. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   "#scRbacRun": {
+    "what": "Reads who can administer ZIA, ZPA, Client Connector, ZDX and ZIdentity: admins, roles, full or limited rights, disabled and unused admins, API keys and clients. Then lists the findings. It never reads a password or key value.",
+    "input": "Nothing to type. Just click it. Tick RBAC on the Scope page first (and ZPA, Client Connector or ZIdentity for theirs).",
+    "effect": "read"
+   },
+   "#scTelRun": {
+    "what": "Reads what the tenant sends to your SIEM: ZIA Cloud NSS feeds and NSS servers, ZPA log streaming and Client Connector log settings. Then lists the gaps. A destination shows its host name only.",
+    "input": "Nothing to type. Just click it. Tick ZIA platform, ZPA, Client Connector or ZDX on the Scope page first.",
+    "effect": "read"
+   },
+   "#scStop": {
+    "what": "Stops the read at once. Nothing more is read and nothing is kept.",
+    "input": "Nothing to type. Just click it while a read is running.",
+    "effect": "local"
+   },
+   "#scBody .sc-filter button[data-st]": {
+    "what": "Shows only the findings with this result. All shows every finding. Unknown means the API does not say.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#scBody details.pa-details > summary": {
+    "what": "Shows or hides this list: the assumptions, or the log of what was read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   }
+  },
   "/report/ztw": {
    "#ztTenant": {
     "what": "Picks which tenant sign-in the Cloud & Branch Connector read uses.",
@@ -4714,6 +4751,11 @@ window.HELP_CATALOG = {
     "what": "Opens SSL coverage in a new tab. It shows how much web traffic Zscaler really inspects. It names the rule or bypass that leaves the rest locked, with a link back here to fix it.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#opSocReview a[href=\"/report/soc-review\"]": {
+    "what": "Opens the SOC review: who can administer each Zscaler product and what is sent to your SIEM. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    },
    "#fwiFile": {
     "what": "Loads a migration plan saved from Migrate from another vendor (Palo Alto Networks). The server checks it again before the preview.",
