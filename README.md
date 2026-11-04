@@ -74,21 +74,14 @@ git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git && cd Zscaler-Ma
 docker logs zscaler-made-easy      # shows the UI token and http://localhost:8001/?token=…
 ```
 
-**Behind Zscaler or another TLS-inspecting proxy?** The build downloads Python libraries from pypi.org, which fails with `CERTIFICATE_VERIFY_FAILED` ("unable to get local issuer certificate") at step `[6/8]` unless the container trusts your company's root certificate. Put it in the `certs/` folder **before** you build (after `cd Zscaler-Made-Easy`), then run the update script as above; the build log says `extra root certificates added: 1`, and the running app trusts it too:
-
-```powershell
-# Windows (PowerShell, in the app folder): export the Zscaler Root CA from the Windows certificate store
-$c = Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root | Where-Object { $_.Subject -like "*Zscaler Root CA*" } | Select-Object -First 1
-if (-not $c) { "Zscaler Root CA not found: ask IT for the root certificate as a Base-64 .crt file and save it in the certs folder" } else { "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($c.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n" | Set-Content -Encoding ascii -NoNewline certs\zscaler-root.crt; "Saved certs\zscaler-root.crt" }
-```
+**Behind Zscaler or another TLS-inspecting proxy?** The build fails with `CERTIFICATE_VERIFY_FAILED` at step `[6/8]` unless the container trusts your company's root certificate. Run this once in the app folder before the update script; it copies your computer's Zscaler Root CA into `certs/` (the build log then says `extra root certificates added: 1`):
 
 ```bash
-# Mac (in the app folder): export the Zscaler Root CA from the keychain
-security find-certificate -c "Zscaler Root CA" -p > certs/zscaler-root.crt
-# Linux: copy the Base-64 (PEM) root certificate IT gave you into certs/, ending in .crt
+./get_zscaler_cert.sh                                                   # Mac or Linux
+powershell -ExecutionPolicy Bypass -File .\get_zscaler_cert.ps1          # Windows
 ```
 
-Already built once and it failed? Add the certificate and run the update script again; the running container keeps working until the new build succeeds. The file stays on your machine (`certs/` is git-ignored). Another inspection product works the same way with its root certificate, or IT can exempt `pypi.org` and `files.pythonhosted.org` from inspection. Details: INSTALL.md, *Run it in a container instead* and *Work laptop: TLS inspection or a proxy*.
+If it can't find the certificate, ask IT for the root certificate as a Base-64 `.crt` file and save it in `certs/`, or ask them to exempt `pypi.org` and `files.pythonhosted.org` from inspection. Already failed once? Run the script, then the update script again. The file stays on your machine (`certs/` is git-ignored).
 
 No git? Docker can fetch and build it by itself: `docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN -t zscaler-made-easy:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"` with a read-only GitHub token in `GIT_AUTH_TOKEN`, then `docker run` (INSTALL.md, *Install with Docker commands only*).
 
