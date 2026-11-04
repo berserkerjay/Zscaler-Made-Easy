@@ -1529,6 +1529,72 @@
     return m;
   }
 
+  // Data Flow Map report + one network → the same routes, each traffic
+  // class as wide as the bytes its users really uploaded (report.traffic,
+  // from ZIA Insights). Insights has no network dimension, so the picture
+  // is for one network at a time: where all of that data would go on it.
+  // Null when the report carries no traffic numbers (the page then keeps
+  // the still, numbered view and counts paths, never bytes).
+  const DF_END_WORD = {
+    x_cc: 'skips Zscaler (bypassed at Client Connector)', x_pac: 'skips Zscaler (the PAC file sends it direct)',
+    u_cc: 'route not known', u_pac: 'route not known', b_policy: 'blocked by Cloud App Control or URL Filtering',
+    b_ssl: 'blocked at SSL inspection', u_ssl: 'inspection not known', enc: 'reaches Zscaler but stays locked (not inspected)',
+    o_block: 'blocked by File Type Control', o_enforce: 'inspected: a DLP rule can block it', o_monitor: 'inspected: DLP only watches',
+    o_other: 'inspected: no DLP rule decides', incident: 'inspected: a DLP rule can block it',
+  };
+  function humanBytes(n) {
+    const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let v = Number(n) || 0, i = 0;
+    while (Math.abs(v) >= 1000 && i < u.length - 1) { v /= 1000; i++; }
+    return `${i ? fmt1(v) : Math.round(v)} ${u[i]}`;
+  }
+  function dataFlowTrafficModel(report, network) {
+    const tr = report && report.traffic;
+    if (!tr || !tr.available || !tr.classes || !Array.isArray(report.traces)) return null;
+    const nets = {};
+    (report.networks || []).forEach(n => { nets[n.key] = n.label || n.key; });
+    const net = network || ((report.networks || [])[0] || {}).key;
+    const picked = report.traces.map((t, i) => ({ t, i })).filter(x => x.t.network === net && x.t.destination && x.t.destination.kind === 'class'
+      && tr.classes[x.t.destination.class] && tr.classes[x.t.destination.class].upload > 0);
+    const total = picked.reduce((a, x) => a + tr.classes[x.t.destination.class].upload, 0);
+    if (!total) return null;
+    const m = { kind: 'dataflow-traffic', cols: DF_COLS.slice(), nodes: [], links: [], routes: [], total, unit: 'bytes', network: net, ends: [] };
+    m.cols[0] = 'Uploads';
+    const value = {}, ends = {};
+    picked.forEach(({ t, i }) => {
+      const c = tr.classes[t.destination.class], w = c.upload, route = dfRoute(t);
+      route.forEach(k => { value[k] = (value[k] || 0) + w; });
+      const keys = [];
+      for (let j = 1; j < route.length; j++) {
+        const l = riverAdd(m, route[j - 1], route[j]);
+        l.value += w; l.items.push({ i, name: `${c.label} · ${humanBytes(w)}` });
+        keys.push(l.key);
+      }
+      const endKey = route[route.length - 1] === 'incident' ? 'o_enforce' : route[route.length - 1];
+      const e = ends[endKey] = ends[endKey] || { key: endKey, label: DF_END_WORD[endKey] || DF_NODES[endKey][1], tone: DF_NODES[endKey][2], bytes: 0, classes: [] };
+      e.bytes += w; e.classes.push(c.label);
+      m.routes.push({ links: keys, weight: w, tone: DF_NODES[route[route.length - 1]][2], item: i, end: endKey });
+    });
+    DF_ORDER.forEach(k => {
+      if (!value[k]) return;
+      const d = DF_NODES[k];
+      m.nodes.push({ key: k, col: d[0], label: k === 'src' ? 'Data your users upload' : d[1], tone: d[2], exit: d[3] || '', value: value[k],
+        sub: `${Math.round(100 * pctOf(value[k], total))}% · ${humanBytes(value[k])}` });
+    });
+    m.links.forEach(l => {
+      const to = DF_NODES[l.to];
+      l.tone = to[2];
+      l.label = `${DF_NODES[l.from][1]} → ${to[1]}: ${Math.round(100 * pctOf(l.value, total))}% of uploads (${humanBytes(l.value)})`;
+    });
+    m.ends = Object.keys(ends).map(k => Object.assign(ends[k], { share: pctOf(ends[k].bytes, total) })).sort((a, b) => b.bytes - a.bytes);
+    const win = (tr.window && tr.window.label) || 'the last 7 days';
+    m.label = `Where uploads go on ${nets[net] || net}: ${humanBytes(total)} uploaded to cloud apps in ${win}, by traffic class`;
+    m.alt = [`${humanBytes(total)} was uploaded to cloud apps in ${win} (${tr.source || 'ZIA Insights'}). Each stream is as wide as its share of it.`,
+      `On ${nets[net] || net}:`]
+      .concat(m.ends.map(e => `${Math.round(100 * e.share)}% ${e.label} (${humanBytes(e.bytes)}: ${e.classes.join(', ')}).`))
+      .concat(['Insights cannot say which network a byte used, so this shows where all of it would go on this network.']);
+    return m;
+  }
+
   // SSL flow report + one traffic class → the SSL rules a request meets
   // in evaluation order (first match wins). Exemptions scoped to some
   // users peel packets off; the deciding rule turns the rest; the
@@ -1962,7 +2028,7 @@
   const FA = {
     pathModel, parseTerm, corpusModel, pathDrillModel, deployModel, liveModel, drillSummary, hopTone,
     trafficPathModel, listFlowModel, ARCH, SAMPLE, hopPlayer, drill, graph, live, steps, trafficPath, listFlow, E,
-    dataFlowModel, dfRoute, sslWalkModel, sslCoverageModel, river, streams, ruleWalk, playButton, altList,
+    dataFlowModel, dataFlowTrafficModel, humanBytes, dfRoute, sslWalkModel, sslCoverageModel, river, streams, ruleWalk, playButton, altList,
   };
   // The engine's parts, for the pages that draw their own pictures with it
   // (static/flow_pages.js): one clock, one way to draw boxes and links.

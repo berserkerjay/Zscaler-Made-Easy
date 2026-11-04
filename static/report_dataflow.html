@@ -15,7 +15,8 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Data</span> flow map <span class="sf-live" id="dfLive" hidden><i></i>live</span></h1>
-      <p>The path the tenant's configuration gives web traffic from a managed device to each traffic class (or a destination you type), for any user, on each network: Client Connector app profile and forwarding profile, the PAC file, then Cloud App Control, URL filtering, SSL inspection, File Type Control and Web DLP in ZIA's request order, and which DLP rules name an incident receiver. It reads configuration and observes no traffic; Endpoint, SaaS and Email DLP rules are counted beside it, not tested, and each policy pack's rules are matched by name. Zscaler's full order of enforcement is shown on top as a reference.</p>
+      <p class="dfs-hero-lead">This map shows the road web traffic takes from a computer to a website, and each Zscaler check on the way. Start with the numbered steps; open all the details when you need them.</p>
+      <details class="df-about"><summary>What this map reads</summary><p>The path the tenant's configuration gives web traffic from a managed device to each traffic class (or a destination you type), for any user, on each network: Client Connector app profile and forwarding profile, the PAC file, then Cloud App Control, URL filtering, SSL inspection, File Type Control and Web DLP in ZIA's request order, and which DLP rules name an incident receiver. It reads configuration and observes no traffic; Endpoint, SaaS and Email DLP rules are counted beside it, not tested, and each policy pack's rules are matched by name. Zscaler's full order of enforcement is shown in all the details as a reference.</p></details>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Report actions">
@@ -36,6 +37,10 @@
         <a class="rp-btn" id="expJson">JSON</a>
       </span>
     </nav>
+    <div class="dfs-views" id="dfViews" role="group" aria-label="How much to show" hidden>
+      <button type="button" class="rp-btn" id="dfViewSimple" aria-pressed="true">Simple view</button>
+      <button type="button" class="rp-btn" id="dfViewAll" aria-pressed="false">Show all details</button>
+    </div>
     <main class="rp-card">
       <div id="rpBody" class="bp-body" style="padding:0;">
         <div class="rp-wait"><div class="spin"></div>Reading Client Connector profiles, forwarding profiles, PAC files and every ZIA policy… this tab fills in when the map is ready (10–30 seconds). Keep the assessment tab open.</div>
@@ -50,6 +55,8 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/flow_anim.js"></script>
   <script src="/static/data_flow.js"></script>
+  <script src="/static/glossary.js"></script>
+  <script src="/static/data_flow_simple.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>
@@ -57,7 +64,7 @@
     const q = new URLSearchParams(location.search);
     const body = document.getElementById('rpBody');
     const meta = document.getElementById('rpMeta');
-    let report = null, rid = null, motion = null;
+    let report = null, rid = null, motion = null, simple = null;
     const E = _dfE;
     const fail = (title, msg) => { body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}</div><div style="margin-top:0.5rem;"><a class="rp-btn" href="/">Back to the assessment</a></div></div>`; };
 
@@ -66,6 +73,8 @@
       // Diagram first: the selected path's flow, then visibility by cloud
       // app category, then the full destination x network table and totals.
       body.innerHTML = `
+        <div id="dfSimpleWrap"></div>
+        <div id="dfAll" hidden>
         <h2 class="df-h" id="dfMotionTitle">Traffic flow: every traffic class on every network</h2>
         <div id="dfMotion"></div>
         <h2 class="df-h">How ZIA processes a policy: device → incident</h2>
@@ -91,16 +100,23 @@
           <div class="df-stat"><div class="n">${E(s.unverified)}</div><div class="l">unverified (depends on scope, identity or an unread rule)</div></div>` : ''}
           <div class="df-stat ${s.high ? 'bad' : ''}"><div class="n">${s.high}</div><div class="l">high-severity weak points</div></div>
         </div>
-        <div class="df-cc">Client Connector: ${s.app_profiles} app profile(s), ${s.forwarding_profiles} forwarding profile(s), ${s.trusted_networks} trusted network(s), ${s.pac_files} PAC file(s) · platform ${E(report.platform)}${report.diagnostics && report.diagnostics.length ? ` · <details style="display:inline;"><summary style="display:inline;cursor:pointer;color:var(--accent);">${report.diagnostics.length} read problem(s)</summary><div class="df-raw">${report.diagnostics.map(d => E((d.section || '') + ': ' + (d.error || ''))).join('<br>')}</div></details>` : ''}</div>`;
+        <div class="df-cc">Client Connector: ${s.app_profiles} app profile(s), ${s.forwarding_profiles} forwarding profile(s), ${s.trusted_networks} trusted network(s), ${s.pac_files} PAC file(s) · platform ${E(report.platform)}${report.diagnostics && report.diagnostics.length ? ` · <details style="display:inline;"><summary style="display:inline;cursor:pointer;color:var(--accent);">${report.diagnostics.length} read problem(s)</summary><div class="df-raw">${report.diagnostics.map(d => E((d.section || '') + ': ' + (d.error || ''))).join('<br>')}</div></details>` : ''}</div>
+        </div>`;
       if (motion) motion.destroy();
-      motion = renderDataFlowMotion(report, document.getElementById('dfMotion'), i => toRow(i));
+      // The full map's picture counts traced paths (no traffic numbers), so it starts still: Play motion is an opt-in extra.
+      motion = renderDataFlowMotion(report, document.getElementById('dfMotion'), i => toRow(i), { autoplay: false });
+      if (simple) simple.destroy();
+      simple = window.DataFlowSimple ? window.DataFlowSimple.render(report, document.getElementById('dfSimpleWrap'), {
+        onDetails: key => { setView('all'); const el = document.querySelector(`#dfTraceBody .df-hop[data-hop="${key === 'policy' ? 'cac' : key}"]`) || document.getElementById('dfTraceTitle'); if (el) { el.scrollIntoView({ block: 'center' }); el.setAttribute('tabindex', '-1'); el.focus({ preventScroll: true }); } },
+        onPath: i => sel(i, true, true),
+      }) : null;
       renderPolicyEnforcementFlow(document.getElementById('dfEnforcement'));
       renderDataFlowOverview(report, document.getElementById('dfOverview'));
       renderCategoryVisibility(report, document.getElementById('dfCategories'));
       renderControlFishbones(report, document.getElementById('dfFishbones'), report.traces[0] && report.traces[0].network);
       renderDataFlowGaps(report, document.getElementById('dfGaps'));
       const wire = r => { r.addEventListener('click', () => sel(Number(r.dataset.i))); r.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sel(Number(r.dataset.i)); } }); };
-      const sel = i => { document.querySelectorAll('.df-row').forEach(x => x.classList.remove('sel')); const row = document.querySelector(`.df-row[data-i="${i}"]`); if (row) row.classList.add('sel'); showTrace(report.traces[i]); };
+      const sel = (i, quiet, fromSimple) => { document.querySelectorAll('.df-row').forEach(x => x.classList.remove('sel')); const row = document.querySelector(`.df-row[data-i="${i}"]`); if (row) row.classList.add('sel'); showTrace(report.traces[i], i, quiet, fromSimple); };
       window.__dfSel = sel;
       // A stream's path links to its row in the table: select it there, show its path, keep focus on the row.
       const toRow = i => { sel(i); const r = document.getElementById(`dfRow-${i}`); if (r) { r.scrollIntoView({ block: 'center', behavior: 'smooth' }); r.focus({ preventScroll: true }); } };
@@ -109,15 +125,31 @@
       const first = report.traces.findIndex(t => t.weak_points.some(w => w.severity === 'high'));
       const idx = first >= 0 ? first : 0;
       const row = document.querySelector(`.df-row[data-i="${idx}"]`); if (row) row.classList.add('sel');
-      if (report.traces[idx]) showTrace(report.traces[idx]);
+      if (report.traces[idx]) showTrace(report.traces[idx], idx, true);
+      document.getElementById('dfViews').hidden = false;
+      setView(location.hash === '#details' ? 'all' : 'simple', true);
     }
-    function showTrace(t) {
+    // Simple view (the numbered steps) by default; "Show all details" shows the full map as it was.
+    function setView(v, quiet) {
+      const all = v === 'all';
+      document.getElementById('dfAll').hidden = !all;
+      document.getElementById('dfSimpleWrap').hidden = all;
+      document.getElementById('dfViewSimple').setAttribute('aria-pressed', all ? 'false' : 'true');
+      document.getElementById('dfViewAll').setAttribute('aria-pressed', all ? 'true' : 'false');
+      // Leaving the full map stops its motion (the button then offers Play again).
+      if (!all && motion && motion.running()) { const b = document.getElementById('dfMotionPlay'); if (b) b.click(); }
+      if (!quiet) history.replaceState(null, '', location.pathname + location.search + (all ? '#details' : ''));
+    }
+    document.getElementById('dfViewSimple').addEventListener('click', () => setView('simple'));
+    document.getElementById('dfViewAll').addEventListener('click', () => setView('all'));
+    function showTrace(t, i, quiet, fromSimple) {
+      if (simple && !fromSimple) simple.show(t, i);
       const net = (report.networks.find(n => n.key === t.network) || {}).label || t.network;
       document.getElementById('dfTraceTitle').textContent = `Path: ${t.destination.label} · ${net} · ${t.platform}`;
       renderDataFlowTrace(t, document.getElementById('dfTraceBody'));
       document.getElementById('dfDest').value = t.destination.kind === 'class' ? (t.destination.class || t.destination.label) : t.destination.label;
       document.getElementById('dfNet').value = t.network;
-      document.getElementById('dfTraceTitle').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      if (!quiet && !document.getElementById('dfAll').hidden) document.getElementById('dfTraceTitle').scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
     async function load(id) {
       const r = await fetch(`/api/report/data-flow/${encodeURIComponent(id)}`, { cache: 'no-store' });
