@@ -38,7 +38,10 @@
   .tm-note { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0.6rem 0; font-size: 0.86rem; }
   .tm-row-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; }
   .tm-row-actions .rp-btn { font-size: 0.78rem; padding: 0.15rem 0.5rem; }
-  @media (max-width: 600px) { .tm-form { grid-template-columns: 1fr; } }
+  /* A grid item's minimum is its content's width: a file picker or a long label would push the form past a 320px screen. */
+  .tm-form > *, .tm-form label { min-width: 0; }
+  .tm-form input[type=file] { max-width: 100%; }
+  @media (max-width: 600px) { .tm-form { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <link rel="stylesheet" href="/static/hover_help.css">
 <script src="/static/glass.js"></script>

@@ -9618,6 +9618,11 @@ window.HELP_CATALOG = {
     "input": "Pick the .xml metadata file, up to 256 KB.",
     "effect": "local"
    },
+   "#tmSamlManual summary": {
+    "what": "Opens three boxes to type the identity provider's values yourself, when you have no metadata file.",
+    "input": "Nothing to type here. Click it, then fill in the entity ID, the sign-on URL and the signing certificate.",
+    "effect": "local"
+   },
    "#tmSamlIdp": {
     "what": "The identity provider's entity ID: the name it signs its answers with.",
     "input": "Copy it from your identity provider: the entity ID its metadata or settings page shows. Not needed when you give the metadata.",
