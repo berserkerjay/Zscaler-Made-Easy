@@ -35,6 +35,7 @@ window.WHATS_NEW = {
       "what": "Restore and clone now write PAC files, Endpoint and SaaS DLP rules, ZPA gateways, sub-locations (with their location) and, when you tick it, Client Connector app profiles and entitlements, never with a password.",
       "changelog": ["PAC files, Endpoint DLP and SaaS Security API DLP rules, and ZPA gateways in restore and clone", "Sub-locations clone with their parent location", "Client Connector app profiles and entitlements to another tenant"],
       "marks": [
+        { "page": "/report/operations", "at": "#opCloneNew" },
         { "page": "/report/operations", "at": "#crTb", "shown": "on the ZIA restore form (Backups)" },
         { "page": "/report/operations", "at": "#crZccProfiles", "shown": "on the Client Connector restore form (Backups)" }
       ]
@@ -210,7 +211,7 @@ window.WHATS_NEW = {
     {
       "id": "fix-flow-url", "release": "2026-11-01", "label": "URL filtering in Fix rows from Test a list",
       "what": "Fix selected puts URL filtering rows in a custom URL category and adds that category to a matching rule, or to a new disabled rule above the rule that decided them; the preview warns when the category alone changes nothing.",
-      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing"],
+      "changelog": ["URL filtering in Fix rows from Test a list", "Fix rows from Test a list", "The category alone changes nothing"],
       "marks": [{ "page": "/report/operations", "at": "select[id^=\"lfCat\"]", "shown": "after Read from the tenant, with URL filtering rows" }]
     },
     {
@@ -255,91 +256,6 @@ window.WHATS_NEW = {
         { "page": "/report/advanced", "at": "#advVendH" },
         { "page": "/report/advanced", "at": "#advVendZoomOn" },
         { "page": "/report/advanced", "at": "#advVendFile" }
-      ]
-    },
-    {
-      "id": "team-server",
-      "release": "2026-10-31",
-      "label": "Team server",
-      "what": "The team server page: who you are and what you may do on each tenant profile, and for an administrator the accounts, roles and access per tenant profile.",
-      "changelog": [
-        "Team server",
-        "Four-eyes with real people"
-      ],
-      "marks": [
-        {
-          "page": "/report/team",
-          "at": "#tmMeH"
-        },
-        {
-          "page": "/report/team",
-          "at": ".rp-hero h1"
-        }
-      ]
-    },
-    {
-      "id": "team-sign-in",
-      "release": "2026-10-31",
-      "label": "Sign in",
-      "what": "Each person signs in with their own account on a team server, with lockout after wrong passwords, or through SSO.",
-      "changelog": [
-        "Sign in"
-      ],
-      "marks": [
-        {
-          "page": "/login",
-          "at": "#lgGo"
-        }
-      ]
-    },
-    {
-      "id": "team-scim",
-      "release": "2026-10-31",
-      "label": "SCIM provisioning",
-      "what": "Your identity provider adds and removes accounts and groups through SCIM 2.0, with a token shown once.",
-      "changelog": [
-        "SCIM 2.0"
-      ],
-      "marks": [
-        {
-          "page": "/report/team",
-          "at": ".rp-hero h1"
-        }
-      ]
-    },
-    {
-      "id": "team-https",
-      "release": "2026-10-31",
-      "label": "HTTPS built in",
-      "what": "HTTPS with your certificate, a self-signed one or Let's Encrypt, store encryption with key rotation, and FIPS mode.",
-      "changelog": [
-        "HTTPS built in",
-        "Encryption at rest and FIPS mode"
-      ],
-      "marks": [
-        {
-          "page": "/report/team",
-          "at": ".rp-hero h1"
-        }
-      ]
-    },
-    {
-      "id": "team-share",
-      "release": "2026-10-31",
-      "label": "Share templates and plans",
-      "what": "Your POV templates and saved deploy plans are yours; share them with people and groups.",
-      "changelog": [
-        "Shared templates and saved plans"
-      ],
-      "marks": [
-        {
-          "page": "/report/team",
-          "at": "#tmShareH"
-        },
-        {
-          "page": "/report/team",
-          "at": "#tmShKind"
-        }
       ]
     },
     {
