@@ -151,6 +151,8 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/saas-apps": SESSION,
     "POST /api/dlp-packs/jobs/stop-before-start": SESSION,
     "GET /api/write-mode": SESSION,
+    "GET /api/tenant/session": SESSION,       # the person's own signed-in tenant (tenant_session): bound to them and their browser, never a credential
+    "DELETE /api/tenant/session": SESSION,    # forgets the person's own signed-in tenant; reaches no tenant
     "GET /api/tenant-profiles": SESSION,     # the list is filtered to the profiles the person may read
     "GET /api/vertical-scope": SESSION,
     "GET /api/offline/status": SESSION,
