@@ -523,9 +523,10 @@ folder you want the app in):
 > **On a work laptop behind Zscaler (or any TLS-inspecting proxy):** before
 > you build, put your company's root certificate in the app's `certs/`
 > folder, or the build stops with `CERTIFICATE_VERIFY_FAILED` at step
-> `[6/8]`. The one-line export commands for Windows and Mac are below,
-> under *On a work network with TLS inspection*, and in README.md,
-> *Quick start (container)*. The container then trusts the
+> `[6/8]`. Run `./get_zscaler_cert.sh` (Mac/Linux) or
+> `powershell -ExecutionPolicy Bypass -File .\get_zscaler_cert.ps1` (Windows)
+> in the app folder first; it copies your Zscaler Root CA into `certs/`.
+> Manual steps: below, under *On a work network with TLS inspection*. The container then trusts the
 > certificate both while it builds and while it runs.
 
 ```powershell
