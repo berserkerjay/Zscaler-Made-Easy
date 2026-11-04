@@ -7,6 +7,14 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-04
+
+### Clone breadth: more of a tenant applies to another one
+- **PAC files, Endpoint DLP and SaaS Security API DLP rules, and ZPA gateways in restore and clone.** They were only backed up; now a restore or a clone (Bulk changes → Backups) writes them like every other type: in dependency order (dictionaries, engines and notification templates before the rules that use them; a ZPA gateway before the forwarding rule that names it), each reference pointed at the target's object of the same name (a SaaS rule's SaaS application tenants and domain profiles, an Endpoint DLP rule's incident receiver, a ZPA gateway's ZPA server group and application segments), re-read before each write, read back after it, and undone exactly. New rules are created disabled. A PAC file is created only (after ZIA's own PAC check, without the source's URL or version) and never changed or deleted here; an Endpoint DLP rule with sub-rules, and anything naming what another tenant cannot have (application groups, buckets, entity groups), is listed with the reason. Proxy gateways stay a manual step (the API only lists them); the proxies they use clone.
+- **Sub-locations clone with their parent location.** Read under each location and named "<location> / <sub-location>", they are tenant-bound: written only with "Include tenant-bound objects" ticked, created after their parent (under the target's own location of the same name, or the one this plan creates), counted in CREATE n TENANT-BOUND OBJECTS, read back, and removed by Undo before their parent. Zscaler's own "other" sub-location is left alone. The restore page now lists tenant-bound types apart, behind that tick (they were listed with the rest and refused).
+- **Client Connector app profiles and entitlements to another tenant.** With "Include Client Connector app profiles and entitlements" ticked, a clone copies app profiles that apply to everyone (created inactive, their forwarding profile matched by name) and the ZPA and ZDX entitlement switches (the target keeps its own group lists), and asks you to type CLONE n CLIENT CONNECTOR OBJECTS. Passwords and the policy token are never read, copied or sent, and the preview says so; set a new profile's passwords in the Client Connector portal before you switch it on.
+- A Client Connector setting (an entitlement, privacy or device cleanup) is now read back after a restore, as every object is.
+
 ## 2026-11-01
 
 ### Pages stay quick: no piled-up scans, no "Rate limit exceeded" on your own pages
