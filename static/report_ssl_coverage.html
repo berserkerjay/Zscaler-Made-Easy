@@ -56,7 +56,7 @@
   .sc-est { border: 1px dashed var(--warn); border-radius: var(--r-md); padding: 0.5rem 0.7rem; font-size: 0.85rem; margin: 0.5rem 0; }
   .sc-logs { display: inline-flex; gap: 0.4rem; align-items: center; font-size: 0.8rem; }
   .sc-logs[hidden] { display: none; }
-  #scBypassGb { width: 6.5em; }
+  #scBypassGb { width: 7.5em; }
   .sc-lead.warn { border-left-color: var(--warn); }
   .sc-incl { font-size: 0.9rem; margin: 0 0 0.6rem; }
   .sc-table td.num, .sc-table th.num { white-space: nowrap; overflow-wrap: normal; }
@@ -316,8 +316,9 @@
       const inc = (t.including_bypass || {})[u];
       if (inc && inc.text) {
         const p2 = el('p', 'sc-incl'); p2.id = 'scInclBypass';
-        p2.appendChild(el('strong', '', inc.known && inc.inspected_pct != null ? `Of all web traffic: ${pct(inc.inspected_pct)}. ` : 'Of all web traffic: not measured. '));
-        p2.appendChild(document.createTextNode(inc.text));
+        const cut = inc.text.indexOf(': ');
+        if (cut > 0) { p2.appendChild(el('strong', '', inc.text.slice(0, cut + 1))); p2.appendChild(document.createTextNode(inc.text.slice(cut + 1))); }
+        else p2.textContent = inc.text;
         host.appendChild(p2);
       }
       const bar = el('div', 'sc-true-bar'); bar.setAttribute('aria-hidden', 'true');

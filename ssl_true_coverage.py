@@ -313,6 +313,9 @@ def attribute_insights(causes: List[Mapping[str, Any]], split: Mapping[str, Opti
     for the first rule in order that names it, and never more than the
     slice holds (scaled down when the upper bounds add up to more). The
     rest is one 'not split' row naming the causes Insights cannot measure."""
+    # assumed: an exempted application's Shadow IT bytes (SHADOW_IT.apps
+    # data_consumed) are all its web traffic in the window, so they bound
+    # what the rule left encrypted from above; Insights cannot say more.
     rules = _rule_causes(causes)
     seen: set = set()
     rows: List[Dict[str, Any]] = []

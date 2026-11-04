@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-521 markers.
+523 markers.
 
 | File:line | Note |
 |---|---|
@@ -352,13 +352,13 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `rule_editor.py:591` | body["type"] = "FORWARDING"   # forwarding_control_policy.ForwardingControlRule.type; FORWARDING is the rule kind ZIA lists (assumed) |
 | `rule_fields.py:125` | timers) and metadata. restrictionType is taken as metadata (assumed: |
 | `rule_migrator.py:1067` | ASSUMED (not verified against the SDK or Zscaler's documentation): the |
-| `sample_tenant.py:355` | assumed: the API sends lastModifiedBy on every tunnel. The SDK model (zscaler/zia/models/gre_tunnels.py) |
-| `sample_tenant.py:434` | WebPolicy model (assumed: the readers ask for it, and a device reports it). |
-| `sample_tenant.py:476` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
-| `sample_tenant.py:708` | not in the SDK: its shapes are ops_zdx's (assumed there). |
-| `sample_tenant.py:793` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
-| `sample_tenant.py:1051` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
-| `sample_tenant.py:1386` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
+| `sample_tenant.py:361` | assumed: the API sends lastModifiedBy on every tunnel. The SDK model (zscaler/zia/models/gre_tunnels.py) |
+| `sample_tenant.py:440` | WebPolicy model (assumed: the readers ask for it, and a device reports it). |
+| `sample_tenant.py:482` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
+| `sample_tenant.py:714` | not in the SDK: its shapes are ops_zdx's (assumed there). |
+| `sample_tenant.py:799` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
+| `sample_tenant.py:1057` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
+| `sample_tenant.py:1392` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
 | `scope_permissions.py:100` | "Reports (System Audit Report; assumed name)", |
 | `scope_permissions.py:101` | "Alerts (alert subscriptions; assumed name)", |
 | `scope_permissions.py:103` | "Organization (subscriptions; assumed name)", |
@@ -370,8 +370,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `shadow_rules.py:609` | one names (rules are assumed to be first match per application and |
 | `shadow_rules.py:926` | "The Inline Web DLP evaluation mode could not be read, so rule order (the default) is assumed; if the tenant runs Evaluate All " |
 | `siem_queries.py:17` | patterns are assumed placeholders the admin replaces. |
-| `ssl_true_coverage.py:66` | The policy estimate's typical traffic mix. assumed: a round, generic |
-| `ssl_true_coverage.py:374` | assumed: Client Connector sends ZPA application segments' traffic to |
+| `ssl_true_coverage.py:72` | The policy estimate's typical traffic mix. assumed: a round, generic |
+| `ssl_true_coverage.py:316` | assumed: an exempted application's Shadow IT bytes (SHADOW_IT.apps |
+| `ssl_true_coverage.py:406` | assumed: Client Connector sends ZPA application segments' traffic to |
 | `static/aiguard_page.js:75` | <div class="df-hint">LLM providers AI Guard knows: ${E((d.providers \|\| []).join(', ') \|\| 'none')}. The owners of the applications are cou… |
 | `static/compliance_choice.js:67` | <div class="df-hint">${E(s.reuses)}${s.assumed_profile ? ` Assumed: ${E(s.assumed_profile)}` : ''}</div> |
 | `static/compliance_choice.js:69` | ${(s.assumed_controls \|\| []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(s.assumed_cont… |
@@ -406,11 +407,12 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `tenant_terraform.py:436` | an envelope holding one. Not assumed complete for ZIA posture profiles: see |
 | `tenant_terraform.py:1170` | address), any other into `entry_values` {lhs, rhs} (assumed mapping, |
 | `traffic_logs.py:18` | in the default order (assumed, see DEFAULT_ORDERS). |
-| `traffic_logs.py:91` | Zscaler's LSS documentation; the ones marked are assumed from field |
-| `traffic_logs.py:98` | "zpn_client_type_browser_isolation": "Cloud Browser Isolation",   # assumed |
-| `traffic_logs.py:103` | "zpn_client_type_vdi": "VDI",   # assumed |
-| `traffic_logs.py:112` | published list of ZPA connection status and internal reasons (assumed: the |
-| `traffic_logs.py:411` | Assumed: these orders are from Zscaler's NSS feed output format pages as |
+| `traffic_logs.py:92` | Zscaler's LSS documentation; the ones marked are assumed from field |
+| `traffic_logs.py:99` | "zpn_client_type_browser_isolation": "Cloud Browser Isolation",   # assumed |
+| `traffic_logs.py:104` | "zpn_client_type_vdi": "VDI",   # assumed |
+| `traffic_logs.py:113` | published list of ZPA connection status and internal reasons (assumed: the |
+| `traffic_logs.py:427` | Assumed: these orders are from Zscaler's NSS feed output format pages as |
+| `traffic_logs.py:1102` | assumed: an NSS web line's bytes are its request plus response size |
 | `tui.py:425` | out.append(clean(f"Assumed: {a}")) |
 | `tui.py:481` | out.append(clean(f"Assumed: {a}")) |
 | `ucaas_oneclick.py:18` | The predefined rules (as ZIA shows them; names and fields assumed from |

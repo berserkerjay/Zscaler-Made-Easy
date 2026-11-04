@@ -1099,6 +1099,8 @@ class Analysis:
             a["threat_users"].add(r.get("login", ""))
             a["threat_dests"].add(dest)
         ssl = (r.get("ssldecrypted") or "").strip().lower()
+        # assumed: an NSS web line's bytes are its request plus response size
+        # (reqsize, respsize in Zscaler's NSS web feed fields), headers included.
         req, resp = _size(r.get("reqsize")), _size(r.get("respsize"))
         if req is None or resp is None:
             a["ssl_bad_sizes"] += 1
