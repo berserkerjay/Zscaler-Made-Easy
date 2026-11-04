@@ -40,7 +40,7 @@ window.WHATS_NEW = {
       "id": "path-device-posture", "release": "2026-11-04", "label": "Device posture in the what-if",
       "what": "The Path analyzer's what-if takes the device's trust level (for ZIA rules) and the posture checks it passes (for ZPA access rules); a picked device's trust level is used too.",
       "changelog": ["Device posture in the what-if"],
-      "marks": [{ "page": "/report/path", "at": "#paWi_trust", "shown": "with the What-if section open" }]
+      "marks": [{ "page": "/report/path", "at": "#paWiSum" }, { "page": "/report/path", "at": "#paWi_trust", "shown": "with the What-if section open" }]
     },
     {
       "id": "team-saml", "release": "2026-11-01", "label": "SAML 2.0 sign-in",
@@ -213,7 +213,7 @@ window.WHATS_NEW = {
     {
       "id": "fix-flow-url", "release": "2026-11-01", "label": "URL filtering in Fix rows from Test a list",
       "what": "Fix selected puts URL filtering rows in a custom URL category and adds that category to a matching rule, or to a new disabled rule above the rule that decided them; the preview warns when the category alone changes nothing.",
-      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing"],
+      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing", "Fix rows from Test a list"],
       "marks": [{ "page": "/report/operations", "at": "select[id^=\"lfCat\"]", "shown": "after Read from the tenant, with URL filtering rows" }]
     },
     {
@@ -247,7 +247,7 @@ window.WHATS_NEW = {
       "id": "path-manual-inputs", "release": "2026-11-01", "label": "Manual inputs (what-if)",
       "what": "The Path analyzer evaluates a pasted PAC file and typed VPN gateways and Z-Tunnel 2.0 lists, on their own or added to the tenant's app profiles. Nothing is kept or written.",
       "changelog": ["Manual inputs (what-if)"],
-      "marks": [{ "page": "/report/path", "at": "#paManual > summary" }]
+      "marks": [{ "page": "/report/path", "at": "#paManualSum" }]
     },
     {
       "id": "vendor-endpoint-lists", "release": "2026-11-01", "label": "Other providers' endpoint lists",

@@ -57,7 +57,7 @@
       </div>
       <section role="tabpanel" id="panel-one" aria-labelledby="tab-one" tabindex="0">
       <details class="pa-framework pa-whatif" id="paWhatIf">
-        <summary>What-if: a user, group, location, device posture or ZPA identity (optional)</summary>
+        <summary id="paWiSum">What-if: a user, group, location, device posture or ZPA identity (optional)</summary>
         <div class="df-hint">Leave these empty to analyze for anyone; the result then lists what the policy action also depends on. Fill any of them to evaluate rules scoped to that identity: rules for it apply, rules for others are skipped. Groups you give are taken as the user's only groups.</div>
         <div class="pa-wi-grid">
           <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">User</span><input type="text" id="paWi_user" placeholder="jane@acme.com or a display name" autocomplete="off" spellcheck="false" maxlength="200"></label>
@@ -109,7 +109,7 @@
       </details>
       <!-- Manual inputs: a PAC or bypass lists that are not in the tenant, evaluated, never run (path_manual.py, static/path_extras.js) -->
       <details class="pa-framework pa-whatif" id="paManual">
-        <summary>Manual inputs (what-if): a PAC file or bypass lists not in the tenant (optional)</summary>
+        <summary id="paManualSum">Manual inputs (what-if): a PAC file or bypass lists not in the tenant (optional)</summary>
         <div class="df-hint">For a PAC file ZIA does not host, or a bypass you have not set up yet. Paste the PAC and type VPN gateways and Z-Tunnel 2.0 lists, one entry per line. The analysis says what they would do. Nothing is written to the tenant, nothing typed here is kept, and the PAC is read, never run. Applies to traffic from a user device.</div>
         <fieldset class="op-inline" id="paManMode"><legend>How to use them</legend>
           <label class="df-ctl"><input type="radio" name="paManMode" id="paManAlone" value="alone" checked><span>On their own, next to the tenant's answer</span></label>
