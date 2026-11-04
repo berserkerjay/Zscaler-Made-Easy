@@ -58,6 +58,10 @@
   .dv-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
   .dv-page .rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
   .dv-empty { color: var(--dim); font-size: 0.86rem; margin: 0.3rem 0 1rem; }
+  .dv-prods { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.6rem; margin: 0 0 1rem; padding: 0; list-style: none; }
+  .dv-prod { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card); padding: 0.55rem 0.75rem; display: grid; gap: 0.25rem; min-width: 0; overflow-wrap: anywhere; }
+  .dv-prod .t { font-weight: 600; font-size: 0.9rem; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+  .dv-prod .m { font-size: 0.78rem; color: var(--dim); }
   .dv-page .dv-rule, .dv-page .df-table, .dv-fam { min-width: 0; overflow-wrap: anywhere; }
   /* Narrow screens: each row of a stacked table becomes a card, every cell labelled. */
   @media (max-width: 640px) {
@@ -76,7 +80,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Device</span> posture</h1>
-      <p>Shows which device checks (posture profiles and trusted networks) your ZPA access rules ask for, which rules let devices in without a real check, and every access rule's conditions in plain words. Read ZPA, then fix the rules under Findings first, high before medium.</p>
+      <p>Device posture is defined in Client Connector and used twice: by ZPA access rules (posture conditions) and by ZIA rules (the device trust level Client Connector works out from a ZIA posture profile). This page shows each posture check, where it is defined, which devices it covers and every ZPA and ZIA rule that uses it, with the gaps. Fix the rules under Findings first, high before medium.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -93,19 +97,21 @@
       <div class="pa-intro" id="dvHow">
         <div class="pa-intro-t">How it works</div>
         <ol class="pa-steps">
-          <li><strong>Tick ZPA on the Scope page</strong> and give the ZPA customer ID with the API client (Connect to the tenant). Nothing is read otherwise. Tick Client Connector too to also read its trusted networks.</li>
-          <li><strong>Read device posture.</strong> ZPA is read once, list by list, and shown live; Stop ends the read at once and keeps nothing.</li>
-          <li><strong>Read the findings</strong>, then the posture profiles (what kind of check each is, and which rules use it) and the access rules in plain words. Export everything to Excel.</li>
+          <li><strong>Tick what you use on the Scope page:</strong> ZCC / Mobile Portal (where posture is defined), ZPA (access rules; give the ZPA customer ID too) and ZIA platform (rules that use the device trust level). Any one is enough; a product you leave out, or one that cannot be read, is shown as such.</li>
+          <li><strong>Read device posture.</strong> Each product is read once and shown live; Stop ends the read at once and keeps nothing.</li>
+          <li><strong>Read the findings</strong>, then Across products (each posture check, where it is defined, its platforms and every ZPA and ZIA rule using it), the posture profiles and the access rules in plain words. Export everything to Excel.</li>
         </ol>
         <div class="df-hint">Read-only: nothing is written to the tenant. A list that could not be read is said so, never shown as empty.</div>
       </div>
       <div class="dv-tabs" role="tablist" aria-label="Device posture views" id="dvTabs" hidden>
         <button type="button" role="tab" id="tab-findings" aria-controls="panel-findings" aria-selected="true" tabindex="0">Findings</button>
+        <button type="button" role="tab" id="tab-cross" aria-controls="panel-cross" aria-selected="false" tabindex="-1">Across products</button>
         <button type="button" role="tab" id="tab-profiles" aria-controls="panel-profiles" aria-selected="false" tabindex="-1">Posture profiles</button>
         <button type="button" role="tab" id="tab-networks" aria-controls="panel-networks" aria-selected="false" tabindex="-1">Trusted networks</button>
         <button type="button" role="tab" id="tab-rules" aria-controls="panel-rules" aria-selected="false" tabindex="-1">Access rules</button>
       </div>
       <section role="tabpanel" id="panel-findings" aria-labelledby="tab-findings" tabindex="0" hidden></section>
+      <section role="tabpanel" id="panel-cross" aria-labelledby="tab-cross" tabindex="0" hidden></section>
       <section role="tabpanel" id="panel-profiles" aria-labelledby="tab-profiles" tabindex="0" hidden></section>
       <section role="tabpanel" id="panel-networks" aria-labelledby="tab-networks" tabindex="0" hidden></section>
       <section role="tabpanel" id="panel-rules" aria-labelledby="tab-rules" tabindex="0" hidden>
@@ -299,9 +305,9 @@
       if (running) return;
       const btn = $('dvRun');
       btn.disabled = true; btn.textContent = 'Reading…';
-      say('Reading ZPA posture profiles, trusted networks and access rules.');
+      say('Reading device posture from the products in scope.');
       try {
-        const { result, logs } = await runJob('/api/device-posture/start', Object.assign({}, credBody(), scopeSelection()), $('dvJob'), 'Reading ZPA for device posture');
+        const { result, logs } = await runJob('/api/device-posture/start', Object.assign({}, credBody(), scopeSelection()), $('dvJob'), 'Reading device posture');
         $('dvJob').innerHTML = '';
         setReport(result, logs);
         say(`${result.counts.profiles} posture profile${result.counts.profiles === 1 ? '' : 's'}, ${result.counts.findings} finding${result.counts.findings === 1 ? '' : 's'}.`);
@@ -323,7 +329,7 @@
       j.title = 'The whole report as JSON';
       x.hidden = j.hidden = !reportId;
       renderFindings(logs || res.logs || []);
-      renderProfiles(); renderNetworks(); renderRules();
+      renderCross(); renderProfiles(); renderNetworks(); renderRules();
       const cur = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
       selectTab(cur, false);
     }
@@ -344,8 +350,8 @@
       }).join('');
       const enforced = c.allow_rules ? `${c.allow_rules_enforced} of ${c.allow_rules} enabled allow rules require a device check that enforces something (a marker or an optional check does not count).` : 'There is no enabled allow rule in the access policy.';
       $('panel-findings').innerHTML = `
-        ${r.readable === false ? failHtml('Nothing could be read', 'No ZPA list could be read with this sign-in: check that the API client has a ZPA role and that the customer ID is right.') : ''}
-        <p class="dv-lead">${E(enforced)}</p>
+        ${productsHtml(r)}
+        <p class="dv-lead">${zpaRead(r) ? E(enforced) : 'ZPA access rules were not read, so this page cannot say which ZPA rules check the device (see ZPA above).'}</p>
         <div class="dv-stats" role="group" aria-label="Counts">
           <div class="dv-stat"><div class="n">${E(c.profiles || 0)}</div><div class="k">Posture profiles</div></div>
           <div class="dv-stat"><div class="n">${E(c.trusted_networks || 0)}</div><div class="k">Trusted networks</div></div>
@@ -357,14 +363,60 @@
         ${notRead.length ? `<div class="df-hint">Not read: ${E(notRead.map(x => `${x.label} (${x.error || 'no answer'})`).join('; '))}.</div>` : ''}
         ${(r.not_assessed || []).length ? `<ul class="pa-assume">${r.not_assessed.map(n => `<li>${E(n)}</li>`).join('')}</ul>` : ''}
         <h2 class="df-h">Findings</h2>
-        ${blocks || `<p class="dv-empty">No finding: every enabled allow rule to a sensitive or broad app checks the device, no rule lets a failing device in, and every profile and trusted network is used.</p>`}
+        ${blocks || `<p class="dv-empty">No finding in what could be read. A product shown above as not read, not in scope or not licensed was not checked: no finding there is not a pass.</p>`}
         <h2 class="df-h">Client Connector</h2>
-        <p class="dv-empty">${r.zcc && r.zcc.read ? `${E(plural(r.zcc.count, 'Client Connector trusted network'))} read and matched to ZPA by network ID.` : E((r.zcc && r.zcc.reason) || 'Not read.')} The SDK has no Client Connector device posture list, so the profiles come from ZPA only.</p>
+        <p class="dv-empty">${r.zcc && r.zcc.read ? `${E(plural(r.zcc.count, 'Client Connector trusted network'))} read and matched to ZPA by network ID.` : E((r.zcc && r.zcc.reason) || 'Not read.')} Device posture checks are listed through the ZPA API; Client Connector's ZIA posture profiles and app profiles are under Across products.</p>
         <h2 class="df-h">Assumptions</h2>
         <ul class="pa-assume">${(r.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>
         <details class="pa-details"><summary>What was read (${E(plural(logs.length, 'line'))})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
     }
 
+    const PSTATUS = { read: ['Read', 'st-ok'], partial: ['Partly read', 'st-warn'], not_in_scope: ['Not in scope', ''], not_readable: ['Not readable', 'st-warn'], not_licensed: ['Not licensed', 'st-warn'] };
+    const TRUST = { HIGH_TRUST: 'High trust', MEDIUM_TRUST: 'Medium trust', LOW_TRUST: 'Low trust', UNKNOWN_DEVICETRUSTLEVEL: 'Unknown trust' };
+    function zpaRead(r) { const z = (r.products || {}).zpa; return !z || z.status === 'read' || z.status === 'partial'; }
+    // Each product's status: a product that is not licensed or not readable is said so here, never shown as an error page.
+    function productsHtml(r) {
+      const ps = Object.values(r.products || {});
+      if (!ps.length) return r.readable === false ? failHtml('Nothing could be read', 'No ZPA list could be read with this sign-in: check that the API client has a ZPA role and that the customer ID is right.') : '';
+      return `<h2 class="df-h">Products</h2><ul class="dv-prods" aria-label="What was read from each product">${ps.map(p => `<li class="dv-prod"><span class="t">${E(p.label)} ${chip(PSTATUS, p.status)}</span><span class="m">${E(p.what)}</span>${p.reason ? `<span>${E(p.reason)}</span>` : ''}</li>`).join('')}</ul>`;
+    }
+    function known(v, yes, no, unk) { return v === true ? yes : v === false ? no : unk; }
+    function listOr(arr, none, unknownWord) { if (arr == null) return `<span class="df-by">${E(unknownWord || 'Not read')}</span>`; return arr.length ? E(arr.join(', ')) : `<span class="df-by">${E(none)}</span>`; }
+    function renderCross() {
+      const r = report, c = r.cross || {};
+      const dev = (c.device_postures || []).map(d => `<tr><th scope="row">${E(d.name)}<div class="df-by">${E(d.family)}</div></th>
+        <td data-label="Defined in">${E(d.defined_in)}<div class="df-by">read through the ${E(d.read_via)}</div></td>
+        <td data-label="Platforms">${listOr(d.platforms, 'Not given')}</td>
+        <td data-label="ZPA rules">${d.zpa_rules == null ? '<span class="df-by">Access policy not read</span>' : d.zpa_rules.length ? `<ul class="dv-uses">${d.zpa_rules.map(u => `<li>${chip(SENSE, u.sense)}<span>${E(u.rule)}</span><span class="df-by">${E(u.policy)}${u.disabled ? ', disabled' : ''}</span></li>`).join('')}</ul>` : '<span class="df-by">None</span>'}</td>
+        <td data-label="ZIA posture profiles">${d.zia_postures == null ? '<span class="df-by">Not read</span>' : d.zia_postures.length ? `<ul class="dv-uses">${d.zia_postures.map(z => `<li><span>${E(z.name)}</span><span class="df-by">${E(z.level_labels.join(', '))}</span></li>`).join('')}</ul>` : '<span class="df-by">None</span>'}</td>
+        <td data-label="Used">${known(d.used, '<span class="df-chip st-ok">Used</span>', '<span class="df-chip st-warn">Used nowhere</span>', '<span class="df-chip">Unknown</span>')}</td></tr>`).join('');
+      const zps = (c.zia_postures || []).map(z => `<tr><th scope="row">${E(z.name)}<div class="df-by">${E(z.platform_label)}</div></th>
+        <td data-label="Trust criteria">${Object.entries(z.levels || {}).map(([lvl, items]) => `<div><strong>${E(TRUST[lvl] || lvl)}:</strong> ${items.length ? items.map(x => `${E(x.name)}${x.device_posture ? '' : ' <span class="ct-x">(no such device posture check)</span>'}${x.matched_by && x.matched_by !== 'udid' ? ` <span class="df-by">(${E(x.matched_by)})</span>` : ''}`).join(', ') : '<span class="df-by">none</span>'}</div>`).join('')}</td>
+        <td data-label="App profiles">${z.app_profiles == null ? '<span class="df-by">Not read</span>' : z.app_profiles.length ? E(z.app_profiles.map(a => a.name).join(', ')) : '<span class="df-by">None</span>'}</td>
+        <td data-label="ZIA rules using the trust level">${z.zia_rules == null ? '<span class="df-by">ZIA not read</span>' : z.zia_rules.length ? E(z.zia_rules.map(x => `${x.name} (${x.section_label})`).join(', ')) : '<span class="df-by">None</span>'}</td></tr>`).join('');
+      const plats = (c.platforms || []).map(p => `<tr><th scope="row">${E(p.label)}</th><td data-label="App profiles">${E(p.app_profiles)}</td>
+        <td data-label="Device posture checks">${listOr(p.device_postures, 'None')}</td><td data-label="ZIA posture profiles">${listOr(p.zia_postures, 'None')}</td>
+        <td data-label="Covered">${known(p.covered, '<span class="df-chip st-ok">Yes</span>', '<span class="df-chip st-fail">No posture</span>', '<span class="df-chip">Unknown</span>')}</td></tr>`).join('');
+      const zr = (c.zia_rules || []).map(x => `<tr><th scope="row">${E(x.name)}<div class="df-by">${E(x.section_label)}${x.order != null ? `, order ${E(x.order)}` : ''}${x.enabled === false ? ', disabled' : ''}</div></th>
+        <td data-label="Action">${E(x.action || '')}</td>
+        <td data-label="Device trust level">${x.uses_trust ? E(x.trust_labels.join(', ')) : '<span class="df-by">Any (not used)</span>'}</td>
+        <td data-label="Loosens policy">${x.loosens ? E(x.loosens) : '<span class="df-by">No</span>'}</td></tr>`).join('');
+      const table = (cap, head, rows, empty) => rows ? `<div class="df-tablewrap"><table class="df-table dv-stack"><caption class="sr-only">${E(cap)}</caption><thead><tr>${head.map(h => `<th scope="col">${E(h)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="dv-empty">${E(empty)}</p>`;
+      const prod = k => ((r.products || {})[k] || {});
+      const why = k => prod(k).status && prod(k).status !== 'read' ? `${prod(k).label}: ${(PSTATUS[prod(k).status] || [prod(k).status])[0]}. ${prod(k).reason || ''}` : '';
+      $('panel-cross').innerHTML = `
+        <p class="dv-lead">Client Connector defines the device posture checks and evaluates them on the device. ZPA access rules use them as posture conditions. ZIA rules use them through the device trust level: a ZIA posture profile says which checks make a device High, Medium or Low trust, and an app profile picks the ZIA posture profile for its devices.</p>
+        ${productsHtml(r)}
+        <h2 class="df-h">Device posture checks</h2>
+        ${table('Device posture checks, where they are defined, their platforms and the ZPA and ZIA pieces that use them', ['Check', 'Defined in', 'Platforms', 'ZPA rules', 'ZIA posture profiles', 'Used'], dev, why('zpa') || 'No device posture check was found.')}
+        <h2 class="df-h">ZIA posture profiles (device trust level)</h2>
+        ${table('ZIA posture profiles, their trust criteria, the app profiles that pick them and the ZIA rules that use the trust level', ['ZIA posture profile', 'Trust criteria', 'App profiles', 'ZIA rules using the trust level'], zps, why('zcc') || 'Client Connector has no ZIA posture profile, so no device gets a trust level.')}
+        <h2 class="df-h">Platforms in use</h2>
+        ${table('Platforms with active app profiles and the posture that covers them', ['Platform', 'App profiles', 'Device posture checks', 'ZIA posture profiles', 'Covered'], plats, why('zcc') || 'No active app profile was found.')}
+        <h2 class="df-h">ZIA rules</h2>
+        ${table('ZIA rules that use the device trust level or loosen policy', ['Rule', 'Action', 'Device trust level', 'Loosens policy'], zr, why('zia') || 'No ZIA rule uses the device trust level or loosens policy.')}
+        ${(c.not_assessed || []).length ? `<h2 class="df-h">Not assessed</h2><ul class="pa-assume">${c.not_assessed.map(n => `<li>${E(n)}</li>`).join('')}</ul>` : ''}`;
+    }
     function usesHtml(list, emptyWord) {
       if (!list.length) return `<span class="df-by">${E(emptyWord)}</span>`;
       return `<ul class="dv-uses">${list.map(u => `<li>${chip(SENSE, u.sense)}<span>${E(u.rule)}</span><span class="df-by">${E(u.policy_label)}${u.order != null ? `, order ${E(u.order)}` : ''}${u.action ? `, ${E(u.action)}` : ''}${u.disabled ? ', disabled' : ''}${u.optional ? ', optional (OR)' : ''}${u.via ? ` — ${E(u.via)}` : ''}</span></li>`).join('')}</ul>`;

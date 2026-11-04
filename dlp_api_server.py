@@ -14960,7 +14960,10 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
     # 4. User device: ZPA first
     if zst is None and zsnap is not None:
         _log("Placing the destination in ZPA: application segment, bypass, client forwarding, access policy…")
-        zst = zpa_path.stage(zsnap, d, network=req.network, platform=req.platform, profiles=profiles, identity=zident)
+        # The device's posture, when given on the page (identity.device.posture_pass): the posture profiles it passes.
+        dev_in = (req.identity or {}).get("device") if isinstance(req.identity, dict) else None
+        zposture = zpa_path.given_posture(zsnap, dev_in.get("posture_pass")) if isinstance(dev_in, dict) and dev_in.get("posture_pass") else None
+        zst = zpa_path.stage(zsnap, d, network=req.network, platform=req.platform, profiles=profiles, identity=zident, posture=zposture)
         _log("ZPA: " + zst["headline"])
     if zst is not None and zst.get("carries") is True:
         res = zpa_path.standalone(zst["hops"], zst["modules"], outcome=zst["outcome"], headline=zst["headline"], summary=zst["summary"],

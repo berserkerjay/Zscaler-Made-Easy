@@ -689,3 +689,30 @@ def attach(rep: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
     counts["by_severity"] = {s: sum(1 for f in rep["findings"] if f["severity"] == s) for s in device_posture.SEV_ORDER}
     counts.update({f"cross_{k}": v for k, v in c["counts"].items()})
     return rep
+
+
+# ── Excel ───────────────────────────────────────────────────────────────
+def sheets(wb: Any, report: Dict[str, Any]) -> None:
+    """The cross-product sheets: Products, Device posture checks, ZIA posture profiles, Platforms, ZIA rules."""
+    c = report.get("cross") or {}
+    if not report.get("products"):
+        return
+    wb.add_sheet("Products", columns=["Product", "Status", "What it gives", "Why"],
+                 rows=[[p["label"], p["words"], p["what"], p.get("reason") or ""] for p in report["products"].values()])
+    yn = lambda v: "unknown" if v is None else ("yes" if v else "no")  # noqa: E731
+    wb.add_sheet("Device posture checks", columns=["Check", "Family", "Defined in", "Platforms", "ZPA rules", "ZIA posture profiles", "Used"],
+                 rows=[[d["name"], d["family"], d["defined_in"], ", ".join(PLATFORM_LABEL.get(x, x) for x in d["platforms"]),
+                        "not read" if d["zpa_rules"] is None else "; ".join(u["rule"] for u in d["zpa_rules"]),
+                        "not read" if d["zia_postures"] is None else "; ".join(f"{z['name']} ({', '.join(z['level_labels'])})" for z in d["zia_postures"]),
+                        yn(d["used"])] for d in c.get("device_postures") or []])
+    wb.add_sheet("ZIA posture profiles", columns=["ZIA posture profile", "Platform", "High trust", "Medium trust", "Low trust", "App profiles", "ZIA rules using trust"],
+                 rows=[[z["name"], z["platform_label"]] + ["; ".join(x["name"] + ("" if x["device_posture"] else " (no such check)") for x in z["levels"].get(lvl) or [])
+                                                          for lvl in ("HIGH_TRUST", "MEDIUM_TRUST", "LOW_TRUST")]
+                       + ["not read" if z["app_profiles"] is None else "; ".join(a["name"] for a in z["app_profiles"]),
+                          "not read" if z["zia_rules"] is None else "; ".join(x["name"] for x in z["zia_rules"])] for z in c.get("zia_postures") or []])
+    wb.add_sheet("Platforms", columns=["Platform", "App profiles", "Device posture checks", "ZIA posture profiles", "Covered"],
+                 rows=[[p["label"], p["app_profiles"], "; ".join(p["device_postures"]), "; ".join(p["zia_postures"]), yn(p["covered"])]
+                       for p in c.get("platforms") or []])
+    wb.add_sheet("ZIA rules", columns=["Section", "Order", "Rule", "Action", "Device trust levels", "Loosens policy"],
+                 rows=[[r["section_label"], r.get("order"), r["name"], r["action"], ", ".join(r.get("trust_labels") or []) or "any", r.get("loosens") or ""]
+                       for r in c.get("zia_rules") or []])
