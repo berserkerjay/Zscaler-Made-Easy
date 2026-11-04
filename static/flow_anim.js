@@ -1555,9 +1555,9 @@
   // What happens to data that ends at each node, said of the path above
   // the picture: [now (it carried uploads), would (it carried none)].
   const DF_END_SAY = {
-    enc: ['stays locked, so it is not inspected', 'would stay locked: not inspected'],
-    x_cc: ['skips Zscaler (bypassed at Client Connector), so it is not inspected', 'would skip Zscaler (bypassed at Client Connector): not inspected'],
-    x_pac: ['skips Zscaler (the PAC file sends it direct), so it is not inspected', 'would skip Zscaler (the PAC file sends it direct): not inspected'],
+    enc: ['stays locked, so it is not inspected', 'would stay locked (not inspected)'],
+    x_cc: ['skips Zscaler (bypassed at Client Connector), so it is not inspected', 'would skip Zscaler at Client Connector (bypassed, not inspected)'],
+    x_pac: ['skips Zscaler (the PAC file sends it direct), so it is not inspected', 'would skip Zscaler through the PAC file (bypassed, not inspected)'],
     u_cc: ['takes a route the settings do not show', 'would take a route the settings do not show'],
     u_pac: ['takes a route the settings do not show', 'would take a route the settings do not show'],
     b_policy: ['is blocked by Cloud App Control or URL Filtering', 'would be blocked by Cloud App Control or URL Filtering'],

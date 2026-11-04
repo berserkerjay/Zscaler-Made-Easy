@@ -415,9 +415,9 @@
             : 'The path above is not one of the traffic classes ZIA Insights counts, so this picture cannot say how much of your uploads took it.';
           return;
         }
-        const where = `${ps.label} · ${nets[t.network] || t.network}`;
+        const where = `${ps.label}, on ${nets[t.network] || t.network}`;
         const pct = ps.share > 0 && ps.share < 0.005 ? 'under 1%' : `${Math.round(100 * ps.share)}%`;
-        said.appendChild(doc.createTextNode(`The path above (${where}) carried `));
+        said.appendChild(doc.createTextNode(`The path above, ${where}, carried `));
         said.appendChild(el('strong', '', pct));
         if (ps.bytes > 0) {
           said.appendChild(doc.createTextNode(` (${FA.humanBytes(ps.bytes)}) of the ${FA.humanBytes(ps.total)} your users uploaded in ${ps.window}. On this network, that data `));
