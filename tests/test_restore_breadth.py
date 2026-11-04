@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -30,6 +31,7 @@ from config_fake import Client, Tenant, state  # noqa: E402
 ASSESSOR = "Jane Doe"
 SCOPE = ao.scope_for(["dlp", "zia_extras", "zpa", "zcc"], {"web_dlp": "zscaler", "email_dlp": "zscaler"})
 CANARY = "CANARY-PW-5b7e1d"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(autouse=True)
@@ -599,3 +601,494 @@ def test_a_label_selection_plans_and_deletes_only_labelled_rules():
     assert {g["target"]["name"] for g in pp["groups"] if g["handler"] == "cfg_create"} == {"B one"}
     with pytest.raises(ao.OperationError, match="128"):
         ao.plan(tgt, spec("zia", bid, select={"label": "x" * 200}), scope=SCOPE)
+
+
+# ── 2026-11-04 clone breadth: every comparison row present ──────────────
+# PAC files, Endpoint DLP and SaaS Security API DLP rules, ZPA gateways and
+# proxies join the backup → plan → restore / clone path (row 11);
+# sub-locations clone with their parent location, tenant-bound (row 13);
+# Client Connector app profiles and entitlements clone to another tenant only
+# when included, never with a password (row 8).
+
+WIDE = ao.scope_for(["dlp", "zia_extras", "zpa", "zcc"], {"web_dlp": "zscaler", "email_dlp": "zscaler", "endpoint_dlp": "zscaler",
+                                                         "saas_casb": "zscaler"})
+NO_ZPA = ao.scope_for(["dlp", "zia_extras", "zcc"], {"web_dlp": "zscaler", "endpoint_dlp": "zscaler", "saas_casb": "zscaler"})
+
+
+def wide_backup(data, products=("zia",)):
+    c = Client(Tenant(data))
+    got = cb.capture(c, list(products), WIDE)
+    return cb.save_backup(cb.build_doc(got["types"], {"tenant_label": "Source", "tenant_key": "key-source", "products": list(products)}))["id"]
+
+
+def wide_apply(client, sp, *, scope=WIDE, confirm=None):
+    p = ao.plan(client, sp, scope=scope, tenant_label="target")
+    r = ao.execute(client, sp, plan_hash=p["plan_hash"], scope=scope, writes_enabled=True, assessor=ASSESSOR, tenant_label="target",
+                   confirm_text=p["confirm_phrase"] if confirm is None else confirm)
+    return p, r
+
+
+def wide_undo(client, r, scope=WIDE):
+    inv = r["inverse"]
+    p = ao.plan(client, inv, scope=scope, tenant_label="target")
+    return p, ao.execute(client, inv, plan_hash=p["plan_hash"], scope=scope, writes_enabled=True, assessor=ASSESSOR,
+                         tenant_label="target", confirm_text=p["confirm_phrase"])
+
+
+def creates(t):
+    return [k for op, k, _n in t.writes if op == "create"]
+
+
+NEW_WRITES = {
+    # type key: (SDK module, class) the catalogue's calls must exist on (installed zscaler-sdk-python)
+    "zia.pac_files": ("zscaler.zia.pac_files", "PacFilesAPI"),
+    "zia.endpoint_dlp_rules": ("zscaler.zia.endpoint_dlp_rules", "EndpointDLPRulesAPI"),
+    "zia.saas_dlp_rules": ("zscaler.zia.casb_dlp_rules", "CasbdDlpRulesAPI"),
+    "zia.zpa_gateways": ("zscaler.zia.zpa_gateway", "ZPAGatewayAPI"),
+    "zia.sub_locations": ("zscaler.zia.locations", "LocationsAPI"),
+    "zcc.app_profiles": ("zscaler.zcc.web_policy", "WebPolicyAPI"),
+    "zia.casb_tenants": ("zscaler.zia.saas_security_api", "SaaSSecurityAPI"),
+    "zia.domain_profiles": ("zscaler.zia.saas_security_api", "SaaSSecurityAPI"),
+}
+
+
+@pytest.mark.parametrize("key", sorted(NEW_WRITES))
+def test_every_new_call_is_in_the_installed_sdk_with_the_arguments_the_restore_passes(key):
+    """ASVS V14.2.1 · CWE-1104 · WSTG-CONF-01: each list, get, add, update and delete call a new type names exists on the installed SDK, and the positional arguments a write passes are the call's own parameters."""
+    import importlib
+    import inspect
+    mod, cls_name = NEW_WRITES[key]
+    m = importlib.import_module(mod)
+    cls = getattr(m, cls_name, None) or next(c for _n, c in inspect.getmembers(m, inspect.isclass) if c.__module__ == mod)
+    t = cb.BY_KEY[key]
+    for role in ("ls", "get", "add", "upd", "rm"):
+        if t[role] and t[role] != "raw":
+            assert callable(getattr(cls, t[role], None)), (key, role, t[role])
+    if t["add_pos"]:
+        params = list(inspect.signature(getattr(cls, t["add"])).parameters)[1:]
+        assert params[:len(t["add_pos"])] == list(t["add_pos"]), params
+    if t["type_arg"]:
+        for role in ("get", "rm"):
+            params = list(inspect.signature(getattr(cls, t[role])).parameters)[1:]
+            assert params[:2] == ["rule_id", "rule_type"], params
+
+
+def test_the_catalogue_writes_the_four_read_only_types_and_names_what_stays_manual():
+    """ASVS V1.14.1 · CWE-1059: PAC files, Endpoint DLP rules, SaaS Security API DLP rules and ZPA gateways are written; proxy gateways stay read-only (the API only lists them) with a manual step; sub-locations are a tenant-bound type, no longer a manual-only note."""
+    for k in ("zia.pac_files", "zia.endpoint_dlp_rules", "zia.saas_dlp_rules", "zia.zpa_gateways"):
+        assert cb.writable(cb.BY_KEY[k]), k
+    assert cb.BY_KEY["zia.proxy_gateways"]["level"] == "read" and "manual" in cb.BY_KEY["zia.proxy_gateways"] \
+        and cb.BY_KEY["zia.proxy_gateways"]["manual"]
+    assert cb.BY_KEY["zia.sub_locations"]["tenant_bound"] and cb.writable(cb.BY_KEY["zia.sub_locations"], tenant_bound=True)
+    assert "zia.sub_locations" not in {k for k, _l, _w in cb.NOT_COVERED}
+    cov = {r["key"]: r for r in cb.coverage()["products"]["zcc"]}
+    assert cov["zcc.app_profiles"]["clone_opt"] == "zcc_profiles" and cov["zcc.zpa_entitlements"]["clone_opt"] == "zcc_profiles"
+    tiers = ocr.TIER
+    assert tiers["zia.dlp_engines"] < tiers["zia.endpoint_dlp_rules"] and tiers["zia.dlp_engines"] < tiers["zia.saas_dlp_rules"]
+    assert tiers["zia.dlp_notification_templates"] < tiers["zia.endpoint_dlp_rules"]
+    assert tiers["zia.zpa_gateways"] < tiers["zia.forwarding_rules"] and tiers["zia.locations"] < tiers["zia.sub_locations"]
+
+
+# ── row 11: DLP rules (Endpoint, SaaS Security API) cloned with remapping ──
+
+def dlp_source():
+    return {
+        "zia.rule_labels": [{"id": 1, "name": "DLP team"}],
+        "zia.dlp_dictionaries": [{"id": 11, "name": "Card numbers", "custom": True, "custom_phrase_match_type": "MATCH_ANY",
+                                  "dictionary_type": "PATTERNS_AND_PHRASES", "patterns": [{"pattern": "4[0-9]{15}"}]}],
+        "zia.dlp_engines": [{"id": 21, "name": "Cards", "custom_dlp_engine": True, "engine_expression": "((D11.S > 1))"}],
+        "zia.dlp_notification_templates": [{"id": 31, "name": "Notify owner", "subject": "DLP", "plain_text_message": "x"}],
+        "zia.incident_receivers": [{"id": 41, "name": "Corp receiver"}],
+        "zia.casb_tenants": [{"tenant_id": 51, "tenant_name": "Corp Box", "saas_application": "BOX"}],
+        "zia.domain_profiles": [{"profile_id": 61, "profile_name": "Partners"}],
+        "zia.endpoint_dlp_rules": [
+            {"id": 201, "order": 1, "rank": 7, "name": "Cards to USB", "state": "ENABLED", "action": "BLOCK",
+             "dlp_engines": [{"id": 21, "name": "Cards"}], "notification_template": {"id": 31, "name": "Notify owner"},
+             "receiver": {"id": 41, "name": "Corp receiver"}, "labels": [{"id": 1, "name": "DLP team"}], "uc_template_id": 0},
+            {"id": 202, "order": 2, "rank": 7, "name": "Parent with sub-rules", "state": "ENABLED", "action": "ALLOW",
+             "sub_rules": [{"id": 203}]},
+            {"id": 204, "order": 3, "rank": 7, "name": "Uses an app group", "state": "ENABLED", "action": "BLOCK",
+             "end_point_application_groups": [{"id": 77, "name": "Browsers"}]}],
+        "zia.saas_dlp_rules": [
+            {"id": 301, "order": 1, "rank": 7, "name": "Box files with cards", "type": "OFLCASB_DLP_FILE", "state": "ENABLED",
+             "action": "OFLCASB_DLP_REPORT_INCIDENT", "dlp_engines": [{"id": 21, "name": "Cards"}],
+             "cloud_app_tenants": [{"id": 51, "name": "Corp Box"}], "included_domain_profiles": [{"id": 61, "name": "Partners"}],
+             "zscaler_incident_receiver": True},
+            {"id": 302, "order": 1, "rank": 7, "name": "S3 buckets", "type": "OFLCASB_DLP_STORAGE", "state": "ENABLED",
+             "buckets": [{"id": 88, "name": "corp-data"}]}],
+    }
+
+
+def dlp_target():
+    return Tenant({"zia.rule_labels": [], "zia.dlp_dictionaries": [], "zia.dlp_engines": [], "zia.dlp_notification_templates": [],
+                   "zia.incident_receivers": [{"id": 941, "name": "Corp receiver"}],
+                   "zia.casb_tenants": [{"tenant_id": 951, "tenant_name": "Corp Box"}],
+                   "zia.domain_profiles": [{"profile_id": 961, "profile_name": "Partners"}],
+                   "zia.casb_tombstone_templates": [], "zia.casb_email_labels": [],
+                   "zia.endpoint_dlp_rules": [], "zia.saas_dlp_rules": []})
+
+
+DLP_TYPES = ["zia.rule_labels", "zia.dlp_dictionaries", "zia.dlp_engines", "zia.dlp_notification_templates", "zia.endpoint_dlp_rules",
+             "zia.saas_dlp_rules"]
+
+
+def test_endpoint_and_saas_dlp_rules_clone_after_their_engines_with_every_reference_remapped():
+    """ASVS V4.1.3 · CWE-639 · WSTG-BUSL-01: dictionaries, engines and notification templates are created first, the rules after them, created disabled, each reference pointing at the target's object (by name), and every write is read back."""
+    bid = wide_backup(dlp_source())
+    tgt = Client(dlp_target())
+    p, r = wide_apply(tgt, spec("zia", bid, types=DLP_TYPES))
+    assert r["status"] == "applied", (p["blockers"], r.get("stopped"))
+    order = creates(tgt.tenant)
+    for dep in ("zia.dlp_engines", "zia.dlp_notification_templates", "zia.rule_labels"):
+        assert order.index(dep) < order.index("zia.endpoint_dlp_rules"), order
+    assert order.index("zia.dlp_engines") < order.index("zia.saas_dlp_rules")
+    eng = tgt.tenant.by_name("zia.dlp_engines", "Cards")
+    dic = tgt.tenant.by_name("zia.dlp_dictionaries", "Card numbers")
+    assert eng["engine_expression"] == f"((D{dic['id']}.S > 1))"
+    ep = tgt.tenant.by_name("zia.endpoint_dlp_rules", "Cards to USB")
+    assert ep["dlp_engines"] == [{"id": eng["id"]}] and ep["state"] == "DISABLED"
+    assert ep["notification_template"] == {"id": tgt.tenant.by_name("zia.dlp_notification_templates", "Notify owner")["id"]}
+    assert ep["receiver"] == {"id": 941} and ep["labels"] == [{"id": tgt.tenant.by_name("zia.rule_labels", "DLP team")["id"]}]
+    assert ep["uc_template_id"] == 0   # nothing to point at: sent as it is
+    saas = tgt.tenant.by_name("zia.saas_dlp_rules", "Box files with cards")
+    assert saas["type"] == "OFLCASB_DLP_FILE" and saas["cloud_app_tenants"] == [{"id": 951}]
+    assert saas["included_domain_profiles"] == [{"id": 961}] and saas["zscaler_incident_receiver"] is True
+    made = [u for u in r["items"] if u["status"] == "applied" and u["kind"] == "object"]
+    assert made and all(u.get("verified") is True for u in made)
+    assert ("zia.saas_dlp_rules", "get", (str(saas["id"]), "OFLCASB_DLP_FILE")) in [(k, ro, (str(a[0]),) + a[1:]) for k, ro, a in tgt.tenant.args]
+
+
+def test_dlp_rules_that_name_what_another_tenant_cannot_have_are_left_out_with_the_reason():
+    """ASVS V4.1.3 · CWE-639 · WSTG-BUSL-01: a rule with sub-rules, one naming endpoint application groups and one naming SaaS buckets are not cloned; each says why."""
+    bid = wide_backup(dlp_source())
+    p = ao.plan(Client(dlp_target()), spec("zia", bid, types=DLP_TYPES), scope=WIDE, tenant_label="target")
+    assert "sub-rules" in item(p, "zia.endpoint_dlp_rules", "Parent with sub-rules")["reason"]
+    assert "endpoint application groups" in item(p, "zia.endpoint_dlp_rules", "Uses an app group")["reason"]
+    assert "casb buckets" in item(p, "zia.saas_dlp_rules", "S3 buckets")["reason"]
+
+
+def test_a_dlp_rule_clone_undoes_exactly_and_deletes_the_saas_rule_with_its_type():
+    """ASVS V8.1.1 · CWE-460 · WSTG-BUSL-04: Undo deletes every created rule and object (the SaaS rule's delete names its rule type) and leaves the target as it was."""
+    bid = wide_backup(dlp_source())
+    tgt = Client(dlp_target())
+    before = state(tgt.tenant, DLP_TYPES)
+    _p, r = wide_apply(tgt, spec("zia", bid, types=DLP_TYPES))
+    saas_id = tgt.tenant.by_name("zia.saas_dlp_rules", "Box files with cards")["id"]
+    _pu, ru = wide_undo(tgt, r)
+    assert ru["status"] == "applied", ru.get("stopped")
+    assert same_state(state(tgt.tenant, DLP_TYPES), before)
+    assert ("zia.saas_dlp_rules", "rm", (str(saas_id), "OFLCASB_DLP_FILE")) in [(k, ro, (str(a[0]),) + a[1:]) for k, ro, a in tgt.tenant.args]
+
+
+def test_a_dlp_rule_changed_in_the_target_since_the_preview_is_a_conflict_not_overwritten(monkeypatch):
+    """ASVS V11.1.3 · CWE-367 · WSTG-BUSL-04: an Endpoint DLP rule someone edits between the preview and its update is not overwritten, and nothing more is written."""
+    src = dlp_source()
+    bid = wide_backup(src)
+    t = dlp_target()
+    t.data["zia.endpoint_dlp_rules"] = [dict(src["zia.endpoint_dlp_rules"][2], action="ALLOW")]
+    tgt = Client(t)
+    sp = spec("zia", bid, target="same", objects=[{"type": "zia.endpoint_dlp_rules", "name": "Uses an app group"}])
+    p = ao.plan(tgt, sp, scope=WIDE, tenant_label="target")
+    assert p["status"] == "ready", p["blockers"]
+
+    real = cb.get_one
+
+    def colleague_edits_it_first(client, ty, oid, rule_type=""):
+        if ty["key"] == "zia.endpoint_dlp_rules":
+            t.data["zia.endpoint_dlp_rules"][0]["description"] = "edited meanwhile"
+        return real(client, ty, oid, rule_type)
+    monkeypatch.setattr(cb, "get_one", colleague_edits_it_first)
+    r = ao.execute(tgt, sp, plan_hash=p["plan_hash"], scope=WIDE, writes_enabled=True, assessor=ASSESSOR, tenant_label="target",
+                   confirm_text=p["confirm_phrase"])
+    assert r["status"] != "applied"
+    assert any(u["status"] == "conflict" for u in r["items"] if u["object"].get("type") == "zia.endpoint_dlp_rules")
+    assert not [w for w in t.writes if w[1] == "zia.endpoint_dlp_rules"]
+
+
+# ── row 11: PAC files ───────────────────────────────────────────────────
+
+PAC = "function FindProxyForURL(url, host) { return \"PROXY ${GATEWAY}:80; DIRECT\"; }"
+
+
+def pac_source():
+    return {"zia.pac_files": [{"id": 31, "name": "corp.pac", "domain": "corp.example", "pac_content": PAC, "pac_version": 4,
+                               "pac_url": "https://pac.example/corp/corp.pac", "pac_version_status": "DEPLOYED",
+                               "pac_verification_status": "VERIFY_NOERR", "pac_commit_message": "v4", "editable": True},
+                              {"id": 32, "name": "default.pac", "domain": "corp.example", "pac_content": PAC, "editable": False}]}
+
+
+def test_pac_files_clone_as_new_files_without_their_url_or_version_and_undo_removes_them():
+    """ASVS V5.1.3 · CWE-20 · WSTG-BUSL-01: a custom PAC file is created in the target with its content (never its source URL or version), Zscaler's own PAC file is left alone, the read-back confirms it and Undo deletes only the created one."""
+    bid = wide_backup(pac_source())
+    t = Tenant({"zia.pac_files": [{"id": 932, "name": "default.pac", "pac_content": "x", "editable": False}]})
+    tgt = Client(t)
+    p, r = wide_apply(tgt, spec("zia", bid, types=["zia.pac_files"]))
+    assert r["status"] == "applied", (p["blockers"], r.get("stopped"))
+    assert creates(t) == ["zia.pac_files"]
+    made = t.by_name("zia.pac_files", "corp.pac")
+    assert made["pac_content"] == PAC and made["domain"] == "corp.example" and "pac_url" not in made and "pac_version" not in made
+    assert all(u.get("verified") for u in r["items"] if u["status"] == "applied" and u["kind"] == "object")
+    assert any("PAC file" in m for m in p["manual_steps"])
+    _pu, ru = wide_undo(tgt, r)
+    assert ru["status"] == "applied" and t.names("zia.pac_files") == ["default.pac"]
+
+
+def test_an_existing_pac_file_is_never_updated_or_deleted_here():
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-06: a PAC file the target already has is left as it is (versions are changed in the portal) and full mode does not delete the target's own PAC files (a delete removes every version)."""
+    bid = wide_backup(pac_source())
+    t = Tenant({"zia.pac_files": [{"id": 931, "name": "corp.pac", "pac_content": "old", "editable": True},
+                                  {"id": 933, "name": "theirs.pac", "pac_content": "x", "editable": True}]})
+    p = ao.plan(Client(t), spec("zia", bid, mode="full", target="same", types=["zia.pac_files"]), scope=WIDE, tenant_label="target")
+    assert item(p, "zia.pac_files", "corp.pac")["status"] == "noop"
+    assert "every version" in item(p, "zia.pac_files", "theirs.pac")["reason"]
+    assert not p["groups"]
+
+
+def test_a_pac_file_that_does_not_read_back_as_sent_is_flagged_and_offered_again(monkeypatch):
+    """ASVS V11.1.5 · CWE-354 · WSTG-BUSL-01: when the read-back of a created PAC file differs from what was sent, the item is marked not verified and the re-push names it."""
+    bid = wide_backup(pac_source())
+    t = Tenant({"zia.pac_files": []})
+    real = cb.get_one
+
+    def changed(client, ty, oid, rule_type=""):
+        row, err = real(client, ty, oid, rule_type)
+        if row is not None and ty["key"] == "zia.pac_files":
+            row = dict(row, pac_content="tampered")
+        return row, err
+    monkeypatch.setattr(cb, "get_one", changed)
+    _p, r = wide_apply(Client(t), spec("zia", bid, types=["zia.pac_files"]))
+    u = item(r, "zia.pac_files", "corp.pac")
+    assert u["status"] == "applied" and u["verified"] is False
+    assert ocr.repush_spec(r)["objects"] == [{"type": "zia.pac_files", "name": "corp.pac"}]
+
+
+# ── row 11: ZPA gateways (and the forwarding rules that use them) ───────
+
+def gw_source():
+    return {"zia.zpa_gateways": [{"id": 71, "name": "Anchor", "type": "ZPA", "zpa_tenant_id": 999,
+                                  "zpa_server_group": {"external_id": "2301", "name": "DC servers", "extensions": {"x": 1}},
+                                  "zpa_app_segments": [{"external_id": "2201", "name": "Billing"}]}],
+            "zia.forwarding_rules": [{"id": 72, "name": "Billing via ZPA", "order": 1, "state": "ENABLED", "forward_method": "ZPA",
+                                      "zpa_gateway": {"id": 71, "name": "Anchor"}}],
+            "zpa.server_groups": [{"id": "2301", "name": "DC servers"}],
+            "zpa.application_segments": [{"id": "2201", "name": "Billing"}]}
+
+
+def gw_target(anchored=True):
+    return Tenant({"zia.zpa_gateways": [], "zia.forwarding_rules": [],
+                   "zpa.server_groups": [{"id": "7301", "name": "DC servers", "ip_anchored": anchored}],
+                   "zpa.application_segments": [{"id": "7201", "name": "Billing"}]})
+
+
+def test_a_zpa_gateway_clones_with_the_targets_own_zpa_objects_and_its_forwarding_rule_follows():
+    """ASVS V4.1.3 · CWE-639 · WSTG-BUSL-01: the gateway's ZPA server group and segments point at the target's ZPA objects of the same name, the source's ZPA tenant id is not sent, and the forwarding rule is created after it pointing at the new gateway; Undo removes both."""
+    bid = wide_backup(gw_source(), ("zia", "zpa"))
+    t = gw_target()
+    tgt = Client(t)
+    p, r = wide_apply(tgt, spec("zia", bid, types=["zia.zpa_gateways", "zia.forwarding_rules"]))
+    assert r["status"] == "applied", (p["blockers"], r.get("stopped"))
+    assert creates(t) == ["zia.zpa_gateways", "zia.forwarding_rules"]
+    gw = t.by_name("zia.zpa_gateways", "Anchor")
+    assert gw["zpa_server_group"] == {"external_id": "7301", "name": "DC servers"} and "zpa_tenant_id" not in gw
+    assert gw["zpa_app_segments"] == [{"external_id": "7201", "name": "Billing"}]
+    assert t.by_name("zia.forwarding_rules", "Billing via ZPA")["zpa_gateway"] == {"id": gw["id"]}
+    assert all(u.get("verified") for u in r["items"] if u["status"] == "applied" and u["kind"] == "object")
+    _pu, ru = wide_undo(tgt, r)
+    assert ru["status"] == "applied" and t.rows("zia.zpa_gateways") == [] and t.rows("zia.forwarding_rules") == []
+
+
+@pytest.mark.parametrize("scope,anchored,words", [(NO_ZPA, True, "tick ZPA on the Scope page"),
+                                                  (WIDE, False, "Source IP Anchoring")], ids=["zpa_not_in_scope", "not_anchored"])
+def test_a_zpa_gateway_is_not_cloned_when_its_zpa_objects_cannot_be_matched(scope, anchored, words):
+    """ASVS V4.1.3 · CWE-639 · WSTG-BUSL-01: without ZPA in scope, or when the target's server group is not set up for Source IP Anchoring, the gateway is left out with the reason and its forwarding rule with it."""
+    bid = wide_backup(gw_source(), ("zia", "zpa"))
+    p = ao.plan(Client(gw_target(anchored)), spec("zia", bid, types=["zia.zpa_gateways", "zia.forwarding_rules"]), scope=scope,
+                tenant_label="target")
+    assert words in item(p, "zia.zpa_gateways", "Anchor")["reason"]
+    assert item(p, "zia.forwarding_rules", "Billing via ZPA")["status"] == "excluded"
+
+
+def test_a_proxy_gateway_stays_a_manual_step_while_its_proxies_clone():
+    """ASVS V1.14.6 · CWE-1023: the API cannot create a proxy gateway, so a clone names it as a manual step instead of claiming it."""
+    data = {"zia.proxies": [{"id": 81, "name": "Egress", "address": "proxy.corp.example", "port": 8080}],
+            "zia.proxy_gateways": [{"id": 82, "name": "Chain", "primary_proxy": {"id": 81, "name": "Egress"}}]}
+    bid = wide_backup(data)
+    p = ao.plan(Client(Tenant({"zia.proxies": [], "zia.proxy_gateways": []})), spec("zia", bid), scope=WIDE, tenant_label="target")
+    assert any("proxy gateways" in m for m in p["manual_steps"])
+    assert any(g["target"].get("type") == "zia.proxies" for g in p["groups"])
+
+
+# ── row 13: sub-locations clone with their parent location ──────────────
+
+def sub_source():
+    return {"zia.static_ips": [{"id": 1, "ip_address": "198.51.100.10"}],
+            "zia.locations": [{"id": 900, "name": "HQ", "ip_addresses": ["198.51.100.10"], "parent_id": 0},
+                              {"id": 901, "name": "Guest Wi-Fi", "parent_id": 900, "ip_addresses": ["10.1.0.0/16"], "profile": "GUESTWIFI"},
+                              {"id": 902, "name": "other", "parent_id": 900, "other_sub_location": True, "ip_addresses": []},
+                              {"id": 903, "name": "Orphan office", "ip_addresses": ["192.0.2.50"], "parent_id": 0},
+                              {"id": 904, "name": "Lab", "parent_id": 903, "ip_addresses": ["10.9.0.0/16"]}]}
+
+
+SUB = ["zia.static_ips", "zia.locations", "zia.sub_locations"]
+
+
+def test_sub_locations_are_read_under_each_location_and_named_with_their_parent():
+    """ASVS V8.3.4 · CWE-1059: a backup reads the sub-locations under each parent location, names each '<parent> / <name>' and keeps its parent's id."""
+    got = cb.capture(Client(Tenant(sub_source())), ["zia"], WIDE)
+    rows = {r["location_path"]: r for r in got["types"]["zia.sub_locations"]}
+    assert set(rows) == {"HQ / Guest Wi-Fi", "HQ / other", "Orphan office / Lab"}
+    assert rows["HQ / Guest Wi-Fi"]["parent_id"] == 900
+
+
+def test_a_sub_location_is_created_after_its_parent_under_the_new_location_and_needs_the_tenant_bound_phrase():
+    """ASVS V2.8.1 · CWE-352 · WSTG-BUSL-06: with tenant-bound objects included, the sub-location is created after its parent (pointing at the parent's new id), Zscaler's own 'other' sub-location and one whose parent cannot be created are left out, the typed phrase counts it, the read-back confirms it and Undo removes it before its parent."""
+    bid = wide_backup(sub_source())
+    t = Tenant({"zia.static_ips": [], "zia.locations": [], "zia.gre_tunnels": []})
+    tgt = Client(t)
+    sp = spec("zia", bid, types=SUB, include_tenant_bound=True)
+    p = ao.plan(tgt, sp, scope=WIDE, tenant_label="target")
+    assert p["status"] == "ready", p["blockers"]
+    assert p["confirm_phrase"] == "CREATE 3 TENANT-BOUND OBJECTS"
+    assert "other" in item(p, "zia.sub_locations", "HQ / other")["reason"]
+    assert "Orphan office" in item(p, "zia.sub_locations", "Orphan office / Lab")["reason"]
+    assert item(p, "zia.sub_locations", "HQ / Guest Wi-Fi")["depends_on"] == [item(p, "zia.locations", "HQ")["group"]]
+    assert any("sub-locations" in w for w in p["warnings"])
+    refused = ao.execute(tgt, sp, plan_hash=p["plan_hash"], scope=WIDE, writes_enabled=True, assessor=ASSESSOR, tenant_label="target",
+                         confirm_text="APPLY 4 CHANGES")
+    assert refused["status"] == "refused" and t.writes == []
+    r = ao.execute(tgt, sp, plan_hash=p["plan_hash"], scope=WIDE, writes_enabled=True, assessor=ASSESSOR, tenant_label="target",
+                   confirm_text=p["confirm_phrase"])
+    assert r["status"] == "applied", r.get("stopped")
+    assert creates(t) == ["zia.static_ips", "zia.locations", "zia.locations"]
+    hq = t.by_name("zia.locations", "HQ")
+    sub = t.by_name("zia.locations", "Guest Wi-Fi")
+    assert sub["parent_id"] == hq["id"] and sub["ip_addresses"] == ["10.1.0.0/16"] and "location_path" not in sub
+    assert item(r, "zia.sub_locations", "HQ / Guest Wi-Fi")["verified"] is True
+    assert any(m.startswith("sub-location HQ / Guest Wi-Fi") for m in r["manual_steps"])
+    _pu, ru = wide_undo(tgt, r)
+    assert ru["status"] == "applied" and t.rows("zia.locations") == [] and t.rows("zia.static_ips") == []
+    deletes = [n for op, k, n in t.writes if op == "delete" and k == "zia.locations"]
+    assert deletes == ["Guest Wi-Fi", "HQ"]
+
+
+def test_sub_locations_need_the_tenant_bound_tick_and_go_under_an_existing_parent_by_name(monkeypatch):
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-06: without the tick a sub-location type is refused before a read; with it, a sub-location goes under the target's own location of the same name, and a sub-location made since the preview stops the create."""
+    bid = wide_backup(sub_source())
+    t = Tenant({"zia.static_ips": [], "zia.gre_tunnels": [], "zia.locations": [{"id": 7000, "name": "HQ", "ip_addresses": [], "parent_id": 0}]})
+    tgt = Client(t)
+    with pytest.raises(ao.OperationError, match="tenant-bound"):
+        ao.plan(tgt, spec("zia", bid, types=["zia.sub_locations"]), scope=WIDE)
+    assert t.reads == []
+    sp = spec("zia", bid, types=["zia.sub_locations"], include_tenant_bound=True)
+    p = ao.plan(tgt, sp, scope=WIDE, tenant_label="target")
+    g = next(g for g in p["groups"] if g["handler"] == "cfg_create")
+    assert g["target"]["desired"]["parent_id"] == 7000 and p["confirm_phrase"] == "CREATE 1 TENANT-BOUND OBJECT"
+
+    real = ocr._rows_named
+
+    def colleague_adds_it_first(run, ty, nm):
+        if ty["key"] == "zia.sub_locations" and t.by_name("zia.locations", "Guest Wi-Fi") is None:
+            t.rows("zia.locations").append({"id": 7001, "name": "Guest Wi-Fi", "parent_id": 7000, "ip_addresses": []})
+        return real(run, ty, nm)
+    monkeypatch.setattr(ocr, "_rows_named", colleague_adds_it_first)
+    r = ao.execute(tgt, sp, plan_hash=p["plan_hash"], scope=WIDE, writes_enabled=True, assessor=ASSESSOR, tenant_label="target",
+                   confirm_text=p["confirm_phrase"])
+    assert item(r, "zia.sub_locations", "HQ / Guest Wi-Fi")["status"] == "conflict" and t.writes == []
+
+
+# ── row 8: Client Connector app profiles and entitlements to another tenant ──
+
+def zcc_source():
+    return {"zcc.trusted_networks": [],
+            "zcc.forwarding_profiles": [{"id": 61, "name": "Office forwarding", "active": "1"}],
+            "zcc.app_profiles": [
+                {"id": 51, "name": "Everyone - Windows", "device_type": "DEVICE_TYPE_WINDOWS", "active": 1, "group_all": 1,
+                 "forwarding_profile_id": 61, "groups": [], "users": [], "logout_password": CANARY, "policy_token": CANARY,
+                 "windows_policy": {"uninstall_password": CANARY, "disable_password": CANARY, "pac_url": "http://pac/a"},
+                 "policy_extension": {"id": 777, "nonce": "n-1", "packet_tunnel_exclude_list": "10.0.0.0/8", "exit_password": CANARY},
+                 "disaster_recovery": {"zia_domain_name": "source.example", "zia_rsa_pub_key": "KEY"}},
+                {"id": 52, "name": "Finance only", "device_type": "DEVICE_TYPE_MACOS", "active": 1, "group_all": 0,
+                 "groups": [{"id": 7, "name": "Finance"}], "users": []}],
+            "zcc.zpa_entitlements": [{"zpa_enable_for_all": False, "machine_tun_enabled_for_all": True,
+                                      "group_list": [{"id": 7, "name": "Finance"}]}],
+            "zcc.zdx_entitlements": [{"upm_enable_for_all": True, "upm_group_list": []}]}
+
+
+def zcc_target():
+    return Tenant({"zcc.trusted_networks": [], "zcc.forwarding_profiles": [{"id": 9061, "name": "Office forwarding", "active": "1"}],
+                   "zcc.app_profiles": [],
+                   "zcc.zpa_entitlements": [{"zpa_enable_for_all": True, "machine_tun_enabled_for_all": False,
+                                             "group_list": [{"id": 90, "name": "Their group"}]}],
+                   "zcc.zdx_entitlements": [{"upm_enable_for_all": False, "upm_group_list": [{"id": 91, "name": "Theirs"}]}]})
+
+
+ZCC_KEYS = ["zcc.app_profiles", "zcc.zpa_entitlements", "zcc.zdx_entitlements"]
+
+
+def test_client_connector_profiles_clone_only_when_included_and_never_carry_a_password():
+    """ASVS V8.3.4 · CWE-312 · WSTG-CONF-11: included, an app profile that applies to everyone is created inactive in the other tenant with its forwarding profile matched by name and no password, policy token or source-only setting; one scoped to the source's groups is left out; the entitlements' switches are copied while the target keeps its own group lists; the preview says passwords are never read or sent; Undo puts it all back."""
+    bid = wide_backup(zcc_source(), ("zcc",))
+    t = zcc_target()
+    tgt = Client(t)
+    before = state(t, ZCC_KEYS)
+    sp = spec("zcc", bid, types=ZCC_KEYS, include_zcc_profiles=True)
+    p = ao.plan(tgt, sp, scope=WIDE, tenant_label="target")
+    assert p["status"] == "ready", p["blockers"]
+    assert p["confirm_phrase"] == "CLONE 3 CLIENT CONNECTOR OBJECTS"
+    assert any("never read back, copied or sent" in w and "without any password" in w for w in p["warnings"])
+    assert "groups" in item(p, "zcc.app_profiles", "Finance only")["reason"]
+    assert "without any password" in item(p, "zcc.app_profiles", "Everyone - Windows")["reason"]
+    raw = json.dumps(p)
+    assert CANARY not in raw and "(set)" not in raw
+    refused = ao.execute(tgt, sp, plan_hash=p["plan_hash"], scope=WIDE, writes_enabled=True, assessor=ASSESSOR, tenant_label="target",
+                         confirm_text="APPLY 3 CHANGES")
+    assert refused["status"] == "refused" and t.writes == []
+    r = ao.execute(tgt, sp, plan_hash=p["plan_hash"], scope=WIDE, writes_enabled=True, assessor=ASSESSOR, tenant_label="target",
+                   confirm_text=p["confirm_phrase"])
+    assert r["status"] == "applied", r.get("stopped")
+    sent = json.dumps(t.calls) + json.dumps(t.sent)
+    assert CANARY not in sent and "(set)" not in sent and "source.example" not in sent and "777" not in sent and "n-1" not in sent
+    prof = t.by_name("zcc.app_profiles", "Everyone - Windows")
+    assert prof["active"] == 0 and prof["forwarding_profile_id"] == 9061 and prof["windows_policy"] == {"pac_url": "http://pac/a"}
+    assert prof["policy_extension"] == {"packet_tunnel_exclude_list": "10.0.0.0/8"} and "disaster_recovery" not in prof
+    zpa = t.rows("zcc.zpa_entitlements")[0]
+    assert zpa["zpa_enable_for_all"] is False and zpa["machine_tun_enabled_for_all"] is True
+    assert zpa["group_list"] == [{"id": 90, "name": "Their group"}]
+    assert t.rows("zcc.zdx_entitlements")[0]["upm_group_list"] == [{"id": 91, "name": "Theirs"}]
+    assert all(u.get("verified") for u in r["items"] if u["status"] == "applied" and u["kind"] in ("object", "field"))
+    _pu, ru = wide_undo(tgt, r)
+    assert ru["status"] == "applied", ru.get("stopped")
+    assert same_state(state(t, ZCC_KEYS), before)
+
+
+def test_the_client_connector_option_is_refused_where_it_does_not_belong_and_creates_nothing_without_it():
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-06: the option is refused for ZIA and for a template, and without it a missing app profile is not created, even on its own tenant."""
+    bid = wide_backup(zcc_source(), ("zcc",))
+    tgt = Client(zcc_target())
+    with pytest.raises(ao.OperationError, match="Only Client Connector"):
+        ao.plan(tgt, spec("zia", bid, include_zcc_profiles=True), scope=WIDE)
+    p = ao.plan(tgt, spec("zcc", bid, target="same", types=["zcc.app_profiles"]), scope=WIDE, tenant_label="target")
+    assert "tick 'Include Client Connector app profiles" in item(p, "zcc.app_profiles", "Everyone - Windows")["reason"]
+    assert p["counts"]["change"] == 0
+    assert any("never read back, copied or sent" in w for w in p["warnings"]) or not p["groups"]
+
+
+def test_the_page_lists_the_new_types_and_both_options():
+    """ASVS V1.14.1 · CWE-1059 · WCAG 2.2 SC 3.3.2: the restore page lists tenant-bound types apart behind their own tick, offers the Client Connector option, sends each only when ticked, and both ticks have help."""
+    js = (ROOT / "static" / "ops_config_restore.js").read_text(encoding="utf-8")
+    assert 'id="crTb"' in js and "include_tenant_bound = true" in js
+    assert 'id="crZccProfiles"' in js and "include_zcc_profiles = true" in js
+    for copy_ in ("static/help_catalog.js", "browser_extension/help_catalog.js"):
+        help_ = (ROOT / copy_).read_text(encoding="utf-8")
+        assert '"#crTb"' in help_ and '"#crZccProfiles"' in help_ and "never read" in help_
+
+
+def test_the_sample_tenant_has_data_for_every_new_type():
+    """ASVS V14.2.1 · CWE-1059: the sample tenant answers every new type, so the restore and clone pages rehearse them offline."""
+    import offline_tenant as ot
+    doc = cb.from_offline(ot.sample_store(), ["zia", "zcc"])
+    for k in ("zia.pac_files", "zia.endpoint_dlp_rules", "zia.saas_dlp_rules", "zia.zpa_gateways", "zia.proxies", "zia.proxy_gateways",
+              "zia.sub_locations", "zia.casb_tenants", "zia.domain_profiles", "zia.casb_tombstone_templates", "zia.casb_email_labels",
+              "zcc.app_profiles", "zcc.zpa_entitlements", "zcc.zdx_entitlements"):
+        assert doc["types"].get(k), k
+    assert {r["location_path"] for r in doc["types"]["zia.sub_locations"]} >= {"Larkspur HQ (Portland) / HQ guest Wi-Fi"}

@@ -1603,7 +1603,7 @@ def verify(run: Any) -> Dict[str, Any]:
         else:
             t = cb.BY_KEY[tg["type"]]
             oid = tg.get("new_id") or tg.get("id")
-            row, err = cb.get_one(run.client, t, oid, tg.get("rule_type") or "") if oid else (None, "no id")
+            row, err = cb.get_one(run.client, t, oid, tg.get("rule_type") or "") if oid or t["singleton"] else (None, "no id")
             if g["handler"] == "cfg_delete":
                 ok = row is None
             elif row is None:
