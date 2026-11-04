@@ -74,6 +74,22 @@ git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git && cd Zscaler-Ma
 docker logs zscaler-made-easy      # shows the UI token and http://localhost:8001/?token=…
 ```
 
+**Behind Zscaler or another TLS-inspecting proxy?** The build downloads Python libraries from pypi.org, which fails with `CERTIFICATE_VERIFY_FAILED` ("unable to get local issuer certificate") at step `[6/8]` unless the container trusts your company's root certificate. Put it in the `certs/` folder **before** you build (after `cd Zscaler-Made-Easy`), then run the update script as above; the build log says `extra root certificates added: 1`, and the running app trusts it too:
+
+```powershell
+# Windows (PowerShell, in the app folder): export the Zscaler Root CA from the Windows certificate store
+$c = Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root | Where-Object { $_.Subject -like "*Zscaler Root CA*" } | Select-Object -First 1
+if (-not $c) { "Zscaler Root CA not found: ask IT for the root certificate as a Base-64 .crt file and save it in the certs folder" } else { "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($c.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n" | Set-Content -Encoding ascii -NoNewline certs\zscaler-root.crt; "Saved certs\zscaler-root.crt" }
+```
+
+```bash
+# Mac (in the app folder): export the Zscaler Root CA from the keychain
+security find-certificate -c "Zscaler Root CA" -p > certs/zscaler-root.crt
+# Linux: copy the Base-64 (PEM) root certificate IT gave you into certs/, ending in .crt
+```
+
+Already built once and it failed? Add the certificate and run the update script again; the running container keeps working until the new build succeeds. The file stays on your machine (`certs/` is git-ignored). Another inspection product works the same way with its root certificate, or IT can exempt `pypi.org` and `files.pythonhosted.org` from inspection. Details: INSTALL.md, *Run it in a container instead* and *Work laptop: TLS inspection or a proxy*.
+
 No git? Docker can fetch and build it by itself: `docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN -t zscaler-made-easy:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"` with a read-only GitHub token in `GIT_AUTH_TOKEN`, then `docker run` (INSTALL.md, *Install with Docker commands only*).
 
 The update script runs `docker compose up -d --build` with the build's git commit stamped in; plain `docker compose up --build` works too. It is published on 127.0.0.1:8001 only (the local install uses 8000).
