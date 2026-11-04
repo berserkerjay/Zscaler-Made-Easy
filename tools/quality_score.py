@@ -107,7 +107,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
          "tests": ("test_auth_session.py", "test_team_server.py", "test_team_server_extras.py", "test_team_saml.py", "test_team_passkeys.py", "test_team_signin_settings.py", "test_scope_rule_routes.py", "test_secret_canaries.py", "test_ui_auth.py", "test_sso.py",
                    "test_extension_security.py", "test_tools_read_only_in_scope.py", "test_no_implicit_reads.py",
                    "test_report_scope_reads.py", "test_sbd_offline_least_privilege.py", "test_c6_auth.py", "test_c6_api_server.py",
-                   "test_c6_scope_offline.py", "test_mcp_tools.py", "test_update_notify.py", "test_zcc_tamper_passwords.py", "test_zcc_otp.py", "test_other_products.py", "test_security_gates.py", "test_mcp_tools_w9.py"),
+                   "test_c6_scope_offline.py", "test_mcp_tools.py", "test_update_notify.py", "test_zcc_tamper_passwords.py", "test_zcc_otp.py", "test_other_products.py", "test_security_gates.py", "test_mcp_tools_w9.py", "test_soc_review.py"),
          "controls": ("ASVS V3.4.1", "ASVS V3.4.3", "ASVS V4.1.1", "ASVS V4.2.1", "ASVS V6.4.1", "ASVS V7.1.1", "ASVS V8.3.4",
                       "CWE-200", "CWE-306", "CWE-532", "CWE-639", "CWE-798")},
         {"key": "supply_chain", "name": "Supply chain", "slugs": ("w7-sast", "sbd-supply*", "supply-chain*"),

@@ -517,12 +517,12 @@
       }
     },
     "checks": {
-      "pass": 699,
+      "pass": 708,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11703
+    "tests_added": 11731
   },
   "findings": [
     {
@@ -13619,6 +13619,36 @@
       "tests_added": 13
     },
     {
+      "slug": "w10-soc-review",
+      "area": "SOC review: admin access (RBAC) and logging (telemetry) across ZIA, ZPA, Client Connector, ZDX and ZIdentity (soc_review.py, static/report_soc_review.html, /api/soc-review/*, the MCP tools rbac_review and telemetry_review)",
+      "title": "Wave 10: a dedicated, read-only SOC review of who can administer the tenant and what it streams, with unknown never reported as a pass",
+      "standards": [
+        "ASVS V1.4.1",
+        "ASVS V2.8.1",
+        "ASVS V4.1.3",
+        "ASVS V4.2.1",
+        "ASVS V7.1.1",
+        "ASVS V7.3.1",
+        "ASVS V8.3.4",
+        "CWE-200",
+        "CWE-250",
+        "CWE-269",
+        "CWE-272",
+        "CWE-285",
+        "CWE-308",
+        "CWE-359",
+        "CWE-532",
+        "CWE-754",
+        "CWE-778",
+        "CWE-1188",
+        "WSTG-ATHZ-02",
+        "WSTG-ATHZ-03"
+      ],
+      "checks": 9,
+      "findings": 0,
+      "tests_added": 28
+    },
+    {
       "slug": "w7-admin-zia-zid",
       "area": "Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients)",
       "title": "Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once",
@@ -15261,5 +15291,7 @@
       }
     ]
   },
-  "warnings": []
+  "warnings": [
+    "Records with no area in the formula: w10-soc-review. Their open findings still count toward the cap."
+  ]
 }
