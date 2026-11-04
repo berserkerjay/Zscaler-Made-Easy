@@ -488,3 +488,28 @@ async function advTerraform(id) {
   } catch (e) { alert(`Terraform export failed: ${e.message}`); }
 }
 window.advTerraform = advTerraform;
+
+// The signed-in tenant (tenant_session.py, GET/DELETE /api/tenant/session):
+// what the server keeps for this browser, and Sign out of tenant. Text only.
+(function () {
+  const box = document.getElementById('advTenantSessionBox');
+  const out = document.getElementById('advTenantSignOut');
+  if (!box || !out) return;
+  async function show(note) {
+    let d = null;
+    try { const r = await fetch('/api/tenant/session', { cache: 'no-store' }); if (r.ok) d = await r.json(); } catch (e) { d = null; }
+    const live = !!(d && d.connected);
+    out.hidden = !live;
+    if (note) box.textContent = note;
+    else if (!d) box.textContent = 'Could not ask the server whether you are signed in.';
+    else if (live) box.textContent = `Signed in to ${d.profile_name || d.tenant_label}. It ends after ${Math.max(1, Math.round(d.expires_in / 60))} more minutes without use.`;
+    else if (d.expired) box.textContent = d.message || 'Your sign-in to the tenant has ended. Sign in again.';
+    else box.textContent = 'Not signed in to a tenant. The server keeps no sign-in for this browser.';
+  }
+  out.addEventListener('click', async () => {
+    let note = 'Signed out of the tenant. The server no longer keeps the sign-in.';
+    try { const r = await fetch('/api/tenant/session', { method: 'DELETE' }); if (!r.ok) note = `Could not sign out of the tenant: HTTP ${r.status}`; } catch (e) { note = `Could not sign out of the tenant: ${e.message}`; }
+    show(note);
+  });
+  show('');
+})();

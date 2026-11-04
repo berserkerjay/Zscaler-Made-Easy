@@ -33,9 +33,11 @@ window.WHATS_NEW = {
     {
       "id": "shared-signin", "release": "2026-11-04", "label": "Sign in once",
       "what": "Sign in once: after Authenticate (or an assessment), every page, Simple mode too, reads that tenant without asking again. The server keeps the sign-in in memory only, for you and this browser, until 30 minutes without use or 8 hours at most; Sign out of tenant forgets it. Changes still need the sign-in details.",
-      "changelog": ["Sign in once", "Sign out of tenant"],
+      "changelog": ["Sign in once", "Sign out of tenant", "Authenticate"],
       "marks": [
-        { "page": "/", "at": "#authSignOutBtn", "shown": "after signing in with Authenticate" }
+        { "page": "/report/advanced", "at": "#advTenantSessionH" },
+        { "page": "/", "at": "#authSignOutBtn", "shown": "after signing in with Authenticate" },
+        { "page": "/report/advanced", "at": "#advTenantSignOut", "shown": "while signed in to a tenant" }
       ]
     },
     {
@@ -209,7 +211,7 @@ window.WHATS_NEW = {
     {
       "id": "fix-flow-url", "release": "2026-11-01", "label": "URL filtering in Fix rows from Test a list",
       "what": "Fix selected puts URL filtering rows in a custom URL category and adds that category to a matching rule, or to a new disabled rule above the rule that decided them; the preview warns when the category alone changes nothing.",
-      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing"],
+      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing", "Fix rows from Test a list"],
       "marks": [{ "page": "/report/operations", "at": "select[id^=\"lfCat\"]", "shown": "after Read from the tenant, with URL filtering rows" }]
     },
     {

@@ -2433,6 +2433,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/advanced": {
+   "#advTenantSignOut": {
+    "what": "Signs out of the tenant: the server forgets the sign-in it kept in memory for this browser. Pages then ask for the sign-in details again. It changes nothing in the tenant.",
+    "input": "Nothing to type. Shown only while you are signed in.",
+    "effect": "local"
+   },
    "#advUpdNotify": {
     "what": "Sends one notice per new version, by the e-mail or webhook the digests use, when the update check finds a newer version.",
     "input": "Optional. Ticked turns it on. Needs the digests' e-mail or webhook set up; a writer may change it.",
