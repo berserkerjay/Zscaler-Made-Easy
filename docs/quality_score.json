@@ -488,7 +488,7 @@
     }
   ],
   "counts": {
-    "findings": 761,
+    "findings": 763,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -502,12 +502,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 194,
+        "fixed": 195,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 421,
+        "fixed": 422,
         "accepted": 3
       },
       "info": {
@@ -517,12 +517,12 @@
       }
     },
     "checks": {
-      "pass": 699,
+      "pass": 706,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11703
+    "tests_added": 11746
   },
   "findings": [
     {
@@ -4828,6 +4828,22 @@
       "slug": "w10-native-click",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W10-SD-01",
+      "title": "A credential store that could not be read (locked) let a new store key be made and saved over the existing entry, orphaning every sealed store",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-320",
+      "asvs": "V6.4.1",
+      "wcag": "",
+      "fix": "Keys are read from the credential store and the key file together; a new key is made only when nothing that might hold one failed to read, and used only after it reads back",
+      "test": "tests/test_store_encryption_default.py::test_a_locked_credential_store_is_never_replaced_by_a_new_key",
+      "commit": "efd6903",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -11566,6 +11582,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W10-SD-02",
+      "title": "With encryption on, a key saved to the credential store but not readable from it could be used to seal stores",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-664",
+      "asvs": "V6.4.1",
+      "wcag": "",
+      "fix": "The ring is read back after every save (credential store, else key file) before the key is used",
+      "test": "tests/test_store_encryption_default.py::test_the_key_goes_to_the_credential_store_where_there_is_one",
+      "commit": "efd6903",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13619,6 +13651,17 @@
       "tests_added": 13
     },
     {
+      "slug": "w10-store-defaults",
+      "area": "Encrypted stores on by default (store_crypto.py) with the one-time migration of plain stores, and the managed-name prefix for policy packs (name_prefix.py)",
+      "title": "Wave 10: secure-by-default store encryption with a verified, resumable migration, and an operator-chosen managed-name prefix",
+      "standards": [
+        "ASVS 4.0.3 L2 V1.14, V5.1, V6.1, V6.2, V6.4, V8.3, V14.1"
+      ],
+      "checks": 7,
+      "findings": 2,
+      "tests_added": 43
+    },
+    {
       "slug": "w7-admin-zia-zid",
       "area": "Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients)",
       "title": "Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once",
@@ -14885,7 +14928,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 136,
+    "asvs_requirements": 137,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -14990,6 +15033,8 @@
       "CWE-311",
       "CWE-312",
       "CWE-319",
+      "CWE-320",
+      "CWE-321",
       "CWE-324",
       "CWE-327",
       "CWE-328",
@@ -15261,5 +15306,7 @@
       }
     ]
   },
-  "warnings": []
+  "warnings": [
+    "Records with no area in the formula: w10-store-defaults. Their open findings still count toward the cap."
+  ]
 }

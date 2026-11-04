@@ -1,0 +1,94 @@
+{
+ "area": "Encrypted stores on by default (store_crypto.py) with the one-time migration of plain stores, and the managed-name prefix for policy packs (name_prefix.py)",
+ "title": "Wave 10: secure-by-default store encryption with a verified, resumable migration, and an operator-chosen managed-name prefix",
+ "files": [
+  "store_crypto.py",
+  "name_prefix.py",
+  "pack_deploy.py",
+  "pack_removal.py",
+  "pack_terraform.py",
+  "dlp_api_server.py",
+  "static/deploy_studio.js",
+  "static/report_team.html",
+  "static/report_advanced.html",
+  "INSTALL.md",
+  "SECURITY.md"
+ ],
+ "standards": [
+  "ASVS 4.0.3 L2 V1.14, V5.1, V6.1, V6.2, V6.4, V8.3, V14.1"
+ ],
+ "coverage": {
+  "before": 0.0,
+  "after": 100.0,
+  "how": "every acceptance item of the spec mapped to a test: tests/test_store_encryption_default.py (default on, migration, interrupted and rerun, opt-out, key fallback, no plaintext left, rotation, FIPS) and tests/test_name_prefix.py (validation, preview, deploy, reuse, removal, Terraform)"
+ },
+ "checks": [
+  {
+   "id": "W10-SD-C01",
+   "what": "A fresh install with no setting seals every store; only 0/off/false/no opt out",
+   "standard": "ASVS V14.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SD-C02",
+   "what": "Plain stores from an earlier version are sealed once at start-up after a verified backup; an interrupted run resumes; a file that does not read back is restored from the backup",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SD-C03",
+   "what": "No plain copy is left behind: backup, per-file journal and stale temporary files are removed when every file reads back",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SD-C04",
+   "what": "The key goes to the credential store where one answers, else to the owner-only key file; a ring that cannot be read is never replaced by a new key",
+   "standard": "ASVS V6.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SD-C05",
+   "what": "Rotation re-seals every store and forgets the old key after the migration; FIPS mode unchanged",
+   "standard": "ASVS V6.4.2",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SD-C06",
+   "what": "A managed-name prefix is validated (no brackets, control or bidi characters, the tool's own name, over 16 characters) and an invalid one blocks the plan before the tenant is read",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W10-SD-C07",
+   "what": "The prefix is shown in the preview, bound in the plan hash, and objects under the prefixed name are reused and recognised as this app's in the deploy and the removal",
+   "standard": "ASVS V1.14.6",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W10-SD-01",
+   "title": "A credential store that could not be read (locked) let a new store key be made and saved over the existing entry, orphaning every sealed store",
+   "severity": "medium",
+   "cwe": "CWE-320",
+   "asvs": "V6.4.1",
+   "status": "fixed",
+   "fix": "Keys are read from the credential store and the key file together; a new key is made only when nothing that might hold one failed to read, and used only after it reads back",
+   "test": "tests/test_store_encryption_default.py::test_a_locked_credential_store_is_never_replaced_by_a_new_key",
+   "commit": "efd6903"
+  },
+  {
+   "id": "W10-SD-02",
+   "title": "With encryption on, a key saved to the credential store but not readable from it could be used to seal stores",
+   "severity": "low",
+   "cwe": "CWE-664",
+   "asvs": "V6.4.1",
+   "status": "fixed",
+   "fix": "The ring is read back after every save (credential store, else key file) before the key is used",
+   "test": "tests/test_store_encryption_default.py::test_the_key_goes_to_the_credential_store_where_there_is_one",
+   "commit": "efd6903"
+  }
+ ],
+ "tests_added": 43
+}

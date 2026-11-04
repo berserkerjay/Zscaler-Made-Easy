@@ -286,9 +286,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `pac_eval.py:1227` | "depends_on": depends, "assumptions": sorted(it.assumed), "trail": it.trail, "error": None, "steps": it.steps} |
 | `pac_eval.py:1448` | + (" Assumed: " + "; ".join(ev["assumptions"]) + "." if ev["assumptions"] else "")} |
 | `pack_channels.py:932` | READ_ONLY when the rule's rank is above the API client's (rank_inherit.caller, assumed). |
-| `pack_deploy.py:759` | READ_ONLY when the rule's rank is above the API client's (rank_inherit.caller, assumed). |
-| `pack_deploy.py:1531` | pl = {"rank": 0, "send": None, "order": asked, "asked_order": asked, "state": ri.state_of(setting), "assumed": False, "warning": "", |
-| `pack_deploy.py:1716` | out["rank_plan"] = {k: rp.get(k) for k in ("rank", "order", "asked_order", "why", "warning", "assumed", "state")} |
+| `pack_deploy.py:769` | READ_ONLY when the rule's rank is above the API client's (rank_inherit.caller, assumed). |
+| `pack_deploy.py:1541` | pl = {"rank": 0, "send": None, "order": asked, "asked_order": asked, "state": ri.state_of(setting), "assumed": False, "warning": "", |
+| `pack_deploy.py:1744` | out["rank_plan"] = {k: rp.get(k) for k in ("rank", "order", "asked_order", "why", "warning", "assumed", "state")} |
 | `pack_ops.py:958` | through the raw request (POST/DELETE /rootCertificates, an assumed path). |
 | `panos_migrate.py:17` | carried as a silent drop: assumed closest match). |
 | `panos_migrate.py:33` | where a mapping exists in APP_MAP (assumed enum names, checked against |
@@ -379,8 +379,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/flow_anim.js:41` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
 | `static/flow_anim.js:49` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
 | `static/flow_anim.js:200` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:4715` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:4795` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4720` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4800` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |

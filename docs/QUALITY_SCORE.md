@@ -10,6 +10,8 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17 skipped, 3071 s.
 
+- Records with no area in the formula: w10-store-defaults. Their open findings still count toward the cap.
+
 ## Scores by area
 
 | Area | Sub-area | Score | Tests | Findings (open) | Standards covered | Based on |
@@ -30,8 +32,8 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
 | high | 0 | 20 | 0 |
-| medium | 0 | 194 | 0 |
-| low | 2 | 421 | 3 |
+| medium | 0 | 195 | 0 |
+| low | 2 | 422 | 3 |
 | info | 0 | 71 | 50 |
 
 ### Regression
@@ -810,6 +812,13 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | W8-SHADOW-03 | The sample tenant and snapshots had no answer for any Insights question, so Traffic insights showed every section as an error offline | info | CWE-754 | V1.14.1 | fixed | Builders | offline_tenant answers POST /zins/graphql per operation from /zins/graphql/&lt;operation&gt; (sample data and snapshot capture), honouring the Shadow IT application filter | tests/test_shadow_it.py::test_a_snapshot_keeps_the_insights_answers_per_question_without_the_per_user_one |
 | W8-TS-03 | tests/test_new_marks.py hard-coded the 2026-10-28 marks (Test a list, the protocol field), so adding any newer release broke it | info | CWE-1164 | V1.14.1 | fixed | Builders | the browser checks target the releases still marked (live motion, the ZIA platform scope box) and compute the next release date from the manifest | tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out |
 
+### Other
+
+| Id | Title | Severity | CWE | ASVS | Status | Sub-area | Fix or reason | Test |
+|---|---|---|---|---|---|---|---|---|
+| W10-SD-01 | A credential store that could not be read (locked) let a new store key be made and saved over the existing entry, orphaning every sealed store | medium | CWE-320 | V6.4.1 | fixed | Other | Keys are read from the credential store and the key file together; a new key is made only when nothing that might hold one failed to read, and used only after it reads back | tests/test_store_encryption_default.py::test_a_locked_credential_store_is_never_replaced_by_a_new_key |
+| W10-SD-02 | With encryption on, a key saved to the credential store but not readable from it could be used to seal stores | low | CWE-664 | V6.4.1 | fixed | Other | The ring is read back after every save (credential store, else key file) before the key is used | tests/test_store_encryption_default.py::test_the_key_goes_to_the_credential_store_where_there_is_one |
+
 ### Records
 
 | Record | Area | Title | Checks | Findings | Tests added |
@@ -848,6 +857,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
 | w10-native-click | UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page | Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s | 10 | 6 | 13 |
+| w10-store-defaults | Encrypted stores on by default (store_crypto.py) with the one-time migration of plain stores, and the managed-name prefix for policy packs (name_prefix.py) | Wave 10: secure-by-default store encryption with a verified, resumable migration, and an operator-chosen managed-name prefix | 7 | 2 | 43 |
 | w7-admin-zia-zid | Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients) | Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once | 9 | 2 | 67 |
 | w7-admin-zpa-zcc-zdx | w7-admin-zpa-zcc-zdx | Day-to-day admin for ZPA (connectors, Service Edges, PRA and user portals, provisioning keys, Browser Access certificates), Client Connector (device removal single and bulk, bypass apps, entitlements) and ZDX (deep trace, read-only views) | 10 | 6 | 94 |
 | w7-federal-compliance | Federal compliance profiles, one compliance choice and the compliance pack: ZIA security baseline, AI Guard detection policy, policy packs (IRS 1075 FTI Pack), the Compliance page, the POV planner and Simple mode | Six federal profiles with sourced control catalogues that change rules where the source justifies it, every created rule mapped to a control or a reason code, and local compliance pack exports with synthetic DLP test data | 7 | 2 | 114 |
@@ -892,9 +902,9 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 
 ## Standards covered by tests
 
-- OWASP ASVS 4.0.3: 136 requirements in 14 of 14 chapters (V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14)
+- OWASP ASVS 4.0.3: 137 requirements in 14 of 14 chapters (V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14)
 - WCAG 2.2 AA: 39 success criteria (SC 1.1.1, SC 1.3.1, SC 1.3.2, SC 1.3.5, SC 1.4.1, SC 1.4.3, SC 1.4.6, SC 1.4.10, SC 1.4.11, SC 1.4.12, SC 1.4.13, SC 2.1.1, SC 2.1.2, SC 2.2.1, SC 2.2.2, SC 2.3.3, SC 2.4.2, SC 2.4.3, SC 2.4.4, SC 2.4.5, SC 2.4.6, SC 2.4.7, SC 2.4.11, SC 2.5.2, SC 2.5.8, SC 3.1.2, SC 3.1.5, SC 3.2.1, SC 3.2.2, SC 3.2.3, SC 3.2.4, SC 3.3.1, SC 3.3.2, SC 3.3.3, SC 3.3.4, SC 3.3.5, SC 3.3.7, SC 4.1.2, SC 4.1.3)
-- CWE: 211 weaknesses (CWE-15, CWE-16, CWE-20, CWE-22, CWE-59, CWE-67, CWE-73, CWE-74, CWE-77, CWE-78, CWE-79, CWE-88, CWE-91, CWE-93, CWE-94, CWE-95, CWE-113, CWE-116, CWE-117, CWE-131, CWE-150, CWE-172, CWE-176, CWE-178, CWE-180, CWE-183, CWE-185, CWE-190, CWE-193, CWE-200, CWE-201, CWE-204, CWE-208, CWE-209, CWE-212, CWE-221, CWE-223, CWE-226, CWE-248, CWE-250, CWE-252, CWE-256, CWE-259, CWE-262, CWE-269, CWE-272, CWE-276, CWE-280, CWE-284, CWE-285, CWE-287, CWE-290, CWE-294, CWE-295, CWE-297, CWE-298, CWE-306, CWE-307, CWE-308, CWE-311, CWE-312, CWE-319, CWE-324, CWE-327, CWE-328, CWE-330, CWE-345, CWE-346, CWE-347, CWE-350, CWE-352, CWE-353, CWE-354, CWE-359, CWE-362, CWE-367, CWE-369, CWE-374, CWE-377, CWE-379, CWE-384, CWE-390, CWE-391, CWE-392, CWE-400, CWE-404, CWE-405, CWE-407, CWE-409, CWE-434, CWE-436, CWE-440, CWE-441, CWE-451, CWE-454, CWE-457, CWE-459, CWE-460, CWE-471, CWE-472, CWE-476, CWE-480, CWE-488, CWE-494, CWE-502, CWE-506, CWE-521, CWE-522, CWE-524, CWE-525, CWE-532, CWE-538, CWE-540, CWE-549, CWE-552, CWE-561, CWE-565, CWE-598, CWE-601, CWE-605, CWE-611, CWE-613, CWE-614, CWE-620, CWE-625, CWE-628, CWE-636, CWE-639, CWE-640, CWE-650, CWE-653, CWE-654, CWE-664, CWE-665, CWE-667, CWE-668, CWE-670, CWE-672, CWE-674, CWE-681, CWE-682, CWE-684, CWE-693, CWE-694, CWE-696, CWE-697, CWE-703, CWE-704, CWE-706, CWE-732, CWE-749, CWE-754, CWE-755, CWE-770, CWE-775, CWE-776, CWE-778, CWE-779, CWE-798, CWE-799, CWE-829, CWE-833, CWE-835, CWE-837, CWE-838, CWE-840, CWE-841, CWE-843, CWE-862, CWE-863, CWE-915, CWE-916, CWE-918, CWE-922, CWE-942, CWE-943, CWE-1004, CWE-1007, CWE-1021, CWE-1023, CWE-1025, CWE-1041, CWE-1059, CWE-1068, CWE-1077, CWE-1078, CWE-1088, CWE-1104, CWE-1116, CWE-1164, CWE-1173, CWE-1176, CWE-1188, CWE-1236, CWE-1265, CWE-1275, CWE-1284, CWE-1286, CWE-1287, CWE-1289, CWE-1321, CWE-1325, CWE-1327, CWE-1333, CWE-1339, CWE-1357, CWE-1385, CWE-1391, CWE-1393, CWE-1395, CWE-1426)
+- CWE: 213 weaknesses (CWE-15, CWE-16, CWE-20, CWE-22, CWE-59, CWE-67, CWE-73, CWE-74, CWE-77, CWE-78, CWE-79, CWE-88, CWE-91, CWE-93, CWE-94, CWE-95, CWE-113, CWE-116, CWE-117, CWE-131, CWE-150, CWE-172, CWE-176, CWE-178, CWE-180, CWE-183, CWE-185, CWE-190, CWE-193, CWE-200, CWE-201, CWE-204, CWE-208, CWE-209, CWE-212, CWE-221, CWE-223, CWE-226, CWE-248, CWE-250, CWE-252, CWE-256, CWE-259, CWE-262, CWE-269, CWE-272, CWE-276, CWE-280, CWE-284, CWE-285, CWE-287, CWE-290, CWE-294, CWE-295, CWE-297, CWE-298, CWE-306, CWE-307, CWE-308, CWE-311, CWE-312, CWE-319, CWE-320, CWE-321, CWE-324, CWE-327, CWE-328, CWE-330, CWE-345, CWE-346, CWE-347, CWE-350, CWE-352, CWE-353, CWE-354, CWE-359, CWE-362, CWE-367, CWE-369, CWE-374, CWE-377, CWE-379, CWE-384, CWE-390, CWE-391, CWE-392, CWE-400, CWE-404, CWE-405, CWE-407, CWE-409, CWE-434, CWE-436, CWE-440, CWE-441, CWE-451, CWE-454, CWE-457, CWE-459, CWE-460, CWE-471, CWE-472, CWE-476, CWE-480, CWE-488, CWE-494, CWE-502, CWE-506, CWE-521, CWE-522, CWE-524, CWE-525, CWE-532, CWE-538, CWE-540, CWE-549, CWE-552, CWE-561, CWE-565, CWE-598, CWE-601, CWE-605, CWE-611, CWE-613, CWE-614, CWE-620, CWE-625, CWE-628, CWE-636, CWE-639, CWE-640, CWE-650, CWE-653, CWE-654, CWE-664, CWE-665, CWE-667, CWE-668, CWE-670, CWE-672, CWE-674, CWE-681, CWE-682, CWE-684, CWE-693, CWE-694, CWE-696, CWE-697, CWE-703, CWE-704, CWE-706, CWE-732, CWE-749, CWE-754, CWE-755, CWE-770, CWE-775, CWE-776, CWE-778, CWE-779, CWE-798, CWE-799, CWE-829, CWE-833, CWE-835, CWE-837, CWE-838, CWE-840, CWE-841, CWE-843, CWE-862, CWE-863, CWE-915, CWE-916, CWE-918, CWE-922, CWE-942, CWE-943, CWE-1004, CWE-1007, CWE-1021, CWE-1023, CWE-1025, CWE-1041, CWE-1059, CWE-1068, CWE-1077, CWE-1078, CWE-1088, CWE-1104, CWE-1116, CWE-1164, CWE-1173, CWE-1176, CWE-1188, CWE-1236, CWE-1265, CWE-1275, CWE-1284, CWE-1286, CWE-1287, CWE-1289, CWE-1321, CWE-1325, CWE-1327, CWE-1333, CWE-1339, CWE-1357, CWE-1385, CWE-1391, CWE-1393, CWE-1395, CWE-1426)
 - OWASP Top 10 2021: A01:2021, A02:2021, A03:2021, A04:2021, A05:2021, A06:2021, A07:2021, A08:2021, A09:2021, A10:2021; OWASP WSTG: 67 tests ids
 - SLSA v1.0: SLSA Provenance, SLSA v1.0, SLSA v1.0 Build L2, SLSA v1.0 Build L2 (provenance), SLSA v1.0 Build L3, SLSA v1.0 Build L3 (pinned inputs), SLSA v1.0 Provenance, SLSA v1.0 Source, SLSA v1.0 Source (verified provenance), SLSA v1.0 build integrity
 - OpenSSF Scorecard: Binary-Artifacts, CI-Tests, Dangerous-Workflow, License, Pinned-Dependencies, SAST, SBOM, Signed-Releases, Token-Permissions, Vulnerabilities

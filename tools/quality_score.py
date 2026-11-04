@@ -88,7 +88,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
     {"key": "secure_by_design", "name": "Secure by design", "weight": 35, "subs": (
         {"key": "write_paths", "name": "Write paths", "slugs": ("sbd-writes", "c6-admin-ops", "c6-deploy", "c6-packs", "c6-migrate", "c6-update-heal", "review-backend",
                                                                 "w7-rule-editor", "w7-sync-csv"),
-         "tests": ("test_write_safety_gates.py", "test_pack_deploy.py", "test_pack_removal.py", "test_remediation.py",
+         "tests": ("test_write_safety_gates.py", "test_pack_deploy.py", "test_name_prefix.py", "test_pack_removal.py", "test_remediation.py",
                    "test_admin_ops.py", "test_proposal_apply.py", "test_channel_targets_undo.py", "test_team_queue.py",
                    "test_sbd_writes.py", "test_c6_admin_ops.py", "test_c6_deploy.py", "test_c6_packs.py", "test_c6_migrate.py",
                    "test_c6_update_heal.py", "test_rule_editor.py", "test_rule_csv.py", "test_sync_jobs.py", "test_sync_template_source.py",
@@ -104,7 +104,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
          "controls": ("ASVS V5.1.3", "ASVS V5.1.4", "ASVS V5.2.4", "ASVS V5.3.3", "ASVS V12.1.1", "ASVS V12.3.1",
                       "CWE-20", "CWE-22", "CWE-79", "CWE-400", "CWE-611", "CWE-918", "CWE-1333")},
         {"key": "auth_scope_secrets", "name": "Auth, scope and secrets", "slugs": ("sbd-auth", "c6-auth", "c6-api-server", "c6-scope-offline", "w7-mcp-skill", "w7-zcc-plus", "w7-profile-cloud", "w7-team-server", "w8-other-products", "w9-security-gates", "w9-team-auth"),
-         "tests": ("test_auth_session.py", "test_team_server.py", "test_team_server_extras.py", "test_team_saml.py", "test_team_passkeys.py", "test_team_signin_settings.py", "test_scope_rule_routes.py", "test_secret_canaries.py", "test_ui_auth.py", "test_sso.py",
+         "tests": ("test_auth_session.py", "test_team_server.py", "test_team_server_extras.py", "test_store_encryption_default.py", "test_team_saml.py", "test_team_passkeys.py", "test_team_signin_settings.py", "test_scope_rule_routes.py", "test_secret_canaries.py", "test_ui_auth.py", "test_sso.py",
                    "test_extension_security.py", "test_tools_read_only_in_scope.py", "test_no_implicit_reads.py",
                    "test_report_scope_reads.py", "test_sbd_offline_least_privilege.py", "test_c6_auth.py", "test_c6_api_server.py",
                    "test_c6_scope_offline.py", "test_mcp_tools.py", "test_update_notify.py", "test_zcc_tamper_passwords.py", "test_zcc_otp.py", "test_other_products.py", "test_security_gates.py", "test_mcp_tools_w9.py"),
