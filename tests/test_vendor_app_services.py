@@ -21,6 +21,7 @@ import requests.adapters
 from requests.models import Response
 
 import app_services as aps
+import endpoint_snapshots
 import m365_endpoints as m365
 import vendor_endpoints as ve
 
@@ -42,6 +43,10 @@ def _own_folder(tmp_path, monkeypatch):
     def refuse(self, request, **kw):
         raise AssertionError(f"no network in tests: {request.url}")
     monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", refuse)
+    # These tests pin the kept-list logic, so the bundled excerpts are left
+    # out here; tests/test_app_service_snapshots.py tests them on their own.
+    monkeypatch.setattr(endpoint_snapshots, "vendor_list", lambda pid: None)
+    monkeypatch.setattr(endpoint_snapshots, "m365_list", lambda: None)
     ve._CACHE.clear()
     ve._CURRENT["lists"] = None
     m365._CACHE.update(key=None, list=None)
@@ -169,14 +174,15 @@ class Net:
 
 
 def test_fetching_is_off_by_default_and_import_only_providers_cannot_fetch(monkeypatch):
-    """ASVS V12.6.1 · CWE-918 · WSTG-INPV-19: every provider starts off; Fetch now while off sends nothing; Webex and the others publish no file, so fetching them cannot be turned on."""
+    """ASVS V12.6.1 · CWE-918 · WSTG-INPV-19: every provider starts off; Fetch now while off sends nothing; Webex, RingCentral and Talkdesk publish no machine-readable file, so fetching them cannot be turned on."""
     net = Net(monkeypatch)
     st = ve.status()
     assert all(p["enabled"] is False for p in st["providers"])
-    assert [p["id"] for p in st["providers"] if p["fetchable"]] == ["zoom"]
-    with pytest.raises(ve.FetchDisabled, match="off"):
-        ve.fetch("zoom")
-    for pid in ("webex", "ringcentral", "goto", "talkdesk"):
+    assert [p["id"] for p in st["providers"] if p["fetchable"]] == ["zoom", "goto"]
+    for pid in ("zoom", "goto"):
+        with pytest.raises(ve.FetchDisabled, match="off"):
+            ve.fetch(pid)
+    for pid in ("webex", "ringcentral", "talkdesk"):
         with pytest.raises(ve.FetchDisabled, match="import its list by hand"):
             ve.set_enabled(pid, True)
         with pytest.raises(ve.FetchDisabled):
@@ -224,9 +230,10 @@ def test_the_fetcher_refuses_any_other_address(monkeypatch, url):
 
 
 def test_the_fetch_host_is_declared_with_the_other_outbound_destinations():
-    """ASVS V14.1.1 · V12.6.1 · CWE-1059: the one host fetched is listed in SECURITY.md's outbound calls."""
+    """ASVS V14.1.1 · V12.6.1 · CWE-1059: every host fetched is listed in SECURITY.md's outbound calls."""
     sec = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SECURITY.md"), encoding="utf-8").read()
-    assert ve.FETCH_HOSTS == {"assets.zoom.us"} and "https://assets.zoom.us" in sec
+    assert ve.FETCH_HOSTS == {"assets.zoom.us", "goto-ipblocks.live.gtc.goto.com"}
+    assert "https://assets.zoom.us" in sec and "https://goto-ipblocks.live.gtc.goto.com" in sec
 
 
 # ── Test a list: two destinations, two answers ───────────────────────
