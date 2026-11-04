@@ -139,6 +139,8 @@ process.on('exit', () => { try { p.kill(); } catch (e) { /* gone */ } });
 const deadline = setTimeout(() => { try { p.kill(); } catch (e) { /* gone */ } process.exit(3); }, 150000);
 const [credsJson, clockFile] = args;
 const go = async url => { await send('Page.navigate', { url: base + url }); await until(() => ev(`document.readyState === 'complete'`), url + ' load'); };
+// A fresh load of Simple mode (navigating to the same URL with its #hash would not reload it).
+const simple = async () => { await go('/'); await go('/simple#check'); };
 const conn = re => until(() => ev(`(() => { const t = (document.getElementById('smConn') || {}).textContent || ''; return ${re}.test(t) ? t : null; })()`), String(re));
 const next = () => ev(`(() => { const b = document.getElementById('smNext'); if (!b || b.disabled) return false; b.click(); return true; })()`);
 const out = {};
@@ -146,12 +148,12 @@ const out = {};
 await go('/');
 const prof = await ev(`fetch('/api/tenant-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Bolt profile', cloud: 'zscalerten', vanity_domain: 'bolt', client_id: 'boltclient0001' }) }).then(r => r.json())`);
 await ev(`(localStorage.setItem('zassess_profile', ${JSON.stringify(prof.id)}), localStorage.removeItem('zsimple_conn'), true)`);
-await go('/simple#check');
+await simple();
 out.adopted = await conn('/Connected to Bolt profile/');
 // 2. Authenticate (the expert page's POST); with no profile of its own, Simple mode uses that sign-in.
 await ev(`(localStorage.removeItem('zassess_profile'), localStorage.removeItem('zsimple_conn'), true)`);
 out.check = await ev(`fetch('/api/tenant/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${credsJson}) }).then(r => r.status)`);
-await go('/simple#check');
+await simple();
 out.signed = await conn('/Connected to acme/');
 // 3. The sign-in ends (the server's clock moves past 30 idle minutes); the check then says so in words.
 fs.writeFileSync(clockFile, 'later');
@@ -163,7 +165,7 @@ await until(() => ev(`!!document.getElementById('smRun')`), 'the run step');
 await until(next, 'Check now');
 out.failed = await until(() => ev(`(() => { const e = document.getElementById('smErr'); return e && e.textContent.trim() ? e.textContent : null; })()`), 'the error', 30000);
 // 4. Loaded again: Simple mode says the sign-in ended, not just "Not connected".
-await go('/simple#check');
+await simple();
 out.onLoad = await conn('/sign-in ended/');
 console.log(JSON.stringify(out));
 clearTimeout(deadline); ws.close(); p.kill(); process.exit(0);
