@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
+import security
 import sso
 import team_routes
 import team_server as team
@@ -442,3 +443,223 @@ def test_team_signing_out_forgets_the_signed_in_tenant(team_world, world):
     assert tenant_session._STORE
     assert vic.post("/api/auth/logout", headers=ORIGIN).status_code == 200
     assert not tenant_session._STORE
+
+
+# ── 9. Session fixation: every sign-in gets a new handle ─────────────────
+
+PLANTED = "F" * 43   # a handle another page on this computer could set (cookies are not separated by port)
+
+
+def _handle(r):
+    """The handle a response set, or ''."""
+    for v in r.headers.get_list("set-cookie"):
+        name, _, rest = v.partition("=")
+        if name in (tenant_session.COOKIE, tenant_session.SECURE_COOKIE):
+            return rest.split(";")[0]
+    return ""
+
+
+def test_a_planted_handle_is_replaced_at_sign_in_and_finds_nothing(world):
+    """ASVS V3.2.1 · CWE-384 · WSTG-SESS-03: a handle the browser brought (planted) is never kept: Authenticate sets a new one, and the planted one reads nothing."""
+    page = TestClient(srv.app)
+    page.cookies.set(tenant_session.COOKIE, PLANTED, domain="testserver.local", path="/")
+    r = page.post("/api/tenant/check", json=ACME)
+    new = _handle(r)
+    assert r.status_code == 200 and new and new != PLANTED
+    attacker = TestClient(srv.app)
+    attacker.cookies.set(tenant_session.COOKIE, PLANTED, domain="testserver.local", path="/")
+    assert attacker.get("/api/tenant/session").json()["connected"] is False
+    assert _assess(attacker)[0] == 400 and world["assessed"] == []
+    assert page.get("/api/tenant/session").json()["connected"] is True
+
+
+def test_an_assessment_sign_in_also_replaces_the_handle(world):
+    """ASVS V3.2.1 · CWE-384 · WSTG-SESS-03: the assessment's own sign-in sets a new handle too; the planted one finds nothing."""
+    page = TestClient(srv.app)
+    page.cookies.set(tenant_session.COOKIE, PLANTED, domain="testserver.local", path="/")
+    with page.stream("POST", "/api/assess", json=dict(ASSESS, **ACME), headers=ORIGIN) as r:
+        new = _handle(r)
+        r.read()
+    assert new and new != PLANTED
+    attacker = TestClient(srv.app)
+    attacker.cookies.set(tenant_session.COOKIE, PLANTED, domain="testserver.local", path="/")
+    assert attacker.get("/api/tenant/session").json()["connected"] is False
+    assert page.get("/api/tenant/session").json()["connected"] is True
+
+
+def test_reading_with_the_sign_in_moves_it_to_a_new_handle_and_the_old_one_reads_nothing(world):
+    """ASVS V3.2.1 · CWE-384 · WSTG-SESS-03: an assessment that uses the kept sign-in (Simple mode) still works, the browser gets a new handle, and a second client holding the old handle reads nothing."""
+    page = TestClient(srv.app)
+    old = _handle(page.post("/api/tenant/check", json=ACME))
+    status, events = _assess(page)
+    assert status == 200 and _completed(events)
+    assert page.cookies.get(tenant_session.COOKIE) != old
+    assert page.get("/api/tenant/session").json()["connected"] is True
+    second = TestClient(srv.app)
+    second.cookies.set(tenant_session.COOKIE, old)
+    assert second.get("/api/tenant/session").json()["connected"] is False
+    assert _assess(second)[0] == 400 and len(world["assessed"]) == 1
+
+
+def test_a_failed_sign_in_keeps_the_browsers_handle_and_sets_none(world, monkeypatch):
+    """ASVS V3.2.1 · CWE-384 · WSTG-SESS-03: a sign-in check that fails sets no new handle (and ends the old sign-in, as before)."""
+    page = TestClient(srv.app)
+    old = _handle(page.post("/api/tenant/check", json=ACME))
+
+    def refuse(creds):
+        raise srv.HTTPException(status_code=401, detail="invalid_client")
+    monkeypatch.setattr(srv, "_build_sdk_client", refuse)
+    r = page.post("/api/tenant/check", json=ACME)
+    assert r.status_code == 401 and _handle(r) == "" and page.cookies.get(tenant_session.COOKIE) == old
+
+
+# ── 10. Only this app's own page reads with it ───────────────────────────
+
+@pytest.mark.parametrize("headers", [{"Sec-Fetch-Site": "same-site"}, {"Sec-Fetch-Site": "cross-site"}])
+def test_a_request_another_page_made_never_reads_with_it(world, headers):
+    """ASVS V4.2.2 · CWE-352 · WSTG-SESS-05: a read the browser sent for another site's page (another port of this computer is same-site) does not use the kept sign-in."""
+    page = TestClient(srv.app)
+    page.post("/api/tenant/check", json=ACME)
+    with page.stream("POST", "/api/assess", json=ASSESS, headers=headers) as r:
+        r.read()
+        assert r.status_code == 400
+    assert world["assessed"] == []
+    assert _assess(page)[0] == 200      # the app's own page still reads
+
+
+def test_a_foreign_origin_never_reads_with_it(world):
+    """ASVS V4.2.2 · CWE-346 · WSTG-SESS-05: a request whose Origin is not this server's never gets the kept sign-in, even where no CSRF check applies."""
+    page = TestClient(srv.app)
+    page.post("/api/tenant/check", json=ACME)
+    with tenant_session_ctx(page, {"origin": "http://localhost:3000"}) as read:
+        assert read() is None
+    with tenant_session_ctx(page, {"origin": "http://testserver", "sec-fetch-site": "same-origin"}) as read:
+        assert read() is not None
+
+
+class tenant_session_ctx:
+    """Run tenant_session.for_read() as a read route's request with these headers and this client's handle."""
+    def __init__(self, client, headers):
+        self.client, self.headers = client, headers
+
+    def __enter__(self):
+        handle = self.client.cookies.get(tenant_session.COOKIE)
+        hdrs = [(b"host", b"testserver"), (b"cookie", f"{tenant_session.COOKIE}={handle}".encode())]
+        hdrs += [(k.encode(), v.encode()) for k, v in self.headers.items()]
+        scope = {"type": "http", "method": "POST", "path": "/api/assess", "scheme": "http", "headers": hdrs,
+                 "server": ("testserver", 80), "client": ("testclient", 50000), "query_string": b"", "root_path": ""}
+        self.ctx = {"handle": handle, "fresh": "", "rotated": False, "send_cookie": False, "cookie": tenant_session.COOKIE,
+                    "who": "", "scope": scope, "routes": lambda: srv.app.router.routes, "rule": None}
+        self.token = tenant_session._REQ.set(self.ctx)
+        return tenant_session.for_read
+
+    def __exit__(self, *exc):
+        tenant_session._REQ.reset(self.token)
+
+
+# ── 11. The secret leaves memory when the sign-in ends ──────────────────
+
+def test_an_ended_sign_ins_secret_is_dropped_without_another_request(world):
+    """ASVS V3.3.2 · CWE-226 · WSTG-SESS-07: the timer (reap) drops an ended sign-in's secret though nobody asks again, and the timer is running."""
+    page = TestClient(srv.app)
+    page.post("/api/tenant/check", json=ACME)
+    assert tenant_session._REAPER is not None and tenant_session._REAPER.is_alive()
+    assert tenant_session.REAP_SECONDS <= 60
+    world["clock"].advance(30)
+    tenant_session.reap()
+    assert [e.creds for e in tenant_session._STORE.values()] == [None]
+
+
+def test_another_callers_request_drops_an_ended_sign_ins_secret(world):
+    """ASVS V3.3.2 · CWE-226 · WSTG-SESS-07: any request sweeps the whole store, not only the asking browser's sign-in."""
+    first, second = TestClient(srv.app), TestClient(srv.app)
+    first.post("/api/tenant/check", json=ACME)
+    world["clock"].advance(20)
+    second.post("/api/tenant/check", json=BOLT)
+    world["clock"].advance(10)
+    assert second.get("/api/tenant/session").json()["connected"] is True
+    ended = [e for e in tenant_session._STORE.values() if e.label.startswith("acme")]
+    assert len(ended) == 1 and ended[0].creds is None and ended[0].ended == "idle"
+
+
+# ── 12. A failed assessment sign-in ends it ─────────────────────────────
+
+@pytest.mark.parametrize("failure", ["refused", "raises"])
+def test_a_failed_assessment_sign_in_ends_the_signed_in_tenant(world, monkeypatch, failure):
+    """ASVS V3.3.1 · CWE-613 · WSTG-SESS-06: an assessment whose own sign-in fails forgets the tenant signed in before; no silent fall back."""
+    page = TestClient(srv.app)
+    page.post("/api/tenant/check", json=ACME)
+
+    class Refused(Raw):
+        def auth(self):
+            if failure == "raises":
+                raise RuntimeError("invalid_client")
+            return (False, "invalid_client")
+    monkeypatch.setattr(srv, "_raw_client", lambda creds: Refused())
+    status, events = _assess(page, BOLT)
+    assert status == 200 and any(k == "error" for k, _ in events) and not _completed(events)
+    assert page.get("/api/tenant/session").json()["connected"] is False
+    assert not tenant_session._STORE
+
+
+# ── 13. Cookie, CSRF, memory bound, UI token mode ───────────────────────
+
+def test_over_https_the_handle_cookie_is_secure_and_host_only(world):
+    """ASVS V3.4.1 · CWE-614 · WSTG-SESS-02: over HTTPS the handle is a Secure, __Host- prefixed cookie; over plain HTTP it is not marked Secure."""
+    secure = TestClient(srv.app, base_url="https://testserver")
+    r = secure.post("/api/tenant/check", json=ACME, headers={"Origin": "https://testserver"})
+    cookie = r.headers["set-cookie"]
+    assert cookie.startswith(tenant_session.SECURE_COOKIE + "=") and "; Secure" in cookie and "Path=/" in cookie
+    assert "Domain=" not in cookie
+    assert secure.get("/api/tenant/session").json()["connected"] is True
+    # The unprefixed name (one another page could set) is not read over HTTPS.
+    other = TestClient(srv.app, base_url="https://testserver")
+    other.cookies.set(tenant_session.COOKIE, secure.cookies.get(tenant_session.SECURE_COOKIE))
+    assert other.get("/api/tenant/session").json()["connected"] is False
+    plain = TestClient(srv.app).post("/api/tenant/check", json=ACME).headers["set-cookie"]
+    assert "Secure" not in plain
+
+
+@pytest.mark.parametrize("origin", ["http://evil.example", "http://localhost:3000"])
+def test_sign_out_from_another_origin_is_refused(world, origin):
+    """ASVS V4.2.2 · CWE-352 · WSTG-SESS-05: DELETE /api/tenant/session from another origin (another local port included) is refused and the sign-in stays."""
+    page = TestClient(srv.app)
+    page.post("/api/tenant/check", json=ACME)
+    r = page.delete("/api/tenant/session", headers={"Origin": origin})
+    assert r.status_code == 403
+    assert page.get("/api/tenant/session").json()["connected"] is True
+
+
+def test_the_store_is_bounded_and_the_least_recently_used_goes_first(world, monkeypatch):
+    """ASVS V11.1.4 · CWE-770 · WSTG-BUSL-05: memory holds at most MAX_ENTRIES sign-ins; the least recently used one is forgotten first."""
+    monkeypatch.setattr(tenant_session, "MAX_ENTRIES", 3)
+    pages = []
+    for _ in range(6):
+        world["clock"].advance(1)
+        p = TestClient(srv.app)
+        assert p.post("/api/tenant/check", json=ACME).status_code == 200
+        pages.append(p)
+    assert len(tenant_session._STORE) == 3
+    assert [p.get("/api/tenant/session").json()["connected"] for p in pages] == [False] * 3 + [True] * 3
+
+
+def test_ui_token_mode_binds_it_to_the_token_and_the_browser(world, monkeypatch):
+    """ASVS V3.2.1 · ASVS V4.2.1 · CWE-639 · WSTG-SESS-01: with the UI token gate on, the sign-in is used with the token and the handle; no token is a 401, and a new token finds nothing."""
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "1")
+    monkeypatch.setenv("ZSCALER_UI_TOKEN", "first-ui-token-0123456789")
+    monkeypatch.delenv("ZSCALER_SSO_ENABLED", raising=False)
+    monkeypatch.setattr(security, "_ui_token", None)
+    page = TestClient(srv.app, headers={"X-DLP-Check-Token": "first-ui-token-0123456789"})
+    assert page.post("/api/tenant/check", json=ACME).status_code == 200
+    status, events = _assess(page)          # Simple mode: the kept sign-in, then a new handle for it
+    assert status == 200 and _completed(events)
+    assert page.get("/api/tenant/session").json()["connected"] is True
+    handle = page.cookies.get(tenant_session.COOKIE)
+    tokenless = TestClient(srv.app)
+    tokenless.cookies.set(tenant_session.COOKIE, handle)
+    assert tokenless.get("/api/tenant/session").status_code == 401
+    monkeypatch.setenv("ZSCALER_UI_TOKEN", "second-ui-token-0123456789")
+    monkeypatch.setattr(security, "_ui_token", None)
+    later = TestClient(srv.app, headers={"X-DLP-Check-Token": "second-ui-token-0123456789"})
+    later.cookies.set(tenant_session.COOKIE, handle)
+    assert later.get("/api/tenant/session").json()["connected"] is False

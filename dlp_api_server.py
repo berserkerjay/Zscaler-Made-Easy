@@ -10885,9 +10885,14 @@ async def assess_stream(req: AssessRequest):
                 _v = str(getattr(req, _attr, "") or "").strip()
                 if _v and _op.valid_id(_v):
                     setattr(client, _attr, _v)
-            auth_result = await asyncio.to_thread(client.auth)
+            try:
+                auth_result = await asyncio.to_thread(client.auth)
+            except Exception:
+                _tenant_session.forget()   # a failed sign-in ends the signed-in tenant (as Authenticate's does)
+                raise
 
             if auth_result is not True:
+                _tenant_session.forget()   # never a silent fall back to the sign-in kept before
                 reason = ""
                 if isinstance(auth_result, tuple) and len(auth_result) == 2:
                     reason = str(auth_result[1])
