@@ -157,6 +157,7 @@ Find the files a change touches here, then read only those.
 | `tenant_fingerprint.py` | A classic-API tenant's fingerprint: how two classic-API tenants on one |
 | `tenant_health.py` | Tenant health: the signals that break a tenant quietly, read only. |
 | `tenant_profiles.py` | Tenant profiles — one saved record per customer tenant, so a consultant |
+| `tenant_session.py` | The signed-in tenant: one verified sign-in, remembered in server memory |
 | `tenant_terraform.py` | Export a whole tenant to Terraform: ZIA, ZPA, Cloud & Branch Connector and |
 | `tenant_terraform_schema.py` | The provider attributes a whole-tenant Terraform export writes, per |
 | `traffic_log_watch.py` | A daily traffic and session log report from a watched folder (opt-in). |
