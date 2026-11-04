@@ -9774,7 +9774,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#tmStoreRotate": {
-    "what": "Makes a new key for the app's encrypted stores, encrypts every store again with it, then forgets the old key. Only when store encryption is on.",
+    "what": "Makes a new key for the app's encrypted stores, encrypts every store again with it, then forgets the old key. Store encryption is on by default (AES-256-GCM; the key is in the operating system's credential store, else in the owner-only key file beside the data); the button is off only when the server was started with the opt-out DLP_CHECK_STORE_ENCRYPTION=0.",
     "input": "Nothing to type. You are asked to confirm.",
     "effect": "local"
    }

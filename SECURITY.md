@@ -320,19 +320,37 @@ who kept it or an administrator.
 owner (or an administrator) shares them with users and groups; a shared plan
 still opens only for people who may read its tenant profile.
 
-**Encryption at rest** (`DLP_CHECK_STORE_ENCRYPTION=1`, any mode;
-`store_crypto.py`): tenant profiles, snapshots, the change queue, proposals,
+**Encryption at rest** (on by default, any mode; opt out with
+`DLP_CHECK_STORE_ENCRYPTION=0`; `store_crypto.py`): tenant profiles, snapshots, the change queue, proposals,
 deployment and operation records, workspace notes, POVs and templates, the
 team accounts, the audit log, configuration backups with their list,
 templates and caches, scheduled sync jobs, the Client Connector fleet
 history, the SSL coverage history and saved traffic log reports are sealed
 with AES-256-GCM. A sealed store whose key is not here is an error, never
 read as empty (so a save never overwrites it). The key is kept
-in the OS credential store, or in an owner-only key file
-(`store_keys.json`, 0600). `python store_crypto.py rotate` (or the Team
-server page's administrator) makes a new key, re-seals every store with it
-and only then forgets the old one. Turning the setting off never locks data
-away: sealed stores still read while their key is there.
+in the OS credential store (Windows Credential Manager, macOS Keychain),
+or, where there is none (Linux, the container, headless servers), in an
+owner-only key file (`store_keys.json` beside the data, 0600; the container's
+`/data`; `DLP_CHECK_STORE_KEY_FILE` moves it, for example to a separate
+volume). Keys are read from both places, a new key is used only after it
+reads back from where it was kept, and a key ring that exists but cannot be
+read (a locked keychain, a damaged key file) is never replaced by a new key:
+new data stays unencrypted until it is fixed, and the start-up message and
+`python store_crypto.py status` say why (with an explicit
+`DLP_CHECK_STORE_ENCRYPTION=1` that is an error instead). Stores an earlier
+version wrote in plain text are sealed once at the first start: a verified
+owner-only backup first, then each file sealed atomically, read back and
+compared, with a journal so an interrupted run resumes; the backup and the
+per-file journal are removed only when every file reads back, and stale
+plain temporary files beside the stores go too, so no plain copy is left
+behind. `python store_crypto.py rotate` (or the Team server page's
+administrator) makes a new key, re-seals every store with it and only then
+forgets the old one. Opting out never locks data away: sealed stores still
+read while their key is there, and `python store_crypto.py unseal-all` turns
+them back into plain files. What it protects: a copy of the data folder or
+volume (a backup, a stolen disk) without the key. What it does not: a person
+or program running as the app's own user, who can read the key as the app
+does.
 
 **FIPS mode** (`DLP_CHECK_FIPS_MODE=1`) restricts the app's own choices to
 FIPS-approved algorithms: PBKDF2-HMAC-SHA256 passwords (an earlier scrypt
