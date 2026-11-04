@@ -892,8 +892,8 @@ def _gb(n: Any) -> Any:
 
 
 def to_xlsx(rep: Mapping[str, Any]) -> bytes:
-    """Summary, traffic and inspection, causes, recovery plan, traffic
-    classes and history as one workbook (xlsx_writer: no formulas)."""
+    """Summary, traffic and inspection, true coverage, causes, recovery plan,
+    traffic classes and history as one workbook (xlsx_writer: no formulas)."""
     import xlsx_writer
     s = rep.get("summary") or {}
     wb = xlsx_writer.Workbook(title=f"SSL coverage {rep.get('tenant_label') or ''}".strip(), subject="Uninspected traffic, causes and recovery plan")
@@ -923,6 +923,29 @@ def to_xlsx(rep: Mapping[str, Any]) -> bytes:
         tr.append(["", "", "", "", BYPASS_NOTE])
     else:
         tr.append(["", "", "", "", "Not read: " + str(vol.get("reason") or "traffic numbers were not asked for")])
+    t = rep.get("true_coverage") or {}
+    tc = wb.add_sheet("True coverage", columns=["Unit", "Part", "Share (%)", "Amount", "Cause", "Why", "Basis", "Fix"])
+    tc.append(["", t.get("source_label") or "", "", "", "", t.get("headline") or "", "estimate, not measured" if t.get("estimate") else "measured", ""])
+    if t.get("window"):
+        tc.append(["", "Window", "", "", "", t["window"], "", ""])
+    for unit, sp in (t.get("units") or {}).items():
+        if not sp:
+            continue
+        for x in sp["slices"]:
+            tc.append([unit.lower(), x["label"], x["pct"], x["amount"], "", "", "", ""])
+        tc.append([unit.lower(), "True inspection coverage", sp["inspected_pct"], "", "", f"up to {sp['inspected_pct_high']}% if the unknown part was inspected", "", ""])
+        for r in (t.get("causes") or []) + ([t["unattributed"]] if t.get("unattributed") else []):
+            share = (r.get("pct_of") or {}).get(unit)
+            if share is None:
+                continue
+            tc.append([unit.lower(), "HTTPS not inspected", share, r.get(unit) if r.get(unit) is not None else "",
+                       f"{r.get('kind_label') or ''}{': ' + r['rule'] if r.get('rule') else ''}", r.get("how") or "", r.get("basis") or "",
+                       (r.get("fix") or {}).get("label") or r.get("recovery") or ""])
+    for r in t.get("outside") or []:
+        tc.append(["", "Never reaches ZIA", "", "", f"{r.get('kind_label') or ''}{': ' + r['rule'] if r.get('rule') else ''}", r.get("why") or "", "not measurable",
+                   (r.get("fix") or {}).get("label") or r.get("recovery") or ""])
+    if t.get("needs"):
+        tc.append(["", "For a measured figure", "", "", "", t["needs"], "", ""])
     wb.add_sheet("Causes", columns=["Risk", "Kind", "What is not inspected", "Caused by", "Order", "Scope", "Why this risk", "Recovery", "Where",
                                     "Safe to change?", "Note", "Bytes (upper bound, GB)", "Never reaches Zscaler"],
                  rows=[[c["risk_label"], c["kind_label"], c["what"], (c.get("source") or {}).get("name") or "", (c.get("source") or {}).get("order") or "",
