@@ -406,6 +406,10 @@ def test_every_git_ignored_file_stays_out_of_the_image(pattern):
     (".selfheal-ab12.tmp", True),
     ("tenant_profiles.json", True),
     ("local_settings.env", True),
+    ("store_keys.json", True),                            # the store encryption key (Linux / container default)
+    (".store_keys.json.ab12.tmp", True),
+    ("store_encryption_migration.json", True),
+    ("store-encryption-backup/0000-tenant_profiles.json", True),   # the migration's plaintext safety copy
     ("dlp_api_server.py", False),                         # the app itself must still be built
     ("requirements.lock", False),
     ("static/index.html", False),
@@ -415,6 +419,18 @@ def test_every_git_ignored_file_stays_out_of_the_image(pattern):
 def test_the_build_context_keeps_the_app_and_drops_local_data(name, excluded):
     """ASVS V14.1.1 · CWE-538 · SSDF PS.1.1: the image gets the app and the build's certificates, never local data."""
     assert _docker_excluded(name, _patterns(".dockerignore")) is excluded
+
+
+@pytest.mark.parametrize("name", ["store_keys.json", "store_encryption_migration.json", "store-encryption-backup/"])
+def test_the_store_key_and_migration_files_are_ignored_by_git_and_docker(name):
+    """ASVS V6.4.1 · ASVS V14.1.1 · CWE-321 · CWE-538 · WSTG-CONF-04: the store key, the migration journal and its plaintext backup are never committed or copied into the image."""
+    # Arrange
+    sample = _sample(name)
+    # Act
+    in_git = any(fnmatch.fnmatch(sample, p.rstrip("/")) or (p.endswith("/") and sample.startswith(p)) for p in _patterns(".gitignore"))
+    # Assert
+    assert in_git, f"{name} is not in .gitignore"
+    assert _docker_excluded(sample, _patterns(".dockerignore")), f"{name} would be copied into the image"
 
 
 def test_the_dockerignore_matcher_follows_docker_semantics():

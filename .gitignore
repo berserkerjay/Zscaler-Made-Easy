@@ -110,6 +110,15 @@ sync_jobs.json.lock
 # Configuration backups, the configuration cache and templates (config_backup.py): tenant configuration, beside the profiles
 config_backups/
 
+# Store encryption (store_crypto.py): the key file, the one-time migration's
+# journal and its plaintext safety backup, and their atomic-write temporaries.
+# The key beside the data must never be committed or baked into an image.
+store_keys.json
+.store_keys.json.*.tmp
+store_encryption_migration.json
+.store_encryption_migration.json.*.tmp
+store-encryption-backup/
+
 # Agent workspace run outputs (agent-workspace/output/README.md explains them)
 agent-workspace/output/*
 !agent-workspace/output/README.md
