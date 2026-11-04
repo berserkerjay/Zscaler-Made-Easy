@@ -1754,7 +1754,7 @@ let optimizedRules = null;
 // a Run assessment button.
 async function authenticateTenant() {
   const st = document.getElementById('authStatus');
-  if (typeof _gdTest === 'function') { if (st) st.textContent = 'Checking…'; await _gdTest(); return; }
+  if (typeof _gdTest === 'function') { if (st) st.textContent = 'Checking…'; await _gdTest(); refreshSignedIn(false); return; }
   const body = migrateValidateCreds(); if (!body) return;
   if (st) st.textContent = 'Checking…';
   try {
@@ -1770,6 +1770,8 @@ async function authenticateTenant() {
 // this browser only, never in the browser. Reads use it while the sign-in
 // fields are blank; changes always need the sign-in details typed.
 window.__zmeSignedIn = null;
+// The words for a live signed-in tenant (also what the guide shows in #authStatus).
+window.zmeSignedInText = d => `Signed in to ${d.profile_name || d.tenant_label}. Every page reads this tenant without asking again; changes still need the sign-in details.`;
 async function refreshSignedIn(say) {
   let d = null;
   try { const r = await fetch('/api/tenant/session', { cache: 'no-store' }); if (r.ok) d = await r.json(); } catch (e) { d = null; }
@@ -1778,7 +1780,7 @@ async function refreshSignedIn(say) {
   if (out) out.hidden = !window.__zmeSignedIn;
   const st = document.getElementById('authStatus');
   if (say !== false && st && d) {
-    if (d.connected) st.textContent = `Signed in to ${d.profile_name || d.tenant_label}. Every page reads this tenant without asking again; changes still need the sign-in details.`;
+    if (d.connected) st.textContent = window.zmeSignedInText(d);
     else if (d.expired) st.textContent = d.message || 'Your sign-in to the tenant has ended. Sign in again.';
   }
   return d;

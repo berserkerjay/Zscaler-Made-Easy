@@ -40,6 +40,11 @@ out.check = await ev(`fetch('/api/tenant/check', { method: 'POST', headers: { 'C
 await go('/');
 out.expert = await until(() => ev(`(() => { const s = document.getElementById('authStatus'), b = document.getElementById('authSignOutBtn');
   return s && /Signed in to acme/.test(s.textContent) ? { status: s.textContent, signOutShown: !b.hidden } : null; })()`), 'the expert page connected state');
+// The guide redraws every 2.5 s and after its profiles load: run exactly
+// what its timer runs, then read the status again (it must still be there).
+out.expertKept = await ev(`(async () => { for (let i = 0; i < 3; i++) { if (typeof _gdRender === 'function') _gdRender(); if (typeof _gdAuthStatus === 'function') _gdAuthStatus(); }
+  if (typeof _gdProfilesLoad === 'function') await _gdProfilesLoad(); if (typeof _gdRender === 'function') _gdRender();
+  return { guide: typeof _gdRender === 'function', status: document.getElementById('authStatus').textContent }; })()`);
 // 2. Simple mode: connected, and the check runs without asking for anything.
 await go('/simple#check');
 out.simpleConn = await until(() => ev(`(() => { const t = (document.getElementById('smConn') || {}).textContent || ''; return /Connected to/.test(t) ? t : null; })()`), 'Connected to');
@@ -116,6 +121,86 @@ def test_the_expert_page_shows_the_signed_in_tenant_and_signs_out(journey):
     assert "Not connected yet" in journey["after"]
 
 
+def test_the_expert_pages_signed_in_state_stays_while_the_guide_redraws(journey):
+    """ASVS V3.3.1 · CWE-665 · WSTG-SESS-06 · WCAG 2.2 SC 4.1.3: the guide's redraws (every 2.5 s, and after its profiles load) leave "Signed in to <tenant>" in place."""
+    assert journey["expertKept"]["guide"] is True
+    assert "Signed in to acme" in journey["expertKept"]["status"], journey["expertKept"]
+
+
 def test_the_browser_keeps_no_secret(journey):
     """ASVS V8.2.2 · CWE-922 · WSTG-CLNT-12: no browser storage or script-readable cookie holds the secret."""
     assert SECRET not in journey["storage"]
+
+
+# ── Simple mode: adopting the guide's tenant profile, and a sign-in that ended ──
+
+ENDED_DRIVER = CDP_PRELUDE + r"""
+process.on('exit', () => { try { p.kill(); } catch (e) { /* gone */ } });
+const deadline = setTimeout(() => { try { p.kill(); } catch (e) { /* gone */ } process.exit(3); }, 150000);
+const [credsJson, clockFile] = args;
+const go = async url => { await send('Page.navigate', { url: base + url }); await until(() => ev(`document.readyState === 'complete'`), url + ' load'); };
+const conn = re => until(() => ev(`(() => { const t = (document.getElementById('smConn') || {}).textContent || ''; return ${re}.test(t) ? t : null; })()`), String(re));
+const next = () => ev(`(() => { const b = document.getElementById('smNext'); if (!b || b.disabled) return false; b.click(); return true; })()`);
+const out = {};
+// 1. Nothing signed in: Simple mode adopts the tenant profile the guide picked (zassess_profile).
+await go('/');
+const prof = await ev(`fetch('/api/tenant-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Bolt profile', cloud: 'zscalerten', vanity_domain: 'bolt', client_id: 'boltclient0001' }) }).then(r => r.json())`);
+await ev(`(localStorage.setItem('zassess_profile', ${JSON.stringify(prof.id)}), localStorage.removeItem('zsimple_conn'), true)`);
+await go('/simple#check');
+out.adopted = await conn('/Connected to Bolt profile/');
+// 2. Authenticate (the expert page's POST); with no profile of its own, Simple mode uses that sign-in.
+await ev(`(localStorage.removeItem('zassess_profile'), localStorage.removeItem('zsimple_conn'), true)`);
+out.check = await ev(`fetch('/api/tenant/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${credsJson}) }).then(r => r.status)`);
+await go('/simple#check');
+out.signed = await conn('/Connected to acme/');
+// 3. The sign-in ends (the server's clock moves past 30 idle minutes); the check then says so in words.
+fs.writeFileSync(clockFile, 'later');
+await until(() => ev(`!!document.getElementById('smNext') && !/First, connect/.test(document.getElementById('smStepBody').textContent)`), 'the connected step');
+await until(next, 'Next (connected)');
+await until(() => ev(`!!document.querySelector('input[name="smCh"]')`), 'the channel step');
+await until(next, 'Next (channels)');
+await until(() => ev(`!!document.getElementById('smRun')`), 'the run step');
+await until(next, 'Check now');
+out.failed = await until(() => ev(`(() => { const e = document.getElementById('smErr'); return e && e.textContent.trim() ? e.textContent : null; })()`), 'the error', 30000);
+// 4. Loaded again: Simple mode says the sign-in ended, not just "Not connected".
+await go('/simple#check');
+out.onLoad = await conn('/sign-in ended/');
+console.log(JSON.stringify(out));
+clearTimeout(deadline); ws.close(); p.kill(); process.exit(0);
+"""
+
+
+@pytest.fixture(scope="module")
+def ended(tmp_path_factory):
+    import os
+    import time
+
+    import tenant_session
+    mp = pytest.MonkeyPatch()
+    tmp = tmp_path_factory.mktemp("signed-in-ended")
+    later = tmp / "later"
+    # The server's clock, moved 31 minutes on once the driver writes `later`.
+    mp.setattr(tenant_session, "_clock", lambda: time.monotonic() + (31 * 60 if os.path.exists(later) else 0))
+    mp.setattr(srv, "_build_sdk_client", lambda creds: (srv._validate_creds(creds), object())[1])
+    mp.setattr(srv, "_readiness_token_access", lambda client, method: {})
+    mp.setattr(srv, "_close_quietly", lambda client: None)
+    mp.setattr(srv, "_get_checks", lambda scope, scopes: [("DLP.1", "DLP", "Check 1", lambda c: R(R.FAIL, "not set"))])
+    mp.setattr(srv, "_journey_scope", lambda ids, channels: ([], {}))
+    mp.setattr(srv, "_APP_DIR", str(tmp))
+    try:
+        return run_in_browser(tmp, ENDED_DRIVER, json.dumps(ACME), str(later), timeout=170)
+    finally:
+        mp.undo()
+        tenant_session.clear_all()
+
+
+def test_simple_mode_adopts_the_guides_tenant_profile(ended):
+    """ASVS V3.2.1 · CWE-287 · WSTG-SESS-01 · WCAG 2.2 SC 3.3.7: with no sign-in kept, Simple mode connects with the tenant profile the guide picked."""
+    assert "Connected to Bolt profile" in ended["adopted"], ended["adopted"]
+    assert ended["check"] == 200 and "Connected to acme" in ended["signed"]
+
+
+def test_simple_mode_says_in_words_when_the_sign_in_ended(ended):
+    """ASVS V3.3.2 · CWE-613 · WSTG-SESS-07 · WCAG 2.2 SC 3.3.1: a check run after the sign-in ended, and the next load, say the sign-in ended and to connect again."""
+    assert "sign-in ended" in ended["failed"] and "connect again" in ended["failed"], ended["failed"]
+    assert "sign-in ended" in ended["onLoad"], ended["onLoad"]
