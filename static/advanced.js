@@ -320,7 +320,13 @@
     const box = $('advM365Box');
     const c = st.counts || {};
     const rows = [];
-    if (!st.present) {
+    if (!st.present && st.bundled) {
+      const b = st.bundled, bc = b.counts || {};
+      rows.push(`<strong>No list is kept.</strong> Using the excerpt that comes with the app, from ${E(b.date)} (${E(b.age_days)} days old): `
+        + `${E(bc.sets || 0)} endpoint sets, ${E(bc.urls || 0)} host names, ${E(bc.ipv4 || 0)} IPv4 and ${E(bc.ipv6 || 0)} IPv6 ranges. `
+        + (b.stale ? '<span class="warn">It is too old to use: rules on Microsoft 365 app service groups show as unknown until you fetch or import the list.</span>'
+                   : 'It can show a match, never a no match. Fetch or import Microsoft\'s whole list to settle more.'));
+    } else if (!st.present) {
       rows.push('<strong>No list is kept.</strong> Rules on Microsoft 365 app service groups show as unknown.');
     } else {
       const from = st.source === 'imported' ? `imported ${E(day(st.fetched_at))}` : `fetched ${E(day(st.fetched_at))}`;
@@ -375,10 +381,13 @@
 
   // ---- Other providers' endpoint lists (vendor_endpoints.py) ----------------
   // Zoom, Webex, RingCentral, GoTo and Talkdesk app service groups. Fetching
-  // is for Zoom only, off by default, and only on Fetch now; every provider
-  // can be imported from a text file. Built with textContent only.
+  // is for Zoom and GoTo, each off by default, and only on Fetch now; every
+  // provider can be imported from a text file; with none kept, the bundled
+  // dated excerpt is shown. Built with textContent only.
   let vend = null;
   const MAX_VEND_KB = 1024;
+  const VEND_FETCH = [['zoom', 'advVendZoomOn', 'advVendFetch', 'Zoom', 'assets.zoom.us'],
+                      ['goto', 'advVendGotoOn', 'advVendGotoFetch', 'GoTo', 'goto-ipblocks.live.gtc.goto.com']];
   function vendLine(box, text, cls) {
     const d = document.createElement('div');
     if (cls) d.className = cls;
@@ -396,8 +405,13 @@
       name.textContent = `${p.label}: `;
       row.appendChild(name);
       const c = p.counts || {};
+      const b = p.bundled || null, bc = (b && b.counts) || {};
       let text;
-      if (!p.present) text = `no list kept, so its app service group (${(p.names || []).join(', ')}) shows as unknown.`;
+      if (!p.present && b) text = `no list kept. Using the excerpt that comes with the app, from ${b.date} (${b.age_days} days old): `
+        + `${bc.ipv4 || 0} IPv4 and ${bc.ipv6 || 0} IPv6 ranges, ${bc.hosts || 0} host names, from ${b.source_name}. `
+        + (b.stale ? `It is too old to use, so its app service group (${(p.names || []).join(', ')}) shows as unknown until you fetch or import the list.`
+                   : 'It can show a match, never a no match.');
+      else if (!p.present) text = `no list kept, so its app service group (${(p.names || []).join(', ')}) shows as unknown.`;
       else text = `${p.describe || 'a list is kept'}: ${c.ipv4 || 0} IPv4 and ${c.ipv6 || 0} IPv6 ranges, ${c.hosts || 0} host names. `
         + (p.stale ? `Stale: last confirmed ${p.age_days} days ago, more than ${st.max_age_days}; it settles nothing until it is fetched or imported again.` : 'In use.');
       row.appendChild(document.createTextNode(text));
@@ -406,10 +420,13 @@
       if (p.last_error) { const w = document.createElement('span'); w.className = 'warn'; w.textContent = ` Last try failed: ${p.last_error}`; row.appendChild(w); }
       box.appendChild(row);
     });
+    if (st.zscaler_groups) vendLine(box, st.zscaler_groups, 'dim');
     if (said) vendLine(box, said);
-    const zoom = (st.providers || []).find(p => p.id === 'zoom') || {};
-    $('advVendZoomOn').checked = !!zoom.enabled;
-    $('advVendFetch').disabled = !zoom.enabled;
+    VEND_FETCH.forEach(([pid, on, go]) => {
+      const pr = (st.providers || []).find(p => p.id === pid) || {};
+      $(on).checked = !!pr.enabled;
+      $(go).disabled = !pr.enabled;
+    });
     const pick = (st.providers || []).find(p => p.id === $('advVendProv').value) || {};
     $('advVendRemove').disabled = !pick.present;
   }
@@ -417,16 +434,20 @@
     try { renderVend(await m365('GET', '/api/vendor-endpoints'), said); }
     catch (e) { const box = $('advVendBox'); box.textContent = ''; vendLine(box, `Could not read the setting: ${e.message}`, 'warn'); }
   }
-  $('advVendZoomOn').addEventListener('change', async e => {
-    try { renderVend(await m365('PUT', '/api/vendor-endpoints/settings', { provider: 'zoom', enabled: e.target.checked }),
-                     e.target.checked ? 'Fetching Zoom\'s list is on. Nothing is fetched until you click Fetch Zoom\'s list now.' : 'Fetching Zoom\'s list is off. A list already kept is still used.'); }
-    catch (err) { e.target.checked = !e.target.checked; loadVend(`Not changed: ${err.message}`); }
-  });
-  $('advVendFetch').addEventListener('click', async () => {
-    $('advVendFetch').disabled = true;
-    vendLine($('advVendBox'), 'Fetching from assets.zoom.us…', 'dim');
-    try { renderVend(await m365('POST', '/api/vendor-endpoints/refresh', { provider: 'zoom' }), 'Fetched: Zoom\'s list is current.'); }
-    catch (e) { loadVend(e.message); }
+  // One switch and one Fetch now button per provider that publishes a file.
+  // Turning a switch on fetches nothing; only the button does.
+  VEND_FETCH.forEach(([pid, on, go, label, host]) => {
+    $(on).addEventListener('change', async e => {
+      try { renderVend(await m365('PUT', '/api/vendor-endpoints/settings', { provider: pid, enabled: e.target.checked }),
+                       e.target.checked ? `Fetching ${label}'s list is on. Nothing is fetched until you click Fetch ${label}'s list now.` : `Fetching ${label}'s list is off. A list already kept is still used.`); }
+      catch (err) { e.target.checked = !e.target.checked; loadVend(`Not changed: ${err.message}`); }
+    });
+    $(go).addEventListener('click', async () => {
+      $(go).disabled = true;
+      vendLine($('advVendBox'), `Fetching from ${host}…`, 'dim');
+      try { renderVend(await m365('POST', '/api/vendor-endpoints/refresh', { provider: pid }), `Fetched: ${label}'s list is current.`); }
+      catch (e) { loadVend(e.message); }
+    });
   });
   $('advVendProv').addEventListener('change', () => { if (vend) renderVend(vend); });
   $('advVendImport').addEventListener('click', () => {
