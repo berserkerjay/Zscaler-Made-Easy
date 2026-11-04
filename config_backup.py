@@ -171,7 +171,7 @@ OPERAND_LITERAL = ("CLIENT_TYPE", "PLATFORM", "COUNTRY_CODE", "RISK_FACTOR_TYPE"
 OPERAND_IDP = {"SCIM": "idp_id", "SCIM_GROUP": "lhs"}
 # Fields that also identify an object (a reference may carry them instead of the id).
 ALT_KEYS = {"zpa.posture_profiles": ("posture_udid",), "zpa.trusted_networks": ("network_id",)}
-ZCC_REFS = {"trusted_network_ids": "zcc.trusted_networks"}
+ZCC_REFS = {"trusted_network_ids": "zcc.trusted_networks", "forwarding_profile_id": "zcc.forwarding_profiles"}
 REFS = {"zia": ZIA_REFS, "zpa": ZPA_REFS, "zcc": ZCC_REFS}
 
 # Fields that are never compared nor sent back: ids, change times, who
@@ -205,8 +205,24 @@ def _t(key: str, label: str, svc: str, ls: Optional[str], get: Optional[str] = N
          #   raw_zcc       the Client Connector request path an update PUTs (the SDK's update sends no body)
          #   order_field   the field that holds a rule's position
          #   clone_exclude_if  why a row is never cloned to another tenant (it names that tenant's own appliances)
+         # Added for the clone breadth (each optional):
+         #   own_refs     {field: type} reference fields of this type only (beside the product's shared ones)
+         #   xrefs        {field: type of another product} a reference by {external_id, name} to the other product's
+         #                object (a ZPA gateway's ZPA server group and segments): matched by name across tenants
+         #   per_parent   the type whose objects each own a list of these (sub-locations, listed per location)
+         #   clone_strip  fields (dotted for nested ones) a clone to another tenant leaves out: they name the
+         #                source tenant's own objects or carry its own keys, and the target keeps its own
+         #   clone_needs_empty  fields that must be empty for a clone: a row naming the source's own users,
+         #                groups or apps there is not cloned (listed with the reason)
+         #   clone_opt    the separately ticked option (spec key include_<clone_opt>) without which the
+         #                type is never cloned (clone_why); with it, cloned as above
+         #   create_opt   the same option, needed to create a missing object at all (restore or clone)
+         #   type_arg     the get and delete calls take the rule's type after its id (SaaS Security API rules)
+         #   create_off   (field, value) a new object is created switched off unless the person keeps the state
          "tenant_bound": False, "after": (), "check": None, "zpa_policy": "", "v2": False, "conditions": False, "per_idp": False,
-         "project": None, "nested_refs": {}, "keep_nested": (), "app_kind": "", "raw_zcc": "", "order_field": "order", "clone_exclude_if": None}
+         "project": None, "nested_refs": {}, "keep_nested": (), "app_kind": "", "raw_zcc": "", "order_field": "order", "clone_exclude_if": None,
+         "own_refs": {}, "xrefs": {}, "per_parent": "", "clone_strip": (), "clone_needs_empty": (), "clone_opt": "", "create_opt": "",
+         "type_arg": False, "create_off": None}
     t.update(kw)
     if t["level"] == "read":
         t["add"] = t["upd"] = t["rm"] = None
@@ -293,7 +309,8 @@ def _custom_bw_class(row: Dict[str, Any]) -> bool:
 
 def _sub_location(row: Dict[str, Any]) -> Optional[str]:
     if str(row.get("parent_id") or "0") not in ("", "0"):
-        return "a sub-location is not created here: add it under its parent location in the ZIA Admin Portal"
+        return ("a sub-location is restored as its own type (Sub-locations, read under each location), after its parent "
+                "location")
     if _truthy(row.get("ec_location")) or _truthy(row.get("non_editable")):
         return "a Cloud or Branch Connector location is created by its connector, never here"
     return None
@@ -305,6 +322,43 @@ def _location_clone_why(row: Dict[str, Any]) -> Optional[str]:
         if row.get(f) not in (None, "", [], {}, 0, "0", False):
             return f"it uses {what} of the source tenant, which another tenant does not have: add the location in the portal"
     return None
+
+
+def _sub_location_own(row: Dict[str, Any]) -> Optional[str]:
+    """Why a sub-location is never written: Zscaler's own 'other'
+    sub-locations and a connector's sub-locations."""
+    if _truthy(row.get("other_sub_location")) or _truthy(row.get("other6_sub_location")):
+        return "Zscaler makes the 'other' sub-location itself (for the addresses no other sub-location covers)"
+    if _truthy(row.get("ec_location")) or _truthy(row.get("non_editable")):
+        return "a Cloud or Branch Connector sub-location is created by its connector, never here"
+    return None
+
+
+def _endpoint_sub_rule(row: Dict[str, Any]) -> Optional[str]:
+    if row.get("sub_rules") or str(row.get("parent_rule") or "0") not in ("", "0"):
+        return ("an Endpoint DLP rule with sub-rules, or a sub-rule, is rebuilt in the ZIA Admin Portal: the restore does not "
+                "rebuild sub-rules")
+    return None
+
+
+def _custom_pac(row: Dict[str, Any]) -> bool:
+    """A PAC file the customer made (assumed: Zscaler's own PAC files answer
+    editable: false, as the portal shows them locked)."""
+    return row.get("editable") is not False and _custom(row)
+
+
+def _lookup(id_field: str, name_field: str) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """A lookup list whose id and name have other field names (a SaaS
+    tenant's tenant_id and tenant_name): kept as they are, plus id and name,
+    which the references to it carry."""
+    def project(row: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(row)
+        if row.get(id_field) not in (None, ""):
+            out["id"] = row[id_field]
+        if row.get(name_field) not in (None, ""):
+            out["name"] = row[name_field]
+        return out
+    return project
 
 
 # A device inventory without people: only these fields of an enrolled device are kept.
@@ -382,6 +436,18 @@ TYPES: List[Dict[str, Any]] = [
        why="the SDK can read ICAP servers but not create them"),
     _t("zia.incident_receivers", "DLP incident receivers", "dlp_resources", "list_dlp_incident_receiver", level="read", scopes=_DLP,
        why="the SDK can read incident receivers but not create them"),
+    # SaaS Security API lookups: what a SaaS Security API DLP rule names, matched by name in another tenant
+    # (verified: zscaler/zia/saas_security_api.py list_casb_tenant_lite, list_domain_profiles_lite,
+    # list_quarantine_tombstone_lite, list_casb_email_label_lite; models/saas_security_api.py field names).
+    _t("zia.casb_tenants", "SaaS application tenants", "saas_security_api", "list_casb_tenant_lite", level="read", scopes=_DLP,
+       project=_lookup("tenant_id", "tenant_name"), name="tenant_name",
+       why="a SaaS application tenant is onboarded in the portal (it holds the SaaS app's own authorisation)"),
+    _t("zia.domain_profiles", "SaaS Security API domain profiles", "saas_security_api", "list_domain_profiles_lite", level="read",
+       scopes=_DLP, project=_lookup("profile_id", "profile_name"), name="profile_name", why="the SDK can only list them"),
+    _t("zia.casb_tombstone_templates", "Quarantine tombstone templates", "saas_security_api", "list_quarantine_tombstone_lite",
+       level="read", scopes=_DLP, why="the SDK can only list them"),
+    _t("zia.casb_email_labels", "SaaS Security API email labels", "saas_security_api", "list_casb_email_label_lite", level="read",
+       scopes=_DLP, why="the SDK can only list them"),
     # ── ZIA: policies (rules) ──
     _t("zia.url_filtering_rules", "URL filtering rules", "url_filtering", "list_rules", "get_rule", "add_rule", "update_rule", "delete_rule",
        policy="url_filtering", keep=_custom_rule, state="state"),
@@ -403,10 +469,28 @@ TYPES: List[Dict[str, Any]] = [
        policy="web_dlp", keep=_custom_rule, state="state"),
     _t("zia.email_dlp_rules", "Outbound Email DLP rules", "outbound_email_dlp_rules", "list_rules", "get_rule", "add_rule", "update_rule",
        "delete_rule", policy="email_dlp", keep=_custom_rule, state="state"),
-    _t("zia.endpoint_dlp_rules", "Endpoint DLP rules", "endpoint_dlp_rules", "list_rules", level="read", policy="endpoint_dlp",
-       why="an Endpoint DLP rule carries sub-rules and application groups the restore plan does not rebuild"),
-    _t("zia.saas_dlp_rules", "SaaS Security API DLP rules", "casb_dlp_rules", "list_all_rules", level="read", policy="saas_dlp",
-       why="a SaaS Security API rule is bound to the tenant's SaaS tenants and needs its rule type on every write"),
+    # verified: zscaler/zia/endpoint_dlp_rules.py list_rules / get_rule(rule_id) / add_rule(**kwargs) /
+    # update_rule(rule_id, **kwargs) / delete_rule(rule_id); field names from models/endpoint_dlp_rules.py.
+    _t("zia.endpoint_dlp_rules", "Endpoint DLP rules", "endpoint_dlp_rules", "list_rules", "get_rule", "add_rule", "update_rule",
+       "delete_rule", policy="endpoint_dlp", keep=_custom_rule, state="state", exclude_if=_endpoint_sub_rule,
+       own_refs={"receiver": "zia.incident_receivers", "end_point_applications": "zia.endpoint_applications",
+                 "end_point_application_groups": "zia.endpoint_application_groups", "resources": "zia.endpoint_resources",
+                 "resource_groups": "zia.endpoint_resource_groups", "uc_template_id": "zia.user_coaching_templates"},
+       strip=("deleted", "version", "versions", "z_ver_id_md32", "mod_uid"),
+       why="a rule with sub-rules is rebuilt in the portal; application groups and resources are matched only on the same tenant"),
+    # verified: zscaler/zia/casb_dlp_rules.py list_all_rules / get_rule(rule_id, rule_type=None) / add_rule(**kwargs, type
+    # in the body) / update_rule(rule_id, **kwargs) / delete_rule(rule_id, rule_type=None); models/casb_dlp_rules.py.
+    _t("zia.saas_dlp_rules", "SaaS Security API DLP rules", "casb_dlp_rules", "list_all_rules", "get_rule", "add_rule", "update_rule",
+       "delete_rule", policy="saas_dlp", keep=_custom_rule, state="state", type_arg=True,
+       own_refs={"cloud_app_tenants": "zia.casb_tenants", "included_domain_profiles": "zia.domain_profiles",
+                 "excluded_domain_profiles": "zia.domain_profiles", "criteria_domain_profiles": "zia.domain_profiles",
+                 "casb_tombstone_template": "zia.casb_tombstone_templates", "casb_email_label": "zia.casb_email_labels",
+                 "receiver": "zia.incident_receivers", "buckets": "zia.casb_buckets",
+                 "email_recipient_profiles": "zia.email_recipient_profiles", "object_types": "zia.casb_object_types",
+                 "entity_groups": "zia.entity_groups", "redaction_profile": "zia.redaction_profiles",
+                 "watermark_profile": "zia.watermark_profiles", "tag": "zia.casb_tags"},
+       why="its SaaS application tenants and domain profiles are matched by name in another tenant; buckets, entity groups, "
+           "redaction and watermark profiles only on the same tenant"),
     _t("zia.forwarding_rules", "Forwarding control rules", "forwarding_control", "list_rules", "get_rule", "add_rule", "update_rule",
        "delete_rule", scopes=_Z, keep=_custom_rule, state="state"),
     _t("zia.bandwidth_classes", "Bandwidth classes", "bandwidth_classes", "list_classes", "get_class", "add_class", "update_class",
@@ -431,10 +515,21 @@ TYPES: List[Dict[str, Any]] = [
     _t("zia.auth_settings", "Authentication settings", "authentication_settings", None, "get_authentication_settings", singleton=True,
        level="read", scopes=_Z, why="sign-in settings are never changed from here"),
     # ── ZIA: tenant-bound, identity and reference lists (read only) ──
-    _t("zia.zpa_gateways", "ZPA gateways", "zpa_gateway", "list_gateways", level="read", scopes=_Z,
-       why="a ZPA gateway names the tenant's own ZPA server groups; forwarding rules find it by name"),
+    # verified: zscaler/zia/zpa_gateway.py list_gateways / get_gateway(id) / add_gateway(name, zpa_server_group,
+    # zpa_app_segments, **kwargs) / update_gateway(id, zpa_server_group, zpa_app_segments, **kwargs) / delete_gateway(id):
+    # the server group and segments are {external_id, name} of the linked ZPA tenant's objects.
+    # assumed: ZIA fills in its own linked ZPA tenant when zpa_tenant_id is left out of a create.
+    _t("zia.zpa_gateways", "ZPA gateways", "zpa_gateway", "list_gateways", "get_gateway", "add_gateway", "update_gateway",
+       "delete_gateway", scopes=_Z, add_pos=("name", "zpa_server_group", "zpa_app_segments"), strip=("zpa_tenant_id",), uses=(),
+       xrefs={"zpa_server_group": "zpa.server_groups", "zpa_app_segments": "zpa.application_segments"},
+       why="its ZPA server group and application segments are matched by name in the target's ZPA (tick ZPA on the Scope page "
+           "for a clone; restore ZPA first)"),
+    # verified: zscaler/zia/proxies.py has only list_proxy_gateways and list_proxy_gateway_lite for gateways (no create,
+    # update or delete), so a gateway is a manual step; the proxies it chains to are cloned above.
     _t("zia.proxy_gateways", "Proxy gateways", "proxies", "list_proxy_gateways", level="read", scopes=_Z,
-       why="a gateway is set up in the portal; forwarding rules find it by name"),
+       why="the API only lists proxy gateways (the SDK has no create or update): add the gateway in the portal from the cloned "
+           "proxies (Proxies, proxy chaining); forwarding rules find it by name",
+       manual="add the proxy gateways in the ZIA Admin Portal from the cloned proxies (the API cannot create a gateway)"),
     _t("zia.vpn_credentials", "VPN credentials", "traffic_vpn_credentials", "list_vpn_credentials", "get_vpn_credential",
        "add_vpn_credential", None, None, scopes=_Z, name="fqdn", level="full", secret_prompt="pre_shared_key", strip=("location", "managed_by"),
        no_delete="a location may depend on it, so a VPN credential is never deleted here",
@@ -462,6 +557,17 @@ TYPES: List[Dict[str, Any]] = [
        clone_why="a location is bound to the tenant's IP addresses and VPN credentials",
        no_delete="a location is never deleted here (only an Undo removes one this app created)",
        manual="add the target's locations and sub-locations with their own IP addresses and VPN credentials"),
+    # verified: zscaler/zia/locations.py list_sub_locations(location_id) (GET /locations/{id}/sublocations), add_location
+    # (**kwargs, parent_id names the parent), get_location(id) and delete_location(id) serve sub-locations too.
+    # assumed: a sub-location's name is unique within its parent, so it is matched by "<parent> / <name>".
+    _t("zia.sub_locations", "Sub-locations", "locations", "list_sub_locations", "get_location", "add_location", None, "delete_location",
+       scopes=_Z, tenant_bound=True, per_parent="zia.locations", name="location_path", uses=(), own_refs={"parent_id": "zia.locations"},
+       after=("zia.locations",), exclude_if=_sub_location_own, clone_exclude_if=_location_clone_why, why=_TENANT_BOUND_OPT,
+       strip=("location_path", "child_count", "static_location_groups", "dynamic_location_groups", "dynamiclocation_groups",
+              "match_in_child", "sub_loc_acc_ids", "city_name", "state_name", "country_name", "continent_code"),
+       clone_why="a sub-location belongs to one of the tenant's own locations",
+       no_delete="a sub-location is never deleted here (only an Undo removes one this app created)",
+       manual="add the target's sub-locations under its own locations"),
     _t("zia.location_groups", "Location groups", "locations", "list_location_groups", level="read", scopes=_Z, why=_TENANT_BOUND),
     _t("zia.groups", "Groups", "user_management", "list_groups", level="read", scopes=_Z, why=_ID_READ),
     _t("zia.departments", "Departments", "user_management", "list_departments", level="read", scopes=_Z, why=_ID_READ),
@@ -476,8 +582,20 @@ TYPES: List[Dict[str, Any]] = [
        "get_restriction_profile", "add_restriction_profile", "update_restriction_profile", "delete_restriction_profile", scopes=_Z, uses=()),
     _t("zia.workload_groups", "Workload groups", "workload_groups", "list_groups", "get_group", "add_group", "update_group", "delete_group",
        scopes=_Z, uses=()),
-    _t("zia.pac_files", "PAC files", "pac_files", "list_pac_files", level="read", scopes=_WEB,
-       why="PAC files are versioned and verified in the portal"),
+    # verified: zscaler/zia/pac_files.py list_pac_files (the deployed version of each, with its content), add_pac_file
+    # (**kwargs; it first sends the content to POST /pacFiles/validate and refuses content that does not pass), and
+    # delete_pac_file(id) (every version). get_pac_file answers every version as a list, so the re-read and the read-back
+    # find the file in the list. update_pac_file is a version action (deploy, stage, last known good), not a field
+    # update, so an existing PAC file is never changed here.
+    _t("zia.pac_files", "PAC files", "pac_files", "list_pac_files", None, "add_pac_file", None, "delete_pac_file", scopes=_WEB,
+       keep=_custom_pac, uses=(),
+       strip=("pac_url", "pac_url_obfuscated", "pac_sub_url", "pac_version", "editable", "total_hits", "create_time", "column",
+              "end_column", "end_line", "error_count", "fatal", "line", "message", "messages", "severity", "success", "warning_count"),
+       why="created only, after ZIA's own PAC check; an existing PAC file is versioned, so it is changed in the portal",
+       no_delete="a PAC file is never deleted here: a delete removes every version, which Undo could not bring back (only an "
+                 "Undo removes one this app created)",
+       manual="check each cloned PAC file's domain and the proxy names in its content against the target, then point devices "
+              "at its new PAC URL"),
     _t("zia.nss_feeds", "Cloud NSS feeds", "cloud_nss", "list_nss_feed", level="read", scopes=_Z,
        why="a feed carries the SIEM's address and token; set it up in the portal"),
     _t("zia.root_certificates", "Root certificates (proxy chaining)", "proxies", None, None, "raw", None, "raw", raw="/rootCertificates",
@@ -589,19 +707,31 @@ TYPES: List[Dict[str, Any]] = [
        level="update", scopes=("zcc",)),
     _t("zcc.device_cleanup", "Device cleanup settings", "devices", None, "get_device_cleanup_info", None, "update_device_cleanup_info",
        singleton=True, level="update", scopes=("zcc",)),
-    _t("zcc.app_profiles", "App profiles", "web_policy", "list_by_company", None, None, "web_policy_edit", None, scopes=("zcc",),
-       level="update", upd_body=True, uses=(),
-       why="updated only, never created or deleted here; its passwords and policy token are never read back or sent (an update "
-           "leaves them as they are: assumed)",
-       clone_why="an app profile names the tenant's own user groups, device groups and forwarding profile by id"),
+    # verified: zscaler/zcc/web_policy.py web_policy_edit(**kwargs) adds a profile when no id is given and updates the
+    # one named by id; delete_web_policy(policy_id); models/webpolicy.py field names (groups / users / device groups,
+    # forwarding_profile_id, zia_posture_config_id, bypass and app service ids, the nested policy objects).
+    _t("zcc.app_profiles", "App profiles", "web_policy", "list_by_company", None, None, "web_policy_edit", "delete_web_policy",
+       scopes=("zcc",), level="update", upd_body=True, add_via_upd=True, uses=("forwarding_profile_id",), clone_opt="zcc_profiles",
+       create_opt="zcc_profiles", create_off=("active", 0),
+       clone_strip=("disaster_recovery", "on_net_policy", "policy_extension.id", "policy_extension.nonce", "group_names",
+                    "user_names", "device_group_names", "app_service_names"),
+       clone_needs_empty=("groups", "group_ids", "users", "user_ids", "device_group_ids", "zia_posture_config_id", "bypass_app_ids",
+                          "bypass_custom_app_ids", "app_service_ids", "app_identity_names"),
+       no_delete="an app profile is never deleted here (only an Undo removes one this app created)",
+       why="its passwords and policy token are never read back or sent (an update leaves them as they are: assumed); a missing "
+           "profile is created, inactive and without passwords, only when you include app profiles",
+       clone_why="an app profile names the tenant's own user groups, device groups and forwarding profile by id: tick 'Include "
+                 "Client Connector app profiles and entitlements' to clone the ones that apply to everyone"),
     _t("zcc.zpa_entitlements", "ZPA entitlements", "entitlements", None, "get_zpa_group_entitlements", None, "raw", singleton=True,
-       level="update", scopes=("zcc",), raw_zcc="/updateZpaGroupEntitlement",
+       level="update", scopes=("zcc",), raw_zcc="/updateZpaGroupEntitlement", clone_opt="zcc_profiles", clone_strip=("group_list", "device_group_list"),
        why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)",
-       clone_why="entitlements name the tenant's own user and device groups"),
+       clone_why="entitlements name the tenant's own user and device groups: tick 'Include Client Connector app profiles and "
+                 "entitlements' to clone the switches (the group lists stay the target's own)"),
     _t("zcc.zdx_entitlements", "ZDX entitlements", "entitlements", None, "get_zdx_group_entitlements", None, "raw", singleton=True,
-       level="update", scopes=("zcc",), raw_zcc="/updateZdxGroupEntitlement",
+       level="update", scopes=("zcc",), raw_zcc="/updateZdxGroupEntitlement", clone_opt="zcc_profiles", clone_strip=("upm_group_list", "upm_device_group_list"),
        why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)",
-       clone_why="entitlements name the tenant's own user and device groups"),
+       clone_why="entitlements name the tenant's own user and device groups: tick 'Include Client Connector app profiles and "
+                 "entitlements' to clone the switches (the group lists stay the target's own)"),
     # assumed: GET /application-profiles answers {"policies": [...]}, the shape the SDK reads (zscaler/zcc/application_profiles.py).
     _t("zcc.application_profiles", "Application profiles (newer API)", "application_profiles", "get_application_profiles", level="read",
        scopes=("zcc",), q={"page_size": "1000"},
@@ -627,7 +757,6 @@ BY_KEY: Dict[str, Dict[str, Any]] = {t["key"]: t for t in TYPES}
 # What the other tools' lists name that is deliberately not backed up here.
 NOT_COVERED = [
     ("zia.users", "ZIA users", "identity comes from the identity provider, and a backup of every user is personal data"),
-    ("zia.sub_locations", "Sub-locations", "listed per location only; a clone report names them as a manual step"),
     ("zpa.scim_users", "SCIM users", "identity comes from the identity provider, and a backup of every user is personal data"),
 ]
 
@@ -655,7 +784,8 @@ def coverage() -> Dict[str, Any]:
     out = {}
     for p in PRODUCTS:
         out[p] = [{"key": t["key"], "label": t["label"], "level": t["level"], "why": t["why"], "clone": not t["clone_why"],
-                   "clone_why": t["clone_why"], "singleton": t["singleton"], "tenant_bound": t["tenant_bound"]} for t in types_for(p)]
+                   "clone_why": t["clone_why"], "singleton": t["singleton"], "tenant_bound": t["tenant_bound"],
+                   "clone_opt": t["clone_opt"]} for t in types_for(p)]
     return {"products": out, "not_covered": [{"key": k, "label": lab, "why": w} for k, lab, w in NOT_COVERED],
             "volatile": WORDS_VOLATILE}
 
@@ -808,6 +938,38 @@ def _read_per_idp(client: Any, t: Dict[str, Any], fn: Callable[..., Any], cancel
     return rows, None
 
 
+def _read_per_parent(client: Any, t: Dict[str, Any], fn: Callable[..., Any], cancel: Any) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """A list the SDK serves per parent object (sub-locations, per location):
+    the parents first, then each one's list, every row tagged with its
+    parent's id and named "<parent> / <name>" (names repeat across parents)."""
+    pt = BY_KEY[t["per_parent"]]
+    parents, err = _read_type(client, pt, cancel)
+    if err and not parents:
+        return [], f"the {pt['label'].lower()} could not be read ({_text(err, 120)})"
+    rows: List[Dict[str, Any]] = []
+    asked = failed = 0
+    last = ""
+    for par in parents:
+        if _stopped(cancel) or len(rows) > MAX_ROWS_PER_TYPE:
+            break
+        pid = rid(par)
+        if not pid or str(par.get("parent_id") or "0") not in ("", "0"):
+            continue
+        asked += 1
+        got, gerr = _plain_rows(fn(int(pid) if pid.isdigit() else pid))
+        if gerr and not got:
+            failed += 1
+            last = str(gerr)
+            continue
+        for r in got:
+            r.setdefault("parent_id", par.get("id"))
+            r[t["name"]] = f"{name_of(pt, par)} / {name_of(dict(t, name='name'), r)}"
+        rows.extend(got)
+    if asked and failed == asked:
+        return [], _text(last, 200)
+    return rows, None
+
+
 def _read_type(client: Any, t: Dict[str, Any], cancel: Any = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     svc, err = _service(client, t)
     if err:
@@ -851,6 +1013,8 @@ def _read_type(client: Any, t: Dict[str, Any], cancel: Any = None) -> Tuple[List
                 rows.extend(got)
         elif t["per_idp"]:
             rows, err = _read_per_idp(client, t, fn, cancel)
+        elif t["per_parent"]:
+            rows, err = _read_per_parent(client, t, fn, cancel)
         elif t["zpa_paged"]:
             rows, err = _list_zpa(fn, args, q, cancel)
         else:
@@ -882,6 +1046,8 @@ def get_one(client: Any, t: Dict[str, Any], oid: Any, rule_type: str = "") -> Tu
         fn = getattr(svc, t["get"])
         if t["per_type"]:
             ret = fn(rule_type, oid)
+        elif t["type_arg"]:
+            ret = fn(oid, rule_type or None)
         elif t["zpa_policy"]:
             ret = fn(t["zpa_policy"], oid)
         else:
@@ -936,6 +1102,8 @@ def write_call(root: Any, key: str, op: str, oid: Any = None, body: Optional[Dic
         body = segment_create_body(t, body)
     lead: Tuple[Any, ...] = (rule_type or str(body.pop("type", "") or ""),) if t["per_type"] else ()
     if op == "delete":
+        if t["type_arg"]:
+            return fn, (oid, rule_type or None), {}, None
         return fn, lead + (oid,), {}, None
     if op == "update":
         if t["singleton"]:
@@ -1661,9 +1829,9 @@ def refs_of(t: Dict[str, Any]) -> Dict[str, str]:
     """The reference fields of a type: its own list (`uses`), else every
     reference field of its product (rules)."""
     allr = REFS[t["product"]]
-    if t["uses"] is None:
-        return dict(allr)
-    return {f: allr[f] for f in t["uses"] if f in allr}
+    out = dict(allr) if t["uses"] is None else {f: allr[f] for f in t["uses"] if f in allr}
+    out.update(t["own_refs"])
+    return out
 
 
 def _ref_names(value: Any, target: str, idx: Dict[str, Dict[str, str]]) -> List[str]:

@@ -79,10 +79,20 @@ SECRET_TTL = 900.0
 # assumed: a rule created without it is active at once (the API's default).
 ZPA_NEW_NEEDS_TICK = ("not created: a ZPA policy rule cannot be created disabled (the SDK's add calls have no such field), so it is "
                       "created only when you tick 'keep each rule's state from the source' (it is then active at once)")
-TENANT_BOUND_WORDS = ("Tenant-bound objects (static IP addresses, GRE tunnels, locations) are created only because you included "
-                      "them: each static IP address was checked with the target first, and GRE tunnels and locations use only "
-                      "static IP addresses the target has or this plan adds. They are never updated or deleted here; Undo "
-                      "removes the ones this run created.")
+TENANT_BOUND_WORDS = ("Tenant-bound objects (static IP addresses, GRE tunnels, locations, sub-locations) are created only because "
+                      "you included them: each static IP address was checked with the target first, GRE tunnels and locations "
+                      "use only static IP addresses the target has or this plan adds, and each sub-location is created after "
+                      "its parent location, under the target's own (or newly created) location. They are never updated or "
+                      "deleted here; Undo removes the ones this run created.")
+# The Client Connector option (include_zcc_profiles): what the preview says, whatever else the plan does.
+ZCC_PROFILE_WORDS = ("Client Connector app profiles and entitlements are written because you included them. Their passwords "
+                     "(uninstall, disable, logout, exit and the per-service disable passwords) and the policy token are never "
+                     "read back, copied or sent: a backup holds none, and every write leaves them out. A new app profile is "
+                     "created inactive and without any password: set its passwords in the Client Connector portal before you "
+                     "switch it on. A clone copies only app profiles that apply to everyone (not ones naming the source's own "
+                     "users, groups, device groups or apps), and an entitlement's user and device group lists stay the target's own.")
+ZCC_PASSWORD_WORDS = ("App profile passwords (uninstall, disable, logout, exit and the per-service disable passwords) and the "
+                      "policy token are never read back, copied or sent: an update leaves them as they are in the tenant.")
 
 
 class _Unresolved(Exception):
@@ -219,9 +229,14 @@ def check_spec(spec: Dict[str, Any], product: str) -> Dict[str, Any]:
         raise _err("Cloning or applying a template writes to another tenant: open that tenant's saved profile (Tenant, in the bar) first.")
     tenant_bound = spec.get("include_tenant_bound") is True
     if tenant_bound and product != "zia":
-        raise _err("Only ZIA has tenant-bound objects (locations, static IP addresses, GRE tunnels).")
+        raise _err("Only ZIA has tenant-bound objects (locations, sub-locations, static IP addresses, GRE tunnels).")
     if tenant_bound and kind == "template":
         raise _err("A template never carries tenant-bound objects.")
+    zcc_profiles = spec.get("include_zcc_profiles") is True
+    if zcc_profiles and product != "zcc":
+        raise _err("Only Client Connector has app profiles and entitlements to include.")
+    if zcc_profiles and kind == "template":
+        raise _err("A template never carries Client Connector app profiles or entitlements.")
 
     def check_type(k: Any) -> Dict[str, Any]:
         t = cb.BY_KEY.get(str(k))
@@ -276,7 +291,8 @@ def check_spec(spec: Dict[str, Any], product: str) -> Dict[str, Any]:
             "types": sorted(set(types)), "objects": sorted(objects, key=lambda o: (o["type"], o["name"])), "prefix": prefix,
             "keep_state": spec.get("keep_state") is True, "activate": spec.get("activate") is not False, "psk": psk,
             "settings_keys": settings_keys, "licence_ack": spec.get("licence_ack") is True,
-            "rollback_on_stop": spec.get("rollback_on_stop") is True, "include_tenant_bound": tenant_bound, "select": select}
+            "rollback_on_stop": spec.get("rollback_on_stop") is True, "include_tenant_bound": tenant_bound, "select": select,
+            **({"include_zcc_profiles": True} if zcc_profiles else {})}
 
 
 def _check_undo(spec: Dict[str, Any], product: str) -> Dict[str, Any]:
@@ -409,6 +425,34 @@ def raw_form(t: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+_FIELD_WORDS = {"groups": "groups", "group_ids": "groups", "users": "users", "user_ids": "users", "device_group_ids": "device groups",
+                "zia_posture_config_id": "ZIA posture profile", "bypass_app_ids": "bypass apps", "bypass_custom_app_ids": "bypass apps",
+                "app_service_ids": "app services", "app_identity_names": "app identities"}
+
+
+def _clone_blocked(t: Dict[str, Any], row: Dict[str, Any]) -> Optional[str]:
+    """Why a row is not cloned: it names the source's own users, groups or
+    apps in a field a clone cannot carry (clone_needs_empty)."""
+    bad = sorted({_FIELD_WORDS.get(f, f.replace("_", " ")) for f in t["clone_needs_empty"]
+                  if row.get(f) not in (None, "", [], {}, 0, "0", False)})
+    if bad:
+        return (f"it names the source tenant's own {', '.join(bad)}, which another tenant does not share: add it in the "
+                f"{cb.PRODUCT_LABELS[t['product']]} portal")
+    return None
+
+
+def _without(body: Dict[str, Any], paths: Sequence[str]) -> Dict[str, Any]:
+    """A payload without the fields a clone leaves out (dotted for nested ones)."""
+    out = copy.deepcopy(body)
+    for path in paths:
+        head, _, rest = path.partition(".")
+        if not rest:
+            out.pop(head, None)
+        elif isinstance(out.get(head), dict):
+            out[head].pop(rest, None)
+    return out
+
+
 def _subset_equal(t: Dict[str, Any], want: Dict[str, Any], row: Dict[str, Any]) -> bool:
     """Every field of `want` (that the tenant answers) is as wanted in `row`."""
     a, b = raw_form(t, want), raw_form(t, row)
@@ -488,6 +532,7 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
     for o in nspec["objects"]:
         picks.setdefault(o["type"], set()).add(o["name"])
     include_tb = bool(nspec.get("include_tenant_bound"))
+    opted = {t["key"] for t in cb.types_for(product) if t["clone_opt"] and nspec.get("include_" + t["clone_opt"])}
     select = nspec.get("select") or {}
     sel = [t for t in ordered_types(product) if (include_tb or not t["tenant_bound"])
            and (not nspec["types"] or t["key"] in nspec["types"]) and (not picks or t["key"] in picks)]
@@ -517,9 +562,10 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
         if t["conditions"]:
             targets += [k for spec_ in cb.OPERAND_REFS.values() for k in spec_[1]] + ["zpa.idps"]
         targets += [k for nested in t["nested_refs"].values() for k in nested.values()]
+        targets += list(t["xrefs"].values())   # the other product's objects (read to match by name; never written here)
         for target in targets:
             tt = cb.BY_KEY.get(target)
-            if tt is not None and tt["product"] == product:
+            if tt is not None and (tt["product"] == product or target in t["xrefs"].values()):
                 need.setdefault(target, tt)
     if full:
         sel_keys = {t["key"] for t in sel}
@@ -597,6 +643,26 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
         if hit is not None and hit.get(keyf) not in (None, ""):
             return ("id", str(hit[keyf]))
         return ("unresolved", f"it uses {_label(tt)} '{nm or value}', which the target tenant does not have")
+
+    def resolve_x(target_key: str, item: Dict[str, Any]) -> Tuple[str, Any]:
+        """A reference to the other product's object by {external_id, name}
+        (a ZPA gateway's ZPA server group and segments), matched by name in
+        the target; a server group must be set up for Source IP Anchoring."""
+        asked.add(target_key)
+        tt = cb.BY_KEY[target_key]
+        nm = str(item.get("name") or "")
+        ext = str(item.get("external_id") or item.get("id") or "")
+        other = cb.PRODUCT_LABELS[tt["product"]]
+        if target_key not in tgt:
+            return ("unresolved", f"{_label(tt)} could not be read in the target ({unread.get(target_key, 'not read')}), so "
+                                  f"'{nm or ext}' cannot be matched by name (tick {other} on the Scope page)")
+        hit = tgt_by_name[target_key].get(nm) if nm else None
+        if hit is None:
+            return ("unresolved", f"it uses {_label(tt)} '{nm or ext}', which the target tenant does not have (restore {other} first)")
+        # assumed: ZPA answers ip_anchored on a server group; only an explicit false refuses it.
+        if target_key == "zpa.server_groups" and hit.get("ip_anchored") is False:
+            return ("unresolved", f"the target's {_label(tt)} '{nm}' is not set up for Source IP Anchoring")
+        return ("id", {"external_id": cb.rid(hit), "name": nm})
 
     def resolve_any(keys: Sequence[str], value: str, keyf: str, hint: str) -> Tuple[str, Any]:
         """The first of several types that resolves (an APP operand may be a
@@ -677,6 +743,8 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
             if f not in out:
                 continue
             ids, shape = cb.ref_items(out[f])
+            if not ids and shape == "scalar":
+                continue   # 0, empty or a switch: nothing to point at, sent as it is
             new = []
             for i, hint in ids:
                 kind, val = resolve(target, i, hint)
@@ -701,6 +769,18 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
             out[t["expr"][0]] = cb.EXPR_ID.sub(sub, out[t["expr"][0]])
         if t["conditions"] and isinstance(out.get("conditions"), list):
             out["conditions"] = remap_conditions(out["conditions"], why, waits)
+        for f, target in t["xrefs"].items():
+            v = out.get(f)
+            if same or v in (None, "", [], {}):
+                continue   # the same tenant: its own ZPA objects, kept as they are
+            got = []
+            for it in (v if isinstance(v, list) else [v]):
+                kind, val = resolve_x(target, it) if isinstance(it, dict) else ("unresolved", f"its {f.replace('_', ' ')} is not readable")
+                if kind == "id":
+                    got.append(val)
+                else:
+                    why.append(val)
+            out[f] = got if isinstance(v, list) else (got[0] if got else None)
         for f, refmap in t["nested_refs"].items():
             if not isinstance(out.get(f), list):
                 continue
@@ -799,14 +879,16 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
             if counterpart is not None:
                 matched[key].add(cb.rid(counterpart) or "(settings)")
             why_not = ((t["exclude_if"](r) if t["exclude_if"] else None)
-                       or (t["clone_why"] if not same and t["clone_why"] and not (t["tenant_bound"] and include_tb) else None)
+                       or (t["clone_why"] if not same and t["clone_why"] and not (t["tenant_bound"] and include_tb) and key not in opted
+                           else None)
                        or (t["clone_exclude_if"](r) if not same and t["clone_exclude_if"] else None)
+                       or (_clone_blocked(t, r) if not same else None)
                        or cb.zpa_rule_problem(t, r))
             if why_not:
                 p.exclude(t, name, f"not {'cloned' if not same else 'restored'}: {why_not}")
                 state[(key, sid)] = ("excluded", why_not) if counterpart is None else ("id", cb.rid(counterpart))
                 continue
-            body, why, waits = remap(t, payload(t, r))
+            body, why, waits = remap(t, payload(t, r) if same else _without(payload(t, r), t["clone_strip"]))
             only = nspec.get("settings_keys", {}).get(key) if t["singleton"] else None
             if only:
                 body = {k: v for k, v in body.items() if k in only}
@@ -821,6 +903,11 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                 if not (t["add"] or t["add_via_upd"]):
                     p.exclude(t, name, f"the target has no such object and it is not created here: {t['why'] or 'the SDK cannot create it'}")
                     state[(key, sid)] = ("excluded", "it is not created here")
+                    continue
+                if t["create_opt"] and not nspec.get("include_" + t["create_opt"]):
+                    p.exclude(t, name, "not created: tick 'Include Client Connector app profiles and entitlements' to create a missing "
+                                       "app profile (it is then created inactive and without any password)")
+                    state[(key, sid)] = ("excluded", "it is created only with the tick")
                     continue
                 if t["zpa_policy"] and not nspec["keep_state"]:
                     p.exclude(t, name, ZPA_NEW_NEEDS_TICK)
@@ -841,13 +928,17 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                 if t["state"] and not nspec["keep_state"]:
                     f, v = _off(t)
                     body[f] = v
+                if t["create_off"] and not nspec["keep_state"]:
+                    body[t["create_off"][0]] = t["create_off"][1]
                 gkey = p.key("create")
                 state[(key, sid)] = ("new", gkey)
                 after = "created" + (" (disabled)" if t["state"] and body.get(t["state"]) in ("DISABLED", False) else "")
+                if t["create_off"] and body.get(t["create_off"][0]) == t["create_off"][1]:
+                    after = "created (inactive)"
                 p.items.append(ao._unit(gkey, gkey, "object", p.obj(t, name), "object", "does not exist", after,
                                         reason=_why_create(t, same, nspec), depends_on=sorted(set(waits))))
                 p.groups.append({"key": gkey, "handler": "cfg_create", "target": {"type": key, "name": name, "src_id": sid,
-                                                                                   "desired": body, "rule_type": str(r.get("type") or "") if t["per_type"] else "",
+                                                                                   "desired": body, "rule_type": str(r.get("type") or "") if t["per_type"] or t["type_arg"] else "",
                                                                                    "clamp_order": not same}})
                 if key == "zia.static_ips":
                     planned_ips[name] = gkey
@@ -888,7 +979,7 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                                         depends_on=sorted(set(waits))))
             p.groups.append({"key": gkey, "handler": "cfg_update", "target": {"type": key, "name": name, "id": tid, "desired": body,
                                                                                "before_hash": cb.digest(raw_form(t, counterpart)),
-                                                                               "rule_type": str(counterpart.get("type") or "") if t["per_type"] else ""}})
+                                                                               "rule_type": str(counterpart.get("type") or "") if t["per_type"] or t["type_arg"] else ""}})
             changes += 1
     _licence_check(p, source, reader, nspec, product, same)
     manual = sorted({t["manual"] for t in cb.types_for(product) if t["manual"] and (source.get(t["key"]) or [])
@@ -943,7 +1034,7 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                                         reason="the source does not have it (full mode)"))
                 p.groups.append({"key": gkey, "handler": "cfg_delete", "target": {"type": k, "name": name, "id": i,
                                                                                    "before_hash": cb.digest(raw_form(t, r)),
-                                                                                   "rule_type": str(r.get("type") or "") if t["per_type"] else ""}})
+                                                                                   "rule_type": str(r.get("type") or "") if t["per_type"] or t["type_arg"] else ""}})
                 changes += 1
         del idx
     for k, err in sorted(unread.items()):
@@ -1031,7 +1122,9 @@ def _tenant_bound_step(t: Dict[str, Any], name: str, body: Dict[str, Any]) -> st
     if t["key"] == "zia.gre_tunnels":
         return (f"GRE tunnel from {name}: ZIA picked the closest data-centre VIPs and the internal addresses; read them from the "
                 "target and configure the tunnel on the site's router")
-    return (f"location {name}: add its sub-locations, check its bandwidth and authentication settings, and point the site's "
+    if t["key"] == "zia.sub_locations":
+        return f"sub-location {name}: check its internal addresses and its own settings against the site"
+    return (f"location {name}: check its sub-locations, bandwidth and authentication settings, and point the site's "
             "tunnels or VPN at the target tenant")
 
 
@@ -1041,6 +1134,10 @@ def _why_create(t: Dict[str, Any], same: bool, nspec: Dict[str, Any]) -> str:
         bits.append("created disabled (tick 'keep each rule's state' to keep the source's)")
     if t["secret_prompt"]:
         bits.append("with the pre-shared key you typed (never stored)")
+    if t["create_off"] and not nspec["keep_state"]:
+        bits.append("created inactive (tick 'keep each rule's state' to keep the source's)")
+    if t["key"] == "zcc.app_profiles":
+        bits.append("without any password (set them in the Client Connector portal before you switch it on)")
     return "; ".join(bits)
 
 
@@ -1051,6 +1148,9 @@ def _finish_plan(p: _Plan, nspec: Dict[str, Any], changes: int) -> Dict[str, Any
     deletes = sum(1 for g in p.groups if g["handler"] == "cfg_delete")
     bound = sum(1 for g in p.groups if g["handler"] == "cfg_create" and nspec.get("action") != "undo"
                 and (cb.BY_KEY.get(str(g["target"].get("type"))) or {}).get("tenant_bound"))
+    profiles = [g for g in p.groups if g["handler"] in ("cfg_create", "cfg_update") and nspec.get("action") != "undo"
+                and (cb.BY_KEY.get(str(g["target"].get("type"))) or {}).get("clone_opt")]
+    cloned = len(profiles) if nspec.get("target") == "other" and nspec.get("include_zcc_profiles") else 0
     if changes:
         bkey = "backup:0"
         types = sorted({g["target"]["type"] for g in p.groups})
@@ -1088,8 +1188,14 @@ def _finish_plan(p: _Plan, nspec: Dict[str, Any], changes: int) -> Dict[str, Any
         # Its own confirmation, whatever else the plan does: the person types that tenant-bound objects are created.
         phrases.append(f"CREATE {bound} TENANT-BOUND OBJECT{'S' if bound != 1 else ''}")
         p.warnings.insert(0, f"This plan creates {bound} tenant-bound object{'s' if bound != 1 else ''} (static IP addresses, GRE tunnels, "
-                             "locations) on the target. " + TENANT_BOUND_WORDS)
+                             "locations, sub-locations) on the target. " + TENANT_BOUND_WORDS)
         prepared["tenant_bound"] = bound
+    if profiles:
+        p.warnings.insert(0, ZCC_PROFILE_WORDS if nspec.get("include_zcc_profiles") else ZCC_PASSWORD_WORDS)
+    if cloned:
+        # Its own confirmation: the person types that Client Connector profiles go to another tenant.
+        phrases.append(f"CLONE {cloned} CLIENT CONNECTOR OBJECT{'S' if cloned != 1 else ''}")
+        prepared["zcc_profiles"] = cloned
     if phrases:
         prepared["confirm_always"] = " AND ".join(phrases)
     return prepared
@@ -1364,7 +1470,8 @@ def _h_create(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
     of = t["order_field"]
     if tg.get("clamp_order") and of in body:
         try:
-            count = sum(1 for r in rows if int(r.get(of) or 0) > 0)
+            same_kind = [r for r in rows if not (t["per_type"] or t["type_arg"]) or str(r.get("type") or "") == str(body.get("type") or tg.get("rule_type") or "")]
+            count = sum(1 for r in same_kind if int(r.get(of) or 0) > 0)
             clamped = max(1, min(int(body[of]), count + 1))
             body[of] = str(clamped) if isinstance(body[of], str) else clamped
         except (TypeError, ValueError):
