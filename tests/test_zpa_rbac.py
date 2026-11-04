@@ -477,3 +477,14 @@ def test_sample_tenant_holds_no_secret_field_value():
     bodies = [b for p, b in sample_tenant.responses().items() if "/zpa/" in p]
     # Assert
     assert ot.scrub(bodies) == bodies
+
+
+def test_the_sample_tenants_pra_credential_is_pooled_and_only_its_age_is_flagged():
+    """ASVS V2.10.4 · CWE-262 · WSTG-ATHN-07: on the sample tenant the PRA credential check reads the credential pool (made up, no secret): the credential is in a pool, so only its last reset (2025) is flagged."""
+    # Arrange
+    cl = ot.OfflineRawClient(ot.sample_store(reset=True), {})
+    # Act
+    r = rb.rbac_zpa_pra_credentials(cl)
+    # Assert
+    assert r.status == R.WARN and "not reset in more than 90 days" in r.detail, r.detail
+    assert "none is in a credential pool" not in r.detail

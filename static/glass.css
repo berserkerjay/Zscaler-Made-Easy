@@ -156,17 +156,23 @@ body.has-portrait, body.has-logo { --glass-a-chrome: var(--glass-a-float); --gla
     radial-gradient(56vmax 42vmax at 18% 16%, var(--glass-amb-1), transparent 70%),
     radial-gradient(48vmax 38vmax at 88% 28%, var(--glass-amb-2), transparent 70%),
     radial-gradient(56vmax 40vmax at 50% 90%, var(--glass-amb-3), transparent 70%));
-  animation: var(--glass-solid-motion, glass-drift-a var(--glass-drift) steps(360) infinite alternate);
+  animation: var(--glass-solid-motion, glass-drift-a var(--glass-drift) steps(90) infinite alternate);
 }
 :root:not(.glass-off) body:not(.has-logo)::after {
   background-image: var(--glass-solid-img,
     radial-gradient(34vmax 28vmax at 72% 62%, var(--glass-amb-4), transparent 70%),
     radial-gradient(30vmax 26vmax at 30% 52%, var(--glass-amb-5), transparent 70%));
-  animation: var(--glass-solid-motion, glass-drift-b calc(var(--glass-drift) * 0.8) steps(300) infinite alternate);
+  animation: var(--glass-solid-motion, glass-drift-b calc(var(--glass-drift) * 0.8) steps(72) infinite alternate);
 }
-/* The tab is hidden (static/glass.js): nothing to look at, so nothing moves. */
+/* The drift's pace: one step a second on both layers, at the same moments (90 s in 90 steps, 72 s in 72 steps). Each
+   step draws every blurred layer again, so four steps a second per layer cost a slow computer a third of a core with
+   nothing moving; a step of about a pixel over soft colour fields looks the same. (tests/test_glass.py checks it.) */
+/* The tab is hidden (static/glass.js): nothing to look at, so nothing moves. While the page scrolls
+   (html.glass-scrolling, static/glass.js) the drift holds too, so a scrolled frame is not also a drift frame. */
 :root:not(.glass-off).glass-still body::before,
 :root:not(.glass-off).glass-still body::after { animation-play-state: paused; }
+:root:not(.glass-off).glass-scrolling body::before,
+:root:not(.glass-off).glass-scrolling body::after { animation-play-state: paused; }
 @keyframes glass-drift-a {
   0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
   50% { transform: translate3d(4vmax, -3vmax, 0) rotate(8deg) scale(1.08); }
@@ -282,6 +288,16 @@ body.has-portrait, body.has-logo { --glass-a-chrome: var(--glass-a-float); --gla
     :is(#dlpEffModal, #permissionsModal, #bypassModal, #updateModal, #migrateModal, #remediationModal, #reviewModal, #wizardModal, #bestPracticesModal, #zccDiagModal, #terraformModal) > div).glass-fit {
   -webkit-backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur-panel)) saturate(var(--glass-saturate)));
   backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur-panel)) saturate(var(--glass-saturate)));
+}
+/* While the page scrolls (html.glass-scrolling, static/glass.js): the surfaces in the page flow (the cards above and
+   the tier 2 chrome below) drop their blur. Only the soft backdrop is behind them, so they look the same, and a
+   scrolled frame no longer draws every one of them again (on two slow cores that took the page to a few frames a
+   second). Floating bars, the sidebar, dialogs and pop-ups keep their blur. */
+:root:not(.glass-off).glass-scrolling :is(.rp-card, .container .card:not(.card .card), .xp-details:not(.rp-card .xp-details),
+    :is(#dlpEffModal, #permissionsModal, #bypassModal, #updateModal, #migrateModal, #remediationModal, #reviewModal, #wizardModal, #bestPracticesModal, #zccDiagModal, #terraformModal) > div).glass-fit,
+:root:not(.glass-off).glass-scrolling :is(.rp-hero, body.db-layout .container > header .hero, .rp-tabs, #dlpSafetyBanner .sb-row, #simpleBanner, #stepBar) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 :root:not(.glass-off) :is(.rp-card, .container .card) { border-radius: var(--glass-r-panel); }
 :root:not(.glass-off) :is(.xp-details, .db-tile, .db-pillar, .df-stat, .bp-card, .op-kind, .op-block, .pm-wrap, .fa-motion .fa-stage, .fp-stage, .pa-flow, .pa-motion, .sf-flow-wrap, .df-flow-wrap, .sm-tile) {

@@ -371,6 +371,23 @@ def test_a_sample_backup_reads_the_newer_application_profiles_api():
     assert sorted(int(r["id"]) for r in rows) == sorted(p["id"] for p in sample_tenant.APP_PROFILES)
 
 
+def test_a_sample_backup_holds_the_pra_credential_pools_and_zpa_isolation_profiles_without_secrets():
+    """ASVS V8.3.4 · CWE-359 · CWE-312 · WSTG-CONF-11: the sample tenant answers its PRA credential pools and ZPA isolation profiles, so a backup holds them (read, not unread); a pool names its credential by id and name only, and nothing secret is in either."""
+    import offline_tenant as ot
+    import sample_tenant
+    doc = cb.from_offline(ot.sample_store(reset=True))
+    pools, profiles = doc["types"]["zpa.pra_credential_pools"], doc["types"]["zpa.isolation_profiles"]
+    assert not {"zpa.pra_credential_pools", "zpa.isolation_profiles"} & set(doc["meta"]["unread"]), doc["meta"]["unread"]
+    assert [p["name"] for p in pools] == [p["name"] for p in sample_tenant.ZPA_PRA_CREDENTIAL_POOLS]
+    assert [c["id"] for c in pools[0]["credentials"]] == [sample_tenant.ZPA_PRA_CREDENTIALS[0]["id"]]
+    assert [p["name"] for p in profiles] == [p["name"] for p in sample_tenant.ZPA_ISOLATION_PROFILES]
+    import re
+
+    def keys(v):
+        return [k for x in v for k in ([*x.keys(), *keys(list(x.values()))] if isinstance(x, dict) else keys(x) if isinstance(x, list) else [])]
+    assert not [k for k in keys(pools + profiles) if re.search(r"password|passphrase|private_?key|secret|token", k, re.I)]
+
+
 def test_a_sample_backup_reads_the_gre_tunnels():
     """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: the sample's GRE tunnels carry lastModifiedBy, which the SDK model (zscaler/zia/models/gre_tunnels.py) needs to read a row, so a backup holds them instead of marking the type unread."""
     import offline_tenant as ot

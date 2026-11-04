@@ -104,6 +104,18 @@ window.WHATS_NEW = {
       "marks": [{ "page": "/report/path", "at": "#paWiSum" }, { "page": "/report/path", "at": "#paWi_trust", "shown": "with the What-if section open" }]
     },
     {
+      "id": "pov-simulate-whole-build", "release": "2026-11-04", "label": "Simulate the whole POV build",
+      "what": "Apply to a simulation now carries every part of a rehearsed POV build to the in-memory copy, Cloud App Control, ZPA policy rules, Client Connector profiles, ZDX probes and AI Guard included. Nothing reaches a tenant.",
+      "changelog": ["Simulate the whole POV build"],
+      "marks": [{ "page": "/report/pov", "at": "#pbSimulate", "shown": "after a dry run of the build on the sample tenant or a snapshot" }]
+    },
+    {
+      "id": "glass-light", "release": "2026-11-04", "label": "Lighter glass",
+      "what": "The glass effect draws far less on a computer without a graphics card: the backdrop moves once a second, and cards in the page drop their blur while you scroll. It looks the same.",
+      "changelog": ["Lighter glass on slow computers"],
+      "marks": [{ "page": "/report/advanced", "at": "#advGlass" }]
+    },
+    {
       "id": "team-saml", "release": "2026-11-01", "label": "SAML 2.0 sign-in",
       "what": "Team servers can sign people in through the organisation's identity provider with SAML 2.0, strictly checked, matched to their own account.",
       "changelog": ["SAML 2.0 sign-in"],

@@ -236,15 +236,17 @@ SSL_RULES = [
     {"id": 705, "order": 3, "rank": 7, "name": "Inspect partner portals", "state": "ENABLED", "urlCategories": ["CUSTOM_01"],
      "action": {"type": "DECRYPT", "overrideDefaultCertificate": False,
                 "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minClientTLSVersion": "CLIENT_TLS_1_2"}}},
-    {"id": 703, "order": 4, "rank": 7, "name": "Decrypt everything else", "state": "ENABLED", "defaultRule": True,
+    {"id": 703, "order": 5, "rank": 7, "name": "Decrypt everything else", "state": "ENABLED", "defaultRule": True,
      "action": {"type": "DECRYPT", "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minClientTLSVersion": "CLIENT_TLS_1_2",
                                                      "minServerTLSVersion": "SERVER_TLS_1_2"}},
      "urlCategories": ["ANY"]},
     # Zoom left encrypted for call quality: an exempted application with
     # Shadow IT bytes, so SSL coverage's true coverage ties a measured share
-    # of the HTTPS left encrypted to this rule on the sample tenant. ZIA
-    # evaluates the default rule last whatever its order.
-    {"id": 706, "order": 5, "rank": 7, "name": "Do not decrypt Zoom", "state": "ENABLED", "cloudApplications": ["ZOOM"],
+    # of the HTTPS left encrypted to this rule on the sample tenant. Its
+    # order follows the other rules' (1 to 4, no gap) and the default rule
+    # is last, as ZIA keeps them: a write that appends a rule must not
+    # find a gap the real policy never has.
+    {"id": 706, "order": 4, "rank": 7, "name": "Do not decrypt Zoom", "state": "ENABLED", "cloudApplications": ["ZOOM"],
      "action": {"type": "DO_NOT_DECRYPT", "doNotDecryptSubActions": {"bypassOtherPolicies": False}}},
 ]
 FIREWALL_RULES = [
@@ -659,6 +661,21 @@ ZPA_PROVISIONING_KEYS = [{"id": "2986", "name": "Portland DC connectors", "enabl
                           "zcomponentId": "2401", "zcomponentName": "Portland connectors", "creationTime": "1735689600"}]
 ZPA_PRA_CREDENTIALS = [{"id": "2987", "name": "Yard server admin", "credentialType": "USERNAME_PASSWORD",
                         "lastCredentialResetTime": "1735689600", "creationTime": "1735689600"}]
+# A PRA credential pool (zpa/models/pra_cred_pool_controller.py; read from
+# the waap-pra-config service): the stored credential above by reference
+# only (id and name), no secret. The made-up pool lets the backup, the RBAC
+# check ("pooled") and the restore of a credential reference exercise pools.
+ZPA_PRA_CREDENTIAL_POOLS = [{"id": "2989", "name": "Depot jump host logins", "description": "Shared logins the depot jump consoles use",
+                             "credentialType": "USERNAME_PASSWORD", "credentialMappingCount": "1",
+                             "credentials": [{"id": "2987", "name": "Yard server admin"}], "microtenantId": "0",
+                             "creationTime": "1735689600", "modifiedTime": "1735689600", "modifiedBy": "2971"}]
+# A ZPA isolation profile (zpa/models/cbi_zpa_profile.py ZPACBIProfile): the
+# same made-up isolation tenant as the ZIA profile (ISOLATION_PROFILES), so
+# Browser security matches the two by their isolation URL.
+ZPA_ISOLATION_PROFILES = [{"id": "5761", "name": "Larkspur isolation", "description": "Isolates Browser Access apps for unmanaged browsers",
+                           "enabled": True, "isolationProfileId": "iso-1", "isolationTenantId": "lkf-isolation-tenant",
+                           "isolationUrl": "https://isolation.example/larkspur", "microtenantId": "0",
+                           "creationTime": "1735689600", "modifiedTime": "1735689600", "modifiedBy": "2971"}]
 ZPA_PRA_APPROVALS = [{"id": "2988", "emailIds": ["vendor.support@larkspur-freight.example"], "status": "ACTIVE",
                       "startTime": "1767225600", "endTime": "1893456000", "applications": [{"id": "2201", "name": "Freight billing"}],
                       "workingHours": {"days": ["MON", "TUE", "WED", "THU", "FRI"], "startTime": "08:00", "endTime": "18:00",
@@ -1462,7 +1479,7 @@ def responses() -> Dict[str, Any]:
         f"{ZPA2}/network": _zpa(ZPA_TRUSTED_NETWORKS),
         f"{ZPA1}/machineGroup": _zpa(MACHINE_GROUPS),
         f"{ZPA1}/certificate": _zpa([]), f"{ZPA2}/lssConfig": _zpa([]), f"{ZPA2}/clientlessCertificate/issued": _zpa([]),
-        f"{ZPA1}/inspectionProfile": _zpa(INSPECTION_PROFILES), f"{ZPA1}/isolation/profiles": _zpa([]), f"{ZPA1}/browserProtectionProfile": _zpa([]),
+        f"{ZPA1}/inspectionProfile": _zpa(INSPECTION_PROFILES), f"{ZPA1}/isolation/profiles": _zpa(ZPA_ISOLATION_PROFILES), f"{ZPA1}/browserProtectionProfile": _zpa([]),
         f"{ZPA1}/inspectionControls/custom": _zpa(CUSTOM_CONTROLS), f"{ZPA1}/server": _zpa(APP_SERVERS),
         f"{ZPA1}/businessContinuitySettings": _zpa(BUSINESS_CONTINUITY),
         f"{ZPA1}/privateCloud": _zpa([]), f"{ZPA1}/privateCloudControllerGroup": _zpa([]), f"{ZPA1}/privateCloudController": _zpa([]),
@@ -1478,7 +1495,7 @@ def responses() -> Dict[str, Any]:
         f"{ZPA1}/emergencyAccess/users": _zpa(ZPA_EMERGENCY_USERS),
         f"{ZPA1}/microtenants": _zpa(ZPA_MICROTENANTS),
         f"{ZPA1}/credential": _zpa(ZPA_PRA_CREDENTIALS),
-        f"{ZPA_PRA}/credential-pool": _zpa([]),
+        f"{ZPA_PRA}/credential-pool": _zpa(ZPA_PRA_CREDENTIAL_POOLS),
         f"{ZPA1}/approval": _zpa(ZPA_PRA_APPROVALS),
         f"{ZPA2}/enrollmentCert": _zpa(ZPA_ENROLLMENT_CERTIFICATES),
         f"{ZPA1}/clientSetting": {"enrollmentCertId": "2604", "enrollmentCertName": "Client", "singningCertExpiryInEpochSec": "2082758400"},

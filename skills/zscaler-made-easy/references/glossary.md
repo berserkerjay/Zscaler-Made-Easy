@@ -71,6 +71,7 @@ every word there is here).
 | engine expression | An engine expression is the test inside an engine. It says how many matches of each word list are needed. |
 | expert view | The expert view is the full tool with every page and choice. It is made for people who know Zscaler well. |
 | file type | A file type is a kind of file, like a Word file or a program. Rules can allow or block some kinds. |
+| File Type Control | File Type Control checks the kind of file, like a zip or a spreadsheet. It can stop some kinds from being sent. |
 | finding | A finding is one thing the check-up noticed. Some are fine and some need a fix. |
 | forwarding profile | A forwarding profile tells Client Connector how to send traffic to Zscaler. It can differ at the office and at home. |
 | framework file | A framework file is a saved copy of web rules from one tenant. You can load it to build the same rules in another. |
@@ -90,6 +91,7 @@ every word there is here).
 | PAC file | A PAC file is a small list your browser reads. It says which sites go through Zscaler and which go around it. |
 | packet | A packet is a small piece of traffic. The moving dots in a picture show packets on their way. |
 | Path analyzer | The Path analyzer follows one website visit step by step. It shows what lets it through and what stops it. |
+| plain HTTP | Plain HTTP is web traffic that is not locked. Zscaler can read it without unlocking it. |
 | policy | A policy is a set of rules. It says what is allowed and what is not. |
 | policy pack | A policy pack is a ready-made set of word lists, engines and rules. It saves you days of work. |
 | policy token | A policy token is a code in the install command. It tells a new Client Connector which app profile to use. Keep it private. |
@@ -139,6 +141,8 @@ every word there is here).
 | time window | A time window is a set of days and hours, like work hours. A rule with one only acts at those times. |
 | to-do | A to-do is a small job you write down so you do not forget it. You tick it off when it is done. |
 | traffic river | A traffic river is a moving picture of your web traffic. Each stream is as wide as its share, and dots show the traffic going by. |
+| true inspection coverage | True inspection coverage is the share of the web traffic that reaches Zscaler that it could look inside. It is plain HTTP plus the HTTPS it unlocked. Traffic it cannot sort is never counted as inspected. Traffic sent around Zscaler is not in it, so the page also says what it is out of all your web traffic. |
+| trust level | A trust level is a grade for a device: high, medium or low. Client Connector gives it from the posture checks. ZIA rules can use it. |
 | trusted network | A trusted network is a network you own, like the office one. It says where a device is, not if the device is safe. |
 | Trusted Resolver | The Trusted Resolver is the Zscaler service that looks up web names. It keeps people off bad sites. |
 | URL filtering | URL filtering lets people visit some kinds of websites and stops others, like games or gambling. |

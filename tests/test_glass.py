@@ -606,3 +606,34 @@ def test_extension_glass_is_local_static_and_on_every_page():
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(|url\(|https?:", EXT_CSS)
     assert not re.search(r"backdrop-filter|animation|transition|@keyframes", EXT_CSS)
     assert len(decls) >= 5 and all(v.startswith(("var(--glass-solid-img,", "var(--glass-solid-shadow,")) for _, v in decls), decls
+
+
+# ── What the glass costs to draw (measured: tests/test_glass_perf_browser.py) ──
+
+def test_the_drift_steps_about_once_a_second_on_both_layers_together():
+    """CWE-400 · CWE-1050 · performance: each drift step draws every blurred layer again, so each backdrop layer steps at most once a second, and both at the same moments (the same seconds per step), never four or more times a second as before."""
+    # Arrange
+    drift = float(_decls(_block(CSS_NO_COMMENTS, "body"))["--glass-drift"].rstrip("s"))
+    uses = re.findall(r"(?<![\w-])animation\s*:\s*var\(--glass-solid-motion, glass-drift-\w+ (var\(--glass-drift\)|calc\(var\(--glass-drift\) \* ([\d.]+)\)) steps\((\d+)\)", CSS_NO_COMMENTS)
+    # Act
+    per_step = [drift * (float(scale) if scale else 1.0) / int(n) for _dur, scale, n in uses]
+    # Assert
+    assert len(per_step) == 2 and all(s >= 1.0 for s in per_step), per_step
+    assert abs(per_step[0] - per_step[1]) < 1e-9, per_step
+
+
+def test_while_the_page_scrolls_the_in_flow_glass_drops_its_blur_and_the_drift_holds():
+    """CWE-400 · CWE-1050 · WCAG 2.2 SC 2.2.2: glass.js sets html.glass-scrolling from one passive capturing scroll listener (cleared after the scroll ends, nothing per frame); glass.css then drops the blur of the cards and the tier 2 chrome in the page flow (the same selectors that blur them) and holds the drift, while the floating tier keeps its blur."""
+    # Arrange
+    js = _read("glass.js")
+    rule = re.search(r":root:not\(\.glass-off\)\.glass-scrolling :is\(\.rp-card[^{]+\{([^{}]*)\}", CSS_NO_COMMENTS)
+    # Act
+    selectors = rule.group(0).split("{")[0] if rule else ""
+    # Assert
+    assert "document.addEventListener('scroll', scrolled, { passive: true, capture: true });" in js
+    assert "root.classList.remove('glass-scrolling')" in js and "requestAnimationFrame(scrolled" not in js
+    assert rule and "backdrop-filter: none" in rule.group(1), rule
+    assert ".glass-fit" in selectors and ".rp-hero" in selectors and "#stepBar" in selectors
+    assert not re.search(r"\.rp-bar|#dbSidebar|dialog|\.hh-tip", selectors), selectors
+    body = _block(CSS_NO_COMMENTS, ":root:not(.glass-off).glass-scrolling body::before,\n:root:not(.glass-off).glass-scrolling body::after")
+    assert "animation-play-state: paused" in body

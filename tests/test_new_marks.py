@@ -46,6 +46,8 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 # home in the app's pages to mark. A new phrase must either be covered by a
 # manifest feature's "changelog" list or be added here with its reason.
 EXCLUDED = {
+    # POV follow-ups (2026-11-04): made-up data in the sample tenant, no control of its own.
+    "PRA credential pools and ZPA isolation profiles in the sample tenant": "sample tenant data read by backups and checks, not a control",
     # The agent workspace is for the agents that build the app, not a page or a control.
     "Layered context": "agent workspace files in the repository, not in the app",
     "Compiled references that can't drift": "agent workspace files in the repository, not in the app",

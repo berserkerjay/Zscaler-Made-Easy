@@ -491,7 +491,7 @@
     }
   ],
   "counts": {
-    "findings": 780,
+    "findings": 786,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -505,12 +505,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 199,
+        "fixed": 200,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 435,
+        "fixed": 440,
         "accepted": 3
       },
       "info": {
@@ -520,12 +520,12 @@
       }
     },
     "checks": {
-      "pass": 734,
+      "pass": 739,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11871
+    "tests_added": 11903
   },
   "findings": [
     {
@@ -4847,6 +4847,22 @@
       "slug": "w10-native-click",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W10-PF-06",
+      "title": "Glass pages: the drift re-drew every blurred layer about fifteen times a second at rest, and every scrolled frame re-blurred every in-flow card (14 times the glass-off drawing time on two cores)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-400",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "The drift steps once a second on both layers together; while scrolling, in-flow cards and chrome drop their blur and the drift holds",
+      "test": "tests/test_glass_perf_browser.py",
+      "commit": "d7a3ca3",
+      "reason": "",
+      "slug": "w10-pov-followups",
+      "area": "other",
+      "sub_area": "other"
     },
     {
       "id": "W10-SI-02",
@@ -11745,6 +11761,86 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W10-PF-01",
+      "title": "A simulated POV build stopped at the ZIA baseline: Cloud App Control rules of different types got the same id on the copy, so the read-back compared the wrong rule",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-706",
+      "asvs": "V1.4.1",
+      "wcag": "",
+      "fix": "A Cloud App Control rule id is one number space across rule types on the offline tenant",
+      "test": "tests/test_offline_tenant.py::test_cloud_app_control_rule_ids_are_one_space_across_rule_types",
+      "commit": "e6ba867",
+      "reason": "",
+      "slug": "w10-pov-followups",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-PF-02",
+      "title": "ZPA policy rules, Client Connector profiles, ZDX probes and ZIA settings could not be written to a simulation (no policy set, no edit routes)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "The offline tenant answers policy sets, routes rule writes to the type's list, models the Client Connector edits, the ZDX configuration and settings PUTs",
+      "test": "tests/test_rehearsal_simulation.py::test_a_rehearsed_pov_build_applies_to_the_simulation_end_to_end",
+      "commit": "e6ba867",
+      "reason": "",
+      "slug": "w10-pov-followups",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-PF-03",
+      "title": "A simulation of a snapshot answered URL lookups from the sample's table, so a plan rehearsed on the snapshot changed on its simulation (plan_changed)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-441",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "A simulation answers a URL lookup as the tenant it copies did",
+      "test": "tests/test_offline_tenant.py::test_a_simulation_of_a_snapshot_has_no_url_lookup_as_its_snapshot",
+      "commit": "e6ba867",
+      "reason": "",
+      "slug": "w10-pov-followups",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-PF-04",
+      "title": "The Team server page's SAML form scrolled sideways by 70px at 320px (a grid item's minimum is its content: the file picker)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1050",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "The form's grid items may shrink (min-width 0, minmax(0, 1fr)) and the file picker fits",
+      "test": "tests/test_team_login_browser.py::test_both_themes_keep_aa_contrast_and_reflow_at_320px",
+      "commit": "20ac12b",
+      "reason": "",
+      "slug": "w10-pov-followups",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-PF-05",
+      "title": "\"Or type the identity provider's values\" on the Team server page had no help entry or mark",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "A help catalogue entry (both copies)",
+      "test": "tests/test_team_login_browser.py::test_the_administrator_sees_the_sign_in_section_with_saml_and_passkey_controls_open",
+      "commit": "20ac12b",
+      "reason": "",
+      "slug": "w10-pov-followups",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
       "id": "W10-SI-01",
       "title": "Switching from the expert page to Simple mode after Authenticate ended in an error: the server forgot the sign-in and Simple mode had no credentials",
       "severity": "low",
@@ -13981,6 +14077,19 @@
       "tests_added": 13
     },
     {
+      "slug": "w10-pov-followups",
+      "area": "POV follow-ups: the simulated POV build, the sample tenant's PRA credential pools and ZPA isolation profiles, browser tests of the Team server page and the sign-in screens, and the glass effect's drawing cost",
+      "title": "Wave 10: every POV part simulates on the in-memory copy, more sample data, the sign-in screens tested in a browser, lighter glass on slow computers",
+      "standards": [
+        "ASVS 4.0.3 L2 V1.4, V1.14, V2.1, V2.8, V4.1, V8.3, V14.1",
+        "WCAG 2.2 AA 1.3.1, 1.4.3, 1.4.10, 2.1.1, 2.3.3, 2.4.3, 3.3.2, 4.1.2",
+        "CWE-284, CWE-400, CWE-441, CWE-706, CWE-1050"
+      ],
+      "checks": 5,
+      "findings": 6,
+      "tests_added": 32
+    },
+    {
       "slug": "w10-shared-signin",
       "area": "Auth, scope and secrets: the signed-in tenant (one sign-in, kept in server memory, used by every page's tenant reads)",
       "title": "Wave 10: sign in once; the verified sign-in is kept in memory for the person and browser, for reads only, with idle and hard expiry",
@@ -15562,6 +15671,7 @@
       "CWE-1023",
       "CWE-1025",
       "CWE-1041",
+      "CWE-1050",
       "CWE-1059",
       "CWE-1068",
       "CWE-1077",
@@ -15714,6 +15824,6 @@
     ]
   },
   "warnings": [
-    "Records with no area in the formula: w10-device-posture, w10-tf-validate. Their open findings still count toward the cap."
+    "Records with no area in the formula: w10-device-posture, w10-pov-followups, w10-tf-validate. Their open findings still count toward the cap."
   ]
 }
