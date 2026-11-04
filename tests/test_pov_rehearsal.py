@@ -48,7 +48,7 @@ BUILDERS = {
     "aiguard_routing": {"type": "aiguard_routing", "prefix": "LKF", "apps": ["chatgpt", "claude"], "cert": {"mode": "existing", "id": 11}},
     "aiguard_detection_policy": {"type": "aiguard_detection_policy", "prefix": "LKF", "profile": "GENERAL", "apps": ["chatgpt"]},
     "rule_state": {"type": "rule_state", "value": "DISABLED", "targets": [{"policy": "url_filtering", "id": 602}]},
-    "reorder": {"type": "reorder", "policy": "url_filtering", "order": [603, 602, 601]},
+    "reorder": {"type": "reorder", "policy": "url_filtering", "order": [604, 603, 602, 601]},
     "url_categories": {"type": "url_categories", "action": "add", "target": "CUSTOM_01", "urls": ["new.larkspur-freight.example"]},
     "zpa_domains": {"type": "zpa_domains", "action": "copy", "source": "2201", "target": "2202", "domains": ["billing.larkspur-freight.example"]},
     "zcc_device_bulk_remove": {"type": "zcc_device_bulk_remove", "mode": "remove", "batch_size": 2, "devices": [
