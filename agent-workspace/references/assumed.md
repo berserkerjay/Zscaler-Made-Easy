@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-519 markers.
+525 markers.
 
 | File:line | Note |
 |---|---|
@@ -83,15 +83,18 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `compliance_profiles.py:843` | "map_pack_rule", "applies", "controls", "assumed", "assessment_view", "get", "key_of", "ProfileError", "FEDERAL_KEYS"] |
 | `config_backup.py:58` | one exists). Assumed, not verifiable without a tenant: that the SDK's add_ / |
 | `config_backup.py:154` | operands carry the profile's UDID and the network's network id (assumed from the portal's payloads). |
-| `config_backup.py:283` | """A bandwidth class the customer made (assumed: Zscaler's own classes are |
-| `config_backup.py:451` | assumed: ZIA picks the target's own primary and secondary VIPs and an internal IP range when a create leaves them out. |
-| `config_backup.py:485` | "path /rootCertificates (assumed); never updated", uses=()), |
-| `config_backup.py:595` | "leaves them as they are: assumed)", |
-| `config_backup.py:599` | why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)", |
-| `config_backup.py:603` | why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)", |
-| `config_backup.py:605` | assumed: GET /application-profiles answers {"policies": [...]}, the shape the SDK reads (zscaler/zcc/application_profiles.py). |
-| `config_backup.py:972` | Keys go in camel case as the GET answers them (assumed).""" |
-| `config_backup.py:1178` | when missing; INSPECT for inspection: assumed).""" |
+| `config_backup.py:301` | """A bandwidth class the customer made (assumed: Zscaler's own classes are |
+| `config_backup.py:347` | """A PAC file the customer made (assumed: Zscaler's own PAC files answer |
+| `config_backup.py:523` | assumed: ZIA fills in its own linked ZPA tenant when zpa_tenant_id is left out of a create. |
+| `config_backup.py:548` | assumed: ZIA picks the target's own primary and secondary VIPs and an internal IP range when a create leaves them out. |
+| `config_backup.py:564` | assumed: a sub-location's name is unique within its parent, so it is matched by "<parent> / <name>". |
+| `config_backup.py:605` | "path /rootCertificates (assumed); never updated", uses=()), |
+| `config_backup.py:726` | why="its passwords and policy token are never read back or sent (an update leaves them as they are: assumed); a missing " |
+| `config_backup.py:732` | why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)", |
+| `config_backup.py:737` | why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)", |
+| `config_backup.py:740` | assumed: GET /application-profiles answers {"policies": [...]}, the shape the SDK reads (zscaler/zcc/application_profiles.py). |
+| `config_backup.py:1145` | Keys go in camel case as the GET answers them (assumed).""" |
+| `config_backup.py:1351` | when missing; INSPECT for inspection: assumed).""" |
 | `data_flow.py:950` | enters the tunnel. A host name is not resolved: it is assumed to |
 | `data_flow.py:964` | "it is not resolved and is assumed to resolve outside them") |
 | `data_flow.py:1021` | nis["zcc"] + " How the device forwards this traffic is not assessed; a tunnel to ZIA is assumed.", None, why="not in scope")) |
@@ -119,10 +122,13 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_aiguard.py:33` | readiness check; what is verified against the SDK and what is assumed is |
 | `ops_aiguard.py:622` | _SSL_STOPPERS = {"DO_NOT_DECRYPT", "BLOCK"}   # SSL inspection action types (BLOCK: assumed, not enumerated in the SDK model) |
 | `ops_config_restore.py:79` | assumed: a rule created without it is active at once (the API's default). |
-| `ops_config_restore.py:329` | assumed: POST /staticIP/validate only checks the address and never changes the tenant, so the |
-| `ops_config_restore.py:342` | assumed: a 409, or an answer saying the address exists, is a duplicate or is already used, means |
-| `ops_config_restore.py:1236` | assumed: deleting in the reverse of the create order (a location, then its GRE tunnel, then its static |
-| `ops_config_restore.py:1425` | or not sent (PRA and inspection: ZPA keeps them unless they are listed for deletion, assumed). |
+| `ops_config_restore.py:347` | assumed: POST /staticIP/validate only checks the address and never changes the tenant, so the |
+| `ops_config_restore.py:360` | assumed: a 409, or an answer saying the address exists, is a duplicate or is already used, means |
+| `ops_config_restore.py:481` | assumed: an entitlement's group list and an app profile's groups name the same user groups by the same ids. |
+| `ops_config_restore.py:741` | assumed: the ZPA tenant read for the target (the profile's ZPA) is the one the target ZIA is linked to, so a |
+| `ops_config_restore.py:754` | assumed: ZPA answers ip_anchored on a server group; only an explicit false refuses it. |
+| `ops_config_restore.py:1462` | assumed: deleting in the reverse of the create order (a location, then its GRE tunnel, then its static |
+| `ops_config_restore.py:1652` | or not sent (PRA and inspection: ZPA keeps them unless they are listed for deletion, assumed). |
 | `ops_dlp_objects.py:57` | ASSUMED: that ZIA itself refuses deleting an object something outside the |
 | `ops_dlp_objects.py:82` | NOT_CHECKED = "Anything outside the DLP rules and engines read here that uses it makes ZIA refuse the delete (assumed)." |
 | `ops_fw_import.py:31` | firewall channel). Assumed: that the API accepts an IPv4 range a-b in an IP |
@@ -352,13 +358,13 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `rule_editor.py:591` | body["type"] = "FORWARDING"   # forwarding_control_policy.ForwardingControlRule.type; FORWARDING is the rule kind ZIA lists (assumed) |
 | `rule_fields.py:125` | timers) and metadata. restrictionType is taken as metadata (assumed: |
 | `rule_migrator.py:1067` | ASSUMED (not verified against the SDK or Zscaler's documentation): the |
-| `sample_tenant.py:355` | assumed: the API sends lastModifiedBy on every tunnel. The SDK model (zscaler/zia/models/gre_tunnels.py) |
-| `sample_tenant.py:434` | WebPolicy model (assumed: the readers ask for it, and a device reports it). |
-| `sample_tenant.py:476` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
-| `sample_tenant.py:708` | not in the SDK: its shapes are ops_zdx's (assumed there). |
-| `sample_tenant.py:793` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
-| `sample_tenant.py:1037` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
-| `sample_tenant.py:1390` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
+| `sample_tenant.py:366` | assumed: the API sends lastModifiedBy on every tunnel. The SDK model (zscaler/zia/models/gre_tunnels.py) |
+| `sample_tenant.py:445` | WebPolicy model (assumed: the readers ask for it, and a device reports it). |
+| `sample_tenant.py:487` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
+| `sample_tenant.py:719` | not in the SDK: its shapes are ops_zdx's (assumed there). |
+| `sample_tenant.py:804` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
+| `sample_tenant.py:1048` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
+| `sample_tenant.py:1403` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
 | `scope_permissions.py:100` | "Reports (System Audit Report; assumed name)", |
 | `scope_permissions.py:101` | "Alerts (alert subscriptions; assumed name)", |
 | `scope_permissions.py:103` | "Organization (subscriptions; assumed name)", |

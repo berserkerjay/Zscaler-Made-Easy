@@ -41,6 +41,16 @@ window.WHATS_NEW = {
       ]
     },
     {
+      "id": "clone-breadth", "release": "2026-11-04", "label": "Clone tenant-bound objects and Client Connector profiles",
+      "what": "Restore and clone now write PAC files, Endpoint and SaaS DLP rules, ZPA gateways, sub-locations (with their location) and, when you tick it, Client Connector app profiles and entitlements, never with a password.",
+      "changelog": ["PAC files, Endpoint DLP and SaaS Security API DLP rules, and ZPA gateways in restore and clone", "Sub-locations clone with their parent location", "Client Connector app profiles and entitlements to another tenant"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opCloneNew" },
+        { "page": "/report/operations", "at": "#crTb", "shown": "on the ZIA restore form (Backups)" },
+        { "page": "/report/operations", "at": "#crZccProfiles", "shown": "on the Client Connector restore form (Backups)" }
+      ]
+    },
+    {
       "id": "team-saml", "release": "2026-11-01", "label": "SAML 2.0 sign-in",
       "what": "Team servers can sign people in through the organisation's identity provider with SAML 2.0, strictly checked, matched to their own account.",
       "changelog": ["SAML 2.0 sign-in"],

@@ -325,6 +325,17 @@ LOCATIONS = [
      "sslScanEnabled": False, "authRequired": False, "xffForwardEnabled": False, "surrogateIP": False, "ofwEnabled": True, "ipsControl": False,
      "ipAddresses": ["203.0.113.20"], "profile": "SERVER"},
 ]
+# Sub-locations (zscaler/zia/locations.py list_sub_locations: GET /locations/{id}/sublocations), one
+# made by the customer and Zscaler's own "other" sub-location; the restore clones the first with its parent.
+SUB_LOCATIONS = {
+    1101: [{"id": 1111, "name": "HQ guest Wi-Fi", "parentId": 1101, "ipAddresses": ["10.20.0.0/16"], "authRequired": False,
+            "sslScanEnabled": True, "ofwEnabled": True, "aupEnabled": True, "profile": "GUESTWIFI", "description": "Visitors"},
+           {"id": 1112, "name": "other", "parentId": 1101, "otherSubLocation": True, "ipAddresses": []}],
+    1102: [],
+}
+# SaaS Security API lookups the SaaS DLP rules name (zscaler/zia/saas_security_api.py *_lite lists).
+DOMAIN_PROFILES = [{"profileId": 8701, "profileName": "Larkspur partners", "includeCompanyDomains": True, "customDomains": ["harborline-logistics.example"]}]
+CASB_EMAIL_LABELS = [{"id": 8801, "name": "Confidential", "labelColor": "RED", "labelDesc": "Larkspur confidential mail"}]
 # Forwarding and traffic path (zia_forwarding, the FWD.* checks and the Path
 # analyzer's Forwarding control step), with the gaps an assessment should
 # find: a proxy-chaining gateway with no secondary proxy that does not fail
@@ -1331,6 +1342,8 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/fileTypeRules": FILE_TYPE_RULES,
         f"{ZIA}/pacFiles": PAC_FILES,
         f"{ZIA}/locations": LOCATIONS,
+        **{f"{ZIA}/locations/{lid}/sublocations": subs for lid, subs in SUB_LOCATIONS.items()},
+        f"{ZIA}/domainProfiles/lite": DOMAIN_PROFILES, f"{ZIA}/casbEmailLabel/lite": CASB_EMAIL_LABELS,
         f"{ZIA}/advancedSettings": ADVANCED_SETTINGS,
         f"{ZIA}/webDlpGlobalOptions": WEB_DLP_GLOBAL_OPTIONS,
         f"{ZIA}/security/advanced": {"blacklistUrls": ["malware-drop.example"]},

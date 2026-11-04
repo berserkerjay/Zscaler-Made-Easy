@@ -6120,6 +6120,16 @@ window.HELP_CATALOG = {
     "input": "Tick it only after you checked the two tenants' licences.",
     "effect": "local"
    },
+   "#crTb": {
+    "what": "Adds static IP addresses, GRE tunnels, locations and their sub-locations to the restore or clone. Each sub-location is made after its parent location. Nothing tenant-bound is ever changed or deleted.",
+    "input": "Tick it, then tick the tenant-bound types to include. Off to start with. The apply asks you to type CREATE n TENANT-BOUND OBJECTS.",
+    "effect": "local"
+   },
+   "#crZccProfiles": {
+    "what": "Adds Client Connector app profiles and ZPA and ZDX entitlements to a clone, and lets a missing app profile be made. Passwords and the policy token are never read, copied or sent.",
+    "input": "Tick it to include them. A new app profile is made turned off and without passwords: set them in the Client Connector portal. A clone asks you to type CLONE n CLIENT CONNECTOR OBJECTS.",
+    "effect": "local"
+   },
    "#crRollback": {
     "what": "Undoes what a run applied at once if the run stops or fails. Without it, Undo is offered.",
     "input": "Tick it before you apply.",

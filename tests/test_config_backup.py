@@ -85,7 +85,7 @@ def test_coverage_lists_each_product_and_what_is_written():
     levels = {r["key"]: r["level"] for p in cov["products"].values() for r in p}
     assert levels["zia.url_filtering_rules"] == "full" and levels["zia.advanced_settings"] == "update" and levels["zia.org_info"] == "read"
     bound = {r["key"] for p in cov["products"].values() for r in p if r["tenant_bound"]}
-    assert bound == {"zia.locations", "zia.static_ips", "zia.gre_tunnels"}
+    assert bound == {"zia.locations", "zia.sub_locations", "zia.static_ips", "zia.gre_tunnels"}
     assert not any(cb.writable(cb.BY_KEY[k]) for k in bound) and all(cb.writable(cb.BY_KEY[k], tenant_bound=True) for k in bound)
     assert all(r["why"] for p in cov["products"].values() for r in p if r["level"] == "read")
     assert sum(len(v) for v in cov["products"].values()) >= 80 and cov["not_covered"]
