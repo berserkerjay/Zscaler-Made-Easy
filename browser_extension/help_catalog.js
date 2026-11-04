@@ -3209,8 +3209,8 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#dvRun": {
-    "what": "Reads the ZPA posture profiles, trusted networks and access rules once. Then it shows the findings.",
-    "input": "Nothing to type. Just click it. Tick ZPA on the Scope page and give the ZPA customer ID first.",
+    "what": "Reads device posture once from each product in scope: Client Connector, ZPA and ZIA. Then it shows the findings.",
+    "input": "Nothing to type. Just click it. Tick ZCC / Mobile Portal, ZPA or ZIA platform on the Scope page first (any one).",
     "effect": "read"
    },
    "#dvStop": {
@@ -3230,6 +3230,11 @@ window.HELP_CATALOG = {
    },
    "#tab-findings": {
     "what": "Shows the findings: rules that let devices in without a real check. Fix high before medium.",
+    "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
+    "effect": "local"
+   },
+   "#tab-cross": {
+    "what": "Shows each posture check across products: where it is made, which devices it covers, and every ZPA and ZIA rule that uses it.",
     "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
     "effect": "local"
    },
@@ -7220,6 +7225,16 @@ window.HELP_CATALOG = {
    "#paWi_location": {
     "what": "Sets the location to check rules for.",
     "input": "Optional. A location name, like HQ office. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paWi_trust": {
+    "what": "Sets the device's trust level for the ZIA steps. Rules that name other levels are skipped. Client Connector gives each device a level from its ZIA posture profile.",
+    "input": "Optional. Pick High, Medium, Low or Unknown trust. Not given keeps those rules open.",
+    "effect": "local"
+   },
+   "#paWi_posture": {
+    "what": "Sets which ZPA posture checks the device passes. Every other check fails. The ZPA access step then gives one answer for this device.",
+    "input": "Optional. Posture check names, split by commas, like CrowdStrike running. Empty answers for all passing and all failing.",
     "effect": "local"
    },
    "#paWhatIf button[data-wi-find]": {
