@@ -1435,7 +1435,9 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     if signed is not None and _team.enabled():
         # A team server reaches a tenant only through a tenant profile: the
         # one the sign-in was made with, still checked against the person below.
-        pid = pid or signed["profile_id"]
+        # Typed sign-in details without a profile are refused as before.
+        if not pid and not tenant_auth.started(creds) and not creds["vanity_domain"]:
+            pid = signed["profile_id"]
         if not pid or pid != signed["profile_id"]:
             signed = None
     if _team.enabled():
