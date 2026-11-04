@@ -899,9 +899,9 @@ what you get, what to do next.
   locations and their sub-locations, each after its parent) are written
   only with their own tick and typed CREATE n TENANT-BOUND OBJECTS. Client
   Connector app profiles and entitlements clone to another tenant only
-  with their own tick and typed CLONE n CLIENT CONNECTOR OBJECTS: profiles
-  that apply to everyone, created inactive, never with a password or the
-  policy token. **Templates** are picked
+  with their own tick and typed CLONE n CLIENT CONNECTOR OBJECTS: groups
+  matched by name, never widening a same-named target profile, created
+  inactive, never with a password or the policy token. **Templates** are picked
   objects (with what they use), ids removed, names carrying a prefix chosen
   when they are applied. On the sample tenant or a snapshot, a restore is a
   rehearsal: plan only.
