@@ -31,6 +31,7 @@ import re
 import time
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
@@ -277,7 +278,7 @@ def test_a_deeply_nested_json_body_is_a_400_on_every_route_and_is_audited(path, 
     body = "[" * 5000 + "]" * 5000
     r = _client().post(url, content=body, headers={"content-type": "application/json"})
     assert r.status_code == 400, (path, r.status_code, r.text[:200])
-    lines = [json.loads(x) for x in log.read_text().splitlines()]
+    lines = [json.loads(x) for x in read_store_text(log).splitlines()]
     assert any(e.get("event") == "api" and e.get("path") == url and e.get("body") == f"<{len(body)} bytes>" for e in lines)
 
 

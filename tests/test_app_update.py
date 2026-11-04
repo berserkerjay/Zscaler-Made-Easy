@@ -10,6 +10,7 @@ import subprocess
 import time
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import app_update as au
@@ -696,7 +697,7 @@ def test_an_app_update_is_recorded_in_the_audit_log(repos, monkeypatch, tmp_path
     r = TestClient(srv.app).post("/api/app/update")
     # Assert
     assert r.status_code == 200
-    events = [_json.loads(x) for x in log.read_text().splitlines()]
+    events = [_json.loads(x) for x in read_store_text(log).splitlines()]
     hit = [e for e in events if e["event"] == "app_update"]
     assert hit and hit[-1]["branch"] == "main" and hit[-1]["ok"] is True and hit[-1]["before"] == "a" * 7 and hit[-1]["after"] == "b" * 7
 
@@ -710,7 +711,7 @@ def test_a_refused_update_writes_no_audit_event(repos, monkeypatch, tmp_path):
     monkeypatch.setattr(au, "update", lambda *a, **k: pytest.fail("the update must not run"))
     monkeypatch.setenv("ZSCALER_BIND_HOST", "0.0.0.0")
     assert TestClient(srv.app).post("/api/app/update").status_code == 403
-    assert not log.exists() or "app_update" not in log.read_text()
+    assert not log.exists() or "app_update" not in read_store_text(log)
 
 
 

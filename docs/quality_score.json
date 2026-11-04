@@ -488,7 +488,7 @@
     }
   ],
   "counts": {
-    "findings": 763,
+    "findings": 772,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -497,17 +497,17 @@
       },
       "high": {
         "open": 0,
-        "fixed": 20,
+        "fixed": 22,
         "accepted": 0
       },
       "medium": {
         "open": 0,
-        "fixed": 195,
+        "fixed": 199,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 422,
+        "fixed": 425,
         "accepted": 3
       },
       "info": {
@@ -522,7 +522,7 @@
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11746
+    "tests_added": 11768
   },
   "findings": [
     {
@@ -1724,6 +1724,38 @@
       "slug": "w9-security-gates",
       "area": "secure_by_design",
       "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W10-SD-03",
+      "title": "The store key, the migration journal and its plaintext backup were neither git- nor docker-ignored, so a native install's key could be committed or baked into an image",
+      "severity": "high",
+      "status": "fixed",
+      "cwe": "CWE-321",
+      "asvs": "V6.4.1",
+      "wcag": "",
+      "fix": "Added to .gitignore and .dockerignore",
+      "test": "tests/test_supply_chain_qa.py::test_the_store_key_and_migration_files_are_ignored_by_git_and_docker",
+      "commit": "3a35d68",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-SD-05",
+      "title": "A removal deleted an untagged object found only under the managed-name prefix",
+      "severity": "high",
+      "status": "fixed",
+      "cwe": "CWE-694",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "A prefix match is kept unless the tag or a deployment record for this tenant lists its id; the preview says so",
+      "test": "tests/test_name_prefix.py::test_the_removal_keeps_an_untagged_object_under_the_prefixed_name",
+      "commit": "a2d05b7",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
     },
     {
       "id": "C6-ADMIN-OPS-01",
@@ -4840,6 +4872,70 @@
       "fix": "Keys are read from the credential store and the key file together; a new key is made only when nothing that might hold one failed to read, and used only after it reads back",
       "test": "tests/test_store_encryption_default.py::test_a_locked_credential_store_is_never_replaced_by_a_new_key",
       "commit": "efd6903",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-SD-04",
+      "title": "A pack name that already started with the prefix was not prefixed, so the customer's own object under that name was reused as this app's",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-694",
+      "asvs": "V1.14.6",
+      "wcag": "",
+      "fix": "Every pack name is prefixed",
+      "test": "tests/test_name_prefix.py::test_a_pack_name_that_already_starts_with_the_prefix_is_prefixed_so_the_customers_object_is_not_taken",
+      "commit": "a2d05b7",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-SD-07",
+      "title": "Plain copies could stay behind: temporary files under the stores' real names, damaged copies, a backup folder whose removal failed, and the full backup of a stopped migration",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-312",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "Real temp names removed at every start; damaged copies sealed; removal checked; a stopped migration keeps only unsealed backups and says so in status and on the Team page",
+      "test": "tests/test_store_encryption_default.py::test_a_stopped_migration_keeps_a_plain_backup_only_of_what_is_not_sealed_and_says_so",
+      "commit": "e600c4f",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-SD-08",
+      "title": "A rotation forgot the old key even when a file (a damaged copy, a racing write) still named it",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-320",
+      "asvs": "V6.4.2",
+      "wcag": "",
+      "fix": "Every store file is read again before the old key is dropped; a key still named is kept",
+      "test": "tests/test_store_encryption_default.py::test_rotation_keeps_an_old_key_a_file_still_names",
+      "commit": "e600c4f",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-SD-11",
+      "title": "The suite ran with encryption off, so secret-canary checks of store files passed on ciphertext",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1068",
+      "asvs": "V14.1.1",
+      "wcag": "",
+      "fix": "The suite runs with the shipped default; tests open stores through store_crypto helpers",
+      "test": "tests/test_suite_stability.py::test_the_suite_runs_with_encrypted_stores_on_as_shipped",
+      "commit": "c3a68a1, 67e32a0",
       "reason": "",
       "slug": "w10-store-defaults",
       "area": "other",
@@ -11598,6 +11694,54 @@
       "sub_area": "other"
     },
     {
+      "id": "W10-SD-06",
+      "title": "A prefix holding AND, OR or NOT put expression keywords into every dictionary reference (D:name)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-917",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "Refused as whole words, any case",
+      "test": "tests/test_name_prefix.py::test_a_prefix_holding_an_expression_keyword_is_refused",
+      "commit": "a2d05b7",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-SD-09",
+      "title": "status() reported where a key would go, and a named key file was deleted when a credential store appeared",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V6.4.1",
+      "wcag": "",
+      "fix": "Status reads where the ring is; a DLP_CHECK_STORE_KEY_FILE is always used and never deleted",
+      "test": "tests/test_store_encryption_default.py::test_a_key_file_the_operator_named_is_never_moved_or_deleted",
+      "commit": "e600c4f",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-SD-10",
+      "title": "With encryption on, a sealed snapshot over its size limit was cut short and reported as damaged",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-209",
+      "asvs": "V12.1.1",
+      "wcag": "",
+      "fix": "Over the cap is 'too large' before the file is opened",
+      "test": "tests/test_c6_auth.py::test_a_snapshot_too_large_missing_or_unlisted_is_refused_in_plain_words",
+      "commit": "67e32a0",
+      "reason": "",
+      "slug": "w10-store-defaults",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13658,8 +13802,8 @@
         "ASVS 4.0.3 L2 V1.14, V5.1, V6.1, V6.2, V6.4, V8.3, V14.1"
       ],
       "checks": 7,
-      "findings": 2,
-      "tests_added": 43
+      "findings": 11,
+      "tests_added": 65
     },
     {
       "slug": "w7-admin-zia-zid",
@@ -15145,6 +15289,7 @@
       "CWE-863",
       "CWE-915",
       "CWE-916",
+      "CWE-917",
       "CWE-918",
       "CWE-922",
       "CWE-942",
