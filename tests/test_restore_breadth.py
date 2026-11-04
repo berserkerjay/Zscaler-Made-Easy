@@ -1092,3 +1092,113 @@ def test_the_sample_tenant_has_data_for_every_new_type():
               "zcc.app_profiles", "zcc.zpa_entitlements", "zcc.zdx_entitlements"):
         assert doc["types"].get(k), k
     assert {r["location_path"] for r in doc["types"]["zia.sub_locations"]} >= {"Larkspur HQ (Portland) / HQ guest Wi-Fi"}
+
+
+# ── fixes after verify: an app profile clone never widens who it applies to (N1);
+# the preview and the result name only the fields really written (N2) ──────
+
+def zcc_profile_target(**prof):
+    """The clone target with an app profile of the same name as the source's 'Everyone - Windows'."""
+    t = zcc_target()
+    t.data["zcc.app_profiles"] = [dict({"id": 8051, "name": "Everyone - Windows", "device_type": "DEVICE_TYPE_WINDOWS", "active": 1,
+                                        "forwarding_profile_id": 9061}, **prof)]
+    return t
+
+
+def clone_profiles(t, src=None):
+    bid = wide_backup(src or zcc_source(), ("zcc",))
+    return Client(t), spec("zcc", bid, types=["zcc.app_profiles"], include_zcc_profiles=True)
+
+
+def test_a_clone_never_widens_a_same_named_target_profile_to_everyone():
+    """ASVS V4.1.3 · CWE-269 · WSTG-ATHZ-02: a source profile that applies to everyone is not cloned onto a same-named target profile that applies only to its own groups; the item is refused with the target's current and the would-be groups, and nothing is written."""
+    t = zcc_profile_target(group_all=0, groups=[{"id": 95, "name": "B staff"}])
+    tgt, sp = clone_profiles(t)
+    p = ao.plan(tgt, sp, scope=WIDE, tenant_label="target")
+    u = item(p, "zcc.app_profiles", "Everyone - Windows")
+    assert u["status"] == "excluded"
+    assert "widen" in u["reason"] and "B staff" in u["reason"] and "everyone" in u["reason"]
+    assert not any(g["target"].get("name") == "Everyone - Windows" for g in p["groups"])
+    ao.execute(tgt, sp, plan_hash=p["plan_hash"], scope=WIDE, writes_enabled=True, assessor=ASSESSOR, tenant_label="target",
+               confirm_text=p["confirm_phrase"])
+    assert ("update", "zcc.app_profiles", "Everyone - Windows") not in t.writes
+    prof = t.by_name("zcc.app_profiles", "Everyone - Windows")
+    assert prof["group_all"] == 0 and prof["groups"] == [{"id": 95, "name": "B staff"}]
+
+
+def zcc_grouped_source(groups):
+    src = zcc_source()
+    src["zcc.app_profiles"] = [{"id": 53, "name": "Sales laptops", "device_type": "DEVICE_TYPE_WINDOWS", "active": 1, "group_all": 0,
+                                "forwarding_profile_id": 61, "groups": groups, "users": []}]
+    return src
+
+
+def test_a_profiles_groups_are_matched_by_name_in_the_target_and_an_unmatched_group_refuses_the_item():
+    """ASVS V4.1.3 · CWE-269 · WSTG-ATHZ-02: a source profile's groups are remapped to the target's groups of the same name (known from the target's own profiles and entitlements); a group the target cannot match refuses the item with the reason, and it never falls back to everyone."""
+    t = zcc_target()
+    t.data["zcc.zpa_entitlements"][0]["group_list"] = [{"id": 97, "name": "Sales"}]
+    tgt, sp = clone_profiles(t, zcc_grouped_source([{"id": 7, "name": "Sales"}]))
+    p, r = wide_apply(tgt, sp)
+    assert r["status"] == "applied", (p["blockers"], r.get("stopped"))
+    assert any("Sales laptops" in w and "Sales" in w for w in p["warnings"])
+    prof = t.by_name("zcc.app_profiles", "Sales laptops")
+    assert prof["group_all"] == 0 and prof["groups"] == [{"id": 97, "name": "Sales"}] and prof["active"] == 0
+    # a group the target does not have: refused, not cloned to everyone
+    t2 = zcc_target()
+    tgt2, sp2 = clone_profiles(t2, zcc_grouped_source([{"id": 7, "name": "Sales"}, {"id": 8, "name": "Legal"}]))
+    p2 = ao.plan(tgt2, sp2, scope=WIDE, tenant_label="target")
+    u = item(p2, "zcc.app_profiles", "Sales laptops")
+    assert u["status"] == "excluded" and "Legal" in u["reason"] and "everyone" in u["reason"]
+    assert p2["counts"]["change"] == 0
+
+
+def test_a_clone_may_narrow_a_same_named_profile_and_the_preview_shows_its_current_and_new_groups():
+    """ASVS V4.1.3 · CWE-269 · WSTG-ATHZ-02: onto a same-named target profile for 'Sales' and 'Support', a source profile for 'Sales' is cloned (narrower, never wider): the preview names the target's current and new groups, the target's users stay its own, and the read-back confirms it."""
+    t = zcc_profile_target(name="Sales laptops", group_all=0, groups=[{"id": 97, "name": "Sales"}, {"id": 98, "name": "Support"}],
+                           users=[{"id": 5, "name": "kim"}])
+    tgt, sp = clone_profiles(t, zcc_grouped_source([{"id": 7, "name": "Sales"}]))
+    p, r = wide_apply(tgt, sp)
+    assert r["status"] == "applied", (p["blockers"], r.get("stopped"))
+    words = next(w for w in p["warnings"] if "Sales laptops" in w)
+    assert "Sales, Support" in words and words.index("Sales, Support") < words.rindex("Sales")
+    prof = t.by_name("zcc.app_profiles", "Sales laptops")
+    assert prof["groups"] == [{"id": 97, "name": "Sales"}] and prof["users"] == [{"id": 5, "name": "kim"}]
+    assert all(u.get("verified") for u in r["items"] if u["status"] == "applied")
+
+
+def test_fields_a_clone_leaves_out_are_listed_as_kept_never_as_applied_or_verified():
+    """ASVS V7.2.2 · CWE-451 · WSTG-BUSL-01: onto a same-named target profile, the fields a clone leaves out (on-net policy, device groups, posture, the policy extension's own id) are listed as kept with the target's value, are never reported applied or verified, and the target still has them afterwards."""
+    t = zcc_profile_target(group_all=1, groups=[], on_net_policy={"x": 1}, device_group_ids=["12"], zia_posture_config_id=44,
+                           policy_extension={"id": 900, "nonce": "t-1", "packet_tunnel_exclude_list": "192.168.0.0/16"})
+    tgt, sp = clone_profiles(t)
+    p, r = wide_apply(tgt, sp)
+    assert r["status"] == "applied", (p["blockers"], r.get("stopped"))
+    mine = [u for u in p["items"] if (u["object"] or {}).get("name") == "Everyone - Windows"]
+    changed = {u["field"] for u in mine if u["status"] == "change"}
+    assert "policy_extension.packet_tunnel_exclude_list" in changed
+    for f in ("on_net_policy.x", "device_group_ids", "zia_posture_config_id", "policy_extension.id", "policy_extension.nonce"):
+        assert f not in changed, f
+    kept = {u["field"]: u for u in mine if u["status"] == "noop" and u["reason"].startswith("kept")}
+    assert {"on_net_policy.x", "device_group_ids", "zia_posture_config_id"} <= set(kept), sorted(kept)
+    assert kept["zia_posture_config_id"]["before"] == kept["zia_posture_config_id"]["after"] == 44
+    done = [u for u in r["items"] if (u["object"] or {}).get("name") == "Everyone - Windows"]
+    assert not any(u["field"] in kept and u["status"] == "applied" for u in done)
+    assert all(u.get("verified") for u in done if u["status"] == "applied")
+    prof = t.by_name("zcc.app_profiles", "Everyone - Windows")
+    assert prof["on_net_policy"] == {"x": 1} and prof["device_group_ids"] == ["12"] and prof["zia_posture_config_id"] == 44
+    assert prof["policy_extension"] == {"id": 900, "nonce": "t-1", "packet_tunnel_exclude_list": "10.0.0.0/8"}
+
+
+def test_a_field_the_source_does_not_have_is_kept_on_a_restore_not_reported_as_cleared():
+    """ASVS V7.2.2 · CWE-451 · WSTG-BUSL-01: on the same tenant, a field the backup lacks is listed as kept (an update merges, so the target keeps it), never as changed to nothing, applied or verified."""
+    bid = backup_of(zcc_data(), ["zcc"])
+    live = zcc_data()
+    live["zcc.app_profiles"][0] = dict(live["zcc.app_profiles"][0], description="changed", install_note="theirs")
+    tgt = Client(Tenant(live))
+    p, r = apply(tgt, spec("zcc", bid, target="same", types=["zcc.app_profiles"]))
+    assert r["status"] == "applied", (p["blockers"], r.get("stopped"))
+    u = next(u for u in p["items"] if u["field"] == "install_note")
+    assert u["status"] == "noop" and u["reason"].startswith("kept") and u["before"] == u["after"] == "theirs"
+    assert next(u for u in r["items"] if u["field"] == "install_note")["status"] == "noop"
+    assert next(u for u in r["items"] if u["field"] == "description")["status"] == "applied"
+    assert tgt.tenant.by_name("zcc.app_profiles", "Windows default")["install_note"] == "theirs"

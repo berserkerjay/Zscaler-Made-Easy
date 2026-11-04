@@ -455,6 +455,89 @@ def _without(body: Dict[str, Any], paths: Sequence[str]) -> Dict[str, Any]:
     return out
 
 
+_GROUP_LISTS = {"zcc.app_profiles": ("groups",), "zcc.zpa_entitlements": ("group_list",), "zcc.zdx_entitlements": ("upm_group_list",)}
+
+
+def _profile_groups(row: Dict[str, Any], field: str = "groups") -> List[Tuple[str, str]]:
+    """[(id, name)] of the user groups a row names: a list of {id, name}, or
+    ids beside the parallel group_names (the SDK model's groupIds / groupNames)."""
+    names = [str(n) for n in row.get("group_names") or []] if field == "groups" else []
+    out: List[Tuple[str, str]] = []
+    items = row.get(field) or (row.get("group_ids") if field == "groups" else None) or []
+    for i, g in enumerate(items if isinstance(items, list) else []):
+        if isinstance(g, dict):
+            out.append((str(g.get("id") or ""), str(g.get("name") or (names[i] if i < len(names) else ""))))
+        elif g not in (None, ""):
+            out.append((str(g), names[i] if i < len(names) else ""))
+    return out
+
+
+def _group_index(tgt: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Optional[Any]]:
+    """The target's user groups by name, from what its own app profiles and
+    entitlements name (the SDK has no Client Connector call that lists
+    groups). A name two different ids answer is ambiguous (None)."""
+    # assumed: an entitlement's group list and an app profile's groups name the same user groups by the same ids.
+    out: Dict[str, Optional[Any]] = {}
+    for key, fields in _GROUP_LISTS.items():
+        for r in tgt.get(key) or []:
+            for f in fields:
+                for gid, nm in _profile_groups(r, f):
+                    if not gid or not nm:
+                        continue
+                    raw = next((g.get("id") for g in r.get(f) or [] if isinstance(g, dict) and str(g.get("id")) == gid), gid)
+                    if nm in out and out[nm] is not None and str(out[nm]) != gid:
+                        out[nm] = None
+                    elif nm not in out:
+                        out[nm] = raw
+    return out
+
+
+def _who(everyone: bool, names: Sequence[str]) -> str:
+    if everyone:
+        return "everyone"
+    return ("the groups " + ", ".join(names)) if names else "no group"
+
+
+def _clone_groups(row: Dict[str, Any], counterpart: Optional[Dict[str, Any]], gidx: Dict[str, Optional[Any]]
+                  ) -> Tuple[Dict[str, Any], Optional[str], str]:
+    """Who a cloned app profile applies to: the source's groups matched by
+    name in the target, never wider than the target's same-named profile.
+    Returns (fields to send, why it is refused, the words for the preview)."""
+    src = _profile_groups(row)
+    bad = [n or f"#{i}" for i, n in src if not n or gidx.get(n) is None]
+    if bad:
+        return {}, (f"its groups {', '.join(bad[:5])} cannot be matched by name in the target tenant (only the groups its own app "
+                    "profiles and entitlements name are known): add them there first; it is not cloned to everyone instead"), ""
+    names = [n for _i, n in src]
+    ids = [gidx[n] for n in names]
+    has_all = "group_all" in row
+    new_all = cb._truthy(row.get("group_all"))
+    if counterpart is not None:
+        cur = _profile_groups(counterpart)
+        cur_all = cb._truthy(counterpart.get("group_all"))
+        cur_names = [n or f"#{i}" for i, n in cur]
+        if not has_all:
+            new_all = cur_all   # not sent: the target keeps its own
+        wider = (new_all and not cur_all) or (not cur_all and not {str(i) for i in ids} <= {i for i, _n in cur})
+        if wider:
+            return {}, (f"it would widen who the target's profile applies to, from {_who(cur_all, cur_names)} to "
+                        f"{_who(new_all, names)}: change it in the Client Connector portal if that is meant"), ""
+        words = f"applies to {_who(cur_all, cur_names)} in the target now; after this it applies to {_who(new_all, names)}"
+    else:
+        words = f"is created for {_who(new_all, names)} (groups matched by name in the target)"
+    out: Dict[str, Any] = {}
+    if has_all:
+        out["group_all"] = row["group_all"]
+    if "groups" in row:
+        dicts = any(isinstance(g, dict) for g in row.get("groups") or [])
+        out["groups"] = [{"id": i, "name": n} for i, n in zip(ids, names)] if dicts else list(ids)
+    if "group_ids" in row:
+        out["group_ids"] = [str(i) for i in ids]
+    if "group_names" in row:
+        out["group_names"] = list(names)
+    return out, None, words
+
+
 def _subset_equal(t: Dict[str, Any], want: Dict[str, Any], row: Dict[str, Any]) -> bool:
     """Every field of `want` (that the tenant answers) is as wanted in `row`."""
     a, b = raw_form(t, want), raw_form(t, row)
@@ -565,6 +648,8 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
             targets += [k for spec_ in cb.OPERAND_REFS.values() for k in spec_[1]] + ["zpa.idps"]
         targets += [k for nested in t["nested_refs"].values() for k in nested.values()]
         targets += list(t["xrefs"].values())   # the other product's objects (read to match by name; never written here)
+        if t["clone_groups"] and not same:
+            targets += [k for k in _GROUP_LISTS if k != t["key"]]   # what names the target's groups (read only)
         for target in targets:
             tt = cb.BY_KEY.get(target)
             if tt is not None and (tt["product"] == product or target in t["xrefs"].values()):
@@ -599,6 +684,7 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
         for r in rows:
             tgt_by_name[k].setdefault(cb.name_of(t, r), r)
     src_idx = cb.index(source)
+    gidx = _group_index(tgt)
     state: Dict[Tuple[str, str], Tuple[str, Any]] = {}
     asked: Set[str] = set()   # the types a source object referred to (an unread one is worth a warning)
 
@@ -907,6 +993,16 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                 p.exclude(t, name, "not " + ("cloned" if not same else "restored") + ": " + "; ".join(sorted(set(why))[:3]))
                 state[(key, sid)] = ("excluded", "; ".join(sorted(set(why))[:2])) if counterpart is None else ("id", cb.rid(counterpart))
                 continue
+            group_words = ""
+            if t["clone_groups"] and not same:
+                # Who it applies to: matched by name, never widened, never "everyone" for want of a match.
+                gfields, gwhy, group_words = _clone_groups(r, counterpart, gidx)
+                if gwhy:
+                    p.exclude(t, name, f"not cloned: {gwhy}", cb.rid(counterpart) if counterpart is not None else None)
+                    state[(key, sid)] = ("excluded", gwhy) if counterpart is None else ("id", cb.rid(counterpart))
+                    continue
+                body.update(gfields)
+                p.warnings.append(f"{_label(t)} '{name}' {group_words}.")
             if counterpart is None:
                 if not (t["add"] or t["add_via_upd"]):
                     p.exclude(t, name, f"the target has no such object and it is not created here: {t['why'] or 'the SDK cannot create it'}")
@@ -964,9 +1060,22 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                 continue
             idx = cb.index(tgt)
             have = {k: v for k, v in counterpart.items() if k in only} if only else counterpart
+            if not same:
+                for path in t["clone_strip"]:
+                    head, _, rest = path.partition(".")
+                    if rest and isinstance(body.get(head), dict) and isinstance(counterpart.get(head), dict) and rest in counterpart[head]:
+                        body[head][rest] = copy.deepcopy(counterpart[head][rest])   # the target's own nested id stays
             fd = cb.field_diff(cb.normal(t, have, idx), cb.normal(t, dict(body, id=tid), idx))
-            if t["singleton"]:
-                fd = [d for d in fd if d["path"].split(".", 1)[0] in body]   # a key-level merge: keys the source lacks stay as they are
+            # An update merges what it sends into the object as read (_h_update): a field it does not send is kept,
+            # so it is listed as kept, never as changed, applied or verified.
+            kept = [d for d in fd if d["path"].split(".", 1)[0] not in body]
+            fd = [d for d in fd if d["path"].split(".", 1)[0] in body]
+            stripped = {f.split(".", 1)[0] for f in t["clone_strip"]} if not same else set()
+            for d in kept[:200]:
+                why_kept = ("a clone leaves it out" if d["path"].split(".", 1)[0] in stripped else
+                            "the source does not have it")
+                p.items.append(ao._unit(p.key("n"), p.key("n"), "field", p.obj(t, name, tid), d["path"], _show(d["old"]), _show(d["old"]),
+                                        status="noop", reason=f"kept: {why_kept}, so it is not sent and the target keeps its own value"))
             if t["keep_nested"]:
                 kept = [d for d in fd if d["path"].split(".", 1)[0] in t["keep_nested"]]
                 fd = [d for d in fd if d["path"].split(".", 1)[0] not in t["keep_nested"]]
@@ -983,8 +1092,9 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                 continue
             gkey = p.key("update")
             for d in fd[:200]:
+                gw = group_words if d["path"].split(".", 1)[0] in ("groups", "group_ids", "group_names", "group_all") else ""
                 p.items.append(ao._unit(f"{gkey}:{d['path']}", gkey, "field", p.obj(t, name, tid), d["path"], _show(d["old"]), _show(d["new"]),
-                                        depends_on=sorted(set(waits))))
+                                        reason=gw[:1].upper() + gw[1:] if gw else "", depends_on=sorted(set(waits))))
             p.groups.append({"key": gkey, "handler": "cfg_update", "target": {"type": key, "name": name, "id": tid, "desired": body,
                                                                                "before_hash": cb.digest(raw_form(t, counterpart)),
                                                                                "rule_type": str(counterpart.get("type") or "") if t["per_type"] or t["type_arg"] else ""}})

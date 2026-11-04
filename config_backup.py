@@ -219,10 +219,12 @@ def _t(key: str, label: str, svc: str, ls: Optional[str], get: Optional[str] = N
          #   create_opt   the same option, needed to create a missing object at all (restore or clone)
          #   type_arg     the get and delete calls take the rule's type after its id (SaaS Security API rules)
          #   create_off   (field, value) a new object is created switched off unless the person keeps the state
+         #   clone_groups the row's group assignment (groups, group_all) is cloned with each group matched by name
+         #                in the target and never widened (ops_config_restore._clone_groups)
          "tenant_bound": False, "after": (), "check": None, "zpa_policy": "", "v2": False, "conditions": False, "per_idp": False,
          "project": None, "nested_refs": {}, "keep_nested": (), "app_kind": "", "raw_zcc": "", "order_field": "order", "clone_exclude_if": None,
          "own_refs": {}, "xrefs": {}, "per_parent": "", "clone_strip": (), "clone_needs_empty": (), "clone_opt": "", "create_opt": "",
-         "type_arg": False, "create_off": None}
+         "type_arg": False, "create_off": None, "clone_groups": False}
     t.update(kw)
     if t["level"] == "read":
         t["add"] = t["upd"] = t["rm"] = None
@@ -712,16 +714,19 @@ TYPES: List[Dict[str, Any]] = [
     # forwarding_profile_id, zia_posture_config_id, bypass and app service ids, the nested policy objects).
     _t("zcc.app_profiles", "App profiles", "web_policy", "list_by_company", None, None, "web_policy_edit", "delete_web_policy",
        scopes=("zcc",), level="update", upd_body=True, add_via_upd=True, uses=("forwarding_profile_id",), clone_opt="zcc_profiles",
-       create_opt="zcc_profiles", create_off=("active", 0),
-       clone_strip=("disaster_recovery", "on_net_policy", "policy_extension.id", "policy_extension.nonce", "group_names",
-                    "user_names", "device_group_names", "app_service_names"),
-       clone_needs_empty=("groups", "group_ids", "users", "user_ids", "device_group_ids", "zia_posture_config_id", "bypass_app_ids",
+       create_opt="zcc_profiles", create_off=("active", 0), clone_groups=True,
+       # Who a profile applies to: the groups are matched by name in the target (clone_groups, never widened); the
+       # users and device groups a clone cannot carry (they must be empty) are left out, so a target keeps its own.
+       clone_strip=("disaster_recovery", "on_net_policy", "policy_extension.id", "policy_extension.nonce", "groups", "group_ids",
+                    "group_names", "group_all", "users", "user_ids", "user_names", "device_group_ids", "device_group_names",
+                    "app_service_names"),
+       clone_needs_empty=("users", "user_ids", "device_group_ids", "zia_posture_config_id", "bypass_app_ids",
                           "bypass_custom_app_ids", "app_service_ids", "app_identity_names"),
        no_delete="an app profile is never deleted here (only an Undo removes one this app created)",
        why="its passwords and policy token are never read back or sent (an update leaves them as they are: assumed); a missing "
            "profile is created, inactive and without passwords, only when you include app profiles",
        clone_why="an app profile names the tenant's own user groups, device groups and forwarding profile by id: tick 'Include "
-                 "Client Connector app profiles and entitlements' to clone the ones that apply to everyone"),
+                 "Client Connector app profiles and entitlements' to clone them (groups matched by name, never widened)"),
     _t("zcc.zpa_entitlements", "ZPA entitlements", "entitlements", None, "get_zpa_group_entitlements", None, "raw", singleton=True,
        level="update", scopes=("zcc",), raw_zcc="/updateZpaGroupEntitlement", clone_opt="zcc_profiles", clone_strip=("group_list", "device_group_list"),
        why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)",

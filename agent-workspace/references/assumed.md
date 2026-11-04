@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-524 markers.
+525 markers.
 
 | File:line | Note |
 |---|---|
@@ -83,18 +83,18 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `compliance_profiles.py:843` | "map_pack_rule", "applies", "controls", "assumed", "assessment_view", "get", "key_of", "ProfileError", "FEDERAL_KEYS"] |
 | `config_backup.py:58` | one exists). Assumed, not verifiable without a tenant: that the SDK's add_ / |
 | `config_backup.py:154` | operands carry the profile's UDID and the network's network id (assumed from the portal's payloads). |
-| `config_backup.py:299` | """A bandwidth class the customer made (assumed: Zscaler's own classes are |
-| `config_backup.py:345` | """A PAC file the customer made (assumed: Zscaler's own PAC files answer |
-| `config_backup.py:521` | assumed: ZIA fills in its own linked ZPA tenant when zpa_tenant_id is left out of a create. |
-| `config_backup.py:546` | assumed: ZIA picks the target's own primary and secondary VIPs and an internal IP range when a create leaves them out. |
-| `config_backup.py:562` | assumed: a sub-location's name is unique within its parent, so it is matched by "<parent> / <name>". |
-| `config_backup.py:603` | "path /rootCertificates (assumed); never updated", uses=()), |
-| `config_backup.py:721` | why="its passwords and policy token are never read back or sent (an update leaves them as they are: assumed); a missing " |
-| `config_backup.py:727` | why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)", |
+| `config_backup.py:301` | """A bandwidth class the customer made (assumed: Zscaler's own classes are |
+| `config_backup.py:347` | """A PAC file the customer made (assumed: Zscaler's own PAC files answer |
+| `config_backup.py:523` | assumed: ZIA fills in its own linked ZPA tenant when zpa_tenant_id is left out of a create. |
+| `config_backup.py:548` | assumed: ZIA picks the target's own primary and secondary VIPs and an internal IP range when a create leaves them out. |
+| `config_backup.py:564` | assumed: a sub-location's name is unique within its parent, so it is matched by "<parent> / <name>". |
+| `config_backup.py:605` | "path /rootCertificates (assumed); never updated", uses=()), |
+| `config_backup.py:726` | why="its passwords and policy token are never read back or sent (an update leaves them as they are: assumed); a missing " |
 | `config_backup.py:732` | why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)", |
-| `config_backup.py:735` | assumed: GET /application-profiles answers {"policies": [...]}, the shape the SDK reads (zscaler/zcc/application_profiles.py). |
-| `config_backup.py:1140` | Keys go in camel case as the GET answers them (assumed).""" |
-| `config_backup.py:1346` | when missing; INSPECT for inspection: assumed).""" |
+| `config_backup.py:737` | why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)", |
+| `config_backup.py:740` | assumed: GET /application-profiles answers {"policies": [...]}, the shape the SDK reads (zscaler/zcc/application_profiles.py). |
+| `config_backup.py:1145` | Keys go in camel case as the GET answers them (assumed).""" |
+| `config_backup.py:1351` | when missing; INSPECT for inspection: assumed).""" |
 | `data_flow.py:950` | enters the tunnel. A host name is not resolved: it is assumed to |
 | `data_flow.py:964` | "it is not resolved and is assumed to resolve outside them") |
 | `data_flow.py:1021` | nis["zcc"] + " How the device forwards this traffic is not assessed; a tunnel to ZIA is assumed.", None, why="not in scope")) |
@@ -124,10 +124,11 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_config_restore.py:79` | assumed: a rule created without it is active at once (the API's default). |
 | `ops_config_restore.py:345` | assumed: POST /staticIP/validate only checks the address and never changes the tenant, so the |
 | `ops_config_restore.py:358` | assumed: a 409, or an answer saying the address exists, is a duplicate or is already used, means |
-| `ops_config_restore.py:653` | assumed: the ZPA tenant read for the target (the profile's ZPA) is the one the target ZIA is linked to, so a |
-| `ops_config_restore.py:666` | assumed: ZPA answers ip_anchored on a server group; only an explicit false refuses it. |
-| `ops_config_restore.py:1350` | assumed: deleting in the reverse of the create order (a location, then its GRE tunnel, then its static |
-| `ops_config_restore.py:1540` | or not sent (PRA and inspection: ZPA keeps them unless they are listed for deletion, assumed). |
+| `ops_config_restore.py:479` | assumed: an entitlement's group list and an app profile's groups name the same user groups by the same ids. |
+| `ops_config_restore.py:739` | assumed: the ZPA tenant read for the target (the profile's ZPA) is the one the target ZIA is linked to, so a |
+| `ops_config_restore.py:752` | assumed: ZPA answers ip_anchored on a server group; only an explicit false refuses it. |
+| `ops_config_restore.py:1460` | assumed: deleting in the reverse of the create order (a location, then its GRE tunnel, then its static |
+| `ops_config_restore.py:1650` | or not sent (PRA and inspection: ZPA keeps them unless they are listed for deletion, assumed). |
 | `ops_dlp_objects.py:57` | ASSUMED: that ZIA itself refuses deleting an object something outside the |
 | `ops_dlp_objects.py:82` | NOT_CHECKED = "Anything outside the DLP rules and engines read here that uses it makes ZIA refuse the delete (assumed)." |
 | `ops_fw_import.py:31` | firewall channel). Assumed: that the API accepts an IPv4 range a-b in an IP |
