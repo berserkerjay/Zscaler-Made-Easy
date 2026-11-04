@@ -267,7 +267,10 @@ window.WHATS_NEW = {
       "id": "ssl-true-coverage-logs", "release": "2026-11-04", "label": "True coverage from your web logs",
       "what": "From the Traffic and session logs page, open SSL coverage with your uploaded ZIA web logs: each line left encrypted is tied to the SSL rule behind it.",
       "changelog": ["True coverage from your web logs"],
-      "marks": [{ "page": "/report/traffic-logs", "at": "#tlTrueCoverage", "shown": "after reading ZIA web logs that say whether SSL was inspected" }]
+      "marks": [
+        { "page": "/report/traffic-logs", "at": "#tlSslCov" },
+        { "page": "/report/traffic-logs", "at": "#tlTrueCoverage", "shown": "after reading ZIA web logs that say whether SSL was inspected" }
+      ]
     }
   ]
 };

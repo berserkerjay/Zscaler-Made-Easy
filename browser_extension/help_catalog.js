@@ -8767,6 +8767,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/traffic-logs": {
+   "#tlSslCov": {
+    "what": "Opens SSL coverage in a new tab: the true share of web traffic Zscaler inspected. After you read ZIA web logs here, use the link in the SSL box to bring them along.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#tlTrueCoverage": {
     "what": "Opens SSL coverage with these logs. It gives the true share of web traffic that was inspected and ties each line left encrypted to the SSL rule behind it.",
     "input": "Nothing to type. Just click it. It shows when the logs say whether SSL was inspected.",

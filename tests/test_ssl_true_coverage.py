@@ -388,5 +388,6 @@ def test_help_marks_and_glossary_cover_the_new_controls():
     # Assert
     for key in ('"#scLogsDrop"', '"#scTrueH"', '"#scTrue a.sc-fix"', '"#scTrue button[data-unit=\\"BYTES\\"]"', '"#tlTrueCoverage"'):
         assert key in cat, key
+    assert "\"#tlSslCov\"" in cat
     assert cat == ext
     assert "'true inspection coverage'" in g and "'plain http'" in g
