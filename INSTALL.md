@@ -520,6 +520,14 @@ code with git, build it*. The steps below walk through each one. If you
 have done this before, here is the short version (after Step 1, in the
 folder you want the app in):
 
+> **On a work laptop behind Zscaler (or any TLS-inspecting proxy):** before
+> you build, put your company's root certificate in the app's `certs/`
+> folder, or the build stops with `CERTIFICATE_VERIFY_FAILED` at step
+> `[6/8]`. The one-line export commands for Windows and Mac are below,
+> under *On a work network with TLS inspection*, and in README.md,
+> *Quick start (container)*. The container then trusts the
+> certificate both while it builds and while it runs.
+
 ```powershell
 # Windows (PowerShell)
 git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
