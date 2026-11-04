@@ -1170,8 +1170,9 @@ def _atp(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # App services and app service groups (app_services): matched with the
-# providers' published lists when one is kept and current, else with the
-# bundled, dated excerpt (endpoint_snapshots: a match, never a no match);
+# providers' published lists when one is kept and current, else (Microsoft
+# 365 only) with the bundled, dated excerpt (endpoint_snapshots: a match,
+# never a no match);
 # Zscaler's own groups stay unknown (the API has no members for them).
 APP_SERVICE_FIELDS = ("appServices", "appServiceGroups")
 
@@ -1201,7 +1202,9 @@ def _app_service_note(res: Dict[str, Any], rules: List[Dict[str, Any]], ctx: Dic
             res["notes"].append(f"{label} app service groups are matched with {ex.describe()} ({ex.freshness()['label']}) "
                                 f"Fetch or import {label}'s whole list in Advanced settings to settle more.")
         else:
-            res["notes"].append(f"{label} app service groups are unknown until {label}'s published list is imported or fetched in Advanced settings.")
+            how = "fetched or imported" if vendor_endpoints.PROVIDERS[pid]["fetch"] else "imported"
+            res["notes"].append(f"{label} app service groups are unknown until {label}'s published list is {how} in Advanced settings "
+                                "(no excerpt of it comes with the app).")
     if any(vendor_endpoints.provider_for(n) is None and app_services.m365_areas(n) is None
            for r in rules if isinstance(r, dict) for _, n in app_services.named(r)):
         res["notes"].append(vendor_endpoints.ZSCALER_GROUPS_NOTE)

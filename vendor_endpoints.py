@@ -501,7 +501,7 @@ def status(now: Optional[_dt.datetime] = None) -> Dict[str, Any]:
         b = bundled(pid)
         if b is not None:
             bage = b.age_days(now)
-            row["bundled"] = {"date": endpoint_snapshots.SNAPSHOT_DATE, "age_days": None if bage is None else round(bage, 1),
+            row["bundled"] = {"date": endpoint_snapshots.SNAPSHOT_DATE, "checked": endpoint_snapshots.CHECKED_DATE, "age_days": None if bage is None else round(bage, 1),
                               "stale": b.stale(now), "counts": dict(b.counts), "source_url": b.meta.get("source_url"),
                               "source_name": b.meta.get("source_name"), "describe": b.describe()}
         use = lst if lst is not None else b

@@ -362,7 +362,8 @@ class EndpointList:
         if src == "sample":
             return "the sample tenant's short excerpt of Microsoft's list, not the real list"
         if src == "bundled":
-            return f"the bundled excerpt of Microsoft's list from {when.strftime('%Y-%m-%d') if when else 'an unknown date'}"
+            return (f"the bundled excerpt of Microsoft's {v} from {when.strftime('%Y-%m-%d') if when else 'an unknown date'}"
+                    f"{', checked ' + self.checked().strftime('%Y-%m-%d') if self.checked() else ''}")
         return f"{v}, {verb} {when.strftime('%Y-%m-%d') if when else 'on an unknown date'}"
 
     # matching
@@ -556,7 +557,7 @@ def status(now: Optional[_dt.datetime] = None) -> Dict[str, Any]:
     b = endpoint_snapshots.m365_list()
     if b is not None:
         bage = b.age_days(now)
-        out["bundled"] = {"date": endpoint_snapshots.SNAPSHOT_DATE, "age_days": None if bage is None else round(bage, 1), "stale": b.stale(now),
+        out["bundled"] = {"date": endpoint_snapshots.SNAPSHOT_DATE, "checked": endpoint_snapshots.CHECKED_DATE, "version": b.version, "age_days": None if bage is None else round(bage, 1), "stale": b.stale(now),
                           "counts": dict(b.counts), "source_url": b.meta.get("source_url"), "describe": b.describe()}
     use = lst if lst is not None else b
     out["in_use"] = None if use is None else ("kept" if use is lst else "bundled")

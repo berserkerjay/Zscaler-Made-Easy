@@ -215,11 +215,12 @@ def _newer(a: Any, b: Any) -> bool:
 
 
 def _age_words(lst: Any, now: Optional[_dt.datetime] = None) -> str:
-    """' (12 days old)' for a bundled excerpt, '' for a kept list."""
+    """' (checked 12 days ago)' for a bundled excerpt (its age runs from the
+    day it was last compared with its source), '' for a kept list."""
     if not getattr(lst, "bundled", False):
         return ""
     age = lst.age_days(now)
-    return f" ({int(age) if age is not None else 'an unknown number of'} days old)"
+    return f" (checked {int(age) if age is not None else 'an unknown number of'} days ago)"
 
 
 def summary(lst: Optional["m365_endpoints.EndpointList"], now: Optional[_dt.datetime] = None) -> Dict[str, Any]:

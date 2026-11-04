@@ -322,7 +322,7 @@
     const rows = [];
     if (!st.present && st.bundled) {
       const b = st.bundled, bc = b.counts || {};
-      rows.push(`<strong>No list is kept.</strong> Using the excerpt that comes with the app, from ${E(b.date)} (${E(b.age_days)} days old): `
+      rows.push(`<strong>No list is kept.</strong> Using the excerpt that comes with the app: Microsoft's list version ${E(b.version)} from ${E(b.date)}, checked against it ${E(b.checked)} (${E(b.age_days)} days ago): `
         + `${E(bc.sets || 0)} endpoint sets, ${E(bc.urls || 0)} host names, ${E(bc.ipv4 || 0)} IPv4 and ${E(bc.ipv6 || 0)} IPv6 ranges. `
         + (b.stale ? '<span class="warn">It is too old to use: rules on Microsoft 365 app service groups show as unknown until you fetch or import the list.</span>'
                    : 'It can show a match, never a no match. Fetch or import Microsoft\'s whole list to settle more.'));
@@ -407,7 +407,7 @@
       const c = p.counts || {};
       const b = p.bundled || null, bc = (b && b.counts) || {};
       let text;
-      if (!p.present && b) text = `no list kept. Using the excerpt that comes with the app, from ${b.date} (${b.age_days} days old): `
+      if (!p.present && b) text = `no list kept. Using the excerpt that comes with the app, from ${b.date}, checked against its source ${b.checked} (${b.age_days} days ago): `
         + `${bc.ipv4 || 0} IPv4 and ${bc.ipv6 || 0} IPv6 ranges, ${bc.hosts || 0} host names, from ${b.source_name}. `
         + (b.stale ? `It is too old to use, so its app service group (${(p.names || []).join(', ')}) shows as unknown until you fetch or import the list.`
                    : 'It can show a match, never a no match.');
