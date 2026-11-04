@@ -267,6 +267,7 @@ def test_templates_are_owned_listed_for_owner_and_shares_and_deleted_by_owner_on
 
 # ── ACME dns-01 on Cloudflare (fakes) ───────────────────────────────────
 ACME = "https://acme.fake.test"
+NOW = dt.datetime(2026, 6, 1, 12, 0, tzinfo=dt.timezone.utc)   # the injected clock for every ACME test (no real clock)
 CF_TOKEN = "cf-test-token-0123456789"
 
 
@@ -286,14 +287,14 @@ class FakeNet:
     signature and nonce, and validates dns-01 against the TXT records the
     client made through the fake Cloudflare."""
 
-    def __init__(self, other_host_directory=False):
+    def __init__(self, other_host_directory=False, now=NOW):
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import ec
         from cryptography.x509.oid import NameOID
         self.ca_key = ec.generate_private_key(ec.SECP256R1())
         name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Fake test CA")])
-        now = dt.datetime.now(dt.timezone.utc)
+        self.now = now
         self.ca = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(self.ca_key.public_key())
                    .serial_number(1).not_valid_before(now).not_valid_after(now + dt.timedelta(days=3650))
                    .sign(self.ca_key, hashes.SHA256()))
@@ -387,7 +388,7 @@ class FakeNet:
             from cryptography.hazmat.primitives import hashes, serialization
             csr = x509.load_der_x509_csr(_b64d(payload["csr"]))
             assert all(a["status"] == "valid" for a in self.authz.values())
-            now = dt.datetime.now(dt.timezone.utc)
+            now = self.now
             leaf = (x509.CertificateBuilder().subject_name(csr.subject).issuer_name(self.ca.subject).public_key(csr.public_key())
                     .serial_number(2).not_valid_before(now).not_valid_after(now + dt.timedelta(days=90))
                     .add_extension(csr.extensions.get_extension_for_class(x509.SubjectAlternativeName).value, critical=False)
@@ -410,6 +411,7 @@ def acme_env(monkeypatch, tmp_path):
     monkeypatch.setenv("DLP_CHECK_TLS_DIR", str(tmp_path / "tls"))
     monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
     monkeypatch.setattr(server_acme, "_sleep", lambda s: None)
+    monkeypatch.setattr(server_acme, "_now", lambda: NOW)
     server_acme.set_cloudflare_token(CF_TOKEN)
     return tmp_path / "tls"
 
@@ -455,15 +457,15 @@ def test_acme_is_off_by_default():
 
 
 # ── ACME renewal while the server runs (renew_once, the daily check) ─────
-def _cert_with_days_left(folder, days):
-    """A served certificate (and its key) in the TLS folder that has `days` left."""
+def _cert_with_days_left(folder, days, now=NOW):
+    """A served certificate (and its key) in the TLS folder that has `days` left
+    at `now` (the injected clock, never the real one)."""
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.x509.oid import NameOID
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "team.example.test")])
-    now = dt.datetime.now(dt.timezone.utc)
     cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key()).serial_number(7)
             .not_valid_before(now - dt.timedelta(days=60)).not_valid_after(now + dt.timedelta(days=days, hours=1))
             .sign(key, hashes.SHA256()))
@@ -532,6 +534,17 @@ def test_acme_a_certificate_with_more_than_30_days_left_is_not_renewed(acme_env,
     net = FakeNet()
     out = server_acme.renew_once(session=net, log=lambda *a: None)
     assert not out["renewed"] and out["fingerprint"] == fp and ctx.loaded == [] and net.n == 0
+
+
+def test_acme_days_left_is_measured_against_the_injected_clock(acme_env, monkeypatch):
+    """ASVS V9.1.2 · CWE-298 · WSTG-CRYP-01: the days a certificate has left come from server_acme's clock, so a test pins the renewal boundary exactly; 16 days later the same certificate is due."""
+    # Arrange: 45 days and one hour left at NOW
+    _cert_with_days_left(str(acme_env), 45)
+    cert = os.path.join(str(acme_env), server_tls.CERT_FILE)
+    # Act / Assert
+    assert server_acme._days_left(cert) == pytest.approx(45 + 1 / 24)
+    monkeypatch.setattr(server_acme, "_now", lambda: NOW + dt.timedelta(days=16))
+    assert server_acme._days_left(cert) == pytest.approx(29 + 1 / 24) and server_acme._days_left(cert) <= server_acme.RENEW_DAYS
 
 
 def test_acme_the_check_runs_daily_by_default_within_bounds(monkeypatch):
