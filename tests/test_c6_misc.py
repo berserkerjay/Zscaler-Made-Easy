@@ -14,6 +14,7 @@ import stat
 from typing import Any, Dict, List
 
 import pytest
+from conftest import read_store_text
 
 
 # ── The MCP server tools ──────────────────────────────────────────────
@@ -509,12 +510,12 @@ def test_workspace_notes_store_full_refuses_growth(wn, monkeypatch):
     """ASVS V5.1.4 · CWE-400 · CWE-770: once the store is at its byte cap a growing change is refused and nothing is written."""
     monkeypatch.setattr(wn, "MAX_STORE_BYTES", 400)
     wn.apply("acme (production)", "rule", "R1", "add_tag", by="tester", tag="a")
-    before = open(wn.store_path(), encoding="utf-8").read()
+    before = read_store_text(wn.store_path())
 
     with pytest.raises(wn.NotesError) as e:
         wn.apply("acme (production)", "rule", "R1", "add_comment", by="tester", text="y" * 300)
 
-    assert e.value.status == 413 and open(wn.store_path(), encoding="utf-8").read() == before
+    assert e.value.status == 413 and read_store_text(wn.store_path()) == before
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX permissions")

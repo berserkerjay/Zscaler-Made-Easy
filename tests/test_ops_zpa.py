@@ -10,6 +10,7 @@ import os
 import sys
 
 import pytest
+from conftest import read_store_text
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -623,4 +624,4 @@ def test_the_key_through_the_api_is_in_no_job_poll_audit_or_record_and_is_reveal
     second = api.post("/api/operations/zpa/provisioning-key", json={"token": token})
     assert first.status_code == 200 and first.json()["provisioning_key"] == CANARY_KEY and "no-store" in first.headers["cache-control"]
     assert second.status_code == 404 and CANARY_KEY not in second.text
-    assert CANARY_KEY not in open(os.path.join(isolated, "audit.log"), encoding="utf-8").read()
+    assert CANARY_KEY not in read_store_text(os.path.join(isolated, "audit.log"))

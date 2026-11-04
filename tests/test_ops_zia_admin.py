@@ -14,6 +14,7 @@ import os
 import sys
 
 import pytest
+from conftest import read_store_text
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -163,7 +164,7 @@ def test_every_write_goes_through_the_shared_audited_path(monkeypatch, isolated)
     with ops.audit_scope(actor="alice"):
         apply(Client(), EDIT)
     assert sorted(seen) == ["zia_group", "zia_user", "zia_user"] and sorted(a[1] for a in audits) == sorted(seen)
-    log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    log = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     assert log.count('"event":"object_write"') == 3 and '"actor":"alice"' in log
 
 

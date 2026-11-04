@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 import pytest
+from conftest import audit_events
 
 import audit
 import continuous_eval as ce
@@ -242,7 +243,7 @@ def test_the_audit_line_counts_profiles_read_and_every_error(tmp_path, monkeypat
     def _refused(creds):
         raise RuntimeError("429 Too Many Requests")
     d = ce.run_once(build_client=_refused, notify=False)
-    lines = [json.loads(x) for x in open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8") if x.strip()]
+    lines = audit_events(os.environ["DLP_CHECK_AUDIT"])
     rec = [x for x in lines if x.get("event") == "continuous_evaluation"][-1]
     assert rec["tenants"] == d["summary"]["tenants"] == 1 and rec["tenants_not_in_scope"] == 2, rec
     assert rec["errors"] == ce.run_errors(d) >= 1, rec

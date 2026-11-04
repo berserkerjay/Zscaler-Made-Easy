@@ -36,6 +36,7 @@ import re
 from pathlib import Path
 
 import pytest
+from conftest import read_store_text
 import requests
 import requests.adapters
 
@@ -374,7 +375,7 @@ def test_the_api_builds_from_a_finished_fleet_read_and_audits_counts_only():
     assert d["counts"]["records"] == 2 and d["counts"]["duplicates"] == 1
     assert 'name: "rowans-macbook-pro.corp.example.com."' in d["files"]["unbound"]
     assert set(d["file_names"]) == {"unbound", "bind_forward", "bind_zone", "windows_ps", "windows_dnscmd", "csv"}
-    log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    log = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     assert "zcc_dns_records" in log
     tail = [ln for ln in log.splitlines() if "zcc_dns_records" in ln][-1]
     assert "lkf" not in tail.lower() and "avery" not in tail.lower() and "rowan" not in tail.lower()
@@ -848,7 +849,7 @@ def test_the_api_switch_import_build_download_and_forget_each_audited():
     assert c.put("/api/zscaler-ranges/settings", json={"enabled": True}).json()["enabled"] is True
     assert c.delete("/api/zscaler-ranges?cloud=../x").status_code == 400
     assert c.delete("/api/zscaler-ranges").json()["kept"] == []
-    log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    log = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     for event in ("zscaler_ranges_import", "zscaler_ranges_settings", "zscaler_ranges_remove"):
         assert event in log
 

@@ -25,7 +25,7 @@ import threading
 import time
 
 import pytest
-from conftest import read_store_json
+from conftest import read_store_json, read_store_text
 from fastapi.testclient import TestClient
 
 import audit
@@ -583,7 +583,7 @@ def test_scan_job_reads_only_and_raises_the_proposals(env, baseline_pack, monkey
     _no_writes(client)
     view = c.post("/api/self-heal/tenant/view", json={**CREDS, **DLP_SCOPE}).json()
     assert view["open"] == 1 and view["items"][0]["kind"] == "heal_drift"
-    for text in (json.dumps(snap), json.dumps(view), c.get("/api/self-heal").text, open(audit.path(), encoding="utf-8").read()):
+    for text in (json.dumps(snap), json.dumps(view), c.get("/api/self-heal").text, read_store_text(audit.path())):
         assert SECRET not in text
 
 

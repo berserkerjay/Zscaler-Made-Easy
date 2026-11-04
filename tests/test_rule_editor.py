@@ -9,6 +9,7 @@ import importlib
 import json
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import admin_ops as ao
@@ -928,7 +929,7 @@ def test_an_applied_edit_is_recorded_and_audited_with_the_actor(tmp_path):
     # Act
     rec = ao.record(r, by="Jane Doe", actor="jane@example.com")
     # Assert
-    lines = [json.loads(x) for x in (tmp_path / "audit.log").read_text().splitlines() if x.strip()]
+    lines = [json.loads(x) for x in read_store_text(tmp_path / "audit.log").splitlines() if x.strip()]
     ent = [x for x in lines if x.get("event") == "admin_operation"]
     assert rec["inverse"]["action"] == "revert" and ent and ent[-1]["actor"] == "jane@example.com"
     assert any(x.get("event") == "object_write" for x in lines)

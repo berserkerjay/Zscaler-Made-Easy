@@ -10,6 +10,7 @@ import re
 import sys
 
 import pytest
+from conftest import read_store_text
 
 import audit
 import security
@@ -127,9 +128,9 @@ def test_a_declared_length_over_the_cap_is_refused_before_reading_and_logged(mon
     capped = security.BodySizeLimitMiddleware(_inner_app(seen), max_bytes=1000)
     status, _ = _drive(capped, chunks=[b"x" * 10], headers={"Content-Length": "5000"})
     assert status == 413 and seen == []
-    entry = json.loads(log.read_text().splitlines()[-1])
+    entry = json.loads(read_store_text(log).splitlines()[-1])
     assert entry["event"] == "request_too_large" and entry["bytes"] == 5000 and entry["path"] == "/api/x"
-    assert "x" * 10 not in log.read_text(), "the body is never logged"
+    assert "x" * 10 not in read_store_text(log), "the body is never logged"
     assert _drive(capped, headers={"Content-Length": "12abc"})[0] == 400
 
 
@@ -167,7 +168,7 @@ def test_a_keyring_that_fails_does_not_fall_back_to_plaintext(monkeypatch, tmp_p
     monkeypatch.setattr(tp, "_keyring", lambda: Broken())
     row = tp.upsert({"name": "Gamma", "vanity_domain": "gamma", "client_id": "abc123456789"},
                     client_secret="s3cret-value-xyz", password="pw-value-123", api_key="key-value-456", remember_secret=True)
-    text = (tmp_path / "profiles.json").read_text()
+    text = read_store_text(tmp_path / "profiles.json")
     assert "s3cret-value-xyz" not in text and "pw-value-123" not in text and "key-value-456" not in text
     assert set(row["secret_not_remembered"]) == {"client_secret", "password", "api_key"} and row["has_secret"] is False
     assert "DLP_CHECK_SECRET_STORE=file" in row["secret_warning"]
@@ -183,7 +184,7 @@ def test_the_profile_api_says_when_a_secret_was_not_remembered(monkeypatch, tmp_
     r = TestClient(srv.app).post("/api/tenant-profiles", json={"name": "Delta", "vanity_domain": "delta", "client_id": "abc123456789",
                                                                "client_secret": "AbCdEf0123456789xyz", "remember_secret": True})
     assert r.status_code == 200 and r.json()["has_secret"] is False and r.json()["secret_warning"]
-    assert "AbCdEf0123456789xyz" not in (tmp_path / "profiles.json").read_text()
+    assert "AbCdEf0123456789xyz" not in read_store_text(tmp_path / "profiles.json")
     assert "data.secret_warning" in _read("static", "guide.js"), "the page shows the warning instead of a success"
 
 
@@ -256,7 +257,7 @@ def test_unauthenticated_floods_are_rate_limited_before_the_token_check_writes_a
     c = TestClient(srv.app)
     codes = [c.get("/api/health").status_code for _ in range(90)]
     assert 429 in codes, "a burst of unauthenticated calls is throttled"
-    lines = (tmp_path / "audit.log").read_text().splitlines() if (tmp_path / "audit.log").exists() else []
+    lines = read_store_text(tmp_path / "audit.log").splitlines() if (tmp_path / "audit.log").exists() else []
     assert len(lines) < 90, "throttled calls do not each write an audit line"
 
 
