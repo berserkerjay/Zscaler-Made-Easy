@@ -7,6 +7,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-04
+
+### SOC review: admin access and logging
+- **SOC review page** (`/report/soc-review`, toolbar *SOC review*): two read-only reviews a security operations team runs, each read once as a job with Stop, through the assessment client (GET only; `soc_review.Guard` exposes no write method and refuses any service the Scope page does not tick without sending a request).
+- **Admin access** (Scope page RBAC; ZPA, Client Connector and ZIdentity each only when ticked): the admins and roles of ZIA (`/adminUsers`, `/adminRoles`, the Admin Ranking setting through `admin_rank`), ZPA (administrators, roles, API keys, emergency access, through the `zscaler_rbac_checks` ZPA helpers), Client Connector (`getAdminUsers`, `getAdminRoles`), ZIdentity (admin users, per-admin entitlements, API clients with their scopes) and ZDX (from the ZIdentity entitlements: the ZDX API has no admin list); who has full, limited or read-only rights; disabled and unused admins (last sign-in only where an API reports it); findings for too many full-access admins, admins with no second factor, disabled or unused admins and rights broader than they are used; and the RBAC.* and ZID.5 to ZID.7 checks reused as they are. What an API does not report (ZIA, Client Connector and ZIdentity second factor, most last sign-in times) is *Unknown*, never a pass.
+- **Logging** (Scope page ZIA platform, ZPA, Client Connector or ZDX): ZIA Cloud NSS feeds (log type, enabled, SIEM type, destination host name only), NSS servers and collectors, ZPA Log Streaming Service configurations (log type from the SDK's `source_log_map`, receiver, TLS), Client Connector log mode per app profile and its log settings, the destinations with the ready-made SIEM queries and Traffic logs page families that match them, and the gaps (a product with nothing streamed, disabled feeds and LSS configurations, missing log types, LSS without TLS, debug logging on devices). USR.5, GOV.7, GOV.8 and ZPA.14 are reused. ZDX streaming is not in the API and is *Unknown*.
+- **Assistant tools**: `rbac_review` and `telemetry_review`, the same reviews through the MCP server, marked read-only, with admins numbered and never named; refused before sign-in when nothing they read is in scope.
+- Sample tenant: SIEM type and destination on the Cloud NSS web feed, a disabled admin audit feed, two ZPA LSS configurations, Client Connector portal roles and app profile log modes. Snapshots now keep the ZPA LSS configurations, the Client Connector portal roles and the ZIdentity API clients.
+
 ## 2026-11-01
 
 ### Pages stay quick: no piled-up scans, no "Rate limit exceeded" on your own pages

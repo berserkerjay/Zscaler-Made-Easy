@@ -668,6 +668,10 @@
                 aria-label="Open Cloud &amp; Branch Connector: connector groups and versions, forwarding rules that send workload traffic DIRECT, gateways, locations, activation, admins and API keys, with a fix for each gap (opens in a new tab)">
           <span aria-hidden="true">☁️</span> Cloud &amp; Branch Connector
         </button>
+        <button class="btn btn-ghost" onclick="openSocReviewTab()"
+                aria-label="Open SOC review: who can administer ZIA, ZPA, Client Connector, ZDX and ZIdentity, and what is sent to your SIEM, with a fix for each gap (opens in a new tab)">
+          <span aria-hidden="true">🛂</span> SOC review
+        </button>
         <button class="btn btn-ghost" onclick="openOtherProductsTab()"
                 aria-label="Open other Zscaler products: what the tenant has in Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation, with best-practice findings (opens in a new tab)">
           <span aria-hidden="true">🔌</span> Other Zscaler products
@@ -5484,6 +5488,13 @@ function openCloudConnectorTab() {
   // page's selection from this page through window.opener when Read is
   // clicked, so nothing is read until then.
   const w = window.open('/report/ztw', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openSocReviewTab() {
+  // Like Cloud & Branch Connector: the tab reads the credentials and the
+  // Scope page's selection from this page through window.opener when a Read
+  // button is clicked, so nothing is read until then.
+  const w = window.open('/report/soc-review', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openOtherProductsTab() {

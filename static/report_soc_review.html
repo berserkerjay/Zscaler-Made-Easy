@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOC review — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .sc-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .sc-page .rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .sc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.6rem; margin: 0 0 1rem; }
+  .sc-stat { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.55rem 0.75rem; min-width: 0; }
+  .sc-stat .n { font-size: var(--fs-headline, 1.2rem); font-weight: 700; }
+  .sc-stat .k { font-size: 0.72rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; overflow-wrap: anywhere; }
+  .sc-stat.st-fail .n { color: var(--fail); } .sc-stat.st-review .n { color: var(--warn); } .sc-stat.st-pass .n { color: var(--pass); }
+  .sc-note { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.6rem 0.8rem; margin: 0 0 1rem; font-size: 0.88rem; max-width: 90ch; }
+  .sc-note ul { margin: 0.2rem 0 0; padding-left: 1.2rem; }
+  .sc-page .df-tablewrap { max-width: 100%; }
+  .sc-page .df-table th[scope="row"] { text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 600; min-width: 8rem; }
+  .sc-page .df-table td { vertical-align: top; overflow-wrap: anywhere; }
+  .sc-bad { color: var(--fail); font-weight: 600; } .sc-ok { color: var(--pass); } .sc-dim { color: var(--dim); }
+  .sc-sec { margin-top: 1.2rem; }
+  .sc-page :is(.pa-impact, .sc-note, .df-hint) { min-width: 0; overflow-wrap: anywhere; }
+  .sc-filter button:focus-visible, .sc-page summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 760px) { .sc-page .rp-bar .df-ctl { flex-wrap: wrap; } }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page sc-page sh-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">SOC</span> review</h1>
+      <p>Two checks a security operations team runs on the tenant. <strong>Admin access</strong> shows who can change ZIA, ZPA, Client Connector, ZDX and ZIdentity: the admins and roles, who has full and who has limited rights, admins that are off or unused, and the API keys and clients. <strong>Logging</strong> shows what is sent to your SIEM and what is not. Pick one, then fix what says <em>Fix</em> first. Nothing is changed in your Zscaler.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="scTenantWrap" hidden><span class="lbl">Tenant</span><select id="scTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="scRbacRun">Read admin access</button>
+      <button type="button" class="rp-btn primary" id="scTelRun">Read logging</button>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div id="scBody">
+        <div class="pa-intro" id="scHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Tick what to read on the Scope page.</strong> Admin access needs RBAC (and ZPA, Client Connector or ZIdentity for theirs). Logging needs ZIA platform, ZPA, Client Connector or ZDX. Nothing else is read.</li>
+            <li><strong>Click Read admin access or Read logging.</strong> The page reads once, shown live. Stop ends the read at once.</li>
+            <li><strong>Fix the findings</strong>, Fix first, then Review. <em>Unknown</em> means the API does not say, so it is not counted as fine.</li>
+          </ol>
+          <div class="df-hint">Never read into this page: passwords, key and token values, client secrets, or a log feed's headers. A log destination shows its host name only.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/glossary.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script src="/static/soc_review.js"></script>
+</body>
+</html>

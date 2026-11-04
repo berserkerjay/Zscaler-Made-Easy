@@ -77,6 +77,9 @@ EXCLUDED = {
     "bandit, offline, in every test run": "a test-run gate (tests/test_sast.py, make sast), not a page",
     "CodeQL in CI": "a GitHub Actions workflow, outside the app",
     "Every current finding triaged": "code fixes and reviewed suppressions, nothing to see",
+    # SOC review (2026-11-04): the assistant's tools and a status word in the text.
+    "Assistant tools": "the MCP server's tools, used by an assistant, not a page",
+    "Unknown": "a status word on the page, not a control",
 }
 
 
