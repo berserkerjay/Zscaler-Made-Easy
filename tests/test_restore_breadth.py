@@ -1202,3 +1202,44 @@ def test_a_field_the_source_does_not_have_is_kept_on_a_restore_not_reported_as_c
     assert next(u for u in r["items"] if u["field"] == "install_note")["status"] == "noop"
     assert next(u for u in r["items"] if u["field"] == "description")["status"] == "applied"
     assert tgt.tenant.by_name("zcc.app_profiles", "Windows default")["install_note"] == "theirs"
+
+
+# ── fixes after verify: every new write type is refused without each of the four gates ──
+
+GATE_CASES = {
+    "dlp_rules": (lambda: wide_backup(dlp_source()), dlp_target, {"types": DLP_TYPES}),
+    "pac_files": (lambda: wide_backup(pac_source()), lambda: Tenant({"zia.pac_files": []}), {"types": ["zia.pac_files"]}),
+    "zpa_gateways": (lambda: wide_backup(gw_source(), ("zia", "zpa")), gw_target, {"types": ["zia.zpa_gateways", "zia.forwarding_rules"]}),
+    "sub_locations": (lambda: wide_backup(sub_source()), lambda: Tenant({"zia.static_ips": [], "zia.locations": [], "zia.gre_tunnels": []}),
+                      {"types": SUB, "include_tenant_bound": True}),
+    "zcc_profiles": (lambda: wide_backup(zcc_source(), ("zcc",)), zcc_target, {"types": ZCC_KEYS, "include_zcc_profiles": True}),
+}
+
+
+@pytest.mark.parametrize("gate", ["write_mode", "assessor", "plan_hash", "typed_phrase"])
+@pytest.mark.parametrize("case", sorted(GATE_CASES))
+def test_each_new_write_type_is_refused_without_each_of_the_four_gates(monkeypatch, case, gate):
+    """ASVS V4.1.3 · CWE-862 · WSTG-ATHZ-02: a PAC file, DLP rule, ZPA gateway, sub-location or Client Connector clone writes nothing with write mode off, without a named assessor, with a plan hash other than the preview's, or without its typed phrase; with all four it applies (so each refusal is the gate's)."""
+    monkeypatch.setattr(ao, "CONFIRM_ABOVE", 0)   # every plan asks for its phrase, so the phrase gate is tested for each type
+    make_backup, make_target, kw = GATE_CASES[case]
+    bid = make_backup()
+    t = make_target()
+    tgt = Client(t)
+    sp = spec("zcc" if case == "zcc_profiles" else "zia", bid, **kw)
+    p = ao.plan(tgt, sp, scope=WIDE, tenant_label="target")
+    assert p["status"] == "ready" and p["confirm_phrase"], p["blockers"]
+    args = {"plan_hash": p["plan_hash"], "scope": WIDE, "writes_enabled": True, "assessor": ASSESSOR, "tenant_label": "target",
+            "confirm_text": p["confirm_phrase"]}
+    if gate == "write_mode":
+        with pytest.raises(PermissionError):
+            ao.execute(tgt, sp, **dict(args, writes_enabled=False))
+    elif gate == "assessor":
+        with pytest.raises(ao.OperationError, match="assessor"):
+            ao.execute(tgt, sp, **dict(args, assessor="  "))
+    elif gate == "plan_hash":
+        assert ao.execute(tgt, sp, **dict(args, plan_hash="0" * 64))["status"] == "plan_changed"
+    else:
+        assert ao.execute(tgt, sp, **dict(args, confirm_text="APPLY"))["status"] == "refused"
+    assert t.writes == []
+    r = ao.execute(tgt, sp, **args)
+    assert r["status"] == "applied" and t.writes, r.get("stopped")
