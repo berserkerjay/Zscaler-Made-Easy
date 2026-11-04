@@ -16,7 +16,11 @@ import flow_motion_fixtures as fx
 from test_findings_reflow import CDP_PRELUDE, run_in_browser
 
 PAGES = {
-    "dataflow": {"route": "/report/dataflow", "svg": "#dfMotionStage svg.fa-river", "button": "#dfMotionPlay", "alt": "#dfMotionAlt"},
+    # The Data Flow Map's path-count picture lives under "Show all details"
+    # and is an opt-in extra there (its widths count paths, not traffic):
+    # it starts still and Play motion starts it.
+    "dataflow": {"route": "/report/dataflow", "svg": "#dfMotionStage svg.fa-river", "button": "#dfMotionPlay", "alt": "#dfMotionAlt",
+                 "prep": "(document.getElementById('dfViewAll').click(), 1)", "optin": True},
     "sslflow": {"route": "/report/sslflow", "svg": "#sfWalkStage svg.fa-walk", "button": "#sfMotionPlay", "alt": "#sfWalkAlt"},
     "sslcoverage": {"route": "/report/sslcoverage", "svg": "#scRiverTraffic svg.fa-river", "button": "#scRiverPlay", "alt": "#scRiverAlt"},
 }
@@ -34,12 +38,16 @@ async function open(p, width, reduce) {
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reduce ? 'reduce' : 'no-preference' }] });
   await send('Page.navigate', { url: base + p.route + '?id=' + encodeURIComponent(p.id) });
   await until(() => ev(`document.readyState === 'complete' && !!document.querySelector('${p.svg}') && document.querySelectorAll('${p.svg} .fa-dot.pk').length > 0`), p.route + ' picture');
+  if (p.prep) await ev(p.prep);
 }
 for (const [name, p] of Object.entries(pages)) {
   const r = out[name] = {};
   // Normal motion: packets are drawn and move; the button offers Pause.
   await open(p, 1280, false);
   r.packets = await ev(`document.querySelectorAll('${p.svg} .fa-dot.pk').length`);
+  r.start = await ev(`(() => { const b = document.querySelector('${p.button}'); return { text: b.textContent, pressed: b.getAttribute('aria-pressed'),
+    still: [...document.querySelectorAll('${p.svg} .fa-dot.pk')].every(d => !d.hasAttribute('cx')) }; })()`);
+  if (p.optin) await ev(`document.querySelector('${p.button}').click(), 1`);
   await until(() => ev(`[...document.querySelectorAll('${p.svg} .fa-dot.pk')].every(d => d.hasAttribute('cx'))`), 'first frame', 5000).catch(() => null);
   const a = await dots(p.svg);
   r.moves = !!(await until(async () => (await dots(p.svg)) !== a, 'packets moving', 5000).catch(() => false));
@@ -130,10 +138,15 @@ NAMES = list(PAGES)
 
 @pytest.mark.parametrize("page", NAMES)
 def test_the_picture_renders_and_animates(motion, page):
-    """WCAG 2.2 SC 2.2.2: the picture is drawn from the page's result with packets that move, and the button offers Pause."""
+    """WCAG 2.2 SC 2.2.2: the picture is drawn from the page's result with packets that move, and the button offers Pause (the Data Flow Map's starts still: Play is opt-in)."""
     r = motion[page]
     assert r["packets"] > 0 and r["moves"], r
     assert r["button"] == {"text": "Pause motion", "pressed": "true", "tag": "BUTTON", "type": "button"}
+    if PAGES[page].get("optin"):
+        # Opt-in: drawn still with Play motion until pressed (then it moves, above).
+        assert r["start"] == {"text": "Play motion", "pressed": "false", "still": True}, r["start"]
+    else:
+        assert r["start"]["text"] == "Pause motion", r["start"]
 
 
 @pytest.mark.parametrize("page", NAMES)
