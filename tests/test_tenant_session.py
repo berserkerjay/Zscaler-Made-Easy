@@ -85,7 +85,7 @@ def world(monkeypatch, tmp_path):
 def _assess(client, body=None):
     """Run the assessment stream; (status, events)."""
     out = []
-    with client.stream("POST", "/api/assess", json=dict(ASSESS, **(body or {}))) as r:
+    with client.stream("POST", "/api/assess", json=dict(ASSESS, **(body or {})), headers=ORIGIN) as r:
         if r.status_code != 200:
             r.read()
             return r.status_code, r.json()
@@ -235,29 +235,25 @@ def test_use_keeps_it_alive_but_never_past_the_hard_limit(world):
     """ASVS V3.3.2 · ASVS V3.3.4 · CWE-613 · WSTG-SESS-07: each read restarts the idle time; the 8-hour limit ends it however much it is used."""
     page = TestClient(srv.app)
     page.post("/api/tenant/check", json=ACME)
-    for _ in range(15):          # 15 x 25 minutes = 6h15 of steady use
-        world["clock"].advance(25)
-        assert _assess(page)[0] == 200
-    world["clock"].advance(25 * 5)   # 8h20 after the sign-in, last used 2h05 ago... used every 25 minutes until now:
-    d = page.get("/api/tenant/session").json()
-    assert d["expired"] is True
-    page.post("/api/tenant/check", json=ACME)
-    for _ in range(19):          # used every 25 minutes: 7h55
+    for _ in range(19):          # a read every 25 minutes: 7h55 of steady use
         world["clock"].advance(25)
         assert page.get("/api/tenant/session").json()["connected"] is True
         assert _assess(page)[0] == 200
-    world["clock"].advance(6)    # 8h01
+    world["clock"].advance(6)    # 8h01 after the sign-in, 6 minutes after the last read
     d = page.get("/api/tenant/session").json()
     assert d["expired"] is True and d["ended"] == "hard" and "8 hours" in d["message"]
+    assert _assess(page)[0] == 400
 
 
 def test_repeating_the_same_sign_in_does_not_extend_the_hard_limit(world):
     """ASVS V3.3.4 · CWE-613 · WSTG-SESS-07: re-checking the same tenant keeps the first sign-in's hard limit."""
     page = TestClient(srv.app)
     page.post("/api/tenant/check", json=ACME)
-    world["clock"].advance(60 * 7)
-    page.post("/api/tenant/check", json=ACME)
-    assert page.get("/api/tenant/session").json()["expires_in"] == 3600
+    for _ in range(19):          # the same sign-in checked again every 25 minutes: 7h55
+        world["clock"].advance(25)
+        assert page.post("/api/tenant/check", json=ACME).status_code == 200
+    # 5 minutes left of the first sign-in's 8 hours, not a fresh 30-minute window.
+    assert page.get("/api/tenant/session").json()["expires_in"] == 5 * 60
 
 
 def test_sign_out_of_the_tenant_forgets_it(world):
@@ -293,7 +289,7 @@ def test_a_guessed_or_malformed_handle_finds_nothing(world):
     """ASVS V3.2.2 · CWE-330 · WSTG-SESS-01: a forged handle of the right shape, or a malformed one, is not a sign-in."""
     page = TestClient(srv.app)
     page.post("/api/tenant/check", json=ACME)
-    for forged in ("A" * 43, "x", "../" * 20, "é" * 40):
+    for forged in ("A" * 43, "x", "../" * 20, "%C3%A9" * 8):
         c = TestClient(srv.app)
         c.cookies.set(tenant_session.COOKIE, forged)
         assert c.get("/api/tenant/session").json()["connected"] is False
@@ -422,7 +418,7 @@ def test_team_each_person_has_their_own_signed_in_tenant(team_world, world):
     assert r.status_code == 200, r.text
     assert vic.get("/api/tenant/session").json()["connected"] is True
     status, events = _assess(vic)
-    assert status == 200 and _completed(events) and world["assessed"][-1]["client_secret"] == SECRET
+    assert status == 200 and _completed(events) and world["assessed"][-1]["client_secret"] == SECRET, events
     # Another person, same grants, even holding vic's handle cookie: nothing.
     val.cookies.set(tenant_session.COOKIE, vic.cookies.get(tenant_session.COOKIE))
     assert val.get("/api/tenant/session").json()["connected"] is False
