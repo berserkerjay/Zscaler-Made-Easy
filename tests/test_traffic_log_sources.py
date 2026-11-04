@@ -23,6 +23,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import audit_events, is_store_bookkeeping, read_store_text
 from fastapi.testclient import TestClient
 
 import syslog_listener as sl
@@ -268,7 +269,7 @@ def test_the_watch_routes_need_the_writer_and_are_audited(api, monkeypatch, tmp_
     assert bad.status_code == 400
     assert ok.status_code == 200 and ok.json()["settings"]["enabled"] is True and ok.json()["settings"]["names"] is False
     assert ran.status_code == 200 and ran.json()["last_run"]["status"] == "saved"
-    log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    log = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     mine = [ln for ln in log.splitlines() if '"event":"traffic_logs_watch_settings"' in ln or '"event": "traffic_logs_watch_settings"' in ln]
     assert mine and "traffic_logs_watch_run" in log
     assert all('"enabled":true' in ln.replace(" ", "") for ln in mine)
@@ -389,7 +390,7 @@ def _audit_events():
     path = os.environ["DLP_CHECK_AUDIT"]
     if not os.path.exists(path):
         return []
-    return [json.loads(ln) for ln in open(path, encoding="utf-8").read().splitlines() if ln.strip()]
+    return audit_events(path)
 
 
 @pytest.mark.parametrize("route,body", [("/api/traffic-logs/syslog/clear", None), ("/api/traffic-logs/syslog/stop", {"clear": True})])
@@ -454,8 +455,8 @@ def test_lines_that_arrived_are_analysed_as_untrusted_and_never_written(api, mon
     stop = api.post("/api/traffic-logs/syslog/stop", json={"clear": True})
     # Assert
     assert rep.status_code == 200 and rep.json()["input"]["records"] == 2 and rep.json()["input"]["source"] == "syslog listener"
-    assert set(files_after) - set(files_before) <= {"audit.log"}, "no raw line reached the disk"
+    assert {f for f in set(files_after) - set(files_before) if not is_store_bookkeeping(f)} <= {"audit.log"}, "no raw line reached the disk"
     assert saved.status_code == 200 and saved.json()["saved"]["names"] is False
-    text = "".join(open(os.path.join(tmp_path, "saved", n), encoding="utf-8").read() for n in os.listdir(tmp_path / "saved"))
+    text = "".join(read_store_text(os.path.join(tmp_path, "saved", n)) for n in os.listdir(tmp_path / "saved"))
     assert "ann@example.com" not in text
     assert stop.status_code == 200 and stop.json()["lines"] == 0 and stop.json()["running"] is False

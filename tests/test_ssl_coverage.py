@@ -14,6 +14,7 @@ import zipfile
 from types import SimpleNamespace
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 from zscaler.zins.zins_service import ZInsService
 
@@ -331,7 +332,7 @@ def test_history_is_small_per_tenant_and_scrubs_classic_logins(tmp_path):
         sc.record("acme (production)", rep, p)
     assert len(sc.load_history("acme (production)", p)) == sc.HISTORY_KEEP
     sc.record("admin@acme.example (zscalerten, classic API)", rep, p)
-    raw = open(p).read()
+    raw = read_store_text(p)
     assert "admin@acme.example" not in raw and "classic API (zscalerten)" in raw
     assert sc.load_history("nobody", p) == [] and sc.load_history("x", str(tmp_path / "missing.json")) == []
     e = sc.load_history("acme (production)", p)[-1]

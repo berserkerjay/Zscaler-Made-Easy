@@ -25,6 +25,7 @@ import threading
 import time
 
 import pytest
+from conftest import read_store_json
 from fastapi.testclient import TestClient
 
 import audit
@@ -255,7 +256,7 @@ def test_permissions_on_secrets_and_stores_are_set_back_to_owner_only(env, tmp_p
     assert r["status"] == sh.HEALED
     assert os.stat(pr.store_path()).st_mode & 0o777 == 0o600 and os.stat(cfg).st_mode & 0o777 == 0o600
     assert os.stat(dd).st_mode & 0o777 == 0o700
-    assert json.load(open(pr.store_path()))["tenants"]["acme"], "content untouched"
+    assert read_store_json(pr.store_path())["tenants"]["acme"], "content untouched"
     assert sh.check_permissions()["status"] == sh.OK
 
 

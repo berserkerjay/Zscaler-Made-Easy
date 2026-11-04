@@ -15,6 +15,7 @@ import re
 import stat
 
 import pytest
+from conftest import audit_events, is_store_bookkeeping, read_store_json, read_store_text
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
@@ -49,7 +50,7 @@ def _post(c, **body):
 
 def _audit():
     p = os.environ["DLP_CHECK_AUDIT"]
-    return [json.loads(x) for x in open(p, encoding="utf-8") if x.strip()] if os.path.exists(p) else []
+    return audit_events(p) if os.path.exists(p) else []
 
 
 # ── the store ───────────────────────────────────────────────────────────
@@ -145,9 +146,10 @@ def test_no_request_value_ever_becomes_a_path(tmp_path):
     with pytest.raises(wn.NotesError):
         wn.apply("t" * (wn.MAX_TENANT_LEN + 1), "rule", "r", "add_tag", by="a", tag="x")
     # Everything is a key inside the one store; nothing else was created anywhere.
-    created = sorted(os.path.relpath(os.path.join(d, f), tmp_path) for d, _, fs in os.walk(tmp_path) for f in fs if f != "audit.log" and not f.endswith(".last-good"))
+    created = sorted(os.path.relpath(os.path.join(d, f), tmp_path) for d, _, fs in os.walk(tmp_path) for f in fs if f != "audit.log" and not f.endswith(".last-good")
+                     and not is_store_bookkeeping(f))
     assert created == [os.path.join("notes", "workspace_notes.json"), os.path.join("notes", "workspace_notes.json.lock")]
-    data = json.load(open(wn.store_path(), encoding="utf-8"))
+    data = read_store_json(wn.store_path())
     notes = data["tenants"]["../../outside"]["notes"]
     assert sorted(n["ref"] for n in notes.values()) == sorted(evil)
     assert all(re.fullmatch(r"[a-f0-9]{32}", k) for k in notes)
@@ -193,7 +195,7 @@ def test_writes_record_who_from_the_session_and_go_to_the_audit_log_without_the_
     assert step[-1]["tenant"] == A and step[-1]["kind"] == "finding" and step[-1]["ref"] == "5.20"
     api = [e for e in lines if e.get("event") == "api" and e.get("path") == "/api/workspace/notes"]
     assert api and api[-1]["actor"] == "alice@example.com"
-    raw = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    raw = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     assert "4111" not in raw and "Bob's upload" not in raw, "a note's text never reaches the audit log"
     rid = note["todos"][0]["id"]
     assert _post(c, tenant=A, kind="finding", ref="5.20", action="set_todo", item_id=rid, done=True).json()["note"]["todos"][0]["done_by"] == "alice@example.com"

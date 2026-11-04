@@ -122,14 +122,24 @@ def test_the_running_suite_has_only_its_own_app_settings():
     # The Zscaler SDK itself writes ZSCALER_SDK_LOG (and _VERBOSE when logging
     # is on) each time a client is built (zscaler/config/config_setter.py); the
     # app always builds it with logging off, so a later test sees "false".
-    baseline = set(conftest.STORE_ENV) | {"ZSCALER_UI_AUTH", "DLP_CHECK_SELF_HEAL_MINUTES", "DLP_CHECK_BACKUP_SCHEDULE_MINUTES", "ZSCALER_SDK_LOG",
-                                     "DLP_CHECK_STORE_ENCRYPTION"}   # the suite runs with encrypted stores off (conftest)
+    baseline = set(conftest.STORE_ENV) | {"ZSCALER_UI_AUTH", "DLP_CHECK_SELF_HEAL_MINUTES", "DLP_CHECK_BACKUP_SCHEDULE_MINUTES", "ZSCALER_SDK_LOG"}
+    if conftest.PLAIN_STORE_RUN:
+        baseline.add("DLP_CHECK_STORE_ENCRYPTION")   # DLP_TEST_STORE_ENCRYPTION=0: the opt-out's own run
     assert os.environ.get("ZSCALER_SDK_LOG", "false") == "false" and "ZSCALER_SDK_VERBOSE" not in os.environ
     stray = sorted(k for k in os.environ
                    if (k.startswith(conftest.APP_ENV_PREFIXES) or k in conftest.APP_ENV_NAMES) and k not in baseline
                    and not k.startswith("DLP_CHECK_ZIA_LIMIT_"))   # conftest turns ZIA's limits off per test
     assert stray == []
     assert os.environ["ZSCALER_UI_AUTH"] == "0" and os.environ["DLP_CHECK_SELF_HEAL_MINUTES"] == "0"
+
+
+def test_the_suite_runs_with_encrypted_stores_on_as_shipped():
+    """ASVS V6.1.1 · ASVS V14.1.1 · CWE-1188 · SSDF PW.8.2: the suite tests the shipped default (encrypted stores on); no global opt-out hides it."""
+    import store_crypto
+    if conftest.PLAIN_STORE_RUN:
+        pytest.skip("DLP_TEST_STORE_ENCRYPTION=0: the opt-out's own run")
+    assert "DLP_CHECK_STORE_ENCRYPTION" not in os.environ and store_crypto.enabled()
+    assert store_crypto.seal_text("x").startswith(store_crypto.PREFIX)
 
 
 # ── Beacon: a run that ends while its status is read ───────────────────────

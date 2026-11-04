@@ -14,6 +14,7 @@ import threading
 import types
 
 import pytest
+from conftest import read_any_text, read_store_json
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
@@ -350,10 +351,9 @@ def test_a_saved_snapshot_is_owner_only_and_carries_no_secret(app, live, tmp_pat
     path = tenant_profiles.snapshot_path(snaps[0]["id"])
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
     assert stat.S_IMODE(os.stat(os.path.dirname(path)).st_mode) == 0o700
-    every_file = "".join(open(os.path.join(d, f), encoding="utf-8", errors="replace").read()
-                         for d, _, fs in os.walk(tmp_path) for f in fs)
+    every_file = "".join(read_any_text(os.path.join(d, f)) for d, _, fs in os.walk(tmp_path) for f in fs)
     assert CANARY_SECRET not in every_file and CANARY_FIELD not in every_file
-    doc = json.load(open(path, encoding="utf-8"))
+    doc = read_store_json(path)
     assert '"exitPass":"(set)"' in json.dumps(doc, separators=(",", ":"))
     assert "client_secret" not in json.dumps(doc) and set(doc) == {"format", "version", "meta", "responses"}
     assert [s["id"] for s in app.get("/api/tenant-profiles").json()["profiles"][0]["snapshots"]] == [snaps[0]["id"]]
