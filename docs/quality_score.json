@@ -488,7 +488,7 @@
     }
   ],
   "counts": {
-    "findings": 763,
+    "findings": 765,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -502,12 +502,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 194,
+        "fixed": 195,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 423,
+        "fixed": 424,
         "accepted": 3
       },
       "info": {
@@ -517,7 +517,7 @@
       }
     },
     "checks": {
-      "pass": 704,
+      "pass": 705,
       "fixed": 317,
       "open": 11,
       "accepted": 16
@@ -4812,6 +4812,22 @@
       "slug": "w9-team-auth",
       "area": "secure_by_design",
       "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W10-ASG-03",
+      "title": "A bundled excerpt entry not in the provider's published list gives a false match (13.107.64.0/18 in Teams media; unchecked Zoom, Webex, RingCentral, GoTo and Talkdesk entries)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-345",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "endpoint_snapshots.M365_SETS copied from Microsoft's version 2026043000; VENDOR emptied",
+      "test": "tests/test_app_service_snapshots.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-app-service-groups",
+      "area": "other",
+      "sub_area": "other"
     },
     {
       "id": "W10-NC-06",
@@ -11487,13 +11503,13 @@
     },
     {
       "id": "W10-ASG-01",
-      "title": "App service groups never matched out of the box: Webex, RingCentral, GoTo and Talkdesk only after a hand import, Microsoft 365 and Zoom only after an opt-in fetch",
+      "title": "Microsoft 365 app service groups never matched out of the box (only after an opt-in fetch or an import); the other providers' groups still match only after a fetch (Zoom, GoTo) or an import, as no excerpt of their lists could be checked",
       "severity": "low",
       "status": "fixed",
       "cwe": "CWE-1059",
       "asvs": "V1.4.4",
       "wcag": "",
-      "fix": "endpoint_snapshots.py (bundled dated excerpts, match only), app_services.criterion/current, vendor_endpoints status",
+      "fix": "endpoint_snapshots.py (bundled dated Microsoft 365 excerpt, match only), app_services.criterion/current, m365_endpoints and vendor_endpoints status",
       "test": "tests/test_app_service_snapshots.py",
       "commit": "",
       "reason": "",
@@ -11510,6 +11526,22 @@
       "asvs": "V12.6.1",
       "wcag": "",
       "fix": "vendor_endpoints PROVIDERS goto fetch, parse_json; Advanced settings switch advVendGotoOn; SECURITY.md and secure_by_design outbound line",
+      "test": "tests/test_app_service_snapshots.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-app-service-groups",
+      "area": "other",
+      "sub_area": "other"
+    },
+    {
+      "id": "W10-ASG-04",
+      "title": "The reason shown for Zscaler's own groups said the API has no call that lists them; it has lite lists by id and name",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "app_services.ZSCALER_OWN, vendor_endpoints.ZSCALER_GROUPS_NOTE, Advanced settings #advVendZs",
       "test": "tests/test_app_service_snapshots.py",
       "commit": "",
       "reason": "",
@@ -13634,7 +13666,7 @@
     {
       "slug": "w10-app-service-groups",
       "area": "Path analyzer: app service groups (endpoint_snapshots.py, vendor_endpoints.py, m365_endpoints.py, app_services.py, zia_path_modules.py, bulk_test.py, Advanced settings card)",
-      "title": "App service groups match out of the box: bundled dated excerpts of six providers' published lists (match only, expiring), GoTo's JSON list fetchable on its own switch, and Zscaler's own groups unknown with the exact reason",
+      "title": "App service groups out of the box: a dated excerpt of Microsoft's published Microsoft 365 list (version 2026043000, match only, expiring), no unchecked excerpts for other providers, GoTo's list fetchable, Zscaler's own groups unknown with the exact reason",
       "standards": [
         "ASVS V1.4.4",
         "ASVS V5.1.3",
@@ -13643,6 +13675,7 @@
         "ASVS V12.6.1",
         "ASVS V14.1.1",
         "CWE-20",
+        "CWE-345",
         "CWE-400",
         "CWE-672",
         "CWE-674",
@@ -13653,8 +13686,8 @@
         "WCAG 2.2 SC 3.3.2",
         "WCAG 2.2 SC 4.1.2"
       ],
-      "checks": 5,
-      "findings": 2,
+      "checks": 6,
+      "findings": 4,
       "tests_added": 50
     },
     {

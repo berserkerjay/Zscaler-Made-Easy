@@ -22,7 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-11-04": "App service groups out of the box: dated excerpts of six providers' published lists, GoTo's list fetchable",
+    "2026-11-04": "App service groups out of the box: Microsoft 365 from a dated excerpt of Microsoft's published list, GoTo's list fetchable",
     "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin, rehearse then simulate, Fix selected that changes the answer (URL filtering and ZPA), manual what-if inputs, other providers' endpoint lists, outside-tool gaps closed, and more of the tenant read and scored"
   },
   "skipped": {
@@ -32,7 +32,7 @@ window.WHATS_NEW = {
   "features": [
     {
       "id": "app-service-group-excerpts", "release": "2026-11-04", "label": "App service groups out of the box",
-      "what": "Microsoft 365, Zoom, Webex, RingCentral, GoTo and Talkdesk app service groups now match out of the box from short, dated excerpts of each provider's published list that come with the app; GoTo's list can be fetched too, on its own switch, off by default.",
+      "what": "Microsoft 365 app service groups now match out of the box from a dated excerpt of Microsoft's published list (version 2026043000) that comes with the app; the other providers' groups match once their list is fetched or imported, and GoTo's list can now be fetched too, on its own switch, off by default.",
       "changelog": ["App service groups out of the box", "Fetch GoTo's list", "Zscaler's own app service groups"],
       "marks": [
         { "page": "/report/advanced", "at": "#advVendBundled" },

@@ -32,8 +32,8 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
 | high | 0 | 20 | 0 |
-| medium | 0 | 194 | 0 |
-| low | 2 | 423 | 3 |
+| medium | 0 | 195 | 0 |
+| low | 2 | 424 | 3 |
 | info | 0 | 71 | 50 |
 
 ### Regression
@@ -816,8 +816,10 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 
 | Id | Title | Severity | CWE | ASVS | Status | Sub-area | Fix or reason | Test |
 |---|---|---|---|---|---|---|---|---|
-| W10-ASG-01 | App service groups never matched out of the box: Webex, RingCentral, GoTo and Talkdesk only after a hand import, Microsoft 365 and Zoom only after an opt-in fetch | low | CWE-1059 | V1.4.4 | fixed | Other | endpoint_snapshots.py (bundled dated excerpts, match only), app_services.criterion/current, vendor_endpoints status | tests/test_app_service_snapshots.py |
+| W10-ASG-03 | A bundled excerpt entry not in the provider's published list gives a false match (13.107.64.0/18 in Teams media; unchecked Zoom, Webex, RingCentral, GoTo and Talkdesk entries) | medium | CWE-345 | V5.1.3 | fixed | Other | endpoint_snapshots.M365_SETS copied from Microsoft's version 2026043000; VENDOR emptied | tests/test_app_service_snapshots.py |
+| W10-ASG-01 | Microsoft 365 app service groups never matched out of the box (only after an opt-in fetch or an import); the other providers' groups still match only after a fetch (Zoom, GoTo) or an import, as no excerpt of their lists could be checked | low | CWE-1059 | V1.4.4 | fixed | Other | endpoint_snapshots.py (bundled dated Microsoft 365 excerpt, match only), app_services.criterion/current, m365_endpoints and vendor_endpoints status | tests/test_app_service_snapshots.py |
 | W10-ASG-02 | GoTo publishes a machine-readable list but could only be imported by hand | low | CWE-1059 | V12.6.1 | fixed | Other | vendor_endpoints PROVIDERS goto fetch, parse_json; Advanced settings switch advVendGotoOn; SECURITY.md and secure_by_design outbound line | tests/test_app_service_snapshots.py |
+| W10-ASG-04 | The reason shown for Zscaler's own groups said the API has no call that lists them; it has lite lists by id and name | low | CWE-1059 | V1.4.4 | fixed | Other | app_services.ZSCALER_OWN, vendor_endpoints.ZSCALER_GROUPS_NOTE, Advanced settings #advVendZs | tests/test_app_service_snapshots.py |
 
 ### Records
 
@@ -856,7 +858,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | sbd-input | Secure by Design: untrusted input | Everything a user, a file or a tenant can feed the app: PAC evaluator, Test a list, file imports, identity search, URL builders, tenant strings in every renderer | 21 | 11 | 250 |
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
-| w10-app-service-groups | Path analyzer: app service groups (endpoint_snapshots.py, vendor_endpoints.py, m365_endpoints.py, app_services.py, zia_path_modules.py, bulk_test.py, Advanced settings card) | App service groups match out of the box: bundled dated excerpts of six providers' published lists (match only, expiring), GoTo's JSON list fetchable on its own switch, and Zscaler's own groups unknown with the exact reason | 5 | 2 | 50 |
+| w10-app-service-groups | Path analyzer: app service groups (endpoint_snapshots.py, vendor_endpoints.py, m365_endpoints.py, app_services.py, zia_path_modules.py, bulk_test.py, Advanced settings card) | App service groups out of the box: a dated excerpt of Microsoft's published Microsoft 365 list (version 2026043000, match only, expiring), no unchecked excerpts for other providers, GoTo's list fetchable, Zscaler's own groups unknown with the exact reason | 6 | 4 | 50 |
 | w10-native-click | UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page | Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s | 10 | 6 | 13 |
 | w7-admin-zia-zid | Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients) | Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once | 9 | 2 | 67 |
 | w7-admin-zpa-zcc-zdx | w7-admin-zpa-zcc-zdx | Day-to-day admin for ZPA (connectors, Service Edges, PRA and user portals, provisioning keys, Browser Access certificates), Client Connector (device removal single and bulk, bypass apps, entitlements) and ZDX (deep trace, read-only views) | 10 | 6 | 94 |
