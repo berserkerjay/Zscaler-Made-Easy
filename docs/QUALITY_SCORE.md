@@ -10,6 +10,8 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17 skipped, 3071 s.
 
+- Records with no area in the formula: w10-app-service-groups. Their open findings still count toward the cap.
+
 ## Scores by area
 
 | Area | Sub-area | Score | Tests | Findings (open) | Standards covered | Based on |
@@ -31,7 +33,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | critical | 0 | 0 | 0 |
 | high | 0 | 20 | 0 |
 | medium | 0 | 194 | 0 |
-| low | 2 | 421 | 3 |
+| low | 2 | 423 | 3 |
 | info | 0 | 71 | 50 |
 
 ### Regression
@@ -810,6 +812,13 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | W8-SHADOW-03 | The sample tenant and snapshots had no answer for any Insights question, so Traffic insights showed every section as an error offline | info | CWE-754 | V1.14.1 | fixed | Builders | offline_tenant answers POST /zins/graphql per operation from /zins/graphql/&lt;operation&gt; (sample data and snapshot capture), honouring the Shadow IT application filter | tests/test_shadow_it.py::test_a_snapshot_keeps_the_insights_answers_per_question_without_the_per_user_one |
 | W8-TS-03 | tests/test_new_marks.py hard-coded the 2026-10-28 marks (Test a list, the protocol field), so adding any newer release broke it | info | CWE-1164 | V1.14.1 | fixed | Builders | the browser checks target the releases still marked (live motion, the ZIA platform scope box) and compute the next release date from the manifest | tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out |
 
+### Other
+
+| Id | Title | Severity | CWE | ASVS | Status | Sub-area | Fix or reason | Test |
+|---|---|---|---|---|---|---|---|---|
+| W10-ASG-01 | App service groups never matched out of the box: Webex, RingCentral, GoTo and Talkdesk only after a hand import, Microsoft 365 and Zoom only after an opt-in fetch | low | CWE-1059 | V1.4.4 | fixed | Other | endpoint_snapshots.py (bundled dated excerpts, match only), app_services.criterion/current, vendor_endpoints status | tests/test_app_service_snapshots.py |
+| W10-ASG-02 | GoTo publishes a machine-readable list but could only be imported by hand | low | CWE-1059 | V12.6.1 | fixed | Other | vendor_endpoints PROVIDERS goto fetch, parse_json; Advanced settings switch advVendGotoOn; SECURITY.md and secure_by_design outbound line | tests/test_app_service_snapshots.py |
+
 ### Records
 
 | Record | Area | Title | Checks | Findings | Tests added |
@@ -847,6 +856,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | sbd-input | Secure by Design: untrusted input | Everything a user, a file or a tenant can feed the app: PAC evaluator, Test a list, file imports, identity search, URL builders, tenant strings in every renderer | 21 | 11 | 250 |
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
+| w10-app-service-groups | Path analyzer: app service groups (endpoint_snapshots.py, vendor_endpoints.py, m365_endpoints.py, app_services.py, zia_path_modules.py, bulk_test.py, Advanced settings card) | App service groups match out of the box: bundled dated excerpts of six providers' published lists (match only, expiring), GoTo's JSON list fetchable on its own switch, and Zscaler's own groups unknown with the exact reason | 5 | 2 | 50 |
 | w10-native-click | UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page | Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s | 10 | 6 | 13 |
 | w7-admin-zia-zid | Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients) | Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once | 9 | 2 | 67 |
 | w7-admin-zpa-zcc-zdx | w7-admin-zpa-zcc-zdx | Day-to-day admin for ZPA (connectors, Service Edges, PRA and user portals, provisioning keys, Browser Access certificates), Client Connector (device removal single and bulk, bypass apps, entitlements) and ZDX (deep trace, read-only views) | 10 | 6 | 94 |

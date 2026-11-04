@@ -51,6 +51,7 @@ Find the files a change touches here, then read only those.
 | `dns_forward_zones.py` | DNS records for Client Connector hostnames: download-only text, never applied. |
 | `docker_healthcheck.py` | Container healthcheck: is the app answering on its own port? |
 | `editions.py` | Licensed editions: Cloud Firewall (standard or advanced), Cloud Sandbox |
+| `endpoint_snapshots.py` | Bundled, dated excerpts of the six providers' published endpoint lists, |
 | `engine_explain.py` | DLP engine explainability: an engine expression as people read it. |
 | `guidance.py` | Continuous evaluation, phase 4: guidance that keeps itself current. |
 | `insights.py` | ZIA Insights traffic data: read-only, paced, Stop-able wrappers over the |

@@ -1,0 +1,79 @@
+{
+ "area": "Path analyzer: app service groups (endpoint_snapshots.py, vendor_endpoints.py, m365_endpoints.py, app_services.py, zia_path_modules.py, bulk_test.py, Advanced settings card)",
+ "title": "App service groups match out of the box: bundled dated excerpts of six providers' published lists (match only, expiring), GoTo's JSON list fetchable on its own switch, and Zscaler's own groups unknown with the exact reason",
+ "standards": [
+  "ASVS V1.4.4",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V12.1.1",
+  "ASVS V12.6.1",
+  "ASVS V14.1.1",
+  "CWE-20",
+  "CWE-400",
+  "CWE-672",
+  "CWE-674",
+  "CWE-697",
+  "CWE-754",
+  "CWE-918",
+  "CWE-1059",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 4.1.2"
+ ],
+ "checks": [
+  {
+   "id": "W10-ASG-C01",
+   "what": "Each provider's group (Microsoft 365, Zoom, Webex, RingCentral, GoTo, Talkdesk) matches a published destination from the bundled excerpt with nothing fetched, naming the excerpt, its date and age",
+   "standard": "ASVS V1.4.4 · CWE-697",
+   "result": "pass"
+  },
+  {
+   "id": "W10-ASG-C02",
+   "what": "An excerpt never yields no match; an expired excerpt (over 180 days) settles nothing",
+   "standard": "ASVS V1.4.4 · CWE-754 · CWE-672",
+   "result": "pass"
+  },
+  {
+   "id": "W10-ASG-C03",
+   "what": "GoTo's JSON list: only address ranges taken; malformed JSON, private, over-broad or malformed ranges, too deep, too many values or over 1 MB refuse the whole list",
+   "standard": "ASVS V5.1.3 · V12.1.1 · CWE-20 · CWE-400 · CWE-674",
+   "result": "pass"
+  },
+  {
+   "id": "W10-ASG-C04",
+   "what": "No outbound request from matching, status or page load; GoTo is fetched only when switched on and Fetch now is clicked, from its one declared host, no redirect followed",
+   "standard": "ASVS V12.6.1 · CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "W10-ASG-C05",
+   "what": "Zscaler's own app service groups stay unknown, and the reason (no SDK call lists app service groups or their members) is checked against the installed SDK",
+   "standard": "ASVS V1.4.4 · CWE-1059",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W10-ASG-01",
+   "title": "App service groups never matched out of the box: Webex, RingCentral, GoTo and Talkdesk only after a hand import, Microsoft 365 and Zoom only after an opt-in fetch",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "endpoint_snapshots.py (bundled dated excerpts, match only), app_services.criterion/current, vendor_endpoints status",
+   "test": "tests/test_app_service_snapshots.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-ASG-02",
+   "title": "GoTo publishes a machine-readable list but could only be imported by hand",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V12.6.1",
+   "status": "fixed",
+   "fix": "vendor_endpoints PROVIDERS goto fetch, parse_json; Advanced settings switch advVendGotoOn; SECURITY.md and secure_by_design outbound line",
+   "test": "tests/test_app_service_snapshots.py",
+   "commit": ""
+  }
+ ],
+ "tests_added": 50
+}

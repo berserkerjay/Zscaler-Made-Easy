@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-519 markers.
+524 markers.
 
 | File:line | Note |
 |---|---|
@@ -31,10 +31,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ai_guard.py:768` | "policy_id": pid, "verified": list(DEPTH_VERIFIED), "assumed": list(DEPTH_ASSUMED)} |
 | `app_services.py:23` | names are assumed, as Zscaler does not publish them through the API), and |
 | `app_services.py:25` | LOGMEIN, TALKDESK: vendor_endpoints, names assumed) the provider's list, |
-| `app_services.py:27` | those lists (assumed from its One Click documentation). Every other app |
-| `app_services.py:31` | so its group is taken to hold its endpoints on any port (assumed). |
-| `app_services.py:34` | alternatives (any one is enough, assumed: they are one field in the |
-| `app_services.py:60` | service areas they hold. Assumed: Zscaler's app service names are not in |
+| `app_services.py:27` | Zscaler builds those groups from those lists (assumed from its One Click |
+| `app_services.py:37` | group is taken to hold its endpoints on any port (assumed). |
+| `app_services.py:40` | alternatives (any one is enough, assumed: they are one field in the |
+| `app_services.py:67` | service areas they hold. Assumed: Zscaler's app service names are not in |
 | `app_update.py:196` | fork or a mirror is never assumed to be the upstream repository.""" |
 | `audit_timeline.py:167` | CORRELATE_SECONDS match with Zscaler Made Easy's own writes. Assumed: CST |
 | `bulk_test.py:124` | SUSPICIOUS_DESTINATION; the others are assumed from ZIA's category list. |
@@ -112,6 +112,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `editions.py:26` | descriptions, ASSUMED: not verified against a tenant) |
 | `editions.py:59` | SKU_NOTE = "Subscription ids are assumed (as seen on tenants; the SDK documents the licence list, not its ids)." |
 | `editions.py:143` | out.append(SKU_NOTE + " What each edition allows is this app's reading of Zscaler's edition descriptions (assumed).") |
+| `endpoint_snapshots.py:20` | assumed: every entry below was compiled on SNAPSHOT_DATE from the source |
+| `endpoint_snapshots.py:23` | entries are marked assumed until a fetch or an import replaces them. |
+| `endpoint_snapshots.py:42` | assumed: compiled from Microsoft's "Office 365 IP Address and URL web |
+| `endpoint_snapshots.py:71` | assumed: each list compiled from the source named with it on |
 | `insights.py:670` | ASSUMED: Shadow IT's sanctioned_state spells the two states as |
 | `mcp_tools.py:1187` | ZDX_BANDS = (("poor", 0, 33), ("okay", 34, 65), ("good", 66, 100))   # assumed: the ZDX portal's score bands (not in the SDK) |
 | `offline_tenant.py:506` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
@@ -379,8 +383,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/flow_anim.js:41` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
 | `static/flow_anim.js:49` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
 | `static/flow_anim.js:200` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:4715` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:4795` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4725` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4805` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |
@@ -419,9 +423,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `url_tools.py:82` | HOURLY_REQUESTS = 400       # assumed: ZIA's documented POST limit (1/s, 400/h; zia_rate) applies to /urlLookup |
 | `url_tools.py:546` | xn--bcher-kva.de (how the lookup spells it is assumed, not documented).""" |
 | `vendor_endpoints.py:13` | The providers (PROVIDERS; the group names are ASSUMED: they are the names |
-| `vendor_endpoints.py:17` | per line. Fetchable (FETCH_URL, ASSUMED: the address named in |
-| `vendor_endpoints.py:23` | as a machine-readable file (ASSUMED from the article as last |
-| `vendor_endpoints.py:26` | goto         machine-readable list known, ASSUMED), GoTo's (a support web |
+| `vendor_endpoints.py:17` | per line (FETCH_URL, ASSUMED: the address named in Zoom's |
+| `vendor_endpoints.py:22` | (ASSUMED: the address as that article gives it; the JSON's |
+| `vendor_endpoints.py:106` | "fetch": "https://goto-ipblocks.live.gtc.goto.com/",     # assumed: the JSON address GoTo's allowlisting article names |
+| `vendor_endpoints.py:238` | assumed: the JSON's field names are not published, so this reads no |
 | `workload_path.py:29` | Assumed, not documented in the SDK (said on the page): |
 | `workload_path.py:89` | know (INVALID, or a newer value) is "unknown", never assumed to be ZIA.""" |
 | `workload_path.py:434` | groups (assumed from the field's name; the SDK documents no more). |
@@ -457,8 +462,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `zia_path_modules.py:634` | which of them ZIA records for HTTPS it does not decrypt is assumed).""" |
 | `zia_path_modules.py:1063` | acts on is this tool's mapping (assumed, see the report). |
 | `zia_path_modules.py:1157` | Allow lists first, then deny lists and toggles (assumed precedence). |
-| `zia_path_modules.py:1257` | out.append(_crit("DNS protocol", "match", "A lookup over UDP is assumed (the standard resolver path).") if {"UDP", "UDP_RULE"} & set(p) e… |
-| `zia_path_modules.py:1262` | f"An address lookup (A or AAAA) is assumed; the rule applies to {_short(types, 5)}.")) |
+| `zia_path_modules.py:1269` | out.append(_crit("DNS protocol", "match", "A lookup over UDP is assumed (the standard resolver path).") if {"UDP", "UDP_RULE"} & set(p) e… |
+| `zia_path_modules.py:1274` | f"An address lookup (A or AAAA) is assumed; the rule applies to {_short(types, 5)}.")) |
 | `zpa_analysis.py:16` | ZPA semantics assumed (stated here and in every diagnosis): |
 | `zpa_analysis.py:1030` | or a domain says what it holds (assumed vocabulary, English names). |
 | `zpa_analysis.py:1456` | "An inspection profile whose every control action is PASS only monitors (it logs and lets the request through); global actions are read a… |
