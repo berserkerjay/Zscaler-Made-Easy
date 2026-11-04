@@ -425,9 +425,11 @@ function _gdAuthStatus() {
   // again by some screen readers, and asks every page observer to rescan).
   // The page writes this element too (Authenticate, the signed-in tenant,
   // Sign out of tenant): the guide writes only when its own state really
-  // changed, and never blanks words it did not write.
+  // changed, and never replaces words it did not write
+  // except with news of its own sign-in (Authenticating…, Signed in, Could not connect).
   const put = (cls, text) => { if (st.className !== cls) st.className = cls; if (st.textContent !== text) st.textContent = text; };
   const c = GD.conn;
+  const own = GD.testing || !!(c && c.vd === _gdIdent());   // news of the guide's own sign-in
   let cls = 'auth-status', text = '';
   if (GD.testing) text = 'Authenticating…';
   else if (c && c.vd === _gdIdent()) {
@@ -438,9 +440,9 @@ function _gdAuthStatus() {
   }
   const state = cls + '\n' + text;
   if (GD.authShown === state) return;
-  const mine = GD.authShown === undefined || st.textContent === GD.authText;
+  const mine = GD.authShown === undefined || !st.textContent || st.textContent === GD.authText;
   GD.authShown = state; GD.authText = text;
-  if (!text && !mine) return;
+  if (!own && !mine) return;   // the page's own newer words (Authenticate, Sign out of tenant) stay
   put(cls, text);
 }
 function _gdConnHtml() {

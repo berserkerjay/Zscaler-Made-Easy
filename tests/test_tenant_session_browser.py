@@ -62,6 +62,7 @@ await go('/');
 await until(() => ev(`(() => { const b = document.getElementById('authSignOutBtn'); return b && !b.hidden; })()`), 'the sign-out button');
 await ev(`signOutTenant().then(() => true)`);
 out.signedOut = await until(() => ev(`(() => { const s = document.getElementById('authStatus'); return /Signed out of the tenant/.test(s.textContent) && document.getElementById('authSignOutBtn').hidden ? s.textContent : null; })()`), 'signed out');
+out.signedOutKept = await ev(`(() => { for (let i = 0; i < 3; i++) { _gdRender(); _gdAuthStatus(); } return document.getElementById('authStatus').textContent; })()`);
 await go('/simple#check');
 out.after = await until(() => ev(`(() => { const b = document.getElementById('smStepBody'); return b && /First, connect/.test(b.textContent) ? document.getElementById('smConn').textContent : null; })()`), 'not connected');
 out.errors = errors;
@@ -118,6 +119,7 @@ def test_the_expert_page_shows_the_signed_in_tenant_and_signs_out(journey):
     """ASVS V3.3.1 · CWE-613 · WSTG-SESS-06 · WCAG 2.2 SC 4.1.3: the expert page says it is signed in, offers Sign out of tenant, and after it Simple mode is not connected."""
     assert journey["expert"]["signOutShown"] is True
     assert "Signed out of the tenant" in journey["signedOut"]
+    assert "Signed out of the tenant" in journey["signedOutKept"], "the guide's redraw kept the page's own words"
     assert "Not connected yet" in journey["after"]
 
 
