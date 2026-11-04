@@ -332,7 +332,9 @@ in the OS credential store (Windows Credential Manager, macOS Keychain),
 or, where there is none (Linux, the container, headless servers), in an
 owner-only key file (`store_keys.json` beside the data, 0600; the container's
 `/data`; `DLP_CHECK_STORE_KEY_FILE` moves it, for example to a separate
-volume). Keys are read from both places, a new key is used only after it
+volume, and a key file named that way is always used and never deleted). The
+key file, the migration journal and its backup folder are in `.gitignore` and
+`.dockerignore`, so they are never committed or baked into an image. Keys are read from both places, a new key is used only after it
 reads back from where it was kept, and a key ring that exists but cannot be
 read (a locked keychain, a damaged key file) is never replaced by a new key:
 new data stays unencrypted until it is fixed, and the start-up message and
@@ -341,14 +343,24 @@ new data stays unencrypted until it is fixed, and the start-up message and
 version wrote in plain text are sealed once at the first start: a verified
 owner-only backup first, then each file sealed atomically, read back and
 compared, with a journal so an interrupted run resumes; the backup and the
-per-file journal are removed only when every file reads back, and stale
-plain temporary files beside the stores go too, so no plain copy is left
-behind. `python store_crypto.py rotate` (or the Team server page's
-administrator) makes a new key, re-seals every store with it and only then
-forgets the old one. Opting out never locks data away: sealed stores still
+per-file journal are removed only when every file reads back (the removal
+is checked), stale plain temporary files beside the stores go too (at every
+start), and damaged copies self-healing set aside (`.corrupt-<time>`) are
+sealed like their store, so no plain copy is left behind. **A migration that
+stops keeps an unencrypted backup** of the files it has not sealed yet in
+`store-encryption-backup/` beside the data (folder 0700, files 0600; the
+backups of files already sealed are removed): the start-up message, `python
+store_crypto.py status` and the Team server page say so until it finishes. `python store_crypto.py rotate` (or the Team server page's
+administrator) makes a new key, re-seals every store with it, reads every
+store file again, and only then forgets the old key; an old key a file still
+names (a damaged copy, a write that raced the re-seal) is kept. Opting out never locks data away: sealed stores still
 read while their key is there, and `python store_crypto.py unseal-all` turns
 them back into plain files. What it protects: a copy of the data folder or
-volume (a backup, a stolen disk) without the key. What it does not: a person
+volume (a backup, a stolen disk) without the key. **In the default Linux and
+container setup the key file sits in that same folder or volume**, so a copy
+of the whole folder carries the key and is readable: for that protection,
+put `DLP_CHECK_STORE_KEY_FILE` on another volume (Windows and macOS keep the
+key in the credential store, outside the data folder). What it does not: a person
 or program running as the app's own user, who can read the key as the app
 does.
 

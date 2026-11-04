@@ -21,7 +21,11 @@
                                    credential store is not available (Linux,
                                    the container, a headless server; default
                                    store_keys.json beside the data, owner-only,
-                                   0600)
+                                   0600). When set, the key is always kept in
+                                   that file (never moved to the credential
+                                   store, never deleted): put it on another
+                                   volume so a copy of the data alone does
+                                   not carry the key
     DLP_CHECK_FIPS_MODE=1          only FIPS-approved algorithms in the app's
                                    own choices (fips_status says which)
 
@@ -115,6 +119,12 @@ def key_file() -> str:
     return os.environ.get("DLP_CHECK_STORE_KEY_FILE") or os.path.join(_data_dir(), "store_keys.json")
 
 
+def key_file_chosen() -> bool:
+    """The operator named the key file (DLP_CHECK_STORE_KEY_FILE): the key is
+    then kept there, never moved to the credential store, and never deleted."""
+    return bool(os.environ.get("DLP_CHECK_STORE_KEY_FILE", "").strip())
+
+
 # ── the key ring: {"current": id, "keys": {id: base64 key}} ─────────────
 def _keyring():
     try:
@@ -202,7 +212,7 @@ def _save_ring(ring: Dict[str, Any]) -> str:
     the ring back (the file is then removed), else in the owner-only key
     file, read back too. Returns where. KeyUnavailable when neither keeps it."""
     text = json.dumps(ring, sort_keys=True)
-    kr = _keyring()
+    kr = None if key_file_chosen() else _keyring()
     if kr is not None:
         try:
             kr.set_password(KEYRING_SERVICE, "store-keys", text)
@@ -383,7 +393,22 @@ def _store_paths() -> List[Dict[str, Any]]:
         if e["path"] not in seen:
             seen.add(e["path"])
             uniq.append(e)
+    # The damaged copies self-healing moved aside (<store>.corrupt-<time>,
+    # never deleted): a plain one is sealed like its store, and a rotation
+    # re-seals them too, so none is left plain or under a forgotten key. One
+    # that does not open (a damaged sealed file) is left as it is ("copy").
+    for e in list(uniq):
+        for c in sorted(glob.glob(glob.escape(e["path"]) + ".corrupt-*")):
+            if c not in seen and os.path.isfile(c):
+                seen.add(c)
+                uniq.append({"path": c, "lines": e["lines"], "copy": True})
     return uniq
+
+
+def _key_ids_in(text: str, lines: bool) -> set:
+    """The key ids a store file's sealed text (or lines) names."""
+    parts = [ln for ln in text.splitlines() if ln.strip()] if lines else [text]
+    return {p.strip()[len(PREFIX):].partition(":")[0] for p in parts if is_sealed(p.strip())}
 
 
 def _reseal_file(path: str, lines: bool, seal: Callable[[str], str]) -> None:
@@ -407,7 +432,12 @@ def seal_all() -> Dict[str, Any]:
     done = []
     with _LOCK:
         for e in _store_paths():
-            _reseal_file(e["path"], e["lines"], lambda t: _seal_with(t, kid, key))
+            try:
+                _reseal_file(e["path"], e["lines"], lambda t: _seal_with(t, kid, key))
+            except (StoreLocked, UnicodeDecodeError):
+                if not e.get("copy"):
+                    raise
+                continue                          # a damaged copy self-healing kept: left as it is
             done.append(os.path.basename(e["path"]))
     _audit("store_encryption_sealed", files=len(done), key=kid)
     return {"key": kid, "files": done}
@@ -430,12 +460,27 @@ def rotate() -> Dict[str, Any]:
             raise KeyUnavailable("The new store key did not read back from where it was kept; nothing was re-sealed.")
         done = []
         for e in _store_paths():
-            _reseal_file(e["path"], e["lines"], lambda t: _seal_with(t, kid, key))
+            try:
+                _reseal_file(e["path"], e["lines"], lambda t: _seal_with(t, kid, key))
+            except (StoreLocked, UnicodeDecodeError):
+                if not e.get("copy"):
+                    raise
+                continue                          # a damaged copy: left as it is; the re-check below keeps its key
             done.append(os.path.basename(e["path"]))
-        ring = {"current": kid, "keys": {kid: key}}
+        # Before any key is forgotten, every store file (and every copy) is
+        # read again: a key some file still names (a damaged copy, or a write
+        # that raced the re-seal) is kept, so nothing becomes unreadable.
+        still = set()
+        for e in _store_paths():
+            try:
+                still |= _key_ids_in(_read_text(e["path"]), e["lines"])
+            except (OSError, UnicodeDecodeError):
+                continue
+        kept_old = sorted(k for k in still if k != kid and k in ring["keys"])
+        ring = {"current": kid, "keys": dict({kid: key}, **{k: ring["keys"][k] for k in kept_old})}
         where = _save_ring(ring)
-    _audit("store_key_rotated", old_key=old, new_key=kid, files=len(done), kept_in=where)
-    return {"old_key": old, "new_key": kid, "files": done, "kept_in": where}
+    _audit("store_key_rotated", old_key=old, new_key=kid, files=len(done), kept_in=where, old_keys_kept=len(kept_old))
+    return {"old_key": old, "new_key": kid, "files": done, "kept_in": where, "old_keys_kept": kept_old}
 
 
 # ── the one-time migration of plain stores (upgrades) ───────────────────
@@ -506,20 +551,39 @@ def _save_journal(journal: Dict[str, Any]) -> None:
     safe_files.write_private_atomic(migration_path(), json.dumps(journal, indent=1, sort_keys=True))
 
 
+# The temporary names the stores' own atomic writes use besides
+# ".<file>.<random>.tmp" (tenant_profiles, deployments, change_queue,
+# workspace_notes, sync_jobs, self_heal), looked for in the data folder and
+# beside every store, whether or not that store's file exists now.
+_TEMP_PATTERNS = (".profiles-*", ".deployments-*", ".change_requests.*.tmp", ".workspace_notes.*.tmp", ".sync_jobs.*.tmp",
+                  ".selfheal-*.tmp")
+
+
+def _temp_files() -> List[str]:
+    """Every temporary copy a crashed write could have left beside a store."""
+    found = set()
+    places = [(_data_dir(), None)] + [os.path.split(e["path"]) for e in _store_paths()]
+    for folder, base in places:
+        pats = list(_TEMP_PATTERNS) + (["." + glob.escape(base) + ".*.tmp"] if base else [])
+        for pat in pats:
+            found |= {t for t in glob.glob(os.path.join(glob.escape(folder), pat)) if os.path.isfile(t)}
+    return sorted(found)
+
+
 def _remove_stale_temp_files(now: float) -> int:
-    """A crash in the middle of an older version's write can leave a plain
-    temporary copy (".<store>.<random>.tmp") beside a store; one older than
-    an hour is no write in progress, so it goes too (no plain copy stays)."""
+    """A crash in the middle of a write can leave a plain temporary copy
+    beside a store (".<store>.<random>.tmp", ".profiles-<random>",
+    ".deployments-<random>", ".selfheal-<random>.tmp"); one older than an
+    hour is no write in progress, so it goes too (no plain copy stays).
+    Run at every start, not only by the migration."""
     gone = 0
-    for e in _store_paths():
-        folder, base = os.path.split(e["path"])
-        for t in glob.glob(os.path.join(glob.escape(folder), "." + glob.escape(base) + ".*.tmp")):
-            try:
-                if now - os.path.getmtime(t) > STALE_TMP_SECONDS:
-                    os.unlink(t)
-                    gone += 1
-            except OSError:
-                pass
+    for t in _temp_files():
+        try:
+            if now - os.path.getmtime(t) > STALE_TMP_SECONDS:
+                os.unlink(t)
+                gone += 1
+        except OSError:
+            pass
     return gone
 
 
@@ -548,6 +612,23 @@ def _seal_one(path: str, rec: Dict[str, Any], kid: str, key: str) -> None:
         raise MigrationStopped(f"{os.path.basename(path)} did not read back after sealing; it was put back from the backup")
 
 
+def _backup_files() -> List[str]:
+    """The plain copies in the migration's backup folder."""
+    try:
+        return sorted(os.listdir(backup_dir()))
+    except OSError:
+        return []
+
+
+def _drop_sealed_backups(files: Dict[str, Dict[str, Any]]) -> None:
+    for rec in files.values():
+        if rec.get("sealed") and rec.get("backup"):
+            try:
+                os.unlink(os.path.join(backup_dir(), rec["backup"]))
+            except OSError:
+                pass
+
+
 def migrate(now: Optional[Callable[[], float]] = None) -> Dict[str, Any]:
     """Seal every store that is still plain, once, safely: a verified backup
     first, then each file sealed atomically and read back, with a journal so
@@ -559,6 +640,7 @@ def migrate(now: Optional[Callable[[], float]] = None) -> Dict[str, Any]:
         return {"status": "off", "files": 0, "message": ""}
     import safe_files
     with _LOCK:
+        _remove_stale_temp_files(clock())        # at every start: a plain temporary copy a crash left (older than an hour)
         journal = _load_journal() or {}
         resuming = journal.get("state") == "in_progress"
         todo = plain_stores()
@@ -589,6 +671,8 @@ def migrate(now: Optional[Callable[[], float]] = None) -> Dict[str, Any]:
                     raise MigrationStopped(f"the backup of {os.path.basename(path)} did not read back")
                 files[path] = {"backup": name, "sha256": _sha(text), "lines": bool(e["lines"]), "sealed": False}
         except (MigrationStopped, OSError, UnicodeDecodeError) as err:
+            if not resuming:
+                shutil.rmtree(bdir, ignore_errors=True)   # nothing sealed yet: the stores themselves are the plain copy
             return {"status": "stopped", "files": 0, "key": kid, "error": str(err),
                     "message": (f"Store encryption: existing stores were not encrypted ({err}); nothing was changed, they stay "
                                 "plain and readable, and it is tried again at the next start.")}
@@ -614,15 +698,28 @@ def migrate(now: Optional[Callable[[], float]] = None) -> Dict[str, Any]:
                 break
             _save_journal(journal)
         if stopped:
+            # The backup of a file that is sealed and read back is no longer
+            # needed: it goes, so only the files still plain have a plain copy.
+            _drop_sealed_backups(files)
             journal["last_error"] = stopped
             _save_journal(journal)
-            _audit("store_encryption_migration_stopped", files=len(files), reason=stopped[:200])
+            left = _backup_files()
+            _audit("store_encryption_migration_stopped", files=len(files), reason=stopped[:200], plaintext_backup_files=len(left))
             return {"status": "stopped", "files": sum(1 for r in files.values() if r.get("sealed")), "key": kid, "error": stopped,
+                    "plaintext_backup_files": len(left),
                     "message": ("Store encryption: the one-time encryption of existing stores stopped (" + stopped + "). Nothing was lost: "
-                                f"the files not yet encrypted are still plain and readable, and a backup is kept in {bdir}. "
-                                "It carries on at the next start.")}
+                                f"the files not yet encrypted are still plain and readable, and {bdir} keeps an UNENCRYPTED backup "
+                                f"of them ({len(left)} file(s)) until the migration finishes. It carries on at the next start.")}
         # 3. Every file reads back: remove the backup, the stale temporary copies and the per-file journal.
         shutil.rmtree(bdir, ignore_errors=True)
+        if os.path.exists(bdir):
+            err = f"the backup folder {bdir} could not be removed"
+            journal["last_error"] = err
+            _save_journal(journal)
+            _audit("store_encryption_migration_stopped", files=len(files), reason=err, plaintext_backup_files=len(_backup_files()))
+            return {"status": "stopped", "files": len(files), "key": kid, "error": err, "plaintext_backup_files": len(_backup_files()),
+                    "message": (f"Store encryption: every store is encrypted, but {err}: it still holds UNENCRYPTED copies. "
+                                "Remove it by hand, or it is tried again at the next start.")}
         _remove_stale_temp_files(clock())
         n = len(files)
         _save_journal({"state": "done", "key": kid, "files": n, "finished": int(clock())})
@@ -647,7 +744,12 @@ def unseal_all() -> Dict[str, Any]:
             text = _read_text(e["path"])
             if not any(is_sealed(ln) for ln in (text.splitlines() if e["lines"] else [text])):
                 continue
-            plain = _plain_view(text, e["lines"])     # StoreLocked stops here, before this file is touched
+            try:
+                plain = _plain_view(text, e["lines"])     # StoreLocked stops here, before this file is touched
+            except StoreLocked:
+                if not e.get("copy"):
+                    raise
+                continue                                  # a damaged copy self-healing kept: left as it is
             safe_files.write_private_atomic(e["path"], plain)
             if _read_text(e["path"]) != plain:
                 raise OSError(f"{os.path.basename(e['path'])} did not read back")
@@ -664,6 +766,11 @@ def migration_status() -> Dict[str, Any]:
     elif j.get("state") == "in_progress":
         out.update(files=len(j.get("files") or {}), sealed=sum(1 for r in (j.get("files") or {}).values() if r.get("sealed")),
                    last_error=j.get("last_error"), backup_dir=j.get("backup_dir"))
+    left = _backup_files()
+    if left:
+        out.update(plaintext_backup_files=len(left), backup_dir=backup_dir(),
+                   plaintext_backup=(f"{backup_dir()} holds an UNENCRYPTED backup of {len(left)} store file(s) until the "
+                                     "one-time encryption finishes"))
     return out
 
 
@@ -683,12 +790,26 @@ def startup(log: Callable[[str], None] = print) -> Dict[str, Any]:
     return out
 
 
+def _where_kept() -> str:
+    """Where the key ring IS ("credential store" or "key file"), read, not
+    guessed; where a new one would go when there is none yet."""
+    kr = _keyring()
+    if kr is not None and not key_file_chosen():
+        ring, _problem = _read_keyring_ring(kr)
+        if ring:
+            return "credential store"
+    if os.path.isfile(key_file()):
+        return "key file"
+    return "credential store" if kr is not None and not key_file_chosen() else "key file"
+
+
 def status() -> Dict[str, Any]:
     ring = _load_ring()
     problem = _KEY_PROBLEM["problem"]
+    where = _where_kept()
     return {"enabled": enabled(), "default": not os.environ.get(SETTING, "").strip(), "key": ring.get("current") or None,
-            "keys_held": len(ring["keys"]), "kept_in": "credential store" if _keyring() is not None else "key file",
-            "key_file": None if _keyring() is not None else key_file(), "algorithm": "AES-256-GCM",
+            "keys_held": len(ring["keys"]), "kept_in": where,
+            "key_file": key_file() if where == "key file" else None, "algorithm": "AES-256-GCM",
             "sealing": enabled() and not problem, "problem": problem, "migration": migration_status()}
 
 

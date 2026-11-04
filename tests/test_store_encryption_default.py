@@ -7,8 +7,8 @@ store where there is one and in the owner-only key file where there is not
 (the container's /data, a headless Linux); a key ring that cannot be read is
 never replaced; no plain copy is left behind; rotation still works.
 
-tests/conftest.py runs the suite with the setting at 0; every test here
-removes it (the shipped default) unless it tests the opt-out. No network,
+tests/conftest.py runs the suite with the shipped default (on); every test
+here also removes the setting (default_on) unless it tests the opt-out. No network,
 no real credential store (a fake keyring module where one is needed)."""
 from __future__ import annotations
 
@@ -267,6 +267,85 @@ def test_the_migration_removes_an_old_plain_temporary_copy_but_not_a_write_in_pr
     assert not os.path.exists(stale) and os.path.exists(fresh)
 
 
+def _old(path, when=1_000_000):
+    os.utime(path, (when, when))
+    return path
+
+
+def test_every_kind_of_plain_temporary_copy_goes_at_every_start(default_on):
+    """ASVS V8.3.4 · CWE-459 · CWE-312: the stores' real temporary names (".profiles-*", ".deployments-*", ".<store>.*.tmp", ".selfheal-*.tmp") are removed when stale, at every start and not only by the migration; a fresh one stays."""
+    _profile("Tempco")
+    folder = _data_dir()
+    stale = [os.path.join(folder, n) for n in (".profiles-abc123", ".deployments-abc123", ".change_requests.ab12.tmp", ".selfheal-ab12.tmp")]
+    fresh = os.path.join(folder, ".profiles-def456")
+    for p in stale + [fresh]:
+        with open(p, "w", encoding="utf-8") as f:
+            f.write('{"name": "Secretco"}')
+        _old(p)
+    _old(fresh, 1_007_000)
+    assert store_crypto.migrate(now=lambda: 1_008_000.0)["status"] == "nothing"     # nothing plain to seal, yet the leftovers go
+    assert [p for p in stale if os.path.exists(p)] == [] and os.path.exists(fresh)
+
+
+def test_a_damaged_copy_self_healing_kept_is_sealed_like_its_store(default_on, monkeypatch):
+    """ASVS V6.1.1 · V8.3.4 · CWE-312 · WSTG-CRYP-04: a plain "<store>.corrupt-<time>" copy is sealed by the upgrade (it opens to what it held), so no plain copy stays."""
+    pid = _fill_stores_plain(monkeypatch)
+    copy = tenant_profiles.store_path() + ".corrupt-20261101-000000"
+    with open(copy, "w", encoding="utf-8") as f:
+        f.write('{"profiles": {"x": {"name": "Secretco"')     # damaged: not even JSON
+    out = store_crypto.migrate()
+    assert out["status"] == "done"
+    raw = open(copy, encoding="utf-8").read()
+    assert raw.startswith("ZMEENC1:") and store_crypto.open_text(raw).endswith('"Secretco"')
+    assert _no_plain_anywhere() == []
+    _read_everything(pid)
+
+
+def test_rotation_keeps_an_old_key_a_file_still_names(default_on, monkeypatch):
+    """ASVS V6.4.2 · CWE-320 · CWE-404: a sealed damaged copy that cannot be re-sealed (it does not open) keeps its key through a rotation instead of becoming unreadable for good; with nothing left on the old key it is forgotten (test_rotation_still_works_...)."""
+    _profile("Rotco")
+    old = store_crypto._load_ring()["current"]
+    copy = tenant_profiles.store_path() + ".corrupt-20261101-000000"
+    with open(copy, "w", encoding="utf-8") as f:
+        f.write(f"ZMEENC1:{old}:AAAA")                       # sealed with the current key, but damaged
+    out = store_crypto.rotate()
+    assert out["old_keys_kept"] == [old]
+    ring = store_crypto._load_ring()
+    assert ring["current"] == out["new_key"] and set(ring["keys"]) == {old, out["new_key"]}
+    assert open(copy, encoding="utf-8").read() == f"ZMEENC1:{old}:AAAA"     # left exactly as self-healing kept it
+    assert tenant_profiles.get("rotco")["name"] == "Rotco"
+
+
+def test_a_backup_folder_that_cannot_be_removed_is_reported_not_called_removed(default_on, monkeypatch):
+    """ASVS V8.3.4 · CWE-459 · CWE-312 · CWE-390: when the backup folder survives its removal the migration says "stopped", names the unencrypted copies, and the status says so; the next start removes it and finishes."""
+    pid = _fill_stores_plain(monkeypatch)
+    real = store_crypto.shutil.rmtree
+    monkeypatch.setattr(store_crypto.shutil, "rmtree", lambda *a, **k: None)
+    out = store_crypto.migrate()
+    assert out["status"] == "stopped" and "UNENCRYPTED" in out["message"] and "removed" not in out["message"].split(":")[0]
+    assert out["plaintext_backup_files"] > 0 and store_crypto.migration_status()["plaintext_backup_files"] == out["plaintext_backup_files"]
+    _read_everything(pid)
+    monkeypatch.setattr(store_crypto.shutil, "rmtree", real)
+    assert store_crypto.migrate()["status"] == "done"
+    assert not os.path.exists(store_crypto.backup_dir()) and "plaintext_backup" not in store_crypto.migration_status()
+
+
+def test_a_stopped_migration_keeps_a_plain_backup_only_of_what_is_not_sealed_and_says_so(default_on, monkeypatch):
+    """ASVS V8.3.4 · CWE-312 · CWE-459: an audit line sealed with a key that is not here stops the migration at every start; the backups of the files already sealed are dropped, and the message, the status and the Team page say an unencrypted backup is kept."""
+    pid = _fill_stores_plain(monkeypatch)
+    with open(audit.path(), "a", encoding="utf-8") as f:
+        f.write("ZMEENC1:deadbeef:AAAA\n")
+    out = store_crypto.migrate()
+    assert out["status"] == "stopped" and "UNENCRYPTED backup" in out["message"]
+    left = os.listdir(store_crypto.backup_dir())
+    assert 0 < len(left) < out["files"] + len(left) and not any(n.endswith("tenant_profiles.json") for n in left)
+    st = store_crypto.status()["migration"]
+    assert st["plaintext_backup_files"] == len(left) and "UNENCRYPTED" in st["plaintext_backup"]
+    assert tenant_profiles.get(pid)["name"] == "Secretco"
+    team = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "report_team.html"), encoding="utf-8").read()
+    assert "plaintext_backup" in team and "E(data.stores.migration.plaintext_backup)" in team
+
+
 # ── the key: credential store, key file fallback, never replaced blind ──
 def _fake_keyring(monkeypatch, *, fail_backend=False, locked=False):
     store = {}
@@ -333,6 +412,27 @@ def test_the_default_key_file_lives_with_the_data_in_the_container_and_the_no_in
     standalone_main.configure(env, str(tmp_path / "userdata"))
     monkeypatch.setenv("DLP_CHECK_PROFILES", env["DLP_CHECK_PROFILES"])
     assert os.path.dirname(store_crypto.key_file()) == os.path.dirname(env["DLP_CHECK_PROFILES"])
+
+
+def test_the_status_says_where_the_key_is_not_where_it_would_go(default_on, monkeypatch):
+    """ASVS V6.4.1 · CWE-1059 · CWE-451: a ring kept in the key file is reported as in the key file even after a credential store appears."""
+    _profile("Whereco")
+    assert os.path.isfile(store_crypto.key_file())
+    _fake_keyring(monkeypatch)
+    st = store_crypto.status()
+    assert st["kept_in"] == "key file" and st["key_file"] == store_crypto.key_file()
+
+
+def test_a_key_file_the_operator_named_is_never_moved_or_deleted(default_on, monkeypatch, tmp_path):
+    """ASVS V6.4.1 · CWE-321 · CWE-404: with DLP_CHECK_STORE_KEY_FILE set, a credential store that appears later does not take the key, and a rotation keeps the ring in that file."""
+    where = tmp_path / "keys" / "store_keys.json"
+    monkeypatch.setenv("DLP_CHECK_STORE_KEY_FILE", str(where))
+    _profile("Namedco")
+    store = _fake_keyring(monkeypatch)
+    out = store_crypto.rotate()
+    assert where.is_file() and json.loads(where.read_text(encoding="utf-8"))["current"] == out["new_key"]
+    assert out["kept_in"] == "key file" and store == {} and store_crypto.status()["kept_in"] == "key file"
+    assert tenant_profiles.get("namedco")["name"] == "Namedco"
 
 
 def test_a_locked_credential_store_is_never_replaced_by_a_new_key(default_on, monkeypatch):
@@ -411,3 +511,13 @@ def test_install_security_and_help_document_the_default_the_opt_out_and_the_key(
         assert "unseal-all" in text
     assert "Encrypted stores" in install
     assert "on by default" in help_js and "DLP_CHECK_STORE_ENCRYPTION=0" in help_js
+
+
+def test_the_docs_say_where_the_key_and_any_plain_backup_really_are():
+    """ASVS V14.1.1 · CWE-1059 · CWE-312: SECURITY.md says the default Linux and container key sits beside the data (a copy of the folder carries it) and that a stopped migration keeps an unencrypted backup; INSTALL.md notes the macOS Keychain prompt after an update."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sec = " ".join(open(os.path.join(root, "SECURITY.md"), encoding="utf-8").read().split())
+    assert "In the default Linux and container setup the key file sits in that same folder or volume" in sec
+    assert "A migration that stops keeps an unencrypted backup" in sec and "store-encryption-backup/" in sec
+    inst = " ".join(open(os.path.join(root, "INSTALL.md"), encoding="utf-8").read().split())
+    assert "Always Allow" in inst and "unencrypted" in inst and "never moved or deleted" in inst
