@@ -7,6 +7,14 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-04
+
+### POV follow-ups: the whole POV build simulates, more of the sample tenant, the sign-in screens tested, lighter glass
+- **Simulate the whole POV build.** *Apply to a simulation* on the POV page stopped at Cloud App Control and the ZPA policy rules (the offline tenant could not hold them), so a rehearsed build was only half simulated. Every part now applies to the in-memory copy and reads back there, on the sample tenant and on a snapshot: the ZIA baseline with Cloud App Control (a rule id is now one number space across rule types, as ZIA keeps it), SSL certificates, the ZPA connector group, app segments and policy rules (the copy answers each policy type's policy set and keeps its rules), Client Connector profiles, ZDX probes (a predefined app gets the probes ZDX adds for it) and AI Guard routing and detection. A simulation of a snapshot has no URL lookup, as the snapshot has none, so the plan reads the same on it. A live tenant is still refused before anything is built (409), and nothing is written to the sample or a snapshot.
+- **PRA credential pools and ZPA isolation profiles in the sample tenant.** The made-up tenant has a credential pool (its credential named by id and name only, no secret) and a ZPA isolation profile matching its ZIA one, so a backup holds both, the PRA credential check sees the pool, and a restore points rules at the target's pool and profile by name.
+- The Team server page and the sign-in screens are now tested in a real browser: sign-in by keyboard alone, labels and help marks, 320px, light and dark contrast, the SAML and passkey settings open to an administrator, locked when the server's settings set SAML, absent for a viewer, and the passkey step after a password. Two problems they found are fixed: the SAML form on the Team server page scrolled sideways on a phone, and "Or type the identity provider's values" had no help.
+- **Lighter glass on slow computers.** On a computer without a graphics card the glass pages drew only a few frames a second. Measured on two processor cores, the backdrop's slow drift re-drew every blurred layer about fifteen times a second with nothing moving, and each scrolled frame re-blurred every card. The drift now steps once a second on both layers together (about a pixel a step), and while the page scrolls the cards and the hero in the page flow drop their blur (only the soft backdrop is behind them, so they look the same) and the drift holds; floating bars, the sidebar and dialogs keep theirs. On the Team server page that cut the drawing time about four times at rest and in half while scrolling. Reduced transparency and reduced motion work as before.
+
 ## 2026-11-01
 
 ### Pages stay quick: no piled-up scans, no "Rate limit exceeded" on your own pages
