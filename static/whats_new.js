@@ -33,14 +33,23 @@ window.WHATS_NEW = {
     {
       "id": "dataflow-simple-view", "release": "2026-11-04", "label": "Data flow map: simple view",
       "what": "The data flow map opens on one path as numbered steps, with a legend beside it, the details of one step at a time and a walk-through. Show all details has the full map.",
-      "changelog": ["Simple view by default", "Walk me through it"],
-      "marks": [{ "page": "/report/dataflow", "at": "#dfViewSimple", "shown": "after the map is drawn" }]
+      "changelog": ["Simple view by default", "A legend beside the steps", "Walk me through it", "Show all details"],
+      "marks": [
+        { "page": "/report/dataflow", "at": "#dfViewSimple", "shown": "after the map is drawn" },
+        { "page": "/", "at": "button[onclick=\"openDataFlowTab()\"]" }
+      ]
     },
     {
       "id": "dataflow-uploads", "release": "2026-11-04", "label": "Where your uploads really go",
       "what": "With ZIA Insights in scope, the data flow map shows how much of the data your users uploaded takes each road, and where it is not checked.",
       "changelog": ["Where your uploads really go"],
       "marks": [{ "page": "/report/dataflow", "at": "#dfsTrafficH", "shown": "after the map is drawn" }]
+    },
+    {
+      "id": "bypass-motion-opt-in", "release": "2026-11-04", "label": "Bypass picture starts still",
+      "what": "The Bypass report's picture starts still: its widths count bypass items, not traffic. Play motion starts it.",
+      "changelog": ["The Bypass report's picture starts still too"],
+      "marks": [{ "page": "/report/bypass", "at": "#bpFlowH", "shown": "after the report is drawn" }]
     },
     {
       "id": "team-saml", "release": "2026-11-01", "label": "SAML 2.0 sign-in",
@@ -213,7 +222,7 @@ window.WHATS_NEW = {
     {
       "id": "fix-flow-url", "release": "2026-11-01", "label": "URL filtering in Fix rows from Test a list",
       "what": "Fix selected puts URL filtering rows in a custom URL category and adds that category to a matching rule, or to a new disabled rule above the rule that decided them; the preview warns when the category alone changes nothing.",
-      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing"],
+      "changelog": ["URL filtering in Fix rows from Test a list", "The category alone changes nothing", "Fix rows from Test a list"],
       "marks": [{ "page": "/report/operations", "at": "select[id^=\"lfCat\"]", "shown": "after Read from the tenant, with URL filtering rows" }]
     },
     {
