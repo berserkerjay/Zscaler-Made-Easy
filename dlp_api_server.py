@@ -3440,10 +3440,20 @@ async def other_products_export(report_id: str, format: str = "xlsx"):
 
 
 # ── Device posture (read-only) ───────────────────────────────────────
-# device_posture reads ZPA through zpa_reader (plus the Client Connector
-# trusted networks when Client Connector is in scope too), classifies the
-# posture profiles, links them to the access rules and says each rule's
-# conditions in plain words. Kept as a "posture-" report for the exports.
+# Device posture is defined in Client Connector and used by ZPA (posture
+# conditions in access rules) and ZIA (the device trust level Client
+# Connector works out from a ZIA posture profile). device_posture reads ZPA
+# through zpa_reader; posture_cross reads Client Connector and the ZIA rules
+# and builds the one view across them. Each product is read only when it is
+# ticked on the Scope page; one that cannot be read (not licensed, no
+# customer ID, no role) is shown as such on the page, never as an error.
+# Kept as a "posture-" report for the exports.
+DEVICE_POSTURE_NOT_IN_SCOPE = ("Device posture is not in scope: on the Scope page tick ZPA, ZCC / Mobile Portal or ZIA platform (any of them: "
+                               "posture is defined in Client Connector and used by ZPA and ZIA rules), then run it again. Nothing was read.")
+DEVICE_POSTURE_NEEDS_ONEAPI = ("Device posture needs a ZIdentity (OneAPI) API client: Client Connector and ZPA are not reachable with the "
+                               "classic ZIA API. Sign in with an OneAPI API client, then run it again. Nothing was read.")
+
+
 @app.get("/report/device-posture")
 async def report_device_posture_page():
     """Device posture (static/report_device_posture.html)."""
@@ -3459,11 +3469,13 @@ def _posture_report(rid: str) -> Optional[Dict[str, Any]]:
     return rep if rep and str(rid).startswith("posture-") else None
 
 
-def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, scope: Dict[str, Any], zcc: bool) -> Dict[str, Any]:
-    """Read ZPA once (and the Client Connector trusted networks with `zcc`),
-    then build the device posture report. Stop ends it as stopped with
+def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, scope: Dict[str, Any], zpa_problem: str = "") -> Dict[str, Any]:
+    """Read each product in scope (ZPA, Client Connector, ZIA), then build
+    the device posture report across them. A product that cannot be read
+    is reported in `products`, never raised. Stop ends it as stopped with
     nothing more read and nothing kept."""
     import device_posture
+    import posture_cross
     import zpa_reader
     logs: list = []
 
@@ -3473,27 +3485,37 @@ def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, 
         if log:
             log(line)
 
+    scopes = list(scope.get("scopes") or [])
     if scope.get("source"):
-        _log(f"In scope, from {scope['source']}: ZPA{' and Client Connector' if zcc else ''}.")
+        names = [w for k, w in (("zpa", "ZPA"), ("zcc", "Client Connector"), ("zia_extras", "ZIA")) if k in scopes]
+        _log(f"In scope, from {scope['source']}: {', '.join(names)}.")
     try:
-        snap, raw, zout = device_posture.read(client, log=_log, cancel=cancel, zcc=zcc)
+        data = posture_cross.read_all(client, scopes, zpa_problem=zpa_problem, log=_log, cancel=cancel)
     except zpa_reader.Stopped as e:
         return {"stopped": str(e), "status": "stopped", "tenant_label": label, "logs": logs}
-    except zpa_reader.ReadError as e:
-        raise RuntimeError(tenant_auth.mask_secrets(str(e), creds))
     if cancel is not None and cancel.is_set():
-        _log("STOPPED — you clicked Stop; the ZPA read was abandoned and is not kept.")
+        _log("STOPPED — you clicked Stop; the read was abandoned and is not kept.")
         return {"stopped": zpa_reader.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    zr = data.get("zpa")
+    snap = zr["snap"] if zr else {"collections": {}, "policies": {}, "read_at": time.time()}
+    raw = zr["raw"] if zr else {}
     cols = snap.get("collections") or {}
     for v in cols.values():
         if v.get("error"):
             v["error"] = tenant_auth.mask_secrets(v["error"], creds)
+    zout = ((data.get("zcc") or {}).get("networks")) or {"read": False, "networks": [], "reason": (
+        "Client Connector is not ticked on the Scope page, so its trusted networks were not read.")}
     zout["reason"] = tenant_auth.mask_secrets(zout.get("reason") or "", creds)
+    data["zpa_error"] = tenant_auth.mask_secrets(data.get("zpa_error") or "", creds)
     rep = device_posture.analyze(snap, raw.get("posture_profiles"), raw.get("trusted_networks"), zout)
-    report = dict(rep, kind="posture", read_at=snap.get("read_at"), collections=cols, readable=zpa_reader.readable(snap))
+    rep = posture_cross.attach(rep, data)
+    for prod in (rep.get("products") or {}).values():
+        prod["reason"] = tenant_auth.mask_secrets(prod.get("reason") or "", creds)
+    report = dict(rep, kind="posture", read_at=snap.get("read_at"), collections=cols, readable=zpa_reader.readable(snap) if zr else None)
     rid = _remember_report("posture", report, label)
-    _log(f"Done: {rep['counts']['profiles']} posture profile(s), {rep['counts']['access_rules']} access rule(s), "
-         f"{rep['counts']['findings']} finding(s).")
+    c = rep["counts"]
+    _log(f"Done: {c['profiles']} device posture check(s), {c.get('cross_zia_postures', 0)} ZIA posture profile(s), "
+         f"{c['access_rules']} ZPA access rule(s), {c.get('cross_zia_rules_with_trust', 0)} ZIA rule(s) using the trust level, {c['findings']} finding(s).")
     out = dict(_REPORTS[rid])
     out["logs"] = logs
     return out
@@ -3501,15 +3523,30 @@ def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, 
 
 @app.post("/api/device-posture/start")
 async def device_posture_start(req: ZpaAnalysisRequest, request: Request):
-    """Read the ZPA posture profiles, trusted networks and access rules
-    (only when ZPA is ticked on the Scope page; the Client Connector
-    trusted networks too when Client Connector is ticked) as a job the page
-    follows. Read-only. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    """Read device posture across products as a job the page follows: ZPA's
+    posture profiles, trusted networks and access rules (ZPA ticked),
+    Client Connector's ZIA posture profiles, app profiles and trusted
+    networks (ZCC ticked) and the ZIA rules that can use the device trust
+    level (ZIA platform ticked). Read-only. 400 before sign-in when none of
+    them is in scope, or when ZPA alone is and cannot be read. Poll
+    GET /api/dlp-packs/jobs/{job_id}."""
     import pack_jobs
-    scope = _zpa_scope(req, "Device posture")          # before signing in (user rule 1)
-    zcc = "zcc" in (scope.get("scopes") or [])
-    client, label, creds = await _zpa_client(req)
-    job = pack_jobs.start("posture", lambda log, cancel: _run_device_posture(client, label, creds, log, cancel, scope, zcc),
+    sel = _scope_selection(req)
+    scopes = [s for s in sel[0] if s in ("zpa", "zcc", "zia_extras")]
+    if not scopes:                                     # before signing in (user rule 1)
+        raise HTTPException(status_code=400, detail=DEVICE_POSTURE_NOT_IN_SCOPE)
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=DEVICE_POSTURE_NEEDS_ONEAPI)
+    zpa_problem = ""
+    if "zpa" in scopes and not validate_customer_id(creds.get("customer_id") or ""):
+        if scopes == ["zpa"]:
+            raise HTTPException(status_code=400, detail=ZPA_NEEDS_CUSTOMER_ID)
+        zpa_problem = "the ZPA customer ID is missing (Connect to the tenant → Customer ID), so nothing was read from ZPA."
+    scope = {"scopes": scopes, "source": sel[2]}
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("posture", lambda log, cancel: _run_device_posture(client, label, creds, log, cancel, scope, zpa_problem),
                           label="Device posture", actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
@@ -15057,7 +15094,10 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
     # 4. User device: ZPA first
     if zst is None and zsnap is not None:
         _log("Placing the destination in ZPA: application segment, bypass, client forwarding, access policy…")
-        zst = zpa_path.stage(zsnap, d, network=req.network, platform=req.platform, profiles=profiles, identity=zident)
+        # The device's posture, when given on the page (identity.device.posture_pass): the posture profiles it passes.
+        dev_in = (req.identity or {}).get("device") if isinstance(req.identity, dict) else None
+        zposture = zpa_path.given_posture(zsnap, dev_in.get("posture_pass")) if isinstance(dev_in, dict) and dev_in.get("posture_pass") else None
+        zst = zpa_path.stage(zsnap, d, network=req.network, platform=req.platform, profiles=profiles, identity=zident, posture=zposture)
         _log("ZPA: " + zst["headline"])
     if zst is not None and zst.get("carries") is True:
         res = zpa_path.standalone(zst["hops"], zst["modules"], outcome=zst["outcome"], headline=zst["headline"], summary=zst["summary"],

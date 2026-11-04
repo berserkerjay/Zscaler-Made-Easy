@@ -320,6 +320,12 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     # others are skipped; the PAC file is evaluated by pac_eval, never run.
     import path_whatif
     ident = path_whatif.normalize_identity(identity)
+    # The device you picked: the trust level Client Connector reports for it
+    # (getDeviceDetails deviceTrust) is a condition of the ZIA rules that use
+    # one, unless you chose a trust level yourself.
+    dev_trust = path_whatif.trust_level(((device or {}).get("details") or {}).get("device_trust")) if device else None
+    if dev_trust and not (ident or {}).get("device_trust"):
+        ident = dict(ident or {"user": None, "groups": [], "department": None, "location": None}, device_trust=dev_trust, device_trust_from="device")
     zia_t, wcounts = path_whatif.apply_identity(zia, ident)
     # Microsoft's published Microsoft 365 endpoint list, for the rules that
     # name app services (app_services): the one kept, or for the sample

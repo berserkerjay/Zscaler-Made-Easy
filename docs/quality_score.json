@@ -491,7 +491,7 @@
     }
   ],
   "counts": {
-    "findings": 779,
+    "findings": 780,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -505,7 +505,7 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 198,
+        "fixed": 199,
         "accepted": 0
       },
       "low": {
@@ -520,12 +520,12 @@
       }
     },
     "checks": {
-      "pass": 729,
+      "pass": 734,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11827
+    "tests_added": 11871
   },
   "findings": [
     {
@@ -4815,6 +4815,22 @@
       "slug": "w9-team-auth",
       "area": "secure_by_design",
       "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W10-DP-01",
+      "title": "Device posture refused to read unless ZPA was ticked and readable (400 'tick ZPA' or the customer ID error), although posture is defined in Client Connector and used by ZIA too: a tenant scoping Client Connector and ZIA saw only an error",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "dlp_api_server.device_posture_start / _run_device_posture, posture_cross.read_all and statuses",
+      "test": "tests/test_device_posture_cross.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-device-posture",
+      "area": "other",
+      "sub_area": "other"
     },
     {
       "id": "W10-NC-06",
@@ -13923,6 +13939,29 @@
       "tests_added": 35
     },
     {
+      "slug": "w10-device-posture",
+      "area": "Device posture across products (posture_cross.py, device_posture.py, the /api/device-posture routes, static/report_device_posture.html) and the Path analyzer's device posture what-if (path_whatif.py, zpa_path.py)",
+      "title": "Device posture reads Client Connector, ZPA and ZIA and shows one product that cannot be read as such, never as an error; one cross-product view with its gaps; the device's trust level and posture as Path analyzer conditions",
+      "standards": [
+        "ASVS V1.4.1",
+        "ASVS V1.14.1",
+        "ASVS V5.1.3",
+        "ASVS V7.4.1",
+        "ASVS V14.4.2",
+        "CWE-20",
+        "CWE-116",
+        "CWE-754",
+        "CWE-755",
+        "CWE-863",
+        "CWE-1059",
+        "WCAG 2.2 SC 1.3.1",
+        "WCAG 2.2 SC 3.3.5"
+      ],
+      "checks": 5,
+      "findings": 1,
+      "tests_added": 44
+    },
+    {
       "slug": "w10-native-click",
       "area": "UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page",
       "title": "Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s",
@@ -15298,7 +15337,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 138,
+    "asvs_requirements": 139,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -15675,6 +15714,6 @@
     ]
   },
   "warnings": [
-    "Records with no area in the formula: w10-tf-validate. Their open findings still count toward the cap."
+    "Records with no area in the formula: w10-device-posture, w10-tf-validate. Their open findings still count toward the cap."
   ]
 }

@@ -1,0 +1,65 @@
+{
+ "area": "Device posture across products (posture_cross.py, device_posture.py, the /api/device-posture routes, static/report_device_posture.html) and the Path analyzer's device posture what-if (path_whatif.py, zpa_path.py)",
+ "title": "Device posture reads Client Connector, ZPA and ZIA and shows one product that cannot be read as such, never as an error; one cross-product view with its gaps; the device's trust level and posture as Path analyzer conditions",
+ "standards": [
+  "ASVS V1.4.1",
+  "ASVS V1.14.1",
+  "ASVS V5.1.3",
+  "ASVS V7.4.1",
+  "ASVS V14.4.2",
+  "CWE-20",
+  "CWE-116",
+  "CWE-754",
+  "CWE-755",
+  "CWE-863",
+  "CWE-1059",
+  "WCAG 2.2 SC 1.3.1",
+  "WCAG 2.2 SC 3.3.5"
+ ],
+ "checks": [
+  {
+   "id": "W10-DP-C01",
+   "what": "Client Connector and ZIA ticked, ZPA not (the sample tenant): the job reads and reports; ZPA says Not in scope",
+   "standard": "ASVS V7.4.1 \u00b7 CWE-755",
+   "result": "pass"
+  },
+  {
+   "id": "W10-DP-C02",
+   "what": "ZPA's posture list refused, empty, or every ZPA list refused (401), or company info says ZPA is off: partly read / missing checks / not readable / not licensed, with why; nothing raises",
+   "standard": "ASVS V7.4.1 \u00b7 CWE-755 \u00b7 CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W10-DP-C03",
+   "what": "Each device posture check links to the ZPA rules and the ZIA posture profiles (trust levels) that use it; each ZIA posture profile to its app profiles and the ZIA rules using the trust level",
+   "standard": "ASVS V1.14.1 \u00b7 CWE-1059",
+   "result": "pass"
+  },
+  {
+   "id": "W10-DP-C04",
+   "what": "Gaps XP-01..XP-08; what could not be read is unknown, never a pass or a gap",
+   "standard": "ASVS V1.14.1 \u00b7 CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W10-DP-C05",
+   "what": "Path analyzer: a ZIA rule's deviceTrustLevels is evaluated against the given (or picked device's) trust level; ZPA posture conditions against the checks the device passes",
+   "standard": "ASVS V1.14.1 \u00b7 CWE-863",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W10-DP-01",
+   "title": "Device posture refused to read unless ZPA was ticked and readable (400 'tick ZPA' or the customer ID error), although posture is defined in Client Connector and used by ZIA too: a tenant scoping Client Connector and ZIA saw only an error",
+   "severity": "medium",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "dlp_api_server.device_posture_start / _run_device_posture, posture_cross.read_all and statuses",
+   "test": "tests/test_device_posture_cross.py",
+   "commit": ""
+  }
+ ],
+ "tests_added": 44
+}

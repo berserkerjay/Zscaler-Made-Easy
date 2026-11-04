@@ -222,6 +222,10 @@ URL_FILTERING_RULES = [
      "urlCategories": ["FILE_HOST"], "protocols": ["ANY_RULE"], "requestMethods": []},
     {"id": 603, "order": 3, "rank": 7, "name": "Allow partner portals", "state": "ENABLED", "action": "ALLOW", "urlCategories": ["CUSTOM_01"],
      "protocols": ["ANY_RULE"], "requestMethods": []},
+    # Device posture across products: a rule that uses the trust level Client Connector works out
+    # from the ZIA posture profile (deviceTrustLevels, SDK models/url_filtering_rules.py).
+    {"id": 604, "order": 4, "rank": 7, "name": "Block personal webmail on untrusted devices", "state": "ENABLED", "action": "BLOCK",
+     "urlCategories": ["WEB_MAIL"], "protocols": ["ANY_RULE"], "requestMethods": [], "deviceTrustLevels": ["LOW_TRUST", "UNKNOWN_DEVICETRUSTLEVEL"]},
 ]
 SSL_RULES = [
     {"id": 701, "order": 1, "rank": 7, "name": "Zscaler Recommended Exemptions", "state": "ENABLED", "predefined": True, "defaultRule": False,
@@ -451,7 +455,7 @@ ISOLATION_PROFILES = [{"id": "iso-1", "name": "Larkspur isolation", "url": "http
 # WebPolicy model (assumed: the readers ask for it, and a device reports it).
 APP_PROFILES = [
     {"id": 1201, "name": "Windows - Corporate", "device_type": 3, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
-     "strictEnforcement": 1, "logLevel": 0, "windowsPolicy": {"install_ssl_certs": 1, "disableLoopBackRestriction": 0},
+     "ziaPostureConfigId": 81, "strictEnforcement": 1, "logLevel": 0, "windowsPolicy": {"install_ssl_certs": 1, "disableLoopBackRestriction": 0},
      "policyExtension": {"enableZdpService": "1", "packetTunnelExcludeList": "10.0.0.0/8"}, "groups": [], "users": []},
     {"id": 1202, "name": "macOS - Corporate", "device_type": 4, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
      "strictEnforcement": 1, "macPolicy": {"installCerts": 1}, "policyExtension": {"enableZdpService": "0"}, "groups": [], "users": []},
@@ -520,11 +524,18 @@ NOTIFICATION_TEMPLATES = [
      "zpaNotificationTemplate": {"enableDevicePostureFailure": True, "enableZpaReauth": True, "zpaReauthIntervalInMinutes": 60,
                                  "delayPostureFailureSeconds": 5}},
 ]
+# The device posture each one names is a Client Connector device posture check (udid: the posture
+# UDID ZPA reads it by, POSTURE_PROFILES below). The Windows corporate app profile picks profile 81
+# (ziaPostureConfigId); the macOS one picks none, and profile 82 is used by no app profile.
 ZIA_POSTURE_PROFILES = [
     {"id": 81, "name": "Larkspur laptops (Windows)", "platform": 3,
-     "highTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled"}, {"id": "5", "name": "Full disk encryption"}]}]},
-     "mediumTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled"}]}]},
+     "highTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled", "udid": "a1b2c3d4-0000-4000-8000-000000002701"},
+                                          {"id": "5", "name": "Full disk encryption", "udid": "a1b2c3d4-0000-4000-8000-000000002702"}]}]},
+     "mediumTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled", "udid": "a1b2c3d4-0000-4000-8000-000000002701"}]}]},
      "lowTrustCriteria": {"cs": []}},
+    {"id": 82, "name": "Driver phones (iOS)", "platform": 1,
+     "highTrustCriteria": {"cs": [{"cn": [{"id": "9", "name": "Not jailbroken", "udid": "a1b2c3d4-0000-4000-8000-000000002709"}]}]},
+     "mediumTrustCriteria": {"cs": []}, "lowTrustCriteria": {"cs": []}},
 ]
 DEVICE_CLEANUP = {"id": 1, "active": 1, "autoRemovalDays": 30, "autoPurgeDays": 60, "deviceExceedLimit": 16}
 

@@ -10,7 +10,7 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17 skipped, 3071 s.
 
-- Records with no area in the formula: w10-tf-validate. Their open findings still count toward the cap.
+- Records with no area in the formula: w10-device-posture, w10-tf-validate. Their open findings still count toward the cap.
 
 ## Scores by area
 
@@ -32,7 +32,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
 | high | 0 | 20 | 0 |
-| medium | 0 | 198 | 0 |
+| medium | 0 | 199 | 0 |
 | low | 2 | 435 | 3 |
 | info | 0 | 71 | 50 |
 
@@ -829,6 +829,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 
 | Id | Title | Severity | CWE | ASVS | Status | Sub-area | Fix or reason | Test |
 |---|---|---|---|---|---|---|---|---|
+| W10-DP-01 | Device posture refused to read unless ZPA was ticked and readable (400 'tick ZPA' or the customer ID error), although posture is defined in Client Connector and used by ZIA too: a tenant scoping Client Connector and ZIA saw only an error | medium | CWE-755 | V7.4.1 | fixed | Other | dlp_api_server.device_posture_start / _run_device_posture, posture_cross.read_all and statuses | tests/test_device_posture_cross.py |
 | W10-TF-01 | An object skipped for a missing required argument kept its address, so a resource rendered earlier referred to a resource the workspace never declared (terraform validate: Reference to undeclared resource) | medium | CWE-1357 | V14.2.1 | fixed | Other | a dry run drops the address of every object that cannot be written before any resource is rendered; references fall back to a lookup by name or the id | tests/test_tenant_terraform.py::test_every_reference_in_the_sample_export_names_a_resource_its_workspace_declares |
 | W10-TF-02 | Cloud Connector forwarding rules with forward method ZPA (or another the provider rejects) and IP pools with several ranges were written, making the ztc workspace invalid | medium | CWE-20 | V5.1.3 | fixed | Other | kept only when the provider can express them; otherwise listed as not exported with the reason | tests/test_tenant_terraform.py::test_a_cloud_connector_rule_the_provider_cannot_express_is_listed_not_written |
 | W10-TF-03 | The sample tenant held values the providers reject (HTTP header Host/CONTAINS, forward method ZPA on a connector rule, a two-range IP pool) | low | CWE-20 | V5.1.3 | fixed | Other | sample values the API and the providers accept | tests/test_tenant_terraform.py::test_the_sample_tenant_uses_values_the_providers_accept |
@@ -873,6 +874,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
 | w10-dataflow-clarity | Traffic analysis: the Data Flow Map for first-time readers (simple numbered view, legend, walk-through, traffic-weighted motion) | Wave 10: the data flow map reads from the device to the destination in numbered steps, and its motion shows real upload shares or stays opt-in | 7 | 6 | 35 |
+| w10-device-posture | Device posture across products (posture_cross.py, device_posture.py, the /api/device-posture routes, static/report_device_posture.html) and the Path analyzer's device posture what-if (path_whatif.py, zpa_path.py) | Device posture reads Client Connector, ZPA and ZIA and shows one product that cannot be read as such, never as an error; one cross-product view with its gaps; the device's trust level and posture as Path analyzer conditions | 5 | 1 | 44 |
 | w10-native-click | UI and accessibility: the native-click acceptance on the Native local installs workflow, and the 2.5 s refresh of the assessment page | Flaky native click: the acceptance clicked once on samples that could miss a scroll in flight and failed on any miss; the page smooth-scrolled the Scope page's controls under the pointer and rebuilt unchanged controls and its sign-in live region every 2.5 s | 10 | 6 | 13 |
 | w10-shared-signin | Auth, scope and secrets: the signed-in tenant (one sign-in, kept in server memory, used by every page's tenant reads) | Wave 10: sign in once; the verified sign-in is kept in memory for the person and browser, for reads only, with idle and hard expiry | 11 | 5 | 46 |
 | w10-ssl-true-pct | Traffic analysis: SSL coverage's true inspection coverage (ssl_true_coverage.py over ssl_coverage.py, traffic_logs.py and the sample tenant) | One true inspection figure: four parts adding up to 100% per unit, unknown never counted as inspected, each encrypted share tied to its cause, estimate always labelled | 8 | 2 | 37 |
@@ -921,7 +923,7 @@ Run: commit `844a30b`, 2026-11-02T01:31:22. 30123 passed, 0 failed, 0 errors, 17
 
 ## Standards covered by tests
 
-- OWASP ASVS 4.0.3: 138 requirements in 14 of 14 chapters (V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14)
+- OWASP ASVS 4.0.3: 139 requirements in 14 of 14 chapters (V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14)
 - WCAG 2.2 AA: 39 success criteria (SC 1.1.1, SC 1.3.1, SC 1.3.2, SC 1.3.5, SC 1.4.1, SC 1.4.3, SC 1.4.6, SC 1.4.10, SC 1.4.11, SC 1.4.12, SC 1.4.13, SC 2.1.1, SC 2.1.2, SC 2.2.1, SC 2.2.2, SC 2.3.3, SC 2.4.2, SC 2.4.3, SC 2.4.4, SC 2.4.5, SC 2.4.6, SC 2.4.7, SC 2.4.11, SC 2.5.2, SC 2.5.8, SC 3.1.2, SC 3.1.5, SC 3.2.1, SC 3.2.2, SC 3.2.3, SC 3.2.4, SC 3.3.1, SC 3.3.2, SC 3.3.3, SC 3.3.4, SC 3.3.5, SC 3.3.7, SC 4.1.2, SC 4.1.3)
 - CWE: 211 weaknesses (CWE-15, CWE-16, CWE-20, CWE-22, CWE-59, CWE-67, CWE-73, CWE-74, CWE-77, CWE-78, CWE-79, CWE-88, CWE-91, CWE-93, CWE-94, CWE-95, CWE-113, CWE-116, CWE-117, CWE-131, CWE-150, CWE-172, CWE-176, CWE-178, CWE-180, CWE-183, CWE-185, CWE-190, CWE-193, CWE-200, CWE-201, CWE-204, CWE-208, CWE-209, CWE-212, CWE-221, CWE-223, CWE-226, CWE-248, CWE-250, CWE-252, CWE-256, CWE-259, CWE-262, CWE-269, CWE-272, CWE-276, CWE-280, CWE-284, CWE-285, CWE-287, CWE-290, CWE-294, CWE-295, CWE-297, CWE-298, CWE-306, CWE-307, CWE-308, CWE-311, CWE-312, CWE-319, CWE-324, CWE-327, CWE-328, CWE-330, CWE-345, CWE-346, CWE-347, CWE-350, CWE-352, CWE-353, CWE-354, CWE-359, CWE-362, CWE-367, CWE-369, CWE-374, CWE-377, CWE-379, CWE-384, CWE-390, CWE-391, CWE-392, CWE-400, CWE-404, CWE-405, CWE-407, CWE-409, CWE-434, CWE-436, CWE-440, CWE-441, CWE-451, CWE-454, CWE-457, CWE-459, CWE-460, CWE-471, CWE-472, CWE-476, CWE-480, CWE-488, CWE-494, CWE-502, CWE-506, CWE-521, CWE-522, CWE-524, CWE-525, CWE-532, CWE-538, CWE-540, CWE-549, CWE-552, CWE-561, CWE-565, CWE-598, CWE-601, CWE-605, CWE-611, CWE-613, CWE-614, CWE-620, CWE-625, CWE-628, CWE-636, CWE-639, CWE-640, CWE-650, CWE-653, CWE-654, CWE-664, CWE-665, CWE-667, CWE-668, CWE-670, CWE-672, CWE-674, CWE-681, CWE-682, CWE-684, CWE-693, CWE-694, CWE-696, CWE-697, CWE-703, CWE-704, CWE-706, CWE-732, CWE-749, CWE-754, CWE-755, CWE-770, CWE-775, CWE-776, CWE-778, CWE-779, CWE-798, CWE-799, CWE-829, CWE-833, CWE-835, CWE-837, CWE-838, CWE-840, CWE-841, CWE-843, CWE-862, CWE-863, CWE-915, CWE-916, CWE-918, CWE-922, CWE-942, CWE-943, CWE-1004, CWE-1007, CWE-1021, CWE-1023, CWE-1025, CWE-1041, CWE-1059, CWE-1068, CWE-1077, CWE-1078, CWE-1088, CWE-1104, CWE-1116, CWE-1164, CWE-1173, CWE-1176, CWE-1188, CWE-1236, CWE-1265, CWE-1275, CWE-1284, CWE-1286, CWE-1287, CWE-1289, CWE-1321, CWE-1325, CWE-1327, CWE-1333, CWE-1339, CWE-1357, CWE-1385, CWE-1391, CWE-1393, CWE-1395, CWE-1426)
 - OWASP Top 10 2021: A01:2021, A02:2021, A03:2021, A04:2021, A05:2021, A06:2021, A07:2021, A08:2021, A09:2021, A10:2021; OWASP WSTG: 68 tests ids

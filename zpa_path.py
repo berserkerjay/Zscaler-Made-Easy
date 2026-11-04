@@ -118,8 +118,32 @@ def segment_hints(snap: Dict[str, Any], d: Dict[str, Any], sm: Dict[str, Any]) -
 
 
 # ── facts and rule evaluation ───────────────────────────────────────────
+def given_posture(snap: Dict[str, Any], names: Any) -> Optional[Dict[str, Any]]:
+    """The device posture the operator gave: the posture profiles the device
+    passes, by name or posture UDID (case-insensitive); every other profile
+    fails. {passing: [udid or id], names: [profile names], unknown: [given
+    names no profile has]}, or None when nothing was given."""
+    if names is None:
+        return None
+    given = [str(x).strip()[:200] for x in (names if isinstance(names, (list, tuple)) else str(names).split(","))][:50]
+    given = [g for g in given if g]
+    if not given and not isinstance(names, (list, tuple)):
+        return None
+    profiles = snap.get("posture_profiles") or []
+    passing, shown, unknown = [], [], []
+    for g in given:
+        p = next((x for x in profiles if g.casefold() in {str(x.get("name") or "").casefold(), str(x.get("posture_udid") or "").casefold()}), None)
+        if p is None:
+            unknown.append(g)
+            continue
+        passing.append(p.get("posture_udid") or p.get("id"))
+        shown.append(p.get("name") or p.get("id"))
+    return {"passing": passing, "names": shown, "unknown": unknown,
+            "failing": [x.get("name") or x.get("id") for x in profiles if (x.get("posture_udid") or x.get("id")) not in passing]}
+
+
 def _facts(snap: Dict[str, Any], network: str, platform: str, source: str, posture: str,
-           identity: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+           identity: Optional[Dict[str, Any]] = None, given: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The user context zpa_analysis evaluates: what the Path analyzer knows
     (platform, Client Connector, trusted network when off network), the
     ZPA identity when one was given (zpa_identity.resolve: IdP, SCIM
@@ -134,7 +158,7 @@ def _facts(snap: Dict[str, Any], network: str, platform: str, source: str, postu
         "platform": PLATFORM_TO_ZPA.get(platform),
         "client_type": "zpn_client_type_zapp",
         "trusted_networks": [] if network == "off" else None,
-        "posture_pass": profiles if posture == "pass" else [],
+        "posture_pass": list(given["passing"]) if given is not None else (profiles if posture == "pass" else []),
     }))
 
 
@@ -234,15 +258,19 @@ def not_read(reason: str, status: str = "unknown") -> Dict[str, Any]:
 
 def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", platform: str = "windows",
           source: str = "device", profiles: Optional[List[Dict[str, Any]]] = None,
-          identity: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+          identity: Optional[Dict[str, Any]] = None, posture: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Whether ZPA carries destination `d` (destination()) for this
     network and platform. `profiles` are device_posture's classified
     posture profiles (for the wording). `identity` is the ZPA identity of
     the what-if (zpa_identity.resolve), for a user device only: its SCIM
     group, SCIM and SAML attribute and IdP conditions are then evaluated
-    and the result says which one decided. See the module docstring."""
+    and the result says which one decided. `posture` is the device's
+    posture the operator gave (given_posture): the posture conditions are
+    then evaluated for it, once, instead of for every profile passing and
+    every one failing. See the module docstring."""
     if source != "device":
-        identity = None   # a workload has no user: identity conditions are never met by it
+        identity = None
+        posture = None   # a workload has no user: identity conditions are never met by it
     ix = zpa_analysis._Index(snap)
     names = device_posture.Names(snap, profiles if profiles is not None else
                                  [dict(p, **device_posture.classify(p.get("name") or "", "")) for p in snap.get("posture_profiles") or []])
@@ -308,8 +336,9 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
     scen: Dict[str, Dict[str, Any]] = {}
     pol = snap.get("policies") or {}
     fwd_rules, acc_rules = pol.get("client_forwarding"), pol.get("access")
+    given = posture
     for posture in (("pass", "fail") if source == "device" else ("none",)):
-        u = _facts(snap, network, platform, source, posture, identity)
+        u = _facts(snap, network, platform, source, posture, identity, given)
         if source == "workload" or fwd_rules is None:
             fwd = {"rule": None, "effect": "intercept", "possible": {"intercept"}, "conditional": [], "walked": [], "flagged": []}
         else:
@@ -359,7 +388,7 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
     if acc_rules is None:
         av, anote = "unknown", "The access policy could not be read, so whether ZPA allows this traffic is unknown."
     else:
-        av, anote = _access_words(scen, source)
+        av, anote = _access_words(scen, source, given)
     modules.append(module_hop("ZPA access policy", av if acc_reached else "not_reached", (a["rule"] or {}) if acc_reached else None,
                               [],
                               _criteria(a["rule"], first["u"], seg, ix, names) if (a["rule"] and acc_reached) else [],
@@ -379,6 +408,8 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
                              serve["cg_detail"] if serve["reachable"] is not False else serve["why_down"]))
         out["reachable"] = serve["reachable"]
 
+    if given is not None:
+        out["posture_given"] = {"passes": given["names"], "fails": given["failing"], "unknown": given["unknown"]}
     out.update(modules=modules, hops=hops, posture_matters=posture_matters,
                ends=sorted(all_ends), assumptions=_assumptions(identity),
                scenarios={k: {"forwarding": v["fwd"]["effect"], "access": v["acc"]["effect"], "ends": sorted(v["ends"]),
@@ -428,7 +459,7 @@ def _overlaps(fm: Dict[str, Any]) -> List[Dict[str, Any]]:
             for c in fm["conditional"][:8]]
 
 
-def _access_words(scen: Dict[str, Dict[str, Any]], source: str) -> Tuple[str, str]:
+def _access_words(scen: Dict[str, Dict[str, Any]], source: str, given: Optional[Dict[str, Any]] = None) -> Tuple[str, str]:
     def one(s):
         a = s["acc"]
         if a["rule"]:
@@ -440,6 +471,13 @@ def _access_words(scen: Dict[str, Dict[str, Any]], source: str) -> Tuple[str, st
         v = "conditional" if len(s["acc"]["possible"]) > 1 else ("allowed" if s["acc"]["effect"] == "allow" else "denied")
         return v, one(s)[0].upper() + one(s)[1:] + "."
     p, f = scen["pass"], scen["fail"]
+    if given is not None:
+        v = "conditional" if len(p["acc"]["possible"]) > 1 else ("allowed" if p["acc"]["effect"] == "allow" else "denied")
+        text = (f"For this device's posture (passes {_and_names(given['names'])}; fails {_and_names(given['failing'])}), "
+                f"{one(p)}.")
+        if len(p["acc"]["possible"]) > 1:
+            text += " An earlier rule depends on facts not given (identity, network or an operand this tool cannot evaluate)."
+        return v, text
     if one(p) == one(f):
         v = "conditional" if len(p["acc"]["possible"]) > 1 else ("allowed" if p["acc"]["effect"] == "allow" else "denied")
         text = one(p)[0].upper() + one(p)[1:] + ", whether device posture passes or fails."
@@ -449,6 +487,11 @@ def _access_words(scen: Dict[str, Dict[str, Any]], source: str) -> Tuple[str, st
     if len(p["acc"]["possible"]) > 1:
         text += " An earlier rule depends on facts not given (identity, network or an operand this tool cannot evaluate)."
     return v, text
+
+
+def _and_names(items: List[str]) -> str:
+    items = ["\u201c{}\u201d".format(x) for x in items[:4]] + ([f"{len(items) - 4} more"] if len(items) > 4 else [])
+    return device_posture._join(items, "and") or "none"
 
 
 def _because(out: Dict[str, Any]) -> str:

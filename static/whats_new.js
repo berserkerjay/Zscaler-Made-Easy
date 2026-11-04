@@ -92,6 +92,18 @@ window.WHATS_NEW = {
       ]
     },
     {
+      "id": "device-posture-cross", "release": "2026-11-04", "label": "Device posture across products",
+      "what": "Device posture now reads Client Connector, ZPA and ZIA: each posture check, where it is defined, the platforms it covers and every ZPA and ZIA rule that uses it, with the gaps. A product that is not in scope, not licensed or not readable is said so instead of an error.",
+      "changelog": ["Device posture across products"],
+      "marks": [{ "page": "/report/device-posture", "at": "#tab-cross", "shown": "after Read device posture" }]
+    },
+    {
+      "id": "path-device-posture", "release": "2026-11-04", "label": "Device posture in the what-if",
+      "what": "The Path analyzer's what-if takes the device's trust level (for ZIA rules) and the posture checks it passes (for ZPA access rules); a picked device's trust level is used too.",
+      "changelog": ["Device posture in the what-if"],
+      "marks": [{ "page": "/report/path", "at": "#paWiSum" }, { "page": "/report/path", "at": "#paWi_trust", "shown": "with the What-if section open" }]
+    },
+    {
       "id": "team-saml", "release": "2026-11-01", "label": "SAML 2.0 sign-in",
       "what": "Team servers can sign people in through the organisation's identity provider with SAML 2.0, strictly checked, matched to their own account.",
       "changelog": ["SAML 2.0 sign-in"],
@@ -296,7 +308,7 @@ window.WHATS_NEW = {
       "id": "path-manual-inputs", "release": "2026-11-01", "label": "Manual inputs (what-if)",
       "what": "The Path analyzer evaluates a pasted PAC file and typed VPN gateways and Z-Tunnel 2.0 lists, on their own or added to the tenant's app profiles. Nothing is kept or written.",
       "changelog": ["Manual inputs (what-if)"],
-      "marks": [{ "page": "/report/path", "at": "#paManual > summary" }]
+      "marks": [{ "page": "/report/path", "at": "#paManualSum" }]
     },
     {
       "id": "vendor-endpoint-lists", "release": "2026-11-01", "label": "Other providers' endpoint lists",
