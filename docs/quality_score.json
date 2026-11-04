@@ -297,7 +297,7 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 162,
+            "fixed": 164,
             "accepted": 7,
             "records": [
               "c6-assessment",
@@ -307,6 +307,7 @@
               "c6-zpa",
               "func-path",
               "w10-dataflow-clarity",
+              "w10-ssl-true-pct",
               "w7-o365-endpoints",
               "w7-path-coverage",
               "w7-path-extras",
@@ -490,7 +491,7 @@
     }
   ],
   "counts": {
-    "findings": 777,
+    "findings": 779,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -504,12 +505,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 197,
+        "fixed": 198,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 434,
+        "fixed": 435,
         "accepted": 3
       },
       "info": {
@@ -519,12 +520,12 @@
       }
     },
     "checks": {
-      "pass": 721,
+      "pass": 729,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11790
+    "tests_added": 11827
   },
   "findings": [
     {
@@ -4846,6 +4847,22 @@
       "slug": "w10-shared-signin",
       "area": "secure_by_design",
       "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W10-STP-01",
+      "title": "Before: the SSL coverage headline's inspected share left unclassified traffic out of the denominator, so unknown traffic was in effect counted at the inspected rate",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-682",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "the summary, headline and history use the true figure, with unknown in the denominator and shown as a range",
+      "test": "tests/test_ssl_true_coverage.py::test_unknown_is_never_counted_as_inspected",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-ssl-true-pct",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "W10-TF-01",
@@ -11776,6 +11793,22 @@
       "sub_area": "auth_scope_secrets"
     },
     {
+      "id": "W10-STP-02",
+      "title": "During development: the run's own log list shadowed the web logs parameter in ssl_coverage.run, so a run with logs failed",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-697",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "the parameter is web_logs",
+      "test": "tests/test_ssl_true_coverage.py::test_the_job_uses_the_uploaded_logs_for_the_figure",
+      "commit": "",
+      "reason": "",
+      "slug": "w10-ssl-true-pct",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "W10-TF-03",
       "title": "The sample tenant held values the providers reject (HTTP header Host/CONTAINS, forward method ZPA on a connector rule, a two-range IP pool)",
       "severity": "low",
@@ -13951,6 +13984,33 @@
       "checks": 11,
       "findings": 5,
       "tests_added": 46
+    },
+    {
+      "slug": "w10-ssl-true-pct",
+      "area": "Traffic analysis: SSL coverage's true inspection coverage (ssl_true_coverage.py over ssl_coverage.py, traffic_logs.py and the sample tenant)",
+      "title": "One true inspection figure: four parts adding up to 100% per unit, unknown never counted as inspected, each encrypted share tied to its cause, estimate always labelled",
+      "standards": [
+        "ASVS V1.4.4",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V5.3.3",
+        "ASVS V7.4.1",
+        "WSTG-BUSL-01",
+        "WSTG-INPV-01",
+        "WSTG-CLNT-01",
+        "CWE-20",
+        "CWE-79",
+        "CWE-369",
+        "CWE-682",
+        "CWE-697",
+        "CWE-755",
+        "CWE-1287",
+        "WCAG 2.2 SC 1.4.1",
+        "WCAG 2.2 SC 3.3.2"
+      ],
+      "checks": 8,
+      "findings": 2,
+      "tests_added": 37
     },
     {
       "slug": "w10-tf-validate",

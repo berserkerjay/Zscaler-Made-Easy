@@ -72,6 +72,26 @@ window.WHATS_NEW = {
       "marks": [{ "page": "/report/bypass", "at": "#bpFlowH", "shown": "after the report is drawn" }]
     },
     {
+      "id": "ssl-true-coverage", "release": "2026-11-04", "label": "True inspection coverage",
+      "what": "One figure for how much web traffic Zscaler really sees inside (plain HTTP plus decrypted HTTPS), by transactions and by bytes, adding up to 100%, with each share left encrypted tied to its rule or bypass and a fix. It is of the traffic that reaches ZIA; give the traffic that goes around ZIA (Bypass GB) for the share of all web traffic. Without traffic numbers it is a labelled estimate.",
+      "changelog": ["True inspection coverage", "Bypass (GB)"],
+      "marks": [
+        { "page": "/report/sslcoverage", "at": "#scTrueH", "shown": "after a check" },
+        { "page": "/report/sslcoverage", "at": "#scBypassGb" },
+        { "page": "/report/operations", "at": "#opSslCov" }
+      ]
+    },
+    {
+      "id": "ssl-true-coverage-logs", "release": "2026-11-04", "label": "True coverage from your web logs",
+      "what": "From the Traffic and session logs page, open SSL coverage with your uploaded ZIA web logs: each line left encrypted is tied to the SSL rule behind it. Try it with the sample web logs.",
+      "changelog": ["True coverage from your web logs", "Try with sample web logs"],
+      "marks": [
+        { "page": "/report/traffic-logs", "at": "#tlSslCov" },
+        { "page": "/report/traffic-logs", "at": "#tlSample" },
+        { "page": "/report/traffic-logs", "at": "#tlTrueCoverage", "shown": "after reading ZIA web logs that say whether SSL was inspected" }
+      ]
+    },
+    {
       "id": "team-saml", "release": "2026-11-01", "label": "SAML 2.0 sign-in",
       "what": "Team servers can sign people in through the organisation's identity provider with SAML 2.0, strictly checked, matched to their own account.",
       "changelog": ["SAML 2.0 sign-in"],

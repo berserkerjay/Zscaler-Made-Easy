@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-528 markers.
+532 markers.
 
 | File:line | Note |
 |---|---|
@@ -120,7 +120,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `insights.py:670` | ASSUMED: Shadow IT's sanctioned_state spells the two states as |
 | `mcp_tools.py:1187` | ZDX_BANDS = (("poor", 0, 33), ("okay", 34, 65), ("good", 66, 100))   # assumed: the ZDX portal's score bands (not in the SDK) |
 | `offline_tenant.py:506` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
-| `offline_tenant.py:1361` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
+| `offline_tenant.py:1365` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
 | `ops_aiguard.py:33` | readiness check; what is verified against the SDK and what is assumed is |
 | `ops_aiguard.py:622` | _SSL_STOPPERS = {"DO_NOT_DECRYPT", "BLOCK"}   # SSL inspection action types (BLOCK: assumed, not enumerated in the SDK model) |
 | `ops_config_restore.py:79` | assumed: a rule created without it is active at once (the API's default). |
@@ -360,13 +360,13 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `rule_editor.py:591` | body["type"] = "FORWARDING"   # forwarding_control_policy.ForwardingControlRule.type; FORWARDING is the rule kind ZIA lists (assumed) |
 | `rule_fields.py:125` | timers) and metadata. restrictionType is taken as metadata (assumed: |
 | `rule_migrator.py:1067` | ASSUMED (not verified against the SDK or Zscaler's documentation): the |
-| `sample_tenant.py:366` | assumed: the API sends lastModifiedBy on every tunnel. The SDK model (zscaler/zia/models/gre_tunnels.py) |
-| `sample_tenant.py:445` | WebPolicy model (assumed: the readers ask for it, and a device reports it). |
-| `sample_tenant.py:487` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
-| `sample_tenant.py:719` | not in the SDK: its shapes are ops_zdx's (assumed there). |
-| `sample_tenant.py:804` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
-| `sample_tenant.py:1048` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
-| `sample_tenant.py:1403` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
+| `sample_tenant.py:372` | assumed: the API sends lastModifiedBy on every tunnel. The SDK model (zscaler/zia/models/gre_tunnels.py) |
+| `sample_tenant.py:451` | WebPolicy model (assumed: the readers ask for it, and a device reports it). |
+| `sample_tenant.py:493` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
+| `sample_tenant.py:725` | not in the SDK: its shapes are ops_zdx's (assumed there). |
+| `sample_tenant.py:810` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
+| `sample_tenant.py:1068` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
+| `sample_tenant.py:1423` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
 | `scope_permissions.py:100` | "Reports (System Audit Report; assumed name)", |
 | `scope_permissions.py:101` | "Alerts (alert subscriptions; assumed name)", |
 | `scope_permissions.py:103` | "Organization (subscriptions; assumed name)", |
@@ -378,6 +378,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `shadow_rules.py:609` | one names (rules are assumed to be first match per application and |
 | `shadow_rules.py:926` | "The Inline Web DLP evaluation mode could not be read, so rule order (the default) is assumed; if the tenant runs Evaluate All " |
 | `siem_queries.py:17` | patterns are assumed placeholders the admin replaces. |
+| `ssl_true_coverage.py:72` | The policy estimate's typical traffic mix. assumed: a round, generic |
+| `ssl_true_coverage.py:316` | assumed: an exempted application's Shadow IT bytes (SHADOW_IT.apps |
+| `ssl_true_coverage.py:406` | assumed: Client Connector sends ZPA application segments' traffic to |
 | `static/aiguard_page.js:75` | <div class="df-hint">LLM providers AI Guard knows: ${E((d.providers \|\| []).join(', ') \|\| 'none')}. The owners of the applications are cou… |
 | `static/compliance_choice.js:67` | <div class="df-hint">${E(s.reuses)}${s.assumed_profile ? ` Assumed: ${E(s.assumed_profile)}` : ''}</div> |
 | `static/compliance_choice.js:69` | ${(s.assumed_controls \|\| []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(s.assumed_cont… |
@@ -388,8 +391,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/flow_anim.js:51` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
 | `static/flow_anim.js:59` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
 | `static/flow_anim.js:210` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:4790` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:4870` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4800` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4880` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |
@@ -413,11 +416,12 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `tenant_terraform.py:464` | an envelope holding one. Not assumed complete for ZIA posture profiles: see |
 | `tenant_terraform.py:1199` | address), any other into `entry_values` {lhs, rhs} (assumed mapping, |
 | `traffic_logs.py:18` | in the default order (assumed, see DEFAULT_ORDERS). |
-| `traffic_logs.py:91` | Zscaler's LSS documentation; the ones marked are assumed from field |
-| `traffic_logs.py:98` | "zpn_client_type_browser_isolation": "Cloud Browser Isolation",   # assumed |
-| `traffic_logs.py:103` | "zpn_client_type_vdi": "VDI",   # assumed |
-| `traffic_logs.py:112` | published list of ZPA connection status and internal reasons (assumed: the |
-| `traffic_logs.py:411` | Assumed: these orders are from Zscaler's NSS feed output format pages as |
+| `traffic_logs.py:92` | Zscaler's LSS documentation; the ones marked are assumed from field |
+| `traffic_logs.py:99` | "zpn_client_type_browser_isolation": "Cloud Browser Isolation",   # assumed |
+| `traffic_logs.py:104` | "zpn_client_type_vdi": "VDI",   # assumed |
+| `traffic_logs.py:113` | published list of ZPA connection status and internal reasons (assumed: the |
+| `traffic_logs.py:427` | Assumed: these orders are from Zscaler's NSS feed output format pages as |
+| `traffic_logs.py:1102` | assumed: an NSS web line's bytes are its request plus response size |
 | `tui.py:425` | out.append(clean(f"Assumed: {a}")) |
 | `tui.py:481` | out.append(clean(f"Assumed: {a}")) |
 | `ucaas_oneclick.py:18` | The predefined rules (as ZIA shows them; names and fields assumed from |

@@ -684,8 +684,13 @@ def headline(summary: Mapping[str, Any], volume: Optional[Mapping[str, Any]]) ->
 # ── Run ─────────────────────────────────────────────────────────────────
 def analyse(ssl_rules: List[Mapping[str, Any]], *, lookup: Optional[Mapping[str, Any]] = None,
             catalogue: Optional[Mapping[str, List[str]]] = None, cc: Optional[Mapping[str, Any]] = None,
-            volume: Optional[Mapping[str, Any]] = None, read_errors: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
-    """Pure: tenant data in, report body out."""
+            volume: Optional[Mapping[str, Any]] = None, read_errors: Optional[Mapping[str, str]] = None,
+            logs: Optional[Mapping[str, Any]] = None, zpa_in_scope: bool = False, no_volume_reason: str = "",
+            bypass_bytes: Optional[float] = None) -> Dict[str, Any]:
+    """Pure: tenant data in, report body out. `logs` is the ZIA web SSL
+    section of an uploaded traffic log report and `bypass_bytes` the
+    admin's figure for web traffic that never reaches ZIA (ssl_true_coverage.build)."""
+    import ssl_true_coverage
     causes = ssl_rule_causes(ssl_rules, lookup, catalogue) + zcc_causes(cc)
     if volume and volume.get("apps") is not None:
         attach_app_volume(causes, volume.get("apps") or [])
@@ -697,12 +702,24 @@ def analyse(ssl_rules: List[Mapping[str, Any]], *, lookup: Optional[Mapping[str,
                 "decided_by": (c.get("decided_by") or {}).get("name"), "exceptions": [e.get("name") for e in c.get("exceptions") or []]}
                for c in flow["classes"]]
     summary = summarise(causes, classes, volume)
+    true = ssl_true_coverage.build(causes, classes, volume, logs, zpa_in_scope=zpa_in_scope, no_volume_reason=no_volume_reason,
+                                   bypass_bytes=bypass_bytes, bypass_read=cc is not None)
+    if not true.get("estimate"):
+        # One figure everywhere: the measured true share (unknown never
+        # counted as inspected) replaces the share that left it out.
+        # Both units come from the one source the figure uses (None where
+        # it has no split), never one from the logs and one from Insights.
+        for unit in ("TRANSACTIONS", "BYTES"):
+            u = (true.get("units") or {}).get(unit)
+            summary[f"inspected_pct_{unit.lower()}"] = u["inspected_pct"] if u else None
+        summary["true_source"] = true.get("source")
     return {"summary": summary, "headline": headline(summary, volume), "causes": causes, "plan": recovery_plan(causes),
-            "classes": classes}
+            "classes": classes, "true_coverage": true}
 
 
 def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan: Optional[Mapping[str, Any]] = None,
-        log: Optional[Callable[[str], None]] = None, cancel: Any = None, scrub: Optional[Callable[[str], str]] = None) -> Dict[str, Any]:
+        log: Optional[Callable[[str], None]] = None, cancel: Any = None, scrub: Optional[Callable[[str], str]] = None,
+        web_logs: Optional[Mapping[str, Any]] = None, bypass_bytes: Optional[float] = None) -> Dict[str, Any]:
     """Read only what `scope` (data_flow.path_scope) puts in scope, then
     analyse. Stop returns {stopped} with no partial result."""
     import data_flow
@@ -763,7 +780,11 @@ def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan:
         volume = {"available": False, "reason": vp.get("reason") or "Traffic numbers were not asked for.", "bypass_note": BYPASS_NOTE}
     volume["unavailable"] = VOLUME_UNAVAILABLE
     errors = data_flow.unread_sections(diagnostics)
-    rep = analyse(ssl_rules, lookup=lookup, catalogue=catalogue, cc=cc, volume=volume if volume.get("available") else None, read_errors=errors)
+    if web_logs:
+        _log(f"Using the uploaded ZIA web logs ({int(web_logs.get('records') or 0):,} records) for the true inspection coverage.")
+    rep = analyse(ssl_rules, lookup=lookup, catalogue=catalogue, cc=cc, volume=volume if volume.get("available") else None, read_errors=errors,
+                  logs=web_logs, zpa_in_scope="zpa" in (scope.get("scopes") or []), no_volume_reason=str(volume.get("reason") or ""),
+                  bypass_bytes=bypass_bytes)
     if volume.get("available"):
         volume.pop("apps", None)   # only the matches on each cause are kept
     rep.update(volume=volume, diagnostics=diagnostics, read_errors=errors,
@@ -774,6 +795,11 @@ def run(client: Any, scope: Mapping[str, Any], *, zins: Any = None, volume_plan:
                evidence_mode="configuration" + (" and Insights traffic numbers" if volume.get("available") else ""), status="done", logs=logs)
     if "ssl" in errors:
         rep["headline"] = f"The SSL inspection rules could not be read ({errors['ssl']}), so coverage is unknown; run it again once the API answers."
+        tc = rep.get("true_coverage") or {}
+        if tc.get("estimate"):
+            # No rules, no estimate: an empty rule list would read as "nothing decrypted".
+            tc.update(mode="none", source="none", units={}, causes=[], source_label="No estimate: the SSL inspection rules could not be read",
+                      headline="Coverage cannot be estimated: the SSL inspection rules could not be read.")
     return rep
 
 
@@ -808,6 +834,7 @@ def history_entry(rep: Mapping[str, Any]) -> Dict[str, Any]:
             "classes_total": s.get("classes_total"), "causes": s.get("causes"),
             "by_risk": dict(s.get("by_risk") or {}), "by_kind": dict(s.get("by_kind") or {}),
             "inspected_pct_bytes": s.get("inspected_pct_bytes"), "inspected_pct_transactions": s.get("inspected_pct_transactions"),
+            "true_source": s.get("true_source"),
             "plan_steps": len(((rep.get("plan") or {}).get("steps")) or [])}
 
 
@@ -870,8 +897,8 @@ def _gb(n: Any) -> Any:
 
 
 def to_xlsx(rep: Mapping[str, Any]) -> bytes:
-    """Summary, traffic and inspection, causes, recovery plan, traffic
-    classes and history as one workbook (xlsx_writer: no formulas)."""
+    """Summary, traffic and inspection, true coverage, causes, recovery plan,
+    traffic classes and history as one workbook (xlsx_writer: no formulas)."""
     import xlsx_writer
     s = rep.get("summary") or {}
     wb = xlsx_writer.Workbook(title=f"SSL coverage {rep.get('tenant_label') or ''}".strip(), subject="Uninspected traffic, causes and recovery plan")
@@ -901,6 +928,35 @@ def to_xlsx(rep: Mapping[str, Any]) -> bytes:
         tr.append(["", "", "", "", BYPASS_NOTE])
     else:
         tr.append(["", "", "", "", "Not read: " + str(vol.get("reason") or "traffic numbers were not asked for")])
+    t = rep.get("true_coverage") or {}
+    tc = wb.add_sheet("True coverage", columns=["Unit", "Part", "Share (%)", "Amount", "Cause", "Why", "Basis", "Fix"])
+    tc.append(["", t.get("source_label") or "", "", "", "", t.get("headline") or "", "estimate, not measured" if t.get("estimate") else "measured", ""])
+    if t.get("window"):
+        tc.append(["", "Window", "", "", "", t["window"], "", ""])
+    for unit, sp in (t.get("units") or {}).items():
+        if not sp:
+            continue
+        for x in sp["slices"]:
+            tc.append([unit.lower(), x["label"], x["pct"], x["amount"], "", "", "", ""])
+        tc.append([unit.lower(), "True inspection coverage (of traffic that reached ZIA)", sp["inspected_pct"], "", "",
+                   f"up to {sp['inspected_pct_high']}% if the unknown part was inspected", "", ""])
+        inc = (t.get("including_bypass") or {}).get(unit) or {}
+        if inc:
+            tc.append([unit.lower(), "Including traffic that never reaches ZIA", inc.get("inspected_pct") if inc.get("inspected_pct") is not None else "not measured",
+                       inc.get("bypassed_amount") if inc.get("bypassed_amount") is not None else "", "", inc.get("text") or "",
+                       inc.get("basis") or ("not measurable" if not inc.get("known") else ""), ""])
+        for r in (t.get("causes") or []) + ([t["unattributed"]] if t.get("unattributed") else []):
+            share = (r.get("pct_of") or {}).get(unit)
+            if share is None:
+                continue
+            tc.append([unit.lower(), "HTTPS not inspected", share, r.get(unit) if r.get(unit) is not None else "",
+                       f"{r.get('kind_label') or ''}{': ' + r['rule'] if r.get('rule') else ''}", r.get("how") or "", r.get("basis") or "",
+                       (r.get("fix") or {}).get("label") or r.get("recovery") or ""])
+    for r in t.get("outside") or []:
+        tc.append(["", "Never reaches ZIA", "", "", f"{r.get('kind_label') or ''}{': ' + r['rule'] if r.get('rule') else ''}", r.get("why") or "", "not measurable",
+                   (r.get("fix") or {}).get("label") or r.get("recovery") or ""])
+    if t.get("needs"):
+        tc.append(["", "For a measured figure", "", "", "", t["needs"], "", ""])
     wb.add_sheet("Causes", columns=["Risk", "Kind", "What is not inspected", "Caused by", "Order", "Scope", "Why this risk", "Recovery", "Where",
                                     "Safe to change?", "Note", "Bytes (upper bound, GB)", "Never reaches Zscaler"],
                  rows=[[c["risk_label"], c["kind_label"], c["what"], (c.get("source") or {}).get("name") or "", (c.get("source") or {}).get("order") or "",
@@ -918,9 +974,12 @@ def to_xlsx(rep: Mapping[str, Any]) -> bytes:
                        for c in rep.get("classes") or []])
     hist = rep.get("history") or []
     if hist:
-        wb.add_sheet("Run history", columns=["Run", "Classes covered (%)", "Inspected (% bytes)", "Inspected (% transactions)", "High", "Medium", "Low", "Expected"],
+        import ssl_true_coverage
+        wb.add_sheet("Run history", columns=["Run", "Classes covered (%)", "Inspected (% bytes)", "Inspected (% transactions)", "Measured from",
+                                             "High", "Medium", "Low", "Expected"],
                      rows=[[h.get("at"), h.get("class_coverage_pct") if h.get("class_coverage_pct") is not None else "",
                             h.get("inspected_pct_bytes") if h.get("inspected_pct_bytes") is not None else "",
-                            h.get("inspected_pct_transactions") if h.get("inspected_pct_transactions") is not None else ""]
+                            h.get("inspected_pct_transactions") if h.get("inspected_pct_transactions") is not None else "",
+                            ssl_true_coverage.source_word(h)]
                            + [(h.get("by_risk") or {}).get(k, 0) for k in RISK_ORDER] for h in hist])
     return wb.to_bytes()

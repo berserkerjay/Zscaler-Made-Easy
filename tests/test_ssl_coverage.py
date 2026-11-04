@@ -271,9 +271,9 @@ def test_the_job_reads_reports_exports_and_keeps_history_without_secrets(monkeyp
     assert x.status_code == 200 and x.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     z = zipfile.ZipFile(io.BytesIO(x.content))
     sheets = [n for n in z.namelist() if re.match(r"xl/worksheets/sheet\d+\.xml$", n)]
-    assert len(sheets) == 6 and "xl/workbook.xml" in z.namelist()
+    assert len(sheets) == 7 and "xl/workbook.xml" in z.namelist()
     wbxml = z.read("xl/workbook.xml").decode()
-    for name in ("Summary", "Traffic and inspection", "Causes", "Recovery plan", "Traffic classes", "Run history"):
+    for name in ("Summary", "Traffic and inspection", "True coverage", "Causes", "Recovery plan", "Traffic classes", "Run history"):
         assert f'name="{name}"' in wbxml
     text = "".join(z.read(n).decode() for n in sheets)
     assert "DNI file hosts" in text and "QUIC_NEW" in text and "Zscaler Made Easy" in text and SECRET not in text and "<f>" not in text

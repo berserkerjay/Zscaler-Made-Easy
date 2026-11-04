@@ -15504,6 +15504,37 @@ class SslCoverageRequest(ScopedTenantCredsRequest):
     numbers ("7d" or "30d") and whether to ask ZIA Insights for them."""
     window: str = "7d"
     include_volume: bool = True
+    # A traffic log report held in memory (POST /api/traffic-logs/analyze)
+    # whose ZIA web lines give the measured true inspection coverage.
+    logs_report_id: str = ""
+    # The admin's own figure (GB, from firewall or egress logs, same period)
+    # for web traffic that never reaches ZIA; counted as not inspected in
+    # the "including traffic that never reaches ZIA" figure. None: unknown.
+    bypass_gb: Optional[float] = None
+
+
+_SSL_LOGS_ID = re.compile(r"\Atlogs-[A-Za-z0-9_-]{6,40}\Z")
+SSL_BYPASS_MAX_GB = 1e9   # an exabyte: more than any tenant sends around ZIA in 30 days
+
+
+def _ssl_coverage_logs(rid: str) -> Optional[Dict[str, Any]]:
+    """The ZIA web SSL section of a traffic log report for the true
+    inspection coverage, checked before any sign-in: a malformed id, a
+    report no longer in memory, one this person may not open (team mode)
+    or one without ZIA web lines is a 400 with the reason. No tenant call."""
+    rid = str(rid or "").strip()
+    if not rid:
+        return None
+    if not _SSL_LOGS_ID.match(rid):
+        raise HTTPException(status_code=400, detail="The web logs reference is not a traffic log report id. Nothing was read.")
+    rep = _REPORTS.get(rid)
+    if not rep or not _team.may_reach("report_id", rid, "read"):
+        raise HTTPException(status_code=400, detail=("The uploaded web logs are no longer in memory (or not yours to use). Upload them again "
+                                                     "on the Traffic and session logs page. Nothing was read."))
+    web = ((rep.get("zia") or {}).get("zia_web") or {})
+    if not isinstance(web.get("ssl"), dict):
+        raise HTTPException(status_code=400, detail="Those logs hold no ZIA web traffic, so they cannot give the inspection coverage. Nothing was read.")
+    return {"ssl": web["ssl"], "period": dict(rep.get("period") or {}), "records": web.get("records"), "report_id": rid}
 
 
 def _ssl_coverage_inputs(req: SslCoverageRequest) -> Dict[str, Any]:
@@ -15519,6 +15550,11 @@ def _ssl_coverage_inputs(req: SslCoverageRequest) -> Dict[str, Any]:
     window = str(req.window or "7d").strip()
     if window not in ssl_coverage.WINDOWS:
         raise HTTPException(status_code=400, detail="The window must be the last 7 days or the last 30 days. Nothing was read.")
+    logs = _ssl_coverage_logs(req.logs_report_id)
+    bypass = req.bypass_gb
+    if bypass is not None and (isinstance(bypass, bool) or not 0 <= float(bypass) <= SSL_BYPASS_MAX_GB):
+        raise HTTPException(status_code=400, detail=(f"The traffic that bypasses ZIA must be a number of GB from 0 to {SSL_BYPASS_MAX_GB:,.0f}. "
+                                                     "Nothing was read."))
     creds = _tenant_creds(req)
     plan = {"ask": False, "window": window, "reason": ""}
     if not req.include_volume:
@@ -15530,7 +15566,8 @@ def _ssl_coverage_inputs(req: SslCoverageRequest) -> Dict[str, Any]:
         plan["reason"] = "Traffic numbers need a OneAPI API client: the classic ZIA API sign-in cannot read ZIA Insights."
     else:
         plan["ask"] = True
-    return {"scope": sel, "creds": creds, "label": tenant_auth.record_label(creds), "volume": plan}
+    return {"scope": sel, "creds": creds, "label": tenant_auth.record_label(creds), "volume": plan, "logs": logs,
+            "bypass_bytes": None if bypass is None else float(bypass) * 1e9}
 
 
 def _ssl_coverage_clients(req: SslCoverageRequest, inp: Dict[str, Any]):
@@ -15551,7 +15588,8 @@ def _run_ssl_coverage(client, sdk, inp: Dict[str, Any], log, cancel) -> Dict[str
     import ssl_coverage
     try:
         rep = ssl_coverage.run(client, inp["scope"], zins=getattr(sdk, "zins", None), volume_plan=inp["volume"], log=log, cancel=cancel,
-                               scrub=lambda s: tenant_auth.mask_secrets(s, inp["creds"]))
+                               scrub=lambda s: tenant_auth.mask_secrets(s, inp["creds"]), web_logs=inp.get("logs"),
+                               bypass_bytes=inp.get("bypass_bytes"))
     finally:
         _close_quietly(client)
     if rep.get("stopped"):

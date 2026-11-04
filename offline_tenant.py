@@ -581,7 +581,11 @@ class OfflineStore:
         op = body.get("operationName") if isinstance(body, dict) else None
         if not isinstance(op, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,63}", op):
             return None
-        entry = self.responses.get(f"/zins/graphql/{op}")
+        # An operation asked in transactions or in bytes (WEB_TRAFFIC trafficUnit)
+        # may keep one answer per unit under /zins/graphql/<operation>/<unit>.
+        unit = (body.get("variables") or {}).get("trafficUnit") if isinstance(body.get("variables"), dict) else None
+        entry = self.responses.get(f"/zins/graphql/{op}/{unit}") if isinstance(unit, str) and re.fullmatch(r"[A-Z]{1,20}", unit) else None
+        entry = entry if entry is not None else self.responses.get(f"/zins/graphql/{op}")
         if entry is None:
             return None
         out = copy.deepcopy(entry.get("body"))

@@ -102,23 +102,41 @@
     status('Reading the files…');
     let files;
     try { files = await Promise.all(chosen.map(readFile)); } catch (e) { status(e.message, true); setEnabled('tlRun', true); return; }
+    await analyse(files, $('tlFormat').value || '', '');
+  });
+
+  // Try it without logs of your own: a small made-up ZIA NSS web log for the
+  // sample tenant (static/samples), analysed like an upload.
+  $('tlSample').addEventListener('click', async () => {
+    setEnabled('tlRun', false); setEnabled('tlSample', false);
+    status('Reading the sample web logs…');
+    try {
+      const r = await fetch('/static/samples/nss-web-sample.jsonl', { cache: 'no-store' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const text = await r.text();
+      await analyse([{ name: 'sample-nss-web.jsonl', content: text }], '', 'Sample web logs (made up, for the sample tenant). ');
+    } catch (e) { status(`Could not read the sample web logs: ${e.message}`, true); }
+    finally { setEnabled('tlSample', true); setEnabled('tlRun', chosen.length > 0); }
+  });
+
+  async function analyse(files, feedFormat, what) {
     status('Analysing… a large log takes a few seconds.');
     announce('Analysing the logs');
     try {
       const r = await fetch('/api/traffic-logs/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files, feed_format: $('tlFormat').value || '' }) });
+        body: JSON.stringify({ files, feed_format: feedFormat }) });
       const data = await r.json().catch(() => ({}));
       if (r.status === 413) throw new Error('The upload is larger than this server accepts. Gzip the logs or upload fewer at a time.');
       if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `HTTP ${r.status}`);
       show(data);
       const inp = data.input || {};
-      status(`Done: ${fmt(inp.records)} records read${inp.malformed ? `, ${fmt(inp.malformed)} lines could not be read and were skipped` : ''}.`);
+      status(`${what}Done: ${fmt(inp.records)} records read${inp.malformed ? `, ${fmt(inp.malformed)} lines could not be read and were skipped` : ''}.`);
       announce('Analysis complete.');
     } catch (e) {
       status(`Could not analyse: ${e.message}`, true);
       announce('The analysis failed. ' + e.message);
-    } finally { setEnabled('tlRun', true); }
-  });
+    } finally { setEnabled('tlRun', chosen.length > 0); }
+  }
 
   // ── Drawing ──
   function show(data) {
@@ -409,6 +427,9 @@
         const known = s.inspected + s.not_inspected;
         g.appendChild(box('SSL inspected or not', null, known ? el('div', {},
           split([['Inspected', s.inspected, 'ok'], ['Not inspected', s.not_inspected, 'bad'], ['Plain HTTP', s.plain_http, 'unk']]),
+          report && report.report_id ? el('p', {}, el('a', { class: 'rp-btn', id: 'tlTrueCoverage', target: '_blank', rel: 'noopener',
+            href: `/report/sslcoverage?logs=${encodeURIComponent(report.report_id)}` }, 'True inspection coverage from these logs'),
+            el('span', { class: 'tl-dim', text: ' Opens SSL coverage, which ties each line left encrypted to the SSL rule behind it.' })) : null,
           s.reasons.length ? table(['Why not inspected', 'Count'], more(s.reasons, 10).map(c => [c.name, c.count]), [1]) : null,
           s.destinations_not_inspected.length ? table(['Not inspected: destination', 'Count'], more(s.destinations_not_inspected, 10).map(c => [destCell(Object.assign({ link: /^[A-Za-z0-9.*_-]+\.[A-Za-z0-9.-]+$/.test(c.name) }, c)), c.count]), [1]) : null)
           : el('p', { class: 'tl-dim', text: 'These records do not say whether SSL was inspected (add the SSL Inspected field, ssldecrypted, to the feed).' })));

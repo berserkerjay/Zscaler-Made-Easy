@@ -4700,6 +4700,16 @@ window.HELP_CATALOG = {
    }
   },
   "/report/operations": {
+   "#opObjects a[href=\"/report/vendor#panos\"]": {
+    "what": "Opens Migrate from another vendor, where you build the migration plan this operation loads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opSslCov": {
+    "what": "Opens SSL coverage in a new tab. It shows how much web traffic Zscaler really inspects. It names the rule or bypass that leaves the rest locked, with a link back here to fix it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#fwiFile": {
     "what": "Loads a migration plan saved from Migrate from another vendor (Palo Alto Networks). The server checks it again before the preview.",
     "input": "Optional when the plan was handed over from that page. One .json plan file under 4 MB.",
@@ -8706,6 +8716,36 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "#scLogsDrop": {
+    "what": "Stops using the web logs you uploaded. The next check uses ZIA Insights, or an estimate from your rules.",
+    "input": "Nothing to type. Just click it. It shows when you came from the Traffic and session logs page.",
+    "effect": "local"
+   },
+   "#scBypassGb": {
+    "what": "How much web traffic goes around ZIA (Client Connector or PAC bypasses, networks sent direct), so the true coverage can also be given out of all your web traffic. That traffic counts as not inspected.",
+    "input": "A number of gigabytes (GB) from your firewall or egress logs, for the same period as the check. Leave it empty if you do not know it.",
+    "effect": "local"
+   },
+   "#scTrueH": {
+    "what": "The true share of the web traffic that reaches ZIA that Zscaler can see inside: plain HTTP plus HTTPS it decrypted. Unknown traffic never counts as inspected. A second line says the share of all web traffic, with traffic sent around ZIA counted as not inspected, or that it is not measured. Without traffic numbers it is an estimate, and it says so.",
+    "input": "Nothing to type. It shows after a check.",
+    "effect": "local"
+   },
+   "#scTrue button[data-unit=\"BYTES\"]": {
+    "what": "Shows the true coverage by amount of data (bytes).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#scTrue button[data-unit=\"TRANSACTIONS\"]": {
+    "what": "Shows the true coverage by number of requests (transactions).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#scTrue a.sc-fix": {
+    "what": "Opens the builder in Bulk changes that fixes this cause, in a new tab. Nothing changes until you preview and apply it there.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#scBody details.pa-details summary": {
     "what": "Shows or hides the list of what was read from the tenant during the check.",
     "input": "Nothing to type. Just click it.",
@@ -8827,6 +8867,21 @@ window.HELP_CATALOG = {
    }
   },
   "/report/traffic-logs": {
+   "#tlSample": {
+    "what": "Analyses a small made-up ZIA web log for the sample tenant, so you can see the results and the true inspection coverage without logs of your own.",
+    "input": "Nothing to type. Just click it. Nothing is read from a tenant.",
+    "effect": "local"
+   },
+   "#tlSslCov": {
+    "what": "Opens SSL coverage in a new tab: the true share of web traffic Zscaler inspected. After you read ZIA web logs here, use the link in the SSL box to bring them along.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlTrueCoverage": {
+    "what": "Opens SSL coverage with these logs. It gives the true share of web traffic that was inspected and ties each line left encrypted to the SSL rule behind it.",
+    "input": "Nothing to type. Just click it. It shows when the logs say whether SSL was inspected.",
+    "effect": "local"
+   },
    "#tlWatchBox > summary": {
     "what": "Opens the daily report settings: a report made once a day from log files in a folder you name.",
     "input": "Nothing to type. Just click it.",
