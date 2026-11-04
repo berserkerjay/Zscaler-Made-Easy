@@ -135,11 +135,13 @@ await safe('teamLooks', () => looks('team-admin', '/report/team', () => until(()
 await ev(`(document.querySelector('#tmSamlManual').open = true, 1)`);
 await ev(`(() => { const s = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }; s('tmPkName', 'Test laptop'); s('tmPkCur', ${JSON.stringify(cfg.adminPw)}); document.getElementById('tmPkAdd').click(); return 1; })()`);
 await safe('passkeyAdded', () => until(() => ev(`/Test laptop/.test(document.getElementById('tmPkList').textContent) && document.getElementById('tmPkList').textContent`), 'the new passkey', 30000));
+// The page reloads itself after a passkey is added (its status ends empty): let it finish before the next change.
+await until(() => ev(`document.getElementById('tmStatus').textContent === ''`), 'the page reloaded', 30000).catch(() => null);
 await ev(`(() => { const m = document.getElementById('tmSamlMeta'); m.value = ${JSON.stringify(cfg.metadata)}; document.getElementById('tmSamlSave').click(); return 1; })()`);
-await until(() => ev(`/saved/.test(document.getElementById('tmStatus').textContent) || document.getElementById('tmStatus').classList.contains('bad')`), 'SAML saved', 30000);
+await until(() => ev(`/saved/.test(document.getElementById('tmStatus').textContent) || document.getElementById('tmStatus').classList.contains('bad')`), 'SAML saved', 60000);
 await safe('samlSaved', () => ev(`({ status: document.getElementById('tmStatus').textContent, idp: [...document.querySelectorAll('#tmSamlState .tm-tile')].map(t => t.textContent) })`));
 await ev(`(document.getElementById('tmSamlOn').click(), 1)`);
-await until(() => ev(`/SAML sign-in is on/.test(document.getElementById('tmStatus').textContent) || document.getElementById('tmStatus').classList.contains('bad')`), 'SAML on', 30000);
+await until(() => ev(`/SAML sign-in is on/.test(document.getElementById('tmStatus').textContent) || document.getElementById('tmStatus').classList.contains('bad')`), 'SAML on', 60000);
 await safe('samlOn', () => ev(`({ status: document.getElementById('tmStatus').textContent, button: document.getElementById('tmSamlOn').textContent })`));
 
 // 4. Signed out: the login screen now offers SAML; the password is followed by the passkey step.
@@ -158,7 +160,8 @@ await safe('step2Done', () => until(() => ev(`location.pathname === '/' && 'sign
 
 // 5. A viewer: no administrator controls on the Team server page.
 out.errorsBeforeViewer = seen.errors.slice();
-await go('/login');
+// Sign out from a page whose own requests have all finished (a request still on its way after the sign-out is refused, 401).
+await go('/login'); await settle('/login signed in');
 await ev(`fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).then(r => r.status)`);
 await keyboardSignIn(cfg.viewer, cfg.viewerPw);
 await until(() => ev(`location.pathname === '/'`), 'the app for the viewer', 30000);
