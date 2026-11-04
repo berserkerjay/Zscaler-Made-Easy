@@ -1329,8 +1329,8 @@ message says so. This is the same for every way of running the app:
   useless without it), mount a second volume and set
   `DLP_CHECK_STORE_KEY_FILE=/keys/store_keys.json` in `.env`.
 - **Windows and Mac installs** (Update app, the update script, a new ZIP):
-  the key goes into Windows Credential Manager or the macOS Keychain
-  (under `dlp-check`, `store-keys`), tied to your user account.
+  the key goes into Windows Credential Manager or the macOS Keychain,
+  tied to your user account.
 - **Linux installs and headless servers**, where there is no credential
   store: the key goes into `store_keys.json` beside the data, owner-only
   (0600). `DLP_CHECK_STORE_KEY_FILE` moves it elsewhere.
