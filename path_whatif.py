@@ -78,9 +78,10 @@ _TRUST_ALIASES = {"HIGH": "HIGH_TRUST", "MEDIUM": "MEDIUM_TRUST", "LOW": "LOW_TR
 def trust_level(v: Any) -> Optional[str]:
     """A device trust level as the ZIA rules name it, from HIGH_TRUST,
     "High", "high trust" or a device record's "HIGH"; None when it is not
-    one. assumed: a Client Connector device record's deviceTrust values
+    one. A Client Connector device record's deviceTrust values
     HIGH / MEDIUM / LOW / UNKNOWN are the same levels the rules name
     (the SDK documents the field, not its values)."""
+    # assumed: a device record's deviceTrust HIGH / MEDIUM / LOW / UNKNOWN are the levels the rules name.
     s = re.sub(r"[^A-Z]+", "_", str(v or "").upper()).strip("_")
     if s in TRUST_LEVELS:
         return s

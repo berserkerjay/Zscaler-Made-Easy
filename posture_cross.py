@@ -68,6 +68,7 @@ WEAK_TRUST = ("LOW_TRUST", "UNKNOWN_DEVICETRUSTLEVEL")
 # A ZIA posture profile's criteria per level (the zcc provider's zcc_zia_posture schema:
 # high_trust_criteria / medium_trust_criteria / low_trust_criteria {cs: [{cn: [{id, name, udid}]}]}).
 CRITERIA_KEYS = (("HIGH_TRUST", "highTrustCriteria"), ("MEDIUM_TRUST", "mediumTrustCriteria"), ("LOW_TRUST", "lowTrustCriteria"))
+# assumed: the zcc provider 0.1.2-beta.3's path for ZIA posture profiles (no SDK call); one GET, possibly cut short.
 ZIA_POSTURE_PATH = "/zcc/papi/public/v2/zia-posture-profiles"
 APP_PLATFORMS = ("windows", "macos", "ios", "android", "linux")   # web_policy.list_by_company device_type values (SDK docstring)
 
@@ -158,6 +159,7 @@ def _names_list(items: Iterable[str], n: int = 4) -> str:
     return device_posture._join(q, "and")
 
 
+# assumed: an unlicensed product answers 401 or 403 (said as "not readable" unless company info says it is off).
 def _denied(err: str) -> bool:
     return bool(re.search(r"\b(401|403)\b|unauthori[sz]ed|forbidden|not licensed|not entitled|not subscribed", err or "", re.I))
 
@@ -188,8 +190,21 @@ def read_company(client: Any) -> Dict[str, Any]:
         return {"read": False, "zpa": None, "zia": None, "reason": zpa_reader._err_text(e)}
     if err:
         return {"read": False, "zpa": None, "zia": None, "reason": zpa_reader._err_text(err)}
-    rows = zpa_reader.raw_items(result if isinstance(result, list) else ([result] if result else []), resp)
-    row = rows[0] if rows else {}
+    # The wire body first: the SDK's CompanyInfo models can come back with their flags unset.
+    body = None
+    getter = getattr(resp, "get_body", None)
+    if callable(getter):
+        try:
+            body = getter()
+        except Exception:  # noqa: BLE001 — fall back to the models
+            body = None
+    if isinstance(body, list):
+        body = body[0] if body and isinstance(body[0], dict) else None
+    if isinstance(body, dict) and body:
+        row = body
+    else:
+        rows = zpa_reader.raw_items(result if isinstance(result, list) else ([result] if result else []), resp)
+        row = rows[0] if rows else {}
 
     def flag(camel: str) -> Optional[bool]:
         v = _g(row, camel)
@@ -314,6 +329,7 @@ def normalize_zia_rule(section: str, r: Dict[str, Any]) -> Dict[str, Any]:
     return rule
 
 
+# assumed: which actions loosen policy is this page's reading of the action names (ASSUMPTIONS), not Zscaler's.
 def _loosens(section: str, rule: Dict[str, Any], raw: Dict[str, Any]) -> str:
     """How the rule loosens policy, in words, or ''."""
     a = rule["action"]
@@ -501,6 +517,7 @@ def cross(rep: Dict[str, Any], data: Dict[str, Any], st: Dict[str, Dict[str, Any
             rows = []
             for c in items:
                 hit, how = None, ""
+                # assumed: a criterion's udid is the device posture profile's postureUdid; by name it is only inferred.
                 if c.get("udid") and c["udid"].lower() in by_udid:
                     hit, how = by_udid[c["udid"].lower()], "udid"
                 elif c.get("name") and c["name"].casefold() in by_name:
@@ -613,6 +630,7 @@ def cross(rep: Dict[str, Any], data: Dict[str, Any], st: Dict[str, Dict[str, Any
     if zp_read and apps_read:
         trust_computed = any(a["zia_posture_id"] in zp_by_id for a in apps if a["active"] is not False)
     if zia_read:
+        # assumed: a device whose app profile names no ZIA posture profile has no trust level, which ZIA sees as unknown.
         no_trust_apps = [a for a in apps if a["active"] is not False and not a["zia_posture_id"]] if apps_read else []
         if trust_rules and apps_read and no_trust_apps:
             for r in trust_rules:

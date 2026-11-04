@@ -170,7 +170,7 @@ REGRESSION_ONLY: Tuple[str, ...] = (
     "test_classic_profile_isolation_r2.py", "test_clouds.py", "test_compliance_tab.py", "test_console_index.py",
     "test_container_parity.py", "test_continuous_eval.py", "test_continuous_eval_scope_reads.py",
     "test_continuous_eval_unread_and_classic.py", "test_control_channels.py", "test_corpus_engines.py",
-    "test_dashboard.py", "test_deploy_clarity.py", "test_detection_health.py", "test_device_posture.py",
+    "test_dashboard.py", "test_deploy_clarity.py", "test_detection_health.py", "test_device_posture.py", "test_device_posture_cross.py",
     "test_dsa_reference_player.py", "test_endpoint_baseline.py", "test_engine_explain.py", "test_engine_pruning.py",
     "test_entrypoints.py", "test_export_filter_keeps_focus.py", "test_export_integrity.py", "test_exports_excel_pdf.py",
     "test_find_anything.py", "test_findings.py", "test_gui_addons.py", "test_guidance.py", "test_hardening.py",
