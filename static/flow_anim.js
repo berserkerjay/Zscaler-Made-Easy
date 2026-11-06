@@ -1650,7 +1650,18 @@
     if (!tr || !tr.available || !tr.classes || !k || !tr.classes[k]) return null;
     const m = dataFlowTrafficModel(report, t.network);
     if (!m) return null;
-    const c = tr.classes[k], end = dfEnd(t), say = DF_END_SAY[end] || ['goes on', 'would go on'];
+    const c = tr.classes[k], end = dfEnd(t);
+    let say = DF_END_SAY[end] || ['goes on', 'would go on'];
+    // A URL Filtering or Cloud App Control rule that depends on who sends
+    // it (or how) puts the path among the unverified in the picture, as in
+    // the summary. When SSL inspection itself is decided, the sentence about
+    // this one path still says what happens to the data that gets through,
+    // as the numbered steps above do ("Not inspected" stays "not inspected").
+    if (end === 'u_ssl' && (t.hops || []).some(h => (h.key === 'url' || h.key === 'cac') && h.status === 'conditional')) {
+      const then = dfEnd(Object.assign({}, t, { policy_conditional: false })), s2 = then !== 'u_ssl' && DF_END_SAY[then];
+      if (s2) say = [`may be stopped or let through, depending on who sends it and how; if it gets through, it ${s2[0]}`,
+        `might be stopped or let through, depending on who sends it and how; if it got through, it ${s2[1]}`];
+    }
     return { label: c.label, bytes: c.upload, total: m.total, share: pctOf(c.upload, m.total), end, unchecked: DF_UNCHECKED.indexOf(end) >= 0,
       now: say[0], would: say[1], window: dfWindow(tr) };
   }

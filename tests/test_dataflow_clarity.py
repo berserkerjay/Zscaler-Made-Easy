@@ -262,6 +262,24 @@ def test_the_selected_path_has_its_share_of_the_uploads():
 
 
 @needs_node
+def test_a_path_whose_url_rule_depends_on_the_user_still_says_not_inspected_when_ssl_leaves_it_locked():
+    """WCAG 2.2 SC 1.3.1 · CWE-1287 · CWE-684: a blind path behind a URL rule that depends on who sends it stays unverified in the picture, and its sentence says the data that gets through is not inspected (as the steps' "Not inspected" does)."""
+    # Arrange: the webmail path on Off network, with a URL rule that depends on an unverified identity (as on the sample tenant)
+    rep = _report_with_traffic([a for a in APPS if not (isinstance(a, dict) and a.get("application") == "Gmail")])
+    i = [k for k, t in enumerate(rep["traces"]) if t["network"] == "off" and t["destination"].get("class") == "webmail"][0]
+    t = rep["traces"][i]
+    assert t["outcome"] == "blind" and not t["decrypted"]
+    t["policy_conditional"] = True
+    t["hops"] = [dict(h, status="conditional") if h["key"] == "url" else h for h in t["hops"]]
+    # Act
+    web = _node("return FA.dataFlowPathShare(D.rep, D.rep.traces[%d]);" % i, rep=rep)
+    # Assert
+    assert web["end"] == "u_ssl" and web["unchecked"] is False   # counted with the unverified, as the summary does
+    assert "not inspected" in web["would"] and "depending on who sends it" in web["would"], web
+    assert "may or may not be inspected" not in web["would"] + web["now"], web
+
+
+@needs_node
 def test_without_traffic_numbers_there_is_no_traffic_model():
     """CWE-1287: a report without Insights numbers gives no weighted picture (the page keeps the still view)."""
     rep = fx.dataflow_report()
