@@ -12,6 +12,7 @@ const origin = new URL(base).origin;
 await fs.mkdir(profile, {recursive:true});
 await fs.mkdir(artifactDir, {recursive:true});
 const cases = [], runtimeErrors = [], consoleErrors = [], responses = [], blockedExternal = [];
+const embedNet = [];
 let browser, ws, sequence = 0, clickSequence = 0, failMapOnce = false, failure, spawnError = null;
 const harnessEvents = [];
 const pending = new Map();
@@ -43,6 +44,11 @@ async function event(message) {
   if (message.method === 'Network.responseReceived') {
     const response=message.params.response;
     responses.push({url:response.url,status:response.status,headers:response.headers});
+  }
+  // The embedded reference's network story, for a failure message that says what Chrome did.
+  if (/^Network\.(requestWillBeSent|responseReceived|loadingFailed|loadingFinished)$/.test(message.method) || message.method==='Fetch.requestPaused') {
+    const p=message.params, url=p.request?.url||p.response?.url||'';
+    if (url.includes('/reference/embed/') || embedNet.some(e=>e.id===p.requestId)) embedNet.push({m:message.method.split('.')[1],id:p.requestId,url:url.slice(-60),status:p.response?.status,err:p.errorText,type:p.type,frame:(p.frameId||'').slice(-6),at:Date.now()-started});
   }
   if (message.method === 'Fetch.requestPaused') {
     const {requestId,request} = message.params;
@@ -254,7 +260,7 @@ try {
     const findEmbed=()=>responses.findLast(r=>new URL(r.url).pathname==='/reference/embed/portfolio-map' && r.status===200);
     for(let i=0;i<80&&!findEmbed();i++)await sleep(75);
     const response=findEmbed();
-    assert(response,'No real HTTP response for embedded portfolio');
+    assert(response,'No real HTTP response for embedded portfolio; embed network: '+JSON.stringify(embedNet)+'; frame: '+JSON.stringify(await evaluate(`({src:document.getElementById('mapFrame').src,url:document.getElementById('mapFrame').contentWindow.location.href,ua:navigator.userAgent})`)));
     const headers=Object.fromEntries(Object.entries(response.headers).map(([k,v])=>[k.toLowerCase(),v]));
     assert.equal(headers['x-frame-options'],'SAMEORIGIN');assert(headers['content-security-policy'].includes("frame-ancestors 'self'"));
     await screenshot('portfolio-embedded-loaded');
