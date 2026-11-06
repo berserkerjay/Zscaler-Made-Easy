@@ -55,7 +55,7 @@ def test_authenticate_ends_with_an_inline_success_or_an_in_app_failure_dialog():
     assert "function _gdIdent()" in guide and "c.vd !== _gdIdent()" in guide   # the classic sign-in's status is not blanked
     assert guide.count("_gdTest(") == 2, "only the guide's button (and the form's, via index.html) call _gdTest"
     html = c.get("/").text
-    assert "await _gdTest(); return;" in html   # the form's Authenticate funnels into the same function
+    assert "await _gdTest(); refreshSignedIn(false); return;" in html   # the form's Authenticate funnels into the same function, then shows Sign out of tenant
     # The token unlock: the in-app dialog first, the browser prompt only as a guarded fallback.
     assert "window.__dlpUnlockDialog" in html and "r.dlpTokenRequired = true" in html and "askFailed = String(e && e.message || e); return null;" in html
     assert "r.dlpDialogUnavailable = askFailed" in html and "r.dlpDialogUnavailable\n        ? _gdConnFailure('dialog'" in guide   # a browser that cannot ask is named as such
