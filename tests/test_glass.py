@@ -611,12 +611,14 @@ def test_extension_glass_is_local_static_and_on_every_page():
 # ── What the glass costs to draw (measured: tests/test_glass_perf_browser.py) ──
 
 def test_the_drift_steps_about_once_a_second_on_both_layers_together():
-    """CWE-400 · CWE-1050 · performance: each drift step draws every blurred layer again, so each backdrop layer steps at most once a second, and both at the same moments (the same seconds per step), never four or more times a second as before."""
+    """CWE-400 · CWE-1050 · performance: each drift step draws every blurred layer again, so each backdrop layer steps at most once a second, and both at the same moments (the same seconds per step), never four or more times a second as before.
+    An animation's timing function applies to each keyframe interval, not to the whole run: steps(n) over k intervals is k * n steps."""
     # Arrange
     drift = float(_decls(_block(CSS_NO_COMMENTS, "body"))["--glass-drift"].rstrip("s"))
-    uses = re.findall(r"(?<![\w-])animation\s*:\s*var\(--glass-solid-motion, glass-drift-\w+ (var\(--glass-drift\)|calc\(var\(--glass-drift\) \* ([\d.]+)\)) steps\((\d+)\)", CSS_NO_COMMENTS)
+    uses = re.findall(r"(?<![\w-])animation\s*:\s*var\(--glass-solid-motion, (glass-drift-\w+) (var\(--glass-drift\)|calc\(var\(--glass-drift\) \* ([\d.]+)\)) steps\((\d+)\)", CSS_NO_COMMENTS)
+    intervals = {name: len(re.findall(r"[\d.]+%\s*\{", _block(CSS_NO_COMMENTS, "@keyframes " + name))) - 1 for name, *_ in uses}
     # Act
-    per_step = [drift * (float(scale) if scale else 1.0) / int(n) for _dur, scale, n in uses]
+    per_step = [drift * (float(scale) if scale else 1.0) / (intervals[name] * int(n)) for name, _dur, scale, n in uses]
     # Assert
     assert len(per_step) == 2 and all(s >= 1.0 for s in per_step), per_step
     assert abs(per_step[0] - per_step[1]) < 1e-9, per_step

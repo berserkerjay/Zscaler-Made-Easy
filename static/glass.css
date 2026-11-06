@@ -156,15 +156,16 @@ body.has-portrait, body.has-logo { --glass-a-chrome: var(--glass-a-float); --gla
     radial-gradient(56vmax 42vmax at 18% 16%, var(--glass-amb-1), transparent 70%),
     radial-gradient(48vmax 38vmax at 88% 28%, var(--glass-amb-2), transparent 70%),
     radial-gradient(56vmax 40vmax at 50% 90%, var(--glass-amb-3), transparent 70%));
-  animation: var(--glass-solid-motion, glass-drift-a var(--glass-drift) steps(90) infinite alternate);
+  animation: var(--glass-solid-motion, glass-drift-a var(--glass-drift) steps(45) infinite alternate);
 }
 :root:not(.glass-off) body:not(.has-logo)::after {
   background-image: var(--glass-solid-img,
     radial-gradient(34vmax 28vmax at 72% 62%, var(--glass-amb-4), transparent 70%),
     radial-gradient(30vmax 26vmax at 30% 52%, var(--glass-amb-5), transparent 70%));
-  animation: var(--glass-solid-motion, glass-drift-b calc(var(--glass-drift) * 0.8) steps(72) infinite alternate);
+  animation: var(--glass-solid-motion, glass-drift-b calc(var(--glass-drift) * 0.8) steps(36) infinite alternate);
 }
-/* The drift's pace: one step a second on both layers, at the same moments (90 s in 90 steps, 72 s in 72 steps). Each
+/* The drift's pace: one step a second on both layers, at the same moments. steps() applies to each keyframe interval,
+   and each drift has two (0-50%, 50-100%): 90 s is two 45 s intervals of 45 steps, 72 s two 36 s intervals of 36. Each
    step draws every blurred layer again, so four steps a second per layer cost a slow computer a third of a core with
    nothing moving; a step of about a pixel over soft colour fields looks the same. (tests/test_glass.py checks it.) */
 /* The tab is hidden (static/glass.js): nothing to look at, so nothing moves. While the page scrolls
