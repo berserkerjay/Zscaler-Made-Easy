@@ -516,7 +516,7 @@ window.advTerraform = advTerraform;
   const box = document.getElementById('advTenantSessionBox');
   const out = document.getElementById('advTenantSignOut');
   if (!box || !out) return;
-  async function show(note) {
+  async function showSignIn(note) {
     let d = null;
     try { const r = await fetch('/api/tenant/session', { cache: 'no-store' }); if (r.ok) d = await r.json(); } catch (e) { d = null; }
     const live = !!(d && d.connected);
@@ -530,7 +530,7 @@ window.advTerraform = advTerraform;
   out.addEventListener('click', async () => {
     let note = 'Signed out of the tenant. The server no longer keeps the sign-in.';
     try { const r = await fetch('/api/tenant/session', { method: 'DELETE' }); if (!r.ok) note = `Could not sign out of the tenant: HTTP ${r.status}`; } catch (e) { note = `Could not sign out of the tenant: ${e.message}`; }
-    show(note);
+    showSignIn(note);
   });
-  show('');
+  showSignIn('');
 })();
