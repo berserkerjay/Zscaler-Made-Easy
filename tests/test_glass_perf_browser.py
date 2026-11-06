@@ -9,7 +9,9 @@ Guarded: with nothing moving on the page, the backdrop's drift draws about
 one frame a second (it drew four or more a second per layer, each one
 re-blurring every glass layer); while the page scrolls, the cards and hero
 in the page flow drop their blur (only the soft backdrop is behind them, so
-they look the same) and floating bars keep theirs, and the blur comes back
+they look the same), so does the page bar (95% opaque: it looks the same
+for the moment the page moves), the small floating glass keeps its blur,
+and the blur comes back
 when scrolling stops; drawing a scrolled second with the glass on costs at
 most a bounded multiple of drawing it with the glass off (it was about
 sixteen times on the Team server page); under prefers-reduced-motion
@@ -117,7 +119,7 @@ def test_under_reduced_motion_nothing_is_drawn_while_nothing_moves(perf):
 
 
 def test_while_scrolling_only_the_floating_glass_stays_blurred_and_the_blur_comes_back(perf):
-    """WCAG 2.2 SC 1.4.3 · CWE-1050: at rest the cards and the hero are blurred glass; mid-scroll html.glass-scrolling is set and only floating chrome (the page bar, the theme button) keeps its blur; 600 ms after the scroll the blur is back on the same surfaces."""
+    """WCAG 2.2 SC 1.4.3 · CWE-1050: at rest the cards and the hero are blurred glass; mid-scroll html.glass-scrolling is set and only the small floating glass (the theme button) keeps its blur; 600 ms after the scroll the blur is back on the same surfaces."""
     rest, mid, after = perf["onRest"], perf["onScroll"]["mid"], perf["onAfter"]
     assert "rp-card" in rest and "hero" in rest, rest
     assert mid["cls"] is True and "rp-card" not in mid["blurred"] and "hero" not in mid["blurred"] and "sb-row" not in mid["blurred"], mid

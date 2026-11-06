@@ -140,7 +140,7 @@ def test_every_blur_sheen_and_shadow_goes_through_its_solid_switch():
     switch = {"-webkit-backdrop-filter": "var(--glass-solid-filter,", "backdrop-filter": "var(--glass-solid-filter,",
               "background-image": "var(--glass-solid-img,", "box-shadow": "var(--glass-solid-shadow,"}
     # Act
-    bad = [(p, v[:60]) for p, v in decls if not v.startswith(switch[p]) and v != "none"]   # "none" only ever takes glass away
+    bad = [(p, v[:60]) for p, v in decls if not v.startswith(switch[p]) and v not in ("none", "none !important")]   # "none" only ever takes glass away
     # Assert
     assert len(decls) >= 20 and not bad, bad
 
@@ -639,3 +639,27 @@ def test_while_the_page_scrolls_the_in_flow_glass_drops_its_blur_and_the_drift_h
     assert not re.search(r"\.rp-bar|#dbSidebar|dialog|\.hh-tip", selectors), selectors
     body = _block(CSS_NO_COMMENTS, ":root:not(.glass-off).glass-scrolling body::before,\n:root:not(.glass-off).glass-scrolling body::after")
     assert "animation-play-state: paused" in body
+
+
+def test_while_the_page_scrolls_the_page_bar_drops_its_blur_and_the_small_floating_glass_keeps_it():
+    """CWE-400 · CWE-1050 · WCAG 2.2 SC 1.4.3: the page bar (floating, as wide as the page, 95% opaque) drops its backdrop blur while html.glass-scrolling is set, so a scrolled frame does not read its backdrop back each frame; the theme button and the help pop-up keep theirs."""
+    # Arrange
+    rp_bar = dict((k.strip(), v.strip()) for k, v in re.findall(r"([\w-]+)\s*:\s*([^;]+);", _block(CSS_NO_COMMENTS, ":root:not(.glass-off).glass-scrolling .rp-bar")))
+    # Act
+    scrolling_heads = re.findall(r"([^{}]*glass-scrolling[^{}]*)\{", CSS_NO_COMMENTS)
+    # Assert
+    assert rp_bar["backdrop-filter"] == "none !important" and rp_bar["-webkit-backdrop-filter"] == "none !important", rp_bar
+    assert not any(re.search(r"themeToggleBtn|\.hh-tip|#dbSidebar|dialog", h) for h in scrolling_heads), scrolling_heads
+
+
+def test_the_drift_only_translates_its_layers_so_a_scrolled_frame_never_resamples_them():
+    """CWE-400 · CWE-1050: the backdrop drift's keyframes are translations only (no rotate or scale), so its two page-sized layers, drawn on every scrolled frame, are never resampled; the drift still moves both layers."""
+    # Arrange
+    frames = dict(re.findall(r"@keyframes\s+(glass-drift-\w+)\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}", CSS_NO_COMMENTS))
+    # Act
+    values = {name: re.findall(r"transform\s*:\s*([^;}]+)", body) for name, body in frames.items()}
+    # Assert
+    assert set(values) == {"glass-drift-a", "glass-drift-b"}, values
+    for name, vs in values.items():
+        assert vs and all(re.fullmatch(r"translate3d\([^()]*\)", v.strip()) for v in vs), (name, vs)
+        assert len({v.strip() for v in vs}) > 1, (name, vs)

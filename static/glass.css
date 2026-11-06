@@ -174,15 +174,18 @@ body.has-portrait, body.has-logo { --glass-a-chrome: var(--glass-a-float); --gla
 :root:not(.glass-off).glass-still body::after { animation-play-state: paused; }
 :root:not(.glass-off).glass-scrolling body::before,
 :root:not(.glass-off).glass-scrolling body::after { animation-play-state: paused; }
+/* The drift only moves the layers (translation, no rotation or scale): a rotated or scaled layer has to be resampled
+   on every frame it is drawn, and while the page scrolls both layers are drawn on every frame (on two slow cores that
+   was about a fifth of a scrolled frame's drawing). Over soft colour fields the slide looks the same. */
 @keyframes glass-drift-a {
-  0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
-  50% { transform: translate3d(4vmax, -3vmax, 0) rotate(8deg) scale(1.08); }
-  100% { transform: translate3d(-3vmax, 3vmax, 0) rotate(-5deg) scale(1.04); }
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(4vmax, -3vmax, 0); }
+  100% { transform: translate3d(-3vmax, 3vmax, 0); }
 }
 @keyframes glass-drift-b {
-  0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(-6vmax, 4vmax, 0) scale(1.12); }
-  100% { transform: translate3d(5vmax, -3vmax, 0) scale(0.96); }
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-6vmax, 4vmax, 0); }
+  100% { transform: translate3d(5vmax, -3vmax, 0); }
 }
 
 /* ── Tier 3, float: sticky and fixed chrome, dialogs and pop-ups ── */
@@ -300,6 +303,12 @@ body.has-portrait, body.has-logo { --glass-a-chrome: var(--glass-a-float); --gla
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+/* ... and so does the page bar, the one floating surface as wide as the page: re-blurring what scrolls under it was a
+   third of a scrolled frame's drawing on two slow cores (whatever the blur radius: the cost is reading its backdrop
+   back each frame, not the blur), and its tint is 95% opaque, so the 5% that shows through looks the same unblurred
+   for the moment the page moves. The small floating pieces (the theme button, the help pop-up), the sidebar and
+   dialogs keep their blur. (!important: the tier 3 rule's :is() carries #dbSidebar's id specificity.) */
+:root:not(.glass-off).glass-scrolling .rp-bar { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 :root:not(.glass-off) :is(.rp-card, .container .card) { border-radius: var(--glass-r-panel); }
 :root:not(.glass-off) :is(.xp-details, .db-tile, .db-pillar, .df-stat, .bp-card, .op-kind, .op-block, .pm-wrap, .fa-motion .fa-stage, .fp-stage, .pa-flow, .pa-motion, .sf-flow-wrap, .df-flow-wrap, .sm-tile) {
   border-radius: var(--glass-r-nested);
