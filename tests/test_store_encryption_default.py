@@ -521,3 +521,69 @@ def test_the_docs_say_where_the_key_and_any_plain_backup_really_are():
     assert "A migration that stops keeps an unencrypted backup" in sec and "store-encryption-backup/" in sec
     inst = " ".join(open(os.path.join(root, "INSTALL.md"), encoding="utf-8").read().split())
     assert "Always Allow" in inst and "unencrypted" in inst and "never moved or deleted" in inst
+
+
+@pytest.fixture
+def read_only_data(monkeypatch):
+    """The hardened container with no /data volume (docker run --read-only):
+    every create or write under the data folder fails with EROFS, as it does there."""
+    import errno
+    folder = os.path.abspath(_data_dir())
+    real_open, real_makedirs = os.open, os.makedirs
+
+    def _inside(path):
+        p = os.path.abspath(os.fspath(path))
+        return p == folder or p.startswith(folder + os.sep)
+
+    def ro_open(path, flags, *a, **kw):
+        if _inside(path) and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT):
+            raise OSError(errno.EROFS, "Read-only file system", os.fspath(path))
+        return real_open(path, flags, *a, **kw)
+
+    def ro_makedirs(path, *a, **kw):
+        if _inside(path) and not os.path.isdir(path):
+            raise OSError(errno.EROFS, "Read-only file system", os.fspath(path))
+        return real_makedirs(path, *a, **kw)
+
+    monkeypatch.setattr(os, "open", ro_open)
+    monkeypatch.setattr(os, "makedirs", ro_makedirs)
+    monkeypatch.setitem(sys.modules, "keyring", None)   # no credential store in the container
+    return folder
+
+
+def test_a_read_only_data_folder_means_no_key_said_plainly_never_an_os_error(default_on, read_only_data):
+    """ASVS V6.4.1 · CWE-755 · WSTG-ERRH-01: with a data folder that cannot be written (a read-only container, no volume), sealing reports that no key can be kept there instead of raising OSError, and nothing is created in the folder."""
+    before = sorted(os.listdir(read_only_data))
+    assert store_crypto.seal_text("x") == "x"
+    problem = store_crypto.status()["problem"]
+    assert "cannot be written" in problem and read_only_data in problem
+    assert store_crypto.health_view() == {"enabled": True, "sealing": False, "problem": problem}
+    said = []
+    assert store_crypto.startup(said.append)["status"] == "no_key" and "cannot be written" in said[0]
+    assert sorted(os.listdir(read_only_data)) == before
+
+
+def test_an_explicit_encryption_setting_with_a_read_only_data_folder_never_breaks_auditing(default_on, monkeypatch, read_only_data, capsys):
+    """ASVS V7.1.3 · CWE-755 · WSTG-ERRH-01: DLP_CHECK_STORE_ENCRYPTION=1 with no key keepable makes sealing refuse, and an audit line is then reported lost on stderr, never raised into the request."""
+    monkeypatch.setenv(SETTING, "1")
+    with pytest.raises(store_crypto.KeyUnavailable):
+        store_crypto.seal_text("x")
+    assert audit.record("enc_test", marker="RO") is None
+    assert "AUDIT LOG WRITE FAILED" in capsys.readouterr().err
+
+
+def test_the_hardened_container_without_a_volume_answers_health_with_the_token_gate_on(default_on, monkeypatch, read_only_data):
+    """ASVS V14.1.1 · CWE-755 · WSTG-ERRH-01: in a read-only container with no data volume, /api/health answers 200 with the token (saying the stores cannot be encrypted and why) and 401 without it, never a 500 from the store key lock."""
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    import security
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "1")
+    monkeypatch.setattr(security, "_ui_token", None)
+    monkeypatch.setenv("ZSCALER_UI_TOKEN", "ci-smoke-token")
+    monkeypatch.setattr(srv, "_latest_remote_commit", lambda branch: None)
+    c = TestClient(srv.app, raise_server_exceptions=False)
+    assert c.get("/api/health").status_code == 401
+    r = c.get("/api/health", headers={"X-DLP-Check-Token": "ci-smoke-token"})
+    assert r.status_code == 200
+    enc = r.json()["store_encryption"]
+    assert enc["enabled"] is True and enc["sealing"] is False and "cannot be written" in enc["problem"]

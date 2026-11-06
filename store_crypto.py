@@ -264,6 +264,12 @@ def lock_path() -> str:
     return os.path.join(_data_dir(), LOCK_NAME)
 
 
+def read_only_problem(e: OSError) -> str:
+    return (f"the data folder {_data_dir()} cannot be written ({e.strerror or type(e).__name__}), so no store key "
+            "can be made or kept there and nothing is saved there; mount a writable data folder "
+            "(the container's /data volume) to keep settings, encrypted")
+
+
 def _try_lock(f) -> bool:
     try:
         f.seek(0)
@@ -299,8 +305,14 @@ def _exclusive(what: str, wait: Optional[float] = None):
     another process (default LOCK_WAIT_SECONDS; 0 refuses at once)."""
     with _LOCK:
         if _HELD["depth"] == 0:
-            os.makedirs(_data_dir(), exist_ok=True)
-            fd = os.open(lock_path(), os.O_RDWR | os.O_CREAT, 0o600)   # owner-only from the first write, like every file here
+            try:
+                os.makedirs(_data_dir(), exist_ok=True)
+                fd = os.open(lock_path(), os.O_RDWR | os.O_CREAT, 0o600)   # owner-only from the first write, like every file here
+            except OSError as e:
+                # A data folder that cannot be written (a read-only container
+                # with no volume mounted, a read-only share): no key can be
+                # made or kept there either, so say that, never an OSError.
+                raise KeyUnavailable(read_only_problem(e)) from None
             try:
                 os.chmod(lock_path(), 0o600)
             except OSError:
@@ -873,6 +885,10 @@ def startup(log: Callable[[str], None] = print) -> Dict[str, Any]:
         return {"status": "off"}
     try:
         out = migrate()
+    except KeyUnavailable as e:
+        _KEY_PROBLEM["problem"] = str(e)
+        log(f"  Store encryption: no store key here: {e}.")
+        return {"status": "no_key", "error": str(e)}
     except Exception as e:  # noqa: BLE001 - the app still reads plain and sealed stores
         log(f"  Store encryption: the stores could not be encrypted now ({type(e).__name__}); they stay readable and it is tried again at the next start.")
         return {"status": "error"}
@@ -892,6 +908,13 @@ def _where_kept() -> str:
     if os.path.isfile(key_file()):
         return "key file"
     return "credential store" if kr is not None and not key_file_chosen() else "key file"
+
+
+def health_view() -> Dict[str, Any]:
+    """What /api/health says about store encryption: cheap (no credential
+    store or key file is read), so a polled health check never touches them."""
+    problem = _KEY_PROBLEM["problem"]
+    return {"enabled": enabled(), "sealing": enabled() and not problem, "problem": problem}
 
 
 def status() -> Dict[str, Any]:

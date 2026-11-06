@@ -9115,6 +9115,9 @@ async def health():
         "is_git_checkout": _is_git_checkout(),
         "in_container": in_container,
         "tls": _tls_status(),
+        # Whether stores are being encrypted, and why not when they cannot be
+        # (e.g. a read-only container with no /data volume).
+        "store_encryption": _store_encryption_health(),
         # The branch this install is on (main unless it was switched from the
         # Update app card) and what it can be switched to; latest_commit is
         # GitHub's tip of that same branch, so "update available" is honest.
@@ -9123,6 +9126,14 @@ async def health():
         "latest_commit": _latest_remote_commit(hb),
         "latest_commit_error": _latest_error(hb),
     }
+
+
+def _store_encryption_health() -> Dict[str, Any]:
+    try:
+        import store_crypto
+        return store_crypto.health_view()
+    except Exception as e:  # noqa: BLE001 - health must answer
+        return {"enabled": None, "sealing": False, "problem": type(e).__name__}
 
 
 # GitHub's tip per branch: {branch: {"at", "sha", "error"}}, cached 10 minutes.

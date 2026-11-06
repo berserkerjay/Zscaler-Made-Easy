@@ -7,6 +7,11 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-06
+
+### Store encryption in a read-only container, glass while scrolling, macOS installs
+- A read-only container with no `/data` volume (`docker run --read-only`) no longer answers 500: the store key lock that cannot be created there is reported as "no store key can be kept" (start-up message, `store_encryption` in `GET /api/health`), nothing is written, and a lost audit line is reported on stderr instead of breaking the request.
+
 ## 2026-11-04
 
 ### Email tenants: deploy and Check D.1 agree
