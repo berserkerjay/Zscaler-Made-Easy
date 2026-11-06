@@ -195,10 +195,18 @@ def test_the_static_mount_holds_only_shipped_assets_and_resists_traversal(gate_o
     mounts = [r for r in srv.app.routes if isinstance(r, Mount)]
     assert [m.path for m in mounts] == ["/static"]
     allowed = {".html", ".js", ".css", ".svg", ".png", ".webp", ".jpg", ".jpeg", ".gif", ".ico", ".woff2", ".md"}
+    samples = os.path.join(srv.STATIC_DIR, "samples")
     for root, _dirs, files in os.walk(srv.STATIC_DIR):
         for f in files:
             full = os.path.join(root, f)
             assert not os.path.islink(full), full
+            if root == samples and f.endswith(".jsonl"):
+                # The made-up web logs the Traffic logs page offers (static/traffic_logs.js): every
+                # line is a sample event of the made-up tenant, never a real user or address.
+                with open(full, encoding="utf-8") as fh:
+                    events = [json.loads(ln)["event"] for ln in fh if ln.strip()]
+                assert events and all(str(e.get("login", "")).endswith(".example") for e in events), full
+                continue
             assert os.path.splitext(f)[1].lower() in allowed, f"unexpected file type served without the token: {full}"
     for probe in ("/static/../security.py", "/static/%2e%2e/security.py", "/static/..%2fsecurity.py", "/static/%2e%2e%2fui_token.txt"):
         r = gate_on.get(probe)
