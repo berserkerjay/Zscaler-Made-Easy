@@ -248,7 +248,12 @@ try {
     assert.notEqual(await evaluate(`document.getElementById('mapFrame').src`),first);
     assert((await evaluate(`document.getElementById('mapFrame').contentDocument.title`)).includes('Portfolio Map'));
     assert.equal(await evaluate(`document.getElementById('mapFrame').contentWindow.__acceptanceCsp.length`),0);
-    const response=responses.findLast(r=>new URL(r.url).pathname==='/reference/embed/portfolio-map' && r.status===200);
+    // CDP delivers Network.* events on their own channel, so the recorded response can land a
+    // moment after the child's ready handshake (seen on macOS runners). Wait for the event; the
+    // assertion itself is unchanged.
+    const findEmbed=()=>responses.findLast(r=>new URL(r.url).pathname==='/reference/embed/portfolio-map' && r.status===200);
+    for(let i=0;i<80&&!findEmbed();i++)await sleep(75);
+    const response=findEmbed();
     assert(response,'No real HTTP response for embedded portfolio');
     const headers=Object.fromEntries(Object.entries(response.headers).map(([k,v])=>[k.toLowerCase(),v]));
     assert.equal(headers['x-frame-options'],'SAMEORIGIN');assert(headers['content-security-policy'].includes("frame-ancestors 'self'"));
