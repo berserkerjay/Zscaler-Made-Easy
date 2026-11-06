@@ -182,7 +182,7 @@ REGRESSION_ONLY: Tuple[str, ...] = (
     "test_proposals.py", "test_rate_forecast.py", "test_reference.py", "test_reference_embeds.py",
     "test_release_docs_export_and_assessor.py", "test_reports.py", "test_required_dlp_ci_triggers.py",
     "test_required_dlp_controls.py", "test_required_dlp_review_regressions.py", "test_rules_labels_scope_stop.py",
-    "test_run_control.py", "test_saas_email_checks.py", "test_sample_tenant_browser.py",
+    "test_run_control.py", "test_saas_email_checks.py", "test_email_tenants.py", "test_sample_tenant_browser.py",
     "test_scope_integration_regression.py", "test_scope_prerequisites.py", "test_scoring.py", "test_secure_by_design.py",
     "test_secure_defaults.py", "test_security_hardening_review.py", "test_security_test_matrix.py", "test_self_heal.py",
     "test_shadow_rules.py", "test_standalone.py", "test_static_round2_fixes.py", "test_suite_stability.py",

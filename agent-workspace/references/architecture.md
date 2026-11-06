@@ -51,6 +51,7 @@ Find the files a change touches here, then read only those.
 | `dns_forward_zones.py` | DNS records for Client Connector hostnames: download-only text, never applied. |
 | `docker_healthcheck.py` | Container healthcheck: is the app answering on its own port? |
 | `editions.py` | Licensed editions: Cloud Firewall (standard or advanced), Cloud Sandbox |
+| `email_tenants.py` | One answer to "which email tenants are onboarded?". |
 | `endpoint_snapshots.py` | A bundled, dated excerpt of Microsoft's published Microsoft 365 |
 | `engine_explain.py` | DLP engine explainability: an engine expression as people read it. |
 | `guidance.py` | Continuous evaluation, phase 4: guidance that keeps itself current. |

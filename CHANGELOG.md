@@ -9,6 +9,9 @@ lists what each batch of changes did, newest first.
 
 ## 2026-11-04
 
+### Email tenants: deploy and Check D.1 agree
+- Whether an email tenant is onboarded is now decided by one function for both the pack deploy and Check D.1: ZIA's email tenant list, tenants whose application says email, and tenants an existing Email DLP rule is scoped to (a live tenant listed only SharePoint while its Email DLP rule used the Exchange tenant, so D.1 failed although deploy worked). Deleted tenants are left out everywhere, and D.1 says how each tenant was found. Reads only.
+
 ### Whole-tenant Terraform export: proved valid for every provider
 - CI now runs `terraform validate` on the sample tenant's whole-tenant export for all four workspaces (zia, zpa, ztc and zcc, the beta zscaler/zcc provider pinned to 0.1.2-beta.3, OneAPI only), and the step is blocking: a failed validation fails the run. The Terraform checks run in their own CI job, and each validation problem is printed on one line.
 - An object the export cannot write (the tenant's answer lacks an argument the provider requires) is no longer referred to by another resource: a ZPA server group names such an App Connector group through a lookup by name, where it used to name a resource the workspace never declared.
