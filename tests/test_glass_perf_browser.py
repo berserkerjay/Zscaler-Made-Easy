@@ -67,6 +67,15 @@ const open = async off => {
   await go(page); await settle(page);
   await ev(fill);
   await ev(`new Promise(r => setTimeout(() => r(1), 400))`);   // the glass-fit marks of the new cards
+  // ... and the page settled before an idle second is measured: with the glass on every new card is marked, and no
+  // transition is still running (under reduced motion the app's 0.01ms transitions run when the marks land, and a slow
+  // or busy computer lands them later than 400 ms). The infinite drift is not waited for; it is what the idle measures.
+  await until(() => ev(`(document.documentElement.classList.contains('glass-off') || [...document.querySelectorAll('main > section.rp-card')].slice(-12).every(c => c.classList.contains('glass-fit')))
+    && document.getAnimations().every(a => a.playState !== 'running' || (a.effect && a.effect.getTiming().iterations === Infinity))`), 'the page to settle', 10000);
+  // ... and the compositor has finished drawing the new cards' blurred layers: drawn in software, they land over a few
+  // hundred ms after the marks, and the measured window must not start inside that. Bounded: after 3 s it measures
+  // anyway, so a page that keeps drawing still fails the checks below.
+  for (let i = 0; i < 6; i++) { const q = await traced(() => ev(`new Promise(r => setTimeout(() => r({}), 500))`)); if (q.frames <= 1) break; }
 };
 for (const off of [false, true]) {
   const k = off ? 'off' : 'on';
