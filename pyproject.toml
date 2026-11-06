@@ -65,7 +65,7 @@ py-modules = [
     "dlp_analysis", "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance", "insights", "device_posture", "offline_tenant", "tenant_session", "sample_tenant", "posture_cross",
     "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_export", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops", "path_analyzer", "tenant_auth", "tenant_fingerprint", "pac_eval", "path_whatif",
     "pack_removal", "pack_terraform", "permissions", "plain_english", "proposal_apply", "proposals", "remediation",
-    "pdf_writer", "report_docx", "report_exports", "rule_migrator", "saas_email_checks", "saas_matrix", "scope_permissions", "sdk_client", "secure_by_design", "security", "self_heal",
+    "pdf_writer", "report_docx", "report_exports", "rule_migrator", "saas_email_checks", "email_tenants", "saas_matrix", "scope_permissions", "sdk_client", "secure_by_design", "security", "self_heal",
     "scenario_flow", "shadow_rules", "sso", "ssl_flow", "tenant_profiles", "upstream_check", "vendor_migrate", "vertical", "zcc_evaluation", "zia_rate", "zscaler_automation_checks", "zscaler_best_practices",
     "zcc_profiles", "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check", "zcc_fleet", "zcc_bypass", "zcc_otp",
     "zscaler_zdx_checks", "zscaler_zidentity_checks", "zpa_analysis", "zpa_overview", "zpa_reader", "browser_security", "standalone_main", "zpa_path", "workload_path", "ztw_overview", "other_products", "zscaler_other_products_checks",
