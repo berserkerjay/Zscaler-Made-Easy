@@ -12,6 +12,7 @@ lists what each batch of changes did, newest first.
 ### Store encryption in a read-only container, glass while scrolling, macOS installs
 - A read-only container with no `/data` volume (`docker run --read-only`) no longer answers 500: the store key lock that cannot be created there is reported as "no store key can be kept" (start-up message, `store_encryption` in `GET /api/health`), nothing is written, and a lost audit line is reported on stderr instead of breaking the request.
 - Scrolling with the glass on draws about a third less: the page bar drops its backdrop blur while the page moves (its 95% tint looks the same; the theme button and help pop-up keep theirs), and the backdrop drift only slides its two layers (no rotation or scale to resample on every scrolled frame).
+- The real-browser acceptance run attaches to every frame Chrome hosts as its own target: Chrome 157 (the macOS runners) shows a failed embedded reference's error page as one, and the retry's request was reported there, so the check of its security headers found no response (and its off-origin blocking did not cover it). The retry itself always worked.
 
 ## 2026-11-04
 
