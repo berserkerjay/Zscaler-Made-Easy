@@ -42,13 +42,16 @@ const traced = async fn => {
   const events = []; let done = null;
   const prev = ws.onmessage;
   ws.onmessage = e => { prev(e); const m = JSON.parse(e.data); if (m.method === 'Tracing.dataCollected') events.push(...m.params.value); if (m.method === 'Tracing.tracingComplete') done(); };
-  await send('Tracing.start', { categories: 'viz', transferMode: 'ReportEvents' });
+  await send('Tracing.start', { categories: 'viz,devtools.timeline', transferMode: 'ReportEvents' });
   const r = await fn();
   const fin = new Promise(res => { done = res; });
   await send('Tracing.end'); await fin;
   ws.onmessage = prev;
   const draws = events.filter(e => e.name === 'Display::DrawAndSwap');
-  return Object.assign(r || {}, { frames: draws.length, drawMs: Math.round(draws.reduce((a, e) => a + (e.dur || 0), 0) / 1000) });
+  // What the renderer did meanwhile (paints, layouts, timers, animation frames...), so a count over the limit says why.
+  const what = {}; for (const e of events) if (e.ph === 'X' && /^(Paint|Layout|UpdateLayoutTree|TimerFire|FireAnimationFrame|EventDispatch|FunctionCall|ScrollLayer|PaintImage|RasterTask|Animation)/.test(e.name)) {
+    const d = (e.args && e.args.data) || {}; const k = e.name + (d.type ? ':' + d.type : d.url ? ':' + String(d.url).split('/').pop() + ':' + (d.lineNumber || '') : ''); what[k] = (what[k] || 0) + 1; }
+  return Object.assign(r || {}, { what: Object.entries(what).sort((a, b) => b[1] - a[1]).slice(0, 12), frames: draws.length, drawMs: Math.round(draws.reduce((a, e) => a + (e.dur || 0), 0) / 1000) });
 };
 const idle = () => ev(`new Promise(r => setTimeout(() => r({}), ${Number(idleMs)}))`);
 // Scroll the page up and down, 40px a frame, and say what was blurred mid-scroll.
@@ -89,7 +92,10 @@ for (const off of [false, true]) {
 }
 await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
 await open(false);
-await safe('reducedIdle', () => traced(idle));
+await safe('reducedIdle', () => traced(() => ev(`new Promise(r => { const recs = {}; const mo = new MutationObserver(l => { for (const m of l) { const k = m.type + ':' + (m.target.id || String(m.target.className || m.target.nodeName).split(' ')[0]) + ':' + (m.attributeName || ''); recs[k] = (recs[k] || 0) + 1; } });
+  mo.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  setTimeout(() => { mo.disconnect(); r({ mutations: Object.entries(recs).sort((a, b) => b[1] - a[1]).slice(0, 8), animations: document.getAnimations().map(a => (a.animationName || a.transitionProperty || '?') + ':' + a.playState).slice(0, 8),
+    focus: document.activeElement && (document.activeElement.id || document.activeElement.nodeName), html: document.documentElement.className, y: scrollY }); }, ${Number(idleMs)}); })`)));
 out.errors = seen.errors.filter(e => !/favicon/.test(e));
 console.log(JSON.stringify(out));
 p.kill();
