@@ -5915,6 +5915,8 @@ class TenantTerraformRequest(ScopedTenantCredsRequest):
     include_personal_data: bool = False
     mode: str = "adopt"
     keep_rule_state: bool = False
+    output_dir: str = ""
+    support_log: bool = False
 
 
 TENANT_TF_NEEDS_ONEAPI = ("ZPA and Cloud & Branch Connector need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
@@ -5967,7 +5969,8 @@ async def tenant_terraform_start(req: TenantTerraformRequest, request: Request):
     import tenant_terraform
     try:
         opts = tenant_terraform.normalize_options(req.products or None, req.types, req.exclude, req.prefix, req.provider_namespace,
-                                                  req.microtenant_id, req.mode, req.keep_rule_state)
+                                                  req.microtenant_id, req.mode, req.keep_rule_state, req.output_dir,
+                                                  req.support_log)
         sc, ch, _source = _scope_selection(req)
         plan = tenant_terraform.plan(sc, ch, opts, include_personal=bool(req.include_personal_data))
     except tenant_terraform.ExportRefused as e:

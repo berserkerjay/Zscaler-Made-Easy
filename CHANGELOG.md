@@ -7,6 +7,10 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-07
+
+- Terraform export: object types can be picked by type key, provider resource name or pattern (`zia.*`, `zpa_policy_*`) in both the include and exclude lists; an output folder name option; a local static check of the written files (balanced HCL, no repeated address, every import has its resource) reported as `validation` in the export report; a `validate.sh` the operator runs themselves (never run by the app); and an opt-in masked support log in the zip.
+
 ## 2026-11-06
 
 ### Store encryption in a read-only container, glass while scrolling, macOS installs

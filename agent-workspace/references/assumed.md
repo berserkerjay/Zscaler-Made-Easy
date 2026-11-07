@@ -106,9 +106,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
 | `dlp_api_server.py:4038` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
-| `dlp_api_server.py:9662` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
-| `dlp_api_server.py:9664` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
-| `dlp_api_server.py:9797` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
+| `dlp_api_server.py:9665` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
+| `dlp_api_server.py:9667` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
+| `dlp_api_server.py:9800` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
 | `dlp_assessment_full_auto.py:200` | times of a provider credential are assumed (not named by the SDK model). |
 | `dns_forward_zones.py:50` | * Assumed (not in the SDK or Zscaler's API reference): that the resolver |
 | `editions.py:12` | tenants, and are ASSUMED (not in the SDK). The ZDX edition is not exposed by |
@@ -431,9 +431,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `tenant_health.py:368` | object with a name, the SDK's service edge shape, or the name itself: assumed).""" |
 | `tenant_terraform.py:98` | Assumed, not verifiable without a tenant: |
 | `tenant_terraform.py:104` | posture profile's platform as 1..5). The posture list is NOT assumed |
-| `tenant_terraform.py:463` | descriptions). assumed: answered in one GET (no paging), as a JSON array or |
-| `tenant_terraform.py:464` | an envelope holding one. Not assumed complete for ZIA posture profiles: see |
-| `tenant_terraform.py:1199` | address), any other into `entry_values` {lhs, rhs} (assumed mapping, |
+| `tenant_terraform.py:464` | descriptions). assumed: answered in one GET (no paging), as a JSON array or |
+| `tenant_terraform.py:465` | an envelope holding one. Not assumed complete for ZIA posture profiles: see |
+| `tenant_terraform.py:1238` | address), any other into `entry_values` {lhs, rhs} (assumed mapping, |
 | `traffic_logs.py:18` | in the default order (assumed, see DEFAULT_ORDERS). |
 | `traffic_logs.py:92` | Zscaler's LSS documentation; the ones marked are assumed from field |
 | `traffic_logs.py:99` | "zpn_client_type_browser_isolation": "Cloud Browser Isolation",   # assumed |
