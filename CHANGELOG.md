@@ -22,6 +22,7 @@ lists what each batch of changes did, newest first.
 - New read-only SCIM view (`POST /api/scim/overview`): each IdP with its SCIM switches, the SCIM group names ZPA holds and a sync status; needs ZPA ticked on the Scope page.
 - New audit-log full-text search (`GET /api/audit/search`): every word must appear in an entry, newest first, bounded; team servers see only their tenant profiles' entries.
 - Scheduled sync: the timer is now off by default (`DLP_CHECK_SYNC_TIMER=1` turns it on); plans wait in the change queue's "Awaiting approval" list (`GET /api/sync-jobs/awaiting-approval`) and are applied only after approval through the usual write gates and plan-hash check.
+- Assistant: new read-only `capacity_review` (locations, tunnels, ZPA App Connectors and segments against locally recorded licensed counts, with headroom) and `postmortem` (incident postmortem template for a window from the app's own audit log and deployments, Markdown or CSV via `POST /api/postmortem`); every assistant answer now carries a `grade` (source tier, confidence, basis, as-of). Also: `lookup` and `cite` (answers and citations from the local reference corpus; fetching is off unless the operator allows it, Zscaler help and docs hosts only), a resumable investigation journal (`journal_open`, `journal_add`, `journal_show`, `/api/journal`), and the capacity review now counts ZIA users, reads licence seats from the subscription list, and has `POST /api/capacity-review` and a Capacity review page.
 
 ## 2026-11-06
 

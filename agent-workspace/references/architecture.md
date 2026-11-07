@@ -25,6 +25,7 @@ Find the files a change touches here, then read only those.
 | `browser_security.py` | Browser security: Zscaler Zero Trust Browser (cloud browser isolation), |
 | `bulk_test.py` | Test a list: many destinations through the Path analyzer at once. |
 | `bypass_report.py` | Zscaler Bypass / Non-Inspected Traffic Inventory |
+| `capacity_review.py` | Capacity and scaling review: what the tenant uses against what it is licensed for. |
 | `category_lookup.py` | Category lookup: what ZIA calls a URL, host or IP address (or a URL |
 | `change_queue.py` | The team change queue: change requests and four-eyes approval. |
 | `channel_scope.py` | Channel ownership, declared on the Scope page, applied to the assessment. |
@@ -56,6 +57,7 @@ Find the files a change touches here, then read only those.
 | `engine_explain.py` | DLP engine explainability: an engine expression as people read it. |
 | `guidance.py` | Continuous evaluation, phase 4: guidance that keeps itself current. |
 | `insights.py` | ZIA Insights traffic data: read-only, paced, Stop-able wrappers over the |
+| `investigation_journal.py` | Guided investigation journal: hypothesis -> evidence -> conclusion, resumable. |
 | `local_plugins.py` | Local plugins: an opt-in way to add Bulk changes operations and read-only |
 | `log_analyzer.py` | Log Analyzer: Client Connector log bundles and PAC files, explained. |
 | `m365_endpoints.py` | Microsoft's published Microsoft 365 endpoint list: kept on disk, checked |
@@ -116,6 +118,7 @@ Find the files a change touches here, then read only those.
 | `permissions.py` | Permissions: run what the API client is allowed to run, and say exactly |
 | `plain_english.py` | One plain-English block for every finding, in every output. |
 | `policy_exports.py` | Policy exports: one formatted workbook (or PDF review copy) per ZIA |
+| `postmortem.py` | Incident postmortem generator: a template report for a chosen time window. |
 | `posture_cross.py` | Device posture across products: where each posture check is defined, |
 | `posture_plus.py` | Posture plus: the score explains itself and says what to do next. |
 | `pov.py` | POV planner: one proof of value per tenant, planned, run and reported. |
@@ -124,6 +127,7 @@ Find the files a change touches here, then read only those.
 | `proposals.py` | Continuous evaluation, phase 2: proposals and the approval queue. |
 | `rank_inherit.py` | The admin rank a rule the app creates or moves needs. |
 | `readiness.py` | Readiness: what this API client can do in this app, before anything runs. |
+| `reference_corpus.py` | Reference corpus: grounded lookups and on-demand citations. |
 | `remediation.py` | Guided Auto-Remediation Framework |
 | `report_docx.py` | Zscaler Made Easy — Word Document Report Generator |
 | `report_exports.py` | Excel and PDF exports built on the in-house writers (xlsx_writer, |
@@ -314,6 +318,7 @@ Find the files a change touches here, then read only those.
 | `static/report_beacon.html` | Beacon — Zscaler Made Easy |
 | `static/report_browser.html` | Browser security — Zscaler Made Easy |
 | `static/report_bypass.html` | Bypass &amp; non-inspected traffic — Zscaler Made Easy |
+| `static/report_capacity.html` | Capacity review — Zscaler Made Easy |
 | `static/report_compliance.html` | Regulatory &amp; compliance alignment — Zscaler Made Easy |
 | `static/report_dataflow.html` | Data flow map — Zscaler Made Easy |
 | `static/report_device_posture.html` | Device posture — Zscaler Made Easy |

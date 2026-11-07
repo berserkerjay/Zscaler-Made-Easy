@@ -2704,6 +2704,28 @@ window.HELP_CATALOG = {
     "effect": "nav"
    }
   },
+  "/report/capacity": {
+   "#crTenant": {
+    "what": "Chooses which tenant the review reads.",
+    "input": "Pick the tenant you are signed in to, a saved profile, or the one saved on this computer.",
+    "effect": "read"
+   },
+   "#crRun": {
+    "what": "Reads the counts for the products in scope and compares them with the licensed counts.",
+    "input": "Nothing to type. Tick Cloud & Branch Connector, ZPA or ZIA platform on the Scope page first.",
+    "effect": "read"
+   },
+   "#crMd": {
+    "what": "Saves the review as a Markdown file.",
+    "input": "Run the review first.",
+    "effect": "download"
+   },
+   "#crCsv": {
+    "what": "Saves the review as a CSV file.",
+    "input": "Run the review first.",
+    "effect": "download"
+   }
+  },
   "/report/audit": {
    "#atDays": {
     "what": "Sets how far back the timeline goes. ZIA keeps its audit log for up to 180 days.",
