@@ -543,7 +543,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `zscaler_ip_ranges.py:52` | centres not yet live (ASSUMED); |
 | `zscaler_ip_ranges.py:54` | tunnel (Tunnel 2.0) addresses (ASSUMED); |
 | `zscaler_ip_ranges.py:57` | zpatwo.net or zpabeta.net (ASSUMED: also an optional |
-| `zscaler_ip_ranges.py:826` | Dynamic List": ASSUMED, not verifiable here). |
+| `zscaler_ip_ranges.py:868` | Dynamic List": ASSUMED, not verifiable here). |
 | `zscaler_rbac_checks.py:141` | "until" values are epoch times (seconds, or milliseconds; assumed).""" |
 | `zscaler_rbac_checks.py:374` | classes when listed; else from its name (assumed: Zscaler's built-in |
 | `zscaler_rbac_checks.py:395` | the API sends it (assumed: {"id", "name"}) and an API key's `roleId`.""" |

@@ -719,9 +719,36 @@ def parse_typed(text: Any, what: str) -> Tuple[List[str], List[str]]:
 
 
 # ── Building the allowlist ───────────────────────────────────────────
+CERT_VALIDATION_FILE = "certificate_validation_endpoints.json"
+CERT_REGION = "DigiCert (certificate validation)"
+
+
+def certificate_validation_endpoints() -> Dict[str, Any]:
+    """The static DigiCert list shipped with the app (its source and date are in the file): {hosts, ranges, source, as_of}.
+    Every entry is checked like a feed entry; one that fails the check is dropped."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), CERT_VALIDATION_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        return {"hosts": [], "ranges": [], "source": "", "as_of": ""}
+    hosts = [x.strip().lower() for x in doc.get("hosts") or [] if isinstance(x, str) and _HOST.match(x.strip().lower())]
+    ranges = [c for c in (check_cidr(x)[0] for x in doc.get("ranges") or []) if c]
+    return {"hosts": hosts, "ranges": ranges, "source": str(doc.get("source") or "")[:600], "as_of": str(doc.get("as_of") or "")[:20]}
+
+
+def host_form(cidrs: Iterable[str]) -> List[str]:
+    """Single-address entries (/32 and /128) as the bare address; every other range unchanged."""
+    out = []
+    for c in cidrs:
+        n = ipaddress.ip_network(str(c), strict=False)
+        out.append(str(n.network_address) if n.num_addresses == 1 else str(n))
+    return out
+
+
 def build(cloud: str, feeds: Sequence[str], *, zpa_cloud: Optional[str] = None, regions: Optional[Sequence[str]] = None,
           exclude: Any = "", extra: Any = "", ipv4: bool = True, ipv6: bool = True,
-          now: Optional[_dt.datetime] = None) -> Dict[str, Any]:
+          now: Optional[_dt.datetime] = None, digicert: bool = False, single_hosts: bool = False) -> Dict[str, Any]:
     """The consolidated allowlist from the kept feeds (no fetch): per
     region and overall, aggregated, with the exclusions taken out and the
     extra ranges added; host names; and every source with its date. A
@@ -766,6 +793,17 @@ def build(cloud: str, feeds: Sequence[str], *, zpa_cloud: Optional[str] = None, 
                 e["feeds"].add(feed)
                 e["regions"].add(h["region"])
         sources.append(src)
+    cert = certificate_validation_endpoints() if digicert else None
+    if cert:
+        for c in cert["ranges"]:
+            records.append((CERT_REGION, c, "digicert"))
+        for h in cert["hosts"]:
+            e = hosts.setdefault(h, {"host": h, "feeds": set(), "regions": set()})
+            e["feeds"].add("digicert")
+            e["regions"].add(CERT_REGION)
+        if not cert["ranges"]:
+            warnings.append("DigiCert is served from a content delivery network, so it is allowlisted by host name; no address range "
+                            "is shipped. Add ranges from DigiCert's current guidance in 'Ranges to add' if your firewall needs them.")
     for c in add:
         records.append((ADDED, c, "added"))
     fams = [v for v, on in ((4, ipv4), (6, ipv6)) if on]
@@ -779,6 +817,10 @@ def build(cloud: str, feeds: Sequence[str], *, zpa_cloud: Optional[str] = None, 
     total = aggregate([c for _r, c, _f in records], ex)
     if not records:
         warnings.append("No range is left: nothing kept for these feeds" + (" and regions." if want_regions else "."))
+    if single_hosts:
+        for r in region_rows:
+            r["ipv4"], r["ipv6"] = host_form(r["ipv4"]), host_form(r["ipv6"])
+        total = {4: host_form(total[4]), 6: host_form(total[6])}
     all_regions = sorted({r["region"] for f, c in pairs for r in ((load(f, c) or {}).get("ranges") or [])})
     return {
         "cloud": zia, "zpa_cloud": zpa_cloud if any(f == "zpa" for f, _ in pairs) else None, "built_at": _iso(now),
@@ -787,7 +829,7 @@ def build(cloud: str, feeds: Sequence[str], *, zpa_cloud: Optional[str] = None, 
         "all": {"ipv4": total[4] if 4 in fams else [], "ipv6": total[6] if 6 in fams else []},
         "counts": {"in": len(records), "ipv4": len(total[4]) if 4 in fams else 0, "ipv6": len(total[6]) if 6 in fams else 0,
                    "hosts": len(hosts), "excluded": len(ex), "added": len(add)},
-        "excluded": ex, "added": add,
+        "excluded": ex, "added": add, "digicert": ({"source": cert["source"], "as_of": cert["as_of"]} if cert else None),
         "hosts": [{"host": h["host"], "feeds": sorted(h["feeds"]), "regions": sorted(h["regions"])} for h in sorted(hosts.values(), key=lambda x: x["host"])],
         "warnings": warnings + ex_warn + add_warn,
     }

@@ -1,0 +1,8 @@
+{
+  "name": "DigiCert certificate validation (OCSP, CRL and CA issuer download)",
+  "source": "DigiCert public documentation of its certificate status endpoints (OCSP responder, CRL distribution points, CA issuers). The hosts are listed by name because DigiCert serves them from a content delivery network whose addresses change; allowlist by name where the firewall can, and add address ranges below only from the operator's own current DigiCert guidance.",
+  "as_of": "2026-11-07",
+  "assumed": "The host list is the commonly documented set, not fetched here; check it against DigiCert's current documentation before relying on it.",
+  "hosts": ["ocsp.digicert.com", "crl3.digicert.com", "crl4.digicert.com", "cacerts.digicert.com"],
+  "ranges": []
+}

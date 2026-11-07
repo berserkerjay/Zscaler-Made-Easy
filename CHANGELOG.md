@@ -31,6 +31,15 @@ lists what each batch of changes did, newest first.
 - A POV now reopens with where it stands and the next step, and pairs a posture score at its start with one at its end (computed on the server).
 - The audit log exports as JSON Lines or CSV (spreadsheet-safe) from an authenticated route.
 - The rule picker marks leftovers from a pack that is gone or not deployed, with a Keep box ticked by default.
+### Opt-in report delivery to shares and hosts, and a log pipeline command line
+- Saved traffic-log reports can be sent as CSV to an SFTP, SCP, SSH or SMB target, on demand or on a cron-style schedule. Off by default; the target's host must be in a host allowlist (a non-listed host is refused before any connection); the password is kept only in the operating system's credential store and is never logged, audited or returned; SSH host keys must already be known. paramiko and smbprotocol are optional and loaded only when a delivery is made (without them the feature says "not installed"). Scheduled runs only send the newest report; they change nothing on a tenant.
+- `log_pipeline_cli.py` (health, reports, reindex, regen, export, deliver, selftest): a read-only command line for the log pipeline; `reindex` rebuilds the saved-report catalogue from disk.
+- Opt-in DNS push: the generated forwarder file is staged and sent over SSH/SFTP/SCP to several resolvers (per-host results; one failing host does not stop the others) on a cron-style schedule, with the same allowlist, credential store and host-key rules. Two mappings to the same domain now write one record per device.
+- Settings panel and routes for delivery and DNS push (writer-only, audited, the password goes straight to the credential store and is never echoed).
+- RHEL: a systemd unit (unprivileged user, 127.0.0.1 only, sandboxed), an operator-run installer and an air-gapped wheelhouse builder (`deploy/rhel/`, docs/RHEL_AIRGAPPED.md). The app never runs them.
+- Allowed ranges: optional DigiCert certificate-validation hosts (static list with its source and date) and a bare-address form for /32 and /128 entries; overlaps were already consolidated.
+- The custom URL category analyzer workbook now has a native bar chart of the verdicts beside its Summary sheet (`xlsx_writer` can draw bar charts).
+- docs/FEATURE_EVIDENCE.md: where each comparison row lives and its test.
 
 ## 2026-11-06
 

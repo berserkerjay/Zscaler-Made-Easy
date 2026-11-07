@@ -200,6 +200,7 @@ class Sheet:
         self.freeze = bool(columns) if freeze is None else bool(freeze)
         self.autofilter = bool(columns) if autofilter is None else bool(autofilter)
         self.widths = list(widths) if widths else None
+        self.charts: List[dict] = []
         if self.columns:
             self.rows.append(list(self.columns))
             self.styles.append(S_HEADER)
@@ -214,6 +215,16 @@ class Sheet:
     def extend(self, rows: Iterable[Sequence[Any]]) -> None:
         for r in rows:
             self.append(r)
+
+    def add_bar_chart(self, title: str, *, label_col: int, value_col: int, first_row: int, last_row: int, anchor_col: int = 3,
+                      anchor_row: int = 1) -> None:
+        """A native clustered bar chart of the labels in `label_col` against the numbers in `value_col`
+        (0-based columns, 1-based sheet rows first_row..last_row, both inclusive), drawn beside the table.
+        It points at cells; it holds no formula and runs nothing."""
+        if not (1 <= first_row <= last_row <= len(self.rows)):
+            raise ValueError("the chart rows are outside the sheet")
+        self.charts.append({"title": cell_text(title) or "", "lc": label_col, "vc": value_col, "r1": first_row, "r2": last_row,
+                            "ac": anchor_col, "ar": anchor_row})
 
     @property
     def ncols(self) -> int:
@@ -282,6 +293,8 @@ class Sheet:
         if ref:
             parts.append(f'<autoFilter ref="{ref}"/>')
         parts.append('<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>')
+        if self.charts:
+            parts.append('<drawing r:id="rId1"/>')
         parts.append("</worksheet>")
         return "".join(parts)
 
@@ -336,11 +349,29 @@ class Workbook:
                 '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
                 '<Default Extension="xml" ContentType="application/xml"/>'
                 '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-                + sheets +
+                + sheets + self._chart_types() +
                 '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
                 '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
                 '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
                 '</Types>')
+
+    def _chart_parts(self):
+        """[(sheet index, drawing no., [chart nos.])] and the running chart count."""
+        out, n = [], 0
+        for i, sh in enumerate(self.sheets):
+            if sh.charts:
+                nos = list(range(n + 1, n + 1 + len(sh.charts)))
+                n += len(sh.charts)
+                out.append((i, len(out) + 1, nos))
+        return out
+
+    def _chart_types(self) -> str:
+        t = ""
+        for _, d, nos in self._chart_parts():
+            t += f'<Override PartName="/xl/drawings/drawing{d}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'
+            for c in nos:
+                t += f'<Override PartName="/xl/charts/chart{c}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>'
+        return t
 
     def _root_rels(self) -> str:
         return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
@@ -403,7 +434,56 @@ class Workbook:
             z.writestr("xl/styles.xml", _STYLES)
             for i, s in enumerate(self.sheets):
                 z.writestr(f"xl/worksheets/sheet{i + 1}.xml", s.to_xml(selected=(i == 0)))
+            for si, d, nos in self._chart_parts():
+                sh = self.sheets[si]
+                z.writestr(f"xl/worksheets/_rels/sheet{si + 1}.xml.rels",
+                           '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                           f'<Relationships xmlns="{_NS_PKG_REL}"><Relationship Id="rId1" '
+                           f'Type="{_NS_REL}/drawing" Target="../drawings/drawing{d}.xml"/></Relationships>')
+                z.writestr(f"xl/drawings/drawing{d}.xml", _drawing_xml(sh.charts))
+                z.writestr(f"xl/drawings/_rels/drawing{d}.xml.rels",
+                           '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                           f'<Relationships xmlns="{_NS_PKG_REL}">' + "".join(
+                               f'<Relationship Id="rId{k + 1}" Type="{_NS_REL}/chart" Target="../charts/chart{c}.xml"/>'
+                               for k, c in enumerate(nos)) + "</Relationships>")
+                for ch, c in zip(sh.charts, nos):
+                    z.writestr(f"xl/charts/chart{c}.xml", _chart_xml(sh.name, ch))
         return buf.getvalue()
+
+
+def _drawing_xml(charts: List[dict]) -> str:
+    anchors = ""
+    for k, ch in enumerate(charts):
+        c0, r0 = ch["ac"], ch["ar"] - 1
+        anchors += (f'<xdr:twoCellAnchor><xdr:from><xdr:col>{c0}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{r0}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>'
+                    f'<xdr:to><xdr:col>{c0 + 8}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{r0 + 18}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>'
+                    f'<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="{k + 2}" name="Chart {k + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>'
+                    '<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic>'
+                    '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">'
+                    f'<c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="{_NS_REL}" r:id="rId{k + 1}"/>'
+                    '</a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>')
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" '
+            'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">' + anchors + '</xdr:wsDr>')
+
+
+def _chart_xml(sheet: str, ch: dict) -> str:
+    q = _quote_sheet(sheet)
+    lab = f"{q}!${col_letter(ch['lc'])}${ch['r1']}:${col_letter(ch['lc'])}${ch['r2']}"
+    val = f"{q}!${col_letter(ch['vc'])}${ch['r1']}:${col_letter(ch['vc'])}${ch['r2']}"
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" '
+            'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><c:chart>'
+            f'<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>{_esc(ch["title"])}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
+            '<c:autoTitleDeleted val="0"/><c:plotArea><c:layout/>'
+            '<c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/><c:varyColors val="0"/>'
+            f'<c:ser><c:idx val="0"/><c:order val="0"/><c:cat><c:strRef><c:f>{_esc(lab)}</c:f></c:strRef></c:cat>'
+            f'<c:val><c:numRef><c:f>{_esc(val)}</c:f></c:numRef></c:val></c:ser>'
+            '<c:axId val="111111111"/><c:axId val="222222222"/></c:barChart>'
+            '<c:catAx><c:axId val="111111111"/><c:scaling><c:orientation val="maxMin"/></c:scaling><c:delete val="0"/><c:axPos val="l"/>'
+            '<c:crossAx val="222222222"/></c:catAx>'
+            '<c:valAx><c:axId val="222222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/>'
+            '<c:crossAx val="111111111"/></c:valAx></c:plotArea><c:plotVisOnly val="1"/></c:chart></c:chartSpace>')
 
 
 def _abs_ref(ref: Optional[str]) -> str:

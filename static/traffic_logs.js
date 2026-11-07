@@ -562,6 +562,45 @@
     catch (e) { $('tlwStatus').textContent = `No report: ${e.message}`; $('tlwStatus').classList.add('bad'); }
   });
 
+  // ── Send reports to a share or host (opt-in; passwords go to the credential store only) ──
+  function rdShow(d) {
+    const s = (d && d.delivery) || {};
+    $('rdHosts').value = (s.allowed_hosts || []).join('\n');
+    $('rdTargets').value = Object.entries(s.targets || {}).map(([id, t]) => [id, t.transport, t.host, t.user, t.remote_dir || '/', t.share || ''].join(' ').trim()).join('\n');
+    $('rdOn').checked = !!s.enabled;
+    const l = s.libraries || {};
+    $('rdLibs').textContent = `SSH: ${l.ssh ? 'installed' : 'not installed'}. SMB: ${l.smb ? 'installed' : 'not installed'}. Credential store: ${l.credential_store ? 'available' : 'not available'}.`;
+    $('rdStatus').textContent = s.enabled ? 'On.' : 'Off.';
+  }
+  function rdBody() {
+    const targets = {};
+    $('rdTargets').value.split('\n').map(x => x.trim()).filter(Boolean).forEach(line => {
+      const p = line.split(/\s+/);
+      const t = { transport: p[1], host: p[2], user: p[3], remote_dir: p[4] === '/' ? '/' : (p[4] || '') };
+      if (p[5]) t.share = p[5];
+      targets[p[0]] = t;
+    });
+    return { enabled: $('rdOn').checked, allowed_hosts: $('rdHosts').value.split('\n').map(x => x.trim()).filter(Boolean), targets };
+  }
+  function rdFail(e) { $('rdStatus').textContent = `Not done: ${e.message}`; $('rdStatus').classList.add('bad'); }
+  api('GET', '/api/delivery').then(rdShow).catch(() => { $('rdStatus').textContent = 'Could not read the delivery settings.'; });
+  $('rdSave').addEventListener('click', async () => {
+    $('rdStatus').classList.remove('bad');
+    try { await api('POST', '/api/delivery/settings', rdBody()); rdShow(await api('GET', '/api/delivery')); announce('Delivery settings saved'); } catch (e) { rdFail(e); }
+  });
+  $('rdStorePw').addEventListener('click', async () => {
+    $('rdStatus').classList.remove('bad');
+    try { await api('PUT', `/api/delivery/credential/${encodeURIComponent($('rdPick').value.trim())}`, { password: $('rdPw').value }); $('rdPw').value = ''; $('rdStatus').textContent = 'Password stored in the credential store.'; } catch (e) { rdFail(e); }
+  });
+  $('rdTest').addEventListener('click', async () => {
+    $('rdStatus').classList.remove('bad');
+    try { const d = await api('POST', `/api/delivery/test/${encodeURIComponent($('rdPick').value.trim())}`); $('rdStatus').textContent = `Reached ${d.host}.`; } catch (e) { rdFail(e); }
+  });
+  $('rdDnsRun').addEventListener('click', async () => {
+    $('rdStatus').classList.remove('bad');
+    try { const d = await api('POST', '/api/dns-push/run'); $('rdStatus').textContent = d.results.map(r => `${r.host}: ${r.status}${r.error ? ' (' + r.error + ')' : ''}`).join('; '); } catch (e) { rdFail(e); }
+  });
+
   // ── Syslog listener (off by default) ──
   let syslogTimer = null;
   function syslogShow(st) {

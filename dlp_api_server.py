@@ -38,7 +38,7 @@ from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTM
 
 import tenant_auth
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 # ── Security hardening (secure-by-design controls) ───────────────────
 from security import (
@@ -10472,6 +10472,143 @@ def _tlw_tick() -> Optional[Dict[str, Any]]:
     return rec
 
 
+# ── Report delivery and DNS push (report_delivery, dns_push) ────────────────
+# Opt-in, off by default. Targets must be in the host allowlist; the password
+# goes straight to the operating system's credential store and is never kept,
+# echoed, audited or logged. Server-wide settings: the writer check and an
+# audit record that holds no secret.
+class DeliverySettings(BaseModel):
+    """Delivery switch, host allowlist, targets (no password), known_hosts path and the report schedule."""
+    model_config = ConfigDict(extra="forbid")
+    enabled: Optional[bool] = None
+    allowed_hosts: Optional[List[str]] = None
+    targets: Optional[Dict[str, Dict[str, Any]]] = None
+    known_hosts: Optional[str] = None
+    schedule: Optional[Dict[str, Any]] = None
+
+
+class DeliveryCredential(BaseModel):
+    """A target's password: stored in the credential store only (never logged; hidden from repr)."""
+    model_config = ConfigDict(extra="forbid")
+    password: SecretStr
+
+
+class DeliverySend(BaseModel):
+    """Send one saved traffic-log report (CSV) to a target now."""
+    model_config = ConfigDict(extra="forbid")
+    target: str
+    report: str
+
+
+class DnsPushSettings(BaseModel):
+    """DNS push: switch, resolver targets, which file, cron schedule."""
+    model_config = ConfigDict(extra="forbid")
+    enabled: Optional[bool] = None
+    targets: Optional[List[str]] = None
+    file: Optional[str] = None
+    cron: Optional[str] = None
+
+
+@app.get("/api/delivery")
+async def delivery_state():
+    """Delivery settings (no password), library availability and the DNS push state."""
+    import report_delivery as rd
+    import dns_push as dp
+    s = await asyncio.to_thread(rd.get_settings)
+    return {"delivery": s, "dns_push": await asyncio.to_thread(dp.get_state)}
+
+
+@app.post("/api/delivery/settings")
+async def delivery_save(req: DeliverySettings, request: Request):
+    """Change delivery settings (writer only; audited without any secret)."""
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(rd.save_settings, req.model_dump(exclude_none=True))
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("report_delivery_settings", actor=_actor(request) or _security.current_actor(), enabled=out["enabled"],
+                  hosts=len(out["allowed_hosts"]), targets=len(out["targets"]))
+    return out
+
+
+@app.put("/api/delivery/credential/{target_id}")
+async def delivery_credential(target_id: str, req: DeliveryCredential, request: Request):
+    """Store a target's password in the credential store (writer only). The answer never holds it."""
+    import report_delivery as rd
+    _security.require_writer()
+    if target_id not in (await asyncio.to_thread(rd.get_settings))["targets"]:
+        raise HTTPException(status_code=404, detail="No such delivery target.")
+    try:
+        await asyncio.to_thread(rd.set_credential, target_id, req.password.get_secret_value())
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("report_delivery_credential", actor=_actor(request) or _security.current_actor(), target=target_id)
+    return {"target": target_id, "stored": True}
+
+
+@app.post("/api/delivery/test/{target_id}")
+async def delivery_test(target_id: str, request: Request):
+    """Open and close a connection to an allowlisted target (writer only); nothing is sent."""
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(rd.test_connection, target_id)
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("report_delivery_test", actor=_actor(request) or _security.current_actor(), target=target_id)
+    return out
+
+
+@app.post("/api/delivery/send")
+async def delivery_send(req: DeliverySend, request: Request):
+    """Send a saved report's CSV to a target now (writer only)."""
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        return await asyncio.to_thread(rd.deliver_saved, req.target, req.report)
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/dns-push/settings")
+async def dns_push_save(req: DnsPushSettings, request: Request):
+    """Change DNS push settings (writer only)."""
+    import dns_push as dp
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(dp.save_settings, req.model_dump(exclude_none=True))
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("dns_push_settings", actor=_actor(request) or _security.current_actor(), enabled=out["settings"]["enabled"],
+                  targets=len(out["settings"]["targets"]))
+    return out
+
+
+@app.post("/api/dns-push/run")
+async def dns_push_run(request: Request):
+    """Push the staged forwarder file to every chosen resolver; one result per host (writer only)."""
+    import dns_push as dp
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        res = await asyncio.to_thread(dp.push)
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("dns_push_run", actor=_actor(request) or _security.current_actor(), sent=sum(1 for r in res if r["status"] == "sent"),
+                  failed=sum(1 for r in res if r["status"] != "sent"))
+    return {"results": res}
+
+
+def _rd_tick() -> None:
+    """Opt-in report delivery on its cron schedule (off by default; sends the newest saved report only)."""
+    import report_delivery as rd
+    import dns_push as dp
+    rd.tick()
+    dp.tick()
+
+
 async def _tlw_loop() -> None:
     while _TLW_STATE.get("enabled"):
         try:
@@ -10480,6 +10617,7 @@ async def _tlw_loop() -> None:
             break
         try:
             await asyncio.to_thread(_tlw_tick)
+            await asyncio.to_thread(_rd_tick)
             _TLW_STATE["last_error"] = None
         except Exception as e:  # noqa: BLE001 — the timer never takes the server down
             _TLW_STATE["last_error"] = f"{type(e).__name__}: {str(e)[:200]}"
@@ -11969,6 +12107,7 @@ class ZccDnsRequest(BaseModel):
     ttl: int = 300
     unbound_local_zone: bool = True
     unbound_insecure: bool = True
+    stage_for_push: str = ""   # "unbound" or "bind_forward": keep that file for the opt-in DNS push (writer only)
 
     @field_validator("domain", "resolvers", "mappings")
     @classmethod
@@ -12005,6 +12144,15 @@ async def zcc_fleet_dns_records(job_id: str, req: ZccDnsRequest, request: Reques
                                       read_at=res.get("read_at"), truncated=bool(res.get("devices_truncated")))
     except dfz.DnsInputError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if req.stage_for_push:
+        import dns_push as dp
+        import report_delivery as rd
+        _security.require_writer()
+        try:
+            await asyncio.to_thread(dp.stage, out, req.stage_for_push)
+        except rd.DeliveryError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        out["staged_for_push"] = req.stage_for_push
     _audit.record("zcc_dns_records", actor=_actor(request) or _security.current_actor(), records=out["counts"]["records"],
                   collisions=out["counts"]["collisions"], resolvers=len(out["meta"]["resolvers"]))
     out["file_names"] = {k: v[0] for k, v in dfz.FILES.items()}
@@ -12074,6 +12222,8 @@ class ZsRangesBuild(ZsRangesPick):
     ipv4: bool = True
     ipv6: bool = True
     format: str = ""
+    digicert: bool = False        # add the shipped DigiCert certificate-validation hosts (source and date in the answer)
+    single_hosts: bool = False    # write a /32 (or /128) as the bare address
 
     @field_validator("regions")
     @classmethod
@@ -12157,7 +12307,8 @@ def _zs_ranges_build(req: ZsRangesBuild) -> Dict[str, Any]:
     import zscaler_ip_ranges as zr
     try:
         return zr.build(req.cloud, req.feeds, zpa_cloud=req.zpa_cloud, regions=req.regions or None, exclude=req.exclude,
-                        extra=req.extra, ipv4=req.ipv4, ipv6=req.ipv6)
+                        extra=req.extra, ipv4=req.ipv4, ipv6=req.ipv6, digicert=req.digicert,
+                        single_hosts=req.single_hosts)
     except zr.FeedError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -51,6 +51,7 @@ Find the files a change touches here, then read only those.
 | `dlp_importer.py` | DLP Policy Pack Importer — general-purpose library |
 | `dlp_mcp_server.py` | DLP Assessment MCP Tool Server |
 | `dns_forward_zones.py` | DNS records for Client Connector hostnames: download-only text, never applied. |
+| `dns_push.py` | Opt-in push of the generated DNS forwarder file to several resolvers. |
 | `docker_healthcheck.py` | Container healthcheck: is the app answering on its own port? |
 | `editions.py` | Licensed editions: Cloud Firewall (standard or advanced), Cloud Sandbox |
 | `email_tenants.py` | One answer to "which email tenants are onboarded?". |
@@ -61,6 +62,7 @@ Find the files a change touches here, then read only those.
 | `investigation_journal.py` | Guided investigation journal: hypothesis -> evidence -> conclusion, resumable. |
 | `local_plugins.py` | Local plugins: an opt-in way to add Bulk changes operations and read-only |
 | `log_analyzer.py` | Log Analyzer: Client Connector log bundles and PAC files, explained. |
+| `log_pipeline_cli.py` | Command line for the traffic-log pipeline (read-only apart from saving a report). |
 | `m365_endpoints.py` | Microsoft's published Microsoft 365 endpoint list: kept on disk, checked |
 | `mcp_tools.py` | Read-only analysis tools for AI assistants (the MCP server's live analysis). |
 | `md_safe.py` | One way to put untrusted text into a Markdown export. |
@@ -132,6 +134,7 @@ Find the files a change touches here, then read only those.
 | `readiness.py` | Readiness: what this API client can do in this app, before anything runs. |
 | `reference_corpus.py` | Reference corpus: grounded lookups and on-demand citations. |
 | `remediation.py` | Guided Auto-Remediation Framework |
+| `report_delivery.py` | Opt-in delivery of saved reports to a network share or a remote host. |
 | `report_docx.py` | Zscaler Made Easy — Word Document Report Generator |
 | `report_exports.py` | Excel and PDF exports built on the in-house writers (xlsx_writer, |
 | `rule_csv.py` | Rules as a spreadsheet: the CSV round-trip format for ZIA Cloud Firewall |
