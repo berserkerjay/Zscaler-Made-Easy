@@ -13642,7 +13642,7 @@ async def audit_export(format: str = "jsonl", limit: int = 5000):
     ts = datetime.now().strftime("%Y%m%d_%H%M")
     ext = (format or "jsonl").lower()
     return Response(content=_audit.export(entries, ext), media_type="text/csv; charset=utf-8" if ext == "csv" else "application/x-ndjson",
-                    headers={"Content-Disposition": f"attachment; filename=audit_{ts}.{ext}", "Cache-Control": "no-store",
+                    headers={"Content-Disposition": (f"attachment; filename=audit_{ts}.csv" if ext == "csv" else f"attachment; filename=audit_{ts}.jsonl"), "Cache-Control": "no-store",
                              "X-Content-Type-Options": "nosniff"})
 
 

@@ -3700,6 +3700,16 @@ window.HELP_CATALOG = {
     "input": "Optional. Unticked by default. Users are never exported.",
     "effect": "local"
    },
+   "#exTfDir": {
+    "what": "Names the folder the Terraform export is saved into, inside the zip file.",
+    "input": "Optional. Letters, digits and dashes, up to 40. Empty uses tenant-terraform.",
+    "effect": "local"
+   },
+   "#exTfLog": {
+    "what": "Adds a support log to the zip: progress and counts only, with names and secrets masked.",
+    "input": "Optional. Unticked by default. Tick it when support asks for a log.",
+    "effect": "local"
+   },
    "#exTfTypes input[type=\"checkbox\"]": {
     "what": "Keeps this object type in the whole-tenant Terraform export. Untick it to leave it out.",
     "input": "Tick to export it. Types that are not in scope on the Scope page are left out anyway.",
@@ -5469,6 +5479,46 @@ window.HELP_CATALOG = {
    "#opZHand": {
     "what": "Picks which segment from Test a list to fix now. A row to block opens ZPA segment domains; a row to allow opens ZPA policy rules.",
     "input": "Pick one. Fix one segment, then pick the next here.",
+    "effect": "local"
+   },
+   "select[data-sw]": {
+    "what": "Sets GenAI prompt capture for this app: On, Off, or leave it as it is.",
+    "input": "Pick On or Off to change it. Leave as it is changes nothing for this app. Nothing is written until you preview and apply.",
+    "effect": "local"
+   },
+   "input[data-n=\"name\"]": {
+    "what": "Names this block page theme so it can be saved and downloaded again.",
+    "input": "Up to 40 characters. Saving a name that exists replaces that theme.",
+    "effect": "local"
+   },
+   "input[data-k=\"org_name\"]": {
+    "what": "The organization name shown on the block page.",
+    "input": "Up to 80 characters.",
+    "effect": "local"
+   },
+   "input[data-k=\"title\"]": {
+    "what": "The heading shown on the block page.",
+    "input": "Up to 80 characters.",
+    "effect": "local"
+   },
+   "input[data-k=\"support_email\"]": {
+    "what": "The email address blocked users are told to write to.",
+    "input": "Up to 254 characters. A normal email address.",
+    "effect": "local"
+   },
+   "input[data-k=\"support_phone\"]": {
+    "what": "The phone number blocked users are told to call.",
+    "input": "Up to 30 characters.",
+    "effect": "local"
+   },
+   "input[data-k=\"policy_link\"]": {
+    "what": "A link to your acceptable use policy, shown on the block page.",
+    "input": "Up to 300 characters. Must be a secure web link (https).",
+    "effect": "local"
+   },
+   "textarea[data-k=\"message\"]": {
+    "what": "The message shown to blocked users on the block page.",
+    "input": "Up to 600 characters. Plain text only.",
     "effect": "local"
    },
    "input[data-aig-app]": {
