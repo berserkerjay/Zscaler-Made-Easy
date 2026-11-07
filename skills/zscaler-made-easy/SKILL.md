@@ -92,6 +92,8 @@ answer leaves the question open.
 | Who can administer the tenant? Too many super admins? Stale admins, MFA, API client scopes? | `rbac_review` | `readiness` for this API client's own rights; `run_section` for the RBAC section |
 | What do we send to the SIEM? Which logs are not streamed? Are NSS feeds or LSS on? | `telemetry_review` | `traffic_logs_summary` for logs the admin saved |
 | What did the app change recently? What happened since Monday? | `timeline` (`since`) | `snapshot_diff` for what the configuration now differs by |
+| Are we near our licensed limits (locations, tunnels, connectors, segments)? How much headroom? | `capacity_review` | `ztw_summary`; the licensed counts come from the admin's local file |
+| Write the postmortem for last week's incident | `postmortem` (`start`, `end`) | `timeline` for counts; `snapshot_diff` for what differs now |
 | What did we note about this rule or finding? Note this for later | `case_notes` (`tag` or `kind`) | Ask the admin to add the note on the app's pages (you cannot add one) |
 
 ## Answer shape

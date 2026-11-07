@@ -13190,6 +13190,44 @@ async def audit_timeline_export(job_id: str, format: str = "csv"):
                     headers={"Content-Disposition": f"attachment; filename=audit_timeline_{ts}.csv"})
 
 
+class PostmortemRequest(BaseModel):
+    """Body of the incident postmortem: the window (`days` back, or `start` / `end`), a title and the format (json, md or csv)."""
+    days: int = 7
+    start: str = Field("", max_length=40)
+    end: str = Field("", max_length=40)
+    title: str = Field("Incident postmortem", max_length=120)
+    format: str = "json"
+
+
+@app.post("/api/postmortem")
+async def postmortem_report(req: PostmortemRequest):
+    """An incident postmortem template for a window, built from this app's
+    own audit log and deployment records (team mode: only the person's
+    tenant profiles). Reads no tenant and writes nothing; the Markdown and
+    CSV downloads are escaped (md_safe, csv_safe)."""
+    import audit_timeline as at
+    import deployments
+    import postmortem as pm
+    fmt = (req.format or "json").lower()
+    if fmt not in ("json", "md", "csv"):
+        raise HTTPException(status_code=400, detail="format must be json, md or csv.")
+    try:
+        win = at.window(req.days, req.start, req.end)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    rep = pm.generate(window_=win, deployments=_team.visible(deployments.list_all()),
+                      audit_entries=_team.filter_audit_entries(_audit.tail(50000)), title=req.title or "Incident postmortem")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    hdr = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+    if fmt == "md":
+        return Response(content=pm.to_markdown(rep), media_type="text/markdown; charset=utf-8",
+                        headers={**hdr, "Content-Disposition": f"attachment; filename=postmortem_{ts}.md"})
+    if fmt == "csv":
+        return Response(content=pm.to_csv(rep), media_type="text/csv; charset=utf-8",
+                        headers={**hdr, "Content-Disposition": f"attachment; filename=postmortem_{ts}.csv"})
+    return Response(content=json.dumps(rep, default=str), media_type="application/json", headers=hdr)
+
+
 # ── Flow animator ─────────────────────────────────────────────────────
 @app.get("/report/motion")
 async def report_motion_page():

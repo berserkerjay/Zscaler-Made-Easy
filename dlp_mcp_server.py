@@ -54,6 +54,8 @@ Tools exposed (every one read-only; none changes the tenant):
     zdx_summary       — ZDX application scores and alerts (counts only)
     rbac_review       — SOC review: admins (numbered), roles, full vs scoped rights, stale admins, API keys and clients
     telemetry_review  — SOC review: log streams, SIEM destinations and the gaps
+    capacity_review   — licensed vs used counts with headroom
+    postmortem        — incident postmortem template for a window
     timeline          — What the app did since a date (its own records, people counted)
     case_notes        — The admin's workspace notes for the tenant (local)
 
@@ -760,6 +762,29 @@ async def case_notes(tag: Annotated[str, Field(max_length=40)] = "", kind: Annot
     object kind. Authors are counted, not named. Reads no tenant. Read-only.
     """
     return await _run("case_notes", mcp_tools.case_notes, dict(tag=tag, kind=kind), source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def capacity_review(source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    Capacity and scaling review: locations, tunnels, ZPA App Connectors and
+    application segments in use against the licensed counts the admin
+    recorded locally, with headroom per metric and a status (ok, watch,
+    low, over). Needs Cloud & Branch Connector or ZPA in scope. Read-only.
+    """
+    return await _run("capacity_review", mcp_tools.capacity_review, {}, source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def postmortem(start: Annotated[str, Field(max_length=40, description="a date such as 2026-10-01; blank with end blank: the last 7 days")] = "",
+                     end: Annotated[str, Field(max_length=40)] = "", title: Annotated[str, Field(max_length=120)] = "") -> dict:
+    """
+    An incident postmortem template for a time window (at most 31 days):
+    summary, timeline, changes by someone else and blank sections to fill
+    in, as Markdown, from the app's own audit log and deployment history.
+    Needs Automation readiness in the server's scope. Reads no tenant. Read-only.
+    """
+    return await _run("postmortem", mcp_tools.postmortem, dict(start=start, end=end, title=title), tenant=False)
 
 
 # ── Entrypoint ───────────────────────────────────────────────────────

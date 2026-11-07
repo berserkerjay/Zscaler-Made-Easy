@@ -37,6 +37,8 @@ mode, a named writer and assessor, a preview and a typed confirmation.
 | `compliance_map` | Compliance mapping | Framework controls met or not, from the last assessment |
 | `traffic_logs_summary` | Traffic and session logs | A saved report as counts (people counted); never an upload through MCP |
 | `ztw_summary` | Cloud & Branch Connector | Connector counts and the connector checks (admins and keys counted) |
+| `capacity_review` | Capacity | Locations, tunnels, ZPA App Connectors and segments against the licensed counts you record in `capacity_entitlements.json` (or `DLP_CHECK_CAPACITY`), with headroom |
+| `postmortem` | Automation | Incident postmortem template (Markdown) for a window from the app's own records |
 | `zdx_summary` | ZDX | App score bands, the lowest apps, alerts by severity and rule (no devices) |
 | `rbac_review` | SOC review: admin access | Admins (numbered), roles, full vs limited rights, stale admins, API keys and clients, findings |
 | `telemetry_review` | SOC review: logging | Log streams, NSS servers, LSS, Client Connector log settings, destinations and gaps |

@@ -25,7 +25,7 @@ JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjYW5hcnkifQ.c2lnbmF0dXJlY2FuYXJ5"
 
 ANALYSIS_TOOLS = {"list_sources", "path_check", "test_list", "rule_precedence", "explain_dlp", "data_flow", "ssl_coverage",
                   "dlp_incidents", "traffic_summary", "zpa_path", "fleet_health", "snapshot_diff", "category_lookup",
-                  "readiness", "compliance_map", "traffic_logs_summary", "ztw_summary", "zdx_summary", "rbac_review", "telemetry_review", "timeline", "case_notes"}
+                  "readiness", "compliance_map", "traffic_logs_summary", "ztw_summary", "zdx_summary", "rbac_review", "telemetry_review", "timeline", "case_notes", "capacity_review", "postmortem"}
 ALL_TOOLS = ANALYSIS_TOOLS | {"run_assessment", "run_section", "list_checks", "get_health"}
 
 # One call per tenant-reading tool, with the smallest valid arguments.

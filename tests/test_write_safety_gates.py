@@ -614,6 +614,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/category-lookup/start"): "reads (Category lookup)",
     ("POST", "/api/bulk-test/fix/{fix_id}/prove/start"): "reads (Prove it: the handed-off rows tested again)",
     ("POST", "/api/audit-timeline/start"): "reads",
+    ("POST", "/api/postmortem"): "local read of the app's own records, writes nothing",
     ("POST", "/api/shadow-rules/start"): "reads",
     ("POST", "/api/shadow-rules"): "reads",
     ("POST", "/api/posture/analyze"): "reads",

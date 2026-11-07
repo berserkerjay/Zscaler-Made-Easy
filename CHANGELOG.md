@@ -7,6 +7,10 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-07
+
+- Assistant: new read-only `capacity_review` (locations, tunnels, ZPA App Connectors and segments against locally recorded licensed counts, with headroom) and `postmortem` (incident postmortem template for a window from the app's own audit log and deployments, Markdown or CSV via `POST /api/postmortem`); every assistant answer now carries a `grade` (source tier, confidence, basis, as-of).
+
 ## 2026-11-06
 
 ### Store encryption in a read-only container, glass while scrolling, macOS installs

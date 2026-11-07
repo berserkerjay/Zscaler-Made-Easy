@@ -325,6 +325,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/bulk-test/fix/{fix_id}": READ,
     "POST /api/audit-timeline/start": READ,   # this app's own audit entries filtered to the person's profiles
     "GET /api/audit-timeline/{job_id}/export": READ,
+    "POST /api/postmortem": READ,   # own audit entries and deployments, filtered to the person's profiles
     "POST /api/shadow-rules/start": READ,
     "POST /api/shadow-rules": READ,
     "GET /api/shadow-rules/jobs/{job_id}/export": READ,

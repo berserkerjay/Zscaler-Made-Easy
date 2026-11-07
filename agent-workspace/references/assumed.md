@@ -119,7 +119,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `editions.py:143` | out.append(SKU_NOTE + " What each edition allows is this app's reading of Zscaler's edition descriptions (assumed).") |
 | `endpoint_snapshots.py:55` | published under. assumed: serviceArea is the web service's key for that |
 | `insights.py:670` | ASSUMED: Shadow IT's sanctioned_state spells the two states as |
-| `mcp_tools.py:1187` | ZDX_BANDS = (("poor", 0, 33), ("okay", 34, 65), ("good", 66, 100))   # assumed: the ZDX portal's score bands (not in the SDK) |
+| `mcp_tools.py:1205` | ZDX_BANDS = (("poor", 0, 33), ("okay", 34, 65), ("good", 66, 100))   # assumed: the ZDX portal's score bands (not in the SDK) |
 | `offline_tenant.py:109` | The ZDX configuration (ops_zdx: the /config part is assumed there): apps |
 | `offline_tenant.py:113` | CloudPath probes ZDX adds for it (off), as ops_zdx expects (assumed there). |
 | `offline_tenant.py:681` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
