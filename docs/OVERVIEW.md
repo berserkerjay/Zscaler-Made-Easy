@@ -625,7 +625,7 @@ what you get, what to do next.
 - **Tenant API map** (`/report/api-map`, toolbar *Tenant API map*) — its
   own tool, separate from the licence and editions check, and its own
   action, bound by the Scope page (a product that is not ticked there is
-  not read and is listed as *skipped: not in scope*): which Zscaler features the tenant has
+  not read and is listed as "skipped: not in scope"): which Zscaler features the tenant has
   and which reads its API client may make. *Map this tenant's APIs* shows
   every endpoint it will read (the readable GET endpoints of the installed
   SDK, `tenant_api_catalogue.json`) and each it skips, then reads nothing

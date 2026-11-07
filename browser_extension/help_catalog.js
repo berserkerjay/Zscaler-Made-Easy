@@ -2958,6 +2958,11 @@ window.HELP_CATALOG = {
     "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or the tenant you are signed in to. It only shows when there is more than one choice.",
     "effect": "local"
    },
+   ".am-scope-link": {
+    "what": "Opens the Scope page, where you tick the products the assessment and this map may read. A product that is not ticked is skipped.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#amRun": {
     "what": "Shows the exact list of endpoints the map would read and asks you to confirm. Nothing is sent until you confirm.",
     "input": "Nothing to type. Just click it. It uses the tenant you are signed in to (or the sample tenant) and never asks for new credentials.",

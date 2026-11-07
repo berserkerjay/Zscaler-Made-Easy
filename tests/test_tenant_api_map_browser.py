@@ -30,10 +30,12 @@ const out = {};
 await go('/', 1280);
 // The sample tenant: the page's run is answered offline by the real server.
 await until(() => ev(`fetch('/api/offline/sample', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.status === 200)`), 'the sample tenant');
+// The Scope page's ticks, as the assessment page keeps them: the map reads only these products.
+await ev(`(localStorage.setItem('zassess_scopes_live_v1', JSON.stringify({ scopes: ['dlp', 'zia_extras', 'zpa', 'zcc', 'zdx', 'zidentity', 'ztw', 'aiguard', 'easm', 'ztb', 'zbi', 'zcell'] })), true)`);
 await go('/report/api-map', 1280);
 await until(() => ev(`document.querySelectorAll('#amProducts input[data-product]').length >= 8`), 'the product boxes');
 out.intro = await ev(`({ h1: document.querySelector('.rp-hero h1').textContent, separate: /its own tool/.test(document.querySelector('.rp-hero p').textContent) &&
-  /separate from the Scope page/.test(document.querySelector('.rp-hero p').textContent), products: document.querySelectorAll('#amProducts input').length,
+  /Scope page/.test(document.querySelector('.rp-hero p').textContent), products: document.querySelectorAll('#amProducts input').length,
   confirmHidden: document.getElementById('amConfirmBox').hidden, features: !!document.getElementById('amFeatures') })`);
 
 // 1. Run -> the list, nothing sent.
@@ -45,7 +47,7 @@ out.list = await ev(`(() => {
   const btn = document.getElementById('amConfirm').textContent;
   return { rows, btn, focusedId: document.activeElement.id, started: performance.getEntriesByType('resource').filter(r => r.name.includes('/tenant-api-map/start')).length,
     planned: performance.getEntriesByType('resource').filter(r => r.name.includes('/tenant-api-map/plan')).length, get: /GET/.test(document.getElementById('amConfirmBox').textContent),
-    noScope: /does not use the Scope page/.test(document.getElementById('amConfirmBox').textContent), features: !!document.getElementById('amFeatures') };
+    noScope: !/does not use the Scope page/.test(document.getElementById('amConfirmBox').textContent) && /ticked on the Scope page/.test(document.getElementById('amConfirmBox').textContent), features: !!document.getElementById('amFeatures') };
 })()`);
 
 // 2. Cancel -> focus back on the button, still nothing sent.
@@ -136,7 +138,7 @@ def page(tmp_path_factory):
 
 
 def test_the_page_says_it_is_its_own_tool_and_its_own_action(page):
-    """WCAG 2.2 SC 3.3.2 · ASVS V1.14: the page states that it is separate from the licence check and from the Scope page, and offers the products."""
+    """WCAG 2.2 SC 3.3.2 · ASVS V1.14: the page states that it is its own tool, reads only what the Scope page ticks, and offers the products."""
     assert page["intro"]["h1"].startswith("Tenant API map") and page["intro"]["separate"] and page["intro"]["products"] >= 8
     assert page["intro"]["confirmHidden"] is True and page["intro"]["features"] is False
 
