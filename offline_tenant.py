@@ -1213,6 +1213,8 @@ def sample_store(reset: bool = False) -> OfflineStore:
         s = _OPEN.get(SAMPLE)
         if s is None or reset:
             responses = {normalize_path(p): {"status": 200, "body": b} for p, b in sample_tenant.responses().items()}
+            for p in getattr(sample_tenant, "DENIED_PATHS", ()):   # reads the sample's API client may not make (the Tenant API map shows them)
+                responses[normalize_path(p)] = {"status": 403, "body": {"code": "NOT_AUTHORIZED", "message": "The API client's role may not read this."}}
             s = OfflineStore(SAMPLE, SAMPLE, responses, sample_tenant.meta(), writable=True)
             _OPEN[SAMPLE] = s
         return s
