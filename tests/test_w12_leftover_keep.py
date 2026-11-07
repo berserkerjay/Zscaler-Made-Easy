@@ -52,4 +52,4 @@ def test_only_unticked_leftovers_become_the_removal_selection(monkeypatch):
 def test_the_picker_shows_a_keep_box_for_leftovers_only():
     """WCAG 2.2 SC 4.1.2 · ASVS V5.3.3 · CWE-79: a leftover row's checkbox is a named Keep box (ticked unless selected) and the reason is escaped."""
     js = open(os.path.join(ROOT, "static", "deploy_studio.js"), encoding="utf-8").read()
-    assert "aria-label=\"Keep ${_dzE(r.name)} (leftover: ${_dzE(r.leftover)})\"" in js and "_dzPickToggle('${_dzE(key(r))}', !this.checked)" in js
+    assert "aria-label=\"Keep ${_dzE(r.name)} (leftover: ${_dzE(r.leftover)})\"" in js and "data-dz-pick=\"${_dzE(key(r))}\" data-dz-keep=\"1\"" in js and "!cb.checked" in js and "onchange=\"_dzPickToggle" not in js

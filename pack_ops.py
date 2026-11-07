@@ -1195,6 +1195,9 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         # The whole Cloud Sandbox custom hash list (PUT /behavioralAnalysisAdvancedSettings): ops_zia_sandbox
         # sends the list as re-read right before, with only its own hashes added or removed.
         return call(zia.sandbox.add_hash_to_custom_list, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "zia_eun":
+        # ops_zia_eun: PUT /eun with the object as re-read right before, only its planned fields changed.
+        return call(pc.update_eun, zia, payload, op="update", kind=kind, name=name, log=log, zia=zia)
     if kind in AIGUARD_KINDS:
         return _aiguard_write(zia, kind, "update", oid, op="update", name=name, log=log, kw=payload)
     if kind == "policy" and channel in ADMIN_RULE_SERVICES:

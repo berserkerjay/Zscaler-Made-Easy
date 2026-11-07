@@ -46,20 +46,28 @@
         <p class="df-hint">${E(res.visible || '')} ${E(res.logo_note || '')}</p>
         <div class="op-row"><label class="df-ctl"><span class="lbl">Theme name</span><input data-n="name" value="${E(z.name)}" maxlength="40" aria-label="Theme name"></label>
           <span class="df-hint">Saved: ${themes.map(t => E(t.name)).join(', ') || 'none yet'}</span></div>
-        <div class="op-row">${TEXT.map(([k, l, n]) => `<label class="df-ctl"><span class="lbl">${E(l)}</span><input data-k="${k}" value="${E(s[k] || '')}" maxlength="${n}" aria-label="${E(l)}"></label>`).join('')}</div>
+        <div class="op-row">${TEXT.map(([k, l, n]) => `<label class="df-ctl"><span class="lbl">${E(l)}</span><input data-k="${E(k)}" value="${E(s[k] || '')}" maxlength="${E(n)}" aria-label="${E(l)}"></label>`).join('')}</div>
         <div class="op-row"><label class="df-ctl"><span class="lbl">Message</span><textarea data-k="message" rows="3" maxlength="600" aria-label="Message to blocked users">${E(s.message || '')}</textarea></label></div>
-        <div class="op-row">${COLORS.map(([k, l]) => `<label class="df-ctl"><span class="lbl">${E(l)}</span><input type="color" data-k="${k}" value="${E(s[k])}" aria-label="${E(l)}"></label>`).join('')}</div>
-        <div class="op-row">${SWITCHES.map(([k, l]) => `<label class="df-ctl"><input type="checkbox" data-k="${k}"${s[k] ? ' checked' : ''}><span>${E(l)}</span></label>`).join('')}</div>
+        <div class="op-row">${COLORS.map(([k, l]) => `<label class="df-ctl"><span class="lbl">${E(l)}</span><input type="color" data-k="${E(k)}" value="${E(s[k])}" aria-label="${E(l)}"></label>`).join('')}</div>
+        <div class="op-row">${SWITCHES.map(([k, l]) => `<label class="df-ctl"><input type="checkbox" data-k="${E(k)}"${s[k] ? ' checked' : ''}><span>${E(l)}</span></label>`).join('')}</div>
         <div class="op-row"><label class="df-ctl"><span class="lbl">Logo (PNG, JPEG or GIF, up to 200 KB)</span><input type="file" id="eunLogo" accept="image/png,image/jpeg,image/gif" aria-label="Logo image"></label>
           <span class="df-hint">${z.logo ? `Stored: ${E(z.logo.mime)}, ${E(z.logo.bytes)} bytes.` : 'No logo stored.'}${z.pendingLogo ? ' A new logo is chosen and is stored when you save.' : ''}</span></div>
         <div class="op-row"><button type="button" class="rp-btn" id="eunPreview">Preview</button> <button type="button" class="rp-btn" id="eunSave">Save theme</button>
           <a class="rp-btn" id="eunDownload" href="/api/block-page/export?name=${encodeURIComponent(z.name)}" download>Download HTML</a>
           <span class="df-hint" id="eunMsg" role="status" aria-live="polite">${E(z.msg)}</span></div>
         ${z.warnings.length ? `<div class="bp-card warn" role="note"><div class="t">Worth a look</div><ul>${z.warnings.map(w => `<li>${E(w)}</li>`).join('')}</ul></div>` : ''}
-        ${z.html ? `<iframe id="eunFrame" title="Block page preview" sandbox="" style="width:100%;height:24rem;border:1px solid #888"></iframe>
-          <details><summary>Settings this theme sends to ZIA</summary><pre>${E(JSON.stringify(z.eun, null, 2))}</pre></details>` : ''}
+        <div id="eunFrameBox"></div>
         <p class="df-hint">Preview and Save are local. To apply the saved theme, press Preview in the operation panel below (it reads ZIA), then Apply.</p>`;
-      const fr = H.$('eunFrame'); if (fr) fr.srcdoc = z.html;
+      const box = H.$('eunFrameBox');
+      if (box && z.html) {
+        const fr = document.createElement('iframe');
+        fr.id = 'eunFrame'; fr.setAttribute('title', 'Block page preview'); fr.setAttribute('sandbox', '');
+        fr.style.cssText = 'width:100%;height:24rem;border:1px solid #888';
+        fr.setAttribute('srcdoc', z.html);  // a blob: URL would be refused by the page CSP; the frame is sandboxed with no script and no same-origin
+        const det = document.createElement('details'), sum = document.createElement('summary'), pre = document.createElement('pre');
+        sum.textContent = 'Settings this theme sends to ZIA'; pre.textContent = JSON.stringify(z.eun, null, 2);
+        det.append(sum, pre); box.append(fr, det);
+      }
       where.querySelector('[data-n="name"]').addEventListener('input', e => { z.name = e.target.value.trim().toLowerCase(); });
       H.$('eunLogo').addEventListener('change', e => {
         const f = e.target.files[0]; if (!f) return;

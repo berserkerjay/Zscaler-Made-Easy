@@ -17,8 +17,8 @@ the settings (assumed, the SDK lists none).
 
 ZIA calls: GET /eun and PUT /eun, the SDK's end_user_notification service
 (zscaler-sdk-python 1.11.3: get_eun_settings, update_eun_settings). Its
-get_eun_settings names an undefined model class, so both go through
-pack_channels.raw_request, the same path as the activation status. The
+get_eun_settings names an undefined model class, so the read
+and the write go through pack_channels (get_eun) and pack_ops.update (kind zia_eun). The
 camelCase names are the attributes update_eun_settings documents (the
 snake_case list in its docstring, camelCased: assumed, not checked against a
 live tenant).
@@ -37,7 +37,6 @@ TYPE = "zia_eun_theme"
 FAMILY = "zia_eun_settings"
 SCRIPT = "ops_zia_eun.js"
 PHRASE = "APPLY EUN"
-PATH = "/eun"
 ZIA_AREAS = ("dlp", "zia_extras")
 BOOLS = ("displayReason", "displayCompName", "displayCompLogo")
 STRINGS = {"customText": 600, "supportEmail": 254, "supportPhone": 30, "orgPolicyLink": 300}
@@ -54,7 +53,7 @@ def in_scope(scope: Dict[str, Any]) -> Optional[str]:
 
 
 def read_eun(zia: Any) -> Dict[str, Any]:
-    data, err = pc.raw_request(zia, "GET", PATH)
+    data, err = pc.get_eun(zia)
     if err:
         raise ao.OperationError(f"ZIA's end-user notification settings could not be read ({str(err)[:200]}). Nothing was planned.")
     if not isinstance(data, dict):
@@ -162,11 +161,7 @@ def h_write(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
     for u in units:
         body[u["field"]] = u["after"]
 
-    def put() -> Any:
-        data, err = pc.raw_request(run.zia, "PUT", PATH, body)
-        return data, None, err
-    out = ops.call(put, op="update", kind="zia_eun", name="End-user notification settings", log=run.log, zia=run.zia)
-    ops._audit_write("update", "zia_eun", None, "End-user notification settings", None, out)
+    out = ops.update(run.zia, "zia_eun", None, body, name="End-user notification settings", log=run.log)
     if run.outcome(units, out, "update"):
         run.wrote_zia = True
 

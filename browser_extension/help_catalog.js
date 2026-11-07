@@ -464,7 +464,7 @@ window.HELP_CATALOG = {
     "input": "Needs write mode on, a named assessor and a typed confirmation.",
     "effect": "write"
    },
-   "#dlpDeployModal input[onchange^=\"_dzPickToggle(\"]": {
+   "#dlpDeployModal input[data-dz-pick]": {
     "what": "Ticks this rule, engine or dictionary for removal.",
     "input": "Ticked means it goes into the removal preview.",
     "effect": "local"
@@ -4896,6 +4896,61 @@ window.HELP_CATALOG = {
    }
   },
   "/report/operations": {
+   "input[data-k=\"background\"]": {
+    "what": "Sets the page background colour of the block page in this theme.",
+    "input": "Pick a colour. Keep enough contrast with the text colour.",
+    "effect": "local"
+   },
+   "input[data-k=\"card\"]": {
+    "what": "Sets the colour of the card that holds the message on the block page.",
+    "input": "Pick a colour. Keep enough contrast with the text colour.",
+    "effect": "local"
+   },
+   "input[data-k=\"text\"]": {
+    "what": "Sets the text colour of the block page.",
+    "input": "Pick a colour. It needs enough contrast with the card colour; the preview warns if it does not.",
+    "effect": "local"
+   },
+   "input[data-k=\"accent\"]": {
+    "what": "Sets the accent colour used for the block page's button and highlights.",
+    "input": "Pick a colour.",
+    "effect": "local"
+   },
+   "input[data-k=\"show_reason\"]": {
+    "what": "Shows end users why the page was blocked.",
+    "input": "Ticked shows the reason. Unticked leaves it out.",
+    "effect": "local"
+   },
+   "input[data-k=\"show_company_name\"]": {
+    "what": "Shows the organization name on the block page.",
+    "input": "Ticked shows it. Unticked leaves it out.",
+    "effect": "local"
+   },
+   "input[data-k=\"show_logo\"]": {
+    "what": "Shows the stored logo on the block page.",
+    "input": "Ticked shows it. Unticked leaves it out.",
+    "effect": "local"
+   },
+   "#eunLogo": {
+    "what": "Chooses a logo image for this theme. It is stored locally when you save the theme; the ZIA API has no logo field.",
+    "input": "Optional. A PNG, JPEG or GIF of up to 200 KB.",
+    "effect": "local"
+   },
+   "#eunPreview": {
+    "what": "Builds the block page from these settings and shows it below. Nothing is sent to a tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#eunSave": {
+    "what": "Saves this theme on this computer so it can be previewed and applied later.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#eunDownload": {
+    "what": "Downloads the saved theme as a single HTML file.",
+    "input": "Nothing to type. Just click it. Save the theme first.",
+    "effect": "download"
+   },
    "#opObjects a[href=\"/report/vendor#panos\"]": {
     "what": "Opens Migrate from another vendor, where you build the migration plan this operation loads.",
     "input": "Nothing to type. Just click it.",

@@ -1380,8 +1380,8 @@ function _dzRemovalSelect() {
   const byChan = {};
   shown.forEach(r => { (byChan[r.channel] = byChan[r.channel] || []).push(r); });
   const row = r => `<label class="dz-row dz-pick ${R.selected.has(key(r)) ? 'on' : ''}">
-      ${r.leftover ? `<input type="checkbox" ${R.selected.has(key(r)) ? '' : 'checked'} onchange="_dzPickToggle('${_dzE(key(r))}', !this.checked)" aria-label="Keep ${_dzE(r.name)} (leftover: ${_dzE(r.leftover)})"><span class="dz-chip">Keep</span>`
-        : `<input type="checkbox" ${R.selected.has(key(r)) ? 'checked' : ''} onchange="_dzPickToggle('${_dzE(key(r))}', this.checked)" aria-label="Remove ${_dzE(r.name)}">`}
+      ${r.leftover ? `<input type="checkbox" ${R.selected.has(key(r)) ? '' : 'checked'} data-dz-pick="${_dzE(key(r))}" data-dz-keep="1" aria-label="Keep ${_dzE(r.name)} (leftover: ${_dzE(r.leftover)})"><span class="dz-chip">Keep</span>`
+        : `<input type="checkbox" ${R.selected.has(key(r)) ? 'checked' : ''} data-dz-pick="${_dzE(key(r))}" aria-label="Remove ${_dzE(r.name)}">`}
       <div><div class="nm">${_dzE(r.name)} <span class="dz-chip ${String(r.state).toUpperCase() === 'ENABLED' ? 'kind-policy' : ''}">${_dzE(String(r.state || '').toLowerCase() || 'state ?')}</span>${r.parent_id != null ? '<span class="dz-chip">sub-rule</span>' : ''}</div>
         <div class="rs">${r.leftover ? `Leftover: ${_dzE(r.leftover)} · ` : ''}${r.tagged ? `Zscaler Made Easy · ${_dzE(r.pack || 'pack')}` : 'not created by Zscaler Made Easy'}${(r.engines || []).length ? ` · engines: ${_dzE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ' · no engines'}${r.action ? ` · ${_dzE(String(r.action).toLowerCase())}` : ''}</div></div>
     </label>`;
@@ -1392,7 +1392,7 @@ function _dzRemovalSelect() {
   const oEng = (orph.engines || []).filter(e => !q || (e.name || '').toLowerCase().includes(q) || (e.pack || '').toLowerCase().includes(q));
   const oDict = (orph.dictionaries || []).filter(d => !q || (d.name || '').toLowerCase().includes(q) || (d.pack || '').toLowerCase().includes(q));
   const orow = (o, what) => { const k = `${o.kind}:${o.id}`; return `<label class="dz-row dz-pick ${R.selected.has(k) ? 'on' : ''}">
-      <input type="checkbox" ${R.selected.has(k) ? 'checked' : ''} onchange="_dzPickToggle('${_dzE(k)}', this.checked)" aria-label="Remove ${_dzE(o.name)}">
+      <input type="checkbox" ${R.selected.has(k) ? 'checked' : ''} data-dz-pick="${_dzE(k)}" aria-label="Remove ${_dzE(o.name)}">
       <div><div class="nm">${_dzE(o.name)} <span class="dz-chip">${what}</span></div>
         <div class="rs">${o.tagged ? `Zscaler Made Easy · ${_dzE(o.pack || 'pack')}` : 'not created by Zscaler Made Easy'}${o.kind === 'engine' ? ' · no rule on any channel uses it' + ((o.dictionaries || []).length ? ` · dictionaries: ${_dzE(o.dictionaries.slice(0, 4).join(', '))}${o.dictionaries.length > 4 ? '…' : ''}` : '') : ' · no engine uses it'}</div>${o.kind === 'engine' ? _dzEngineExplain(o) : ''}</div>
     </label>`; };
@@ -1413,6 +1413,7 @@ function _dzRemovalSelect() {
     </div>
     ${groups || '<div class="dz-empty">No rules match the filter.</div>'}
     ${orphanGroups}`;
+  body.querySelectorAll('input[data-dz-pick]').forEach(cb => cb.addEventListener('change', () => _dzPickToggle(cb.dataset.dzPick, cb.hasAttribute('data-dz-keep') ? !cb.checked : cb.checked)));
   document.getElementById('dzFoot').innerHTML = `
     <div class="dz-summary">${R.selected.size
       ? `<strong style="color:var(--text);">${_dzN(R.selected.size, 'item')}</strong> ticked. The preview adds the engines and dictionaries only they use, and writes nothing.`
