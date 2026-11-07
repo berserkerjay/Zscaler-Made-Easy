@@ -257,7 +257,7 @@ def test_cron_matching():
         rd.check_cron("* * *")
 
 
-def test_tick_sends_newest_once_per_minute(env):
+def test_tick_sends_newest_once_per_minute(env, monkeypatch):
     """ASVS V1.14.6 · CWE-770 · WSTG-BUSL-05: a due schedule sends the newest report once; scheduled work only sends, nothing else."""
     _cfg()
     rd.save_settings({"schedule": {"enabled": True, "cron": "30 6 * * *", "target": "t1"}})
@@ -267,14 +267,11 @@ def test_tick_sends_newest_once_per_minute(env):
     def fake_deliver_saved(target, name, trigger="manual"):
         sent.append((target, name, trigger))
         return {"status": "sent"}
-    rd.deliver_saved = fake_deliver_saved
-    try:
-        at = datetime(2026, 11, 9, 6, 30, 20, tzinfo=timezone.utc)
-        assert rd.tick(at, newest=lambda: "n.json")["status"] == "sent"
-        assert rd.tick(at, newest=lambda: "n.json") is None
-        assert rd.tick(datetime(2026, 11, 9, 7, 30, tzinfo=timezone.utc), newest=lambda: "n.json") is None
-    finally:
-        del rd.deliver_saved
+    monkeypatch.setattr(rd, "deliver_saved", fake_deliver_saved)   # restored after the test
+    at = datetime(2026, 11, 9, 6, 30, 20, tzinfo=timezone.utc)
+    assert rd.tick(at, newest=lambda: "n.json")["status"] == "sent"
+    assert rd.tick(at, newest=lambda: "n.json") is None
+    assert rd.tick(datetime(2026, 11, 9, 7, 30, tzinfo=timezone.utc), newest=lambda: "n.json") is None
     assert sent == [("t1", "n.json", "schedule")]
 
 

@@ -573,7 +573,7 @@
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'aiguard', 'apimap', 'ztw', 'socreview', 'otherproducts', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'plugin', 'team', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
-    'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'capacity', 'logs', 'trafficlogs', 'zcc', 'permissions'];
+    'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'capacity', 'trafficlogs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

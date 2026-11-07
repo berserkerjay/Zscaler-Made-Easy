@@ -4,11 +4,16 @@
 
 Where each comparison row lives in the code and the test that proves it: `<area> row N — <file:line> — <test>`.
 
+## Terraform export
+
 - Terraform export row 4 (resource selection) — tenant_terraform.py:778 — test_types_and_exclude_take_keys_resource_names_and_patterns
 - Terraform export row 5 (validate) — tenant_terraform.py:1854 — test_static_check_finds_a_broken_workspace, test_validate_script_is_written_but_nothing_is_run
 - Terraform export row 6 (progress / support) — tenant_terraform.py:1904 — test_support_log_is_opt_in_and_masked
 - Terraform export row 7 (prefix, folder, namespace) — tenant_terraform.py:800 — test_output_folder_name_is_checked_and_used
 - Terraform export row 12 (Cloud & Branch Connector coverage) — tenant_terraform.py:721 — test_cloud_connector_unsupported_items_are_listed_not_hidden
+
+## Policy simulator
+
 - Policy simulator row 3 — path_port_check.py:check — tests/test_w12_simulator.py::test_a_port_blocked_by_a_rule_for_everyone_is_said_so_and_other_ports_are_not
 - Policy simulator row 5 — path_analyzer.py:38 (ASSUMPTIONS), zia_path_modules.py:1897, path_analyzer.py:358 — tests/test_w12_simulator.py::test_the_default_assumptions_are_stated_with_every_result_and_follow_the_traffic
 - Policy simulator row 14 — bulk_test.py:1749 (area_list), bulk_test.py:40-48 — tests/test_bulk_test.py::test_the_summary_names_top_rules_categories_misses_and_lists_per_area
@@ -20,7 +25,10 @@ Where each comparison row lives in the code and the test that proves it: `<area>
 - row 13 Scheduled sync (approval-gated) — sync_jobs.py (read-only compare, plan filed in the change queue), `sync_jobs.awaiting_approval`, GET /api/sync-jobs/awaiting-approval, apply through POST /api/change-queue/{rid}/apply (admin_ops.execute: approval, plan hash, re-read, read-back, Undo) — tests/test_w12_zsconfig.py::test_a_scheduled_tick_never_calls_a_write_and_queues_the_plan, ::test_the_sync_module_has_no_path_to_a_write, ::test_applying_without_approval_is_refused_and_nothing_is_written, ::test_applying_after_the_drift_changed_marks_it_stale_and_refuses, ::test_an_approved_plan_with_a_matching_hash_goes_through_admin_ops, ::test_the_timer_is_off_by_default_and_a_setting_turns_it_on
 - row 14 (SCIM visibility) — scim_view.py, POST /api/scim/overview (read-only IdPs, SCIM groups, sync status; the SDK cannot list SCIM users, so users are not listed) — tests/test_w12_zsconfig.py::test_scim_view_lists_idps_groups_and_sync_status_and_only_reads, ::test_scim_route_needs_zpa_in_scope_and_reads_nothing_otherwise
 - row 30 (audit log full-text search) — audit.py `search`, GET /api/audit/search (team-filtered, bounded) — tests/test_w12_zsconfig.py::test_audit_search_requires_every_word_ignores_case_and_returns_newest_first, ::test_audit_search_is_bounded_and_empty_query_matches_nothing, ::test_audit_search_route_filters_to_what_the_person_may_see_and_rejects_empty
-Scheduled sync (approval-gated): a schedule (off by default; `DLP_CHECK_SYNC_TIMER=1` turns the timer on) only reads, compares a saved source against the target and files the resulting plan as "Awaiting approval". It never applies. Applying needs another writer's approval, write mode, the assessor and typed confirmation, and a fresh plan whose hash matches (else the plan is marked stale and nothing is written).
+  Scheduled sync (approval-gated): a schedule (off by default; `DLP_CHECK_SYNC_TIMER=1` turns the timer on) only reads, compares a saved source against the target and files the resulting plan as "Awaiting approval". It never applies. Applying needs another writer's approval, write mode, the assessor and typed confirmation, and a fresh plan whose hash matches (else the plan is marked stale and nothing is written).
+
+## Assistant
+
 - assistant-skill row 1 — reference_corpus.py lookup(), mcp_tools.lookup (`lookup` tool) — tests/test_w12_skill.py::test_lookup_answers_from_the_corpus_with_sources_and_says_when_nothing_matches
 - assistant-skill row 4 — mcp_tools.py grade() — tests/test_w12_skill.py::test_every_answer_is_graded_with_source_tier_and_confidence
 - assistant-skill row 7 — investigation_journal.py, `journal_open`/`journal_add`/`journal_show`, GET/POST /api/journal — tests/test_w12_skill.py::test_journal_enforces_hypothesis_evidence_conclusion_and_resumes
@@ -41,6 +49,9 @@ Scheduled sync (approval-gated): a schedule (off by default; `DLP_CHECK_SYNC_TIM
 - Policy wizard row 27 (block page theme builder) built — block_page_theme.py, ops_zia_eun.py, static/ops_zia_eun.js, /api/block-page/* — tests/test_block_page_theme.py::test_apply_puts_the_object_as_read_with_only_the_planned_fields_then_undo_restores
 - Policy wizard row 31 (leftover rules with Keep boxes) built — pack_removal.py leftover_reason(), mark_leftovers(), selection_without_kept(); static/deploy_studio.js — tests/test_w12_leftover_keep.py::test_only_unticked_leftovers_become_the_removal_selection
 - Policy wizard row 44 (ZDX Web and CloudPath probes, interval, protocol) evidence — ops_zdx.py:104-106 INTERVALS_MIN, PROTOCOLS — tests/test_ops_zdx.py::test_apply_creates_and_turns_on_everything_in_order_reads_back_and_offers_undo, ::test_bad_requests_are_refused_before_anything_is_read
+
+## Operations and log pipeline
+
 - Log pipeline reports to a share, row 5 (SMB/SCP/SFTP/SSH) — report_delivery.py (deliver, deliver_many) — tests/test_report_delivery.py::test_sftp_sends_to_fixed_folder_with_sanitised_name, ::test_non_allowlisted_host_refused_before_any_connection
 - Log pipeline command line, row 6 (health, regen, reindex, selftest) — log_pipeline_cli.py — tests/test_w12_ops.py::test_reindex_rebuilds_catalogue_from_disk, tests/test_report_delivery.py::test_cli_health_and_selftest
 - RHEL service and air-gapped build, row 7 — deploy/rhel/zscaler-made-easy.service, install_service.sh, build_wheelhouse.sh, docs/RHEL_AIRGAPPED.md — tests/test_w12_ops.py::test_unit_file_runs_unprivileged_on_localhost

@@ -42,6 +42,8 @@ OLD_SHORTCUT = "Zscaler Assessment.lnk"
 
 # Exact strings a file may contain, and why.
 COMPAT = {
+    # ── The installed distribution is still named dlp-check in pyproject.toml ─
+    "cli_extras.py": {'md.version("dlp-check")'},
     # ── Provenance tags and the code that recognises them ─────────────
     "pack_deploy.py": {
         'DEFAULT_BY = "DLP-Check"',                       # what every tag written before assessor names says
