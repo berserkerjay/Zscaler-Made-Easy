@@ -18,6 +18,10 @@ lists what each batch of changes did, newest first.
 - Terraform export: object types can be picked by type key, provider resource name or pattern (`zia.*`, `zpa_policy_*`) in both the include and exclude lists; an output folder name option; a local static check of the written files (balanced HCL, no repeated address, every import has its resource) reported as `validation` in the export report; a `validate.sh` the operator runs themselves (never run by the app); and an opt-in masked support log in the zip.
 ### Policy simulator: is this port blocked for everyone?
 - New `POST /api/report/data-flow/{report_id}/port-check`: give a protocol and a port and, from a Path analyzer read already kept in memory, it says whether the Cloud Firewall blocks or allows that traffic for every destination and source, or that it depends (the rules limited to some destinations or sources are named). Offline and read-only: no tenant call, nothing written. The default assumptions each result states and the per-area lists to paste (Test a list) are now covered by tests.
+### SCIM view, audit-log search, approval-gated scheduled sync
+- New read-only SCIM view (`POST /api/scim/overview`): each IdP with its SCIM switches, the SCIM group names ZPA holds and a sync status; needs ZPA ticked on the Scope page.
+- New audit-log full-text search (`GET /api/audit/search`): every word must appear in an entry, newest first, bounded; team servers see only their tenant profiles' entries.
+- Scheduled sync: the timer is now off by default (`DLP_CHECK_SYNC_TIMER=1` turns it on); plans wait in the change queue's "Awaiting approval" list (`GET /api/sync-jobs/awaiting-approval`) and are applied only after approval through the usual write gates and plan-hash check.
 
 ## 2026-11-06
 

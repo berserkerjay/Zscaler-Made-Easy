@@ -392,6 +392,7 @@ ROUTES: List[Route] = [
     Route("/api/bulk-test/fix/" + "f" * 24 + "/prove/start", setup=_kept_fix),
     Route("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}, partial=ZIA, out=ZIA_OUT),
     Route("/api/path-analyzer/zpa-identity", {"action": "idps"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/scim/overview", {}, partial=ZPA, out=ZPA_OUT),
     Route("/api/path-analyzer/zpa-identity", {"action": "user", "idp": "216196257331281111", "user": "jo@example.com"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/path-analyzer/devices", {"device_user": "jane"}, partial=ZCC, out=ZCC_OUT),
     Route("/api/path-analyzer/devices/detail", setup=_device_lookup, partial=ZCC, out=ZCC_OUT),

@@ -136,6 +136,7 @@ Find the files a change touches here, then read only those.
 | `safe_files.py` | Owner-only files and bounded archive reads, shared by the app's local |
 | `sample_tenant.py` | The sample tenant: a made-up company's Zscaler configuration, to try the |
 | `scenario_flow.py` | Pure scenario/evidence model. No network, tenant writes, caching or traffic. |
+| `scim_view.py` | SCIM visibility: a read-only view of the identity providers (IdPs) ZPA |
 | `scope_permissions.py` | Minimum OneAPI permissions required per assessment scope |
 | `sdk_client.py` | SDK-backed Client Adapter for DLP Assessment Engine |
 | `sdk_read.py` | Plain reads over the Zscaler SDK's (result, response, error) tuples. |
