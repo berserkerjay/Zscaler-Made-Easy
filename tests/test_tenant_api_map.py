@@ -449,7 +449,7 @@ def test_a_field_name_that_looks_like_data_is_not_kept(name):
 
 @pytest.mark.parametrize("name", ["id", "name", "enabled", "deviceGroupType", "client_secret", "ipv6", "sha256", "x509Cert"])
 def test_ordinary_field_names_are_kept(name):
-    """Boundary: camelCase, snake_case and short digits are the API's own spelling."""
+    """ASVS V8.3.4 · CWE-200 · WSTG-INFO-05: boundary: camelCase, snake_case and short digits are the API's own field spelling and are kept."""
     assert m.safe_name(name) == name
 
 
@@ -481,7 +481,7 @@ def test_no_endpoint_of_the_catalogue_that_names_an_action_is_planned():
 
 
 def test_plain_words_that_contain_a_verb_are_not_mistaken_for_one():
-    """Boundary: 'enabled', 'startup' or 'running' are not the verbs; only whole camelCase words count."""
+    """ASVS V4.1.3 · CWE-650 · WSTG-CONF-06: boundary: 'enabled', 'startup' or 'running' are not action verbs; only whole camelCase words count."""
     assert m.action_words("/zia/api/v1/enabledRules/startupConfig") == [] and m.action_words("/zia/api/v1/x/syncInfo") == ["sync"]
 
 

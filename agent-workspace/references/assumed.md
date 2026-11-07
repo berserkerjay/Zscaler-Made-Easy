@@ -105,10 +105,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `detection_health.py:1017` | assumed from one: |
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
-| `dlp_api_server.py:4216` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
-| `dlp_api_server.py:9840` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
-| `dlp_api_server.py:9842` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
-| `dlp_api_server.py:9975` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
+| `dlp_api_server.py:4237` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
+| `dlp_api_server.py:9861` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
+| `dlp_api_server.py:9863` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
+| `dlp_api_server.py:9996` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
 | `dlp_assessment_full_auto.py:200` | times of a provider credential are assumed (not named by the SDK model). |
 | `dns_forward_zones.py:50` | * Assumed (not in the SDK or Zscaler's API reference): that the resolver |
 | `editions.py:12` | tenants, and are ASSUMED (not in the SDK). The ZDX edition is not exposed by |
@@ -411,8 +411,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/flow_anim.js:51` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
 | `static/flow_anim.js:59` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
 | `static/flow_anim.js:210` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:4969` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:5049` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4974` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:5054` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |
