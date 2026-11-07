@@ -329,7 +329,7 @@
       const items = state.items || [];
       for (const [k, sts] of Object.entries(TABS)) $(`n-${k}`).textContent = String(items.filter(r => sts.includes(r.status)).length);
       const list = items.filter(r => TABS[tab].includes(r.status));
-      const empty = { pending: 'Nothing is waiting for approval. Use Request approval after a preflight in Deploy policy packs, or after a preview in Review & remediate.',
+      const empty = { pending: 'Awaiting approval: nothing is waiting. Scheduled sync plans appear here too. Use Request approval after a preflight in Deploy policy packs, or after a preview in Review & remediate.',
                       approved: 'No approved request is waiting to be applied.', history: 'No request has been decided, applied or withdrawn yet.' }[tab];
       $('panel').innerHTML = list.length ? list.map(reqHtml).join('') : `<p class="cq-empty">${E(empty)}</p>`;
     }

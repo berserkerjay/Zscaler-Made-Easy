@@ -325,6 +325,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/bulk-test/fix/{fix_id}": READ,
     "POST /api/audit-timeline/start": READ,   # this app's own audit entries filtered to the person's profiles
     "GET /api/audit-timeline/{job_id}/export": READ,
+    "GET /api/audit/search": READ,           # this app's own audit log, filtered to the person's profiles
     "POST /api/shadow-rules/start": READ,
     "POST /api/shadow-rules": READ,
     "GET /api/shadow-rules/jobs/{job_id}/export": READ,
@@ -361,6 +362,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/bulk-test/fix/{fix_id}/prove/start": READ,
     "POST /api/category-lookup/start": READ,
     "POST /api/path-analyzer/zpa-identity": READ,
+    "POST /api/scim/overview": READ,
     "POST /api/path-analyzer/devices": READ,
     "POST /api/path-analyzer/devices/detail": READ,
     "POST /api/path-analyzer/compare/start": READ,
@@ -515,6 +517,7 @@ ROUTE_RULES: Dict[str, str] = {
     # (wave 7) server settings, unattended schedules and jobs that span tenant profiles
     "POST /api/config-backups/schedule": ADMIN,         # unattended read-only backups on a timer
     "GET /api/sync-jobs": ADMIN,                        # a sync job names a source and several target profiles
+    "GET /api/sync-jobs/awaiting-approval": READ,       # filtered to the person's tenant profiles
     "GET /api/sync-jobs/{jid}": ADMIN,
     "POST /api/sync-jobs": ADMIN,
     "DELETE /api/sync-jobs/{jid}": ADMIN,

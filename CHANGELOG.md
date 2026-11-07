@@ -7,6 +7,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-07
+
+### SCIM view, audit-log search, approval-gated scheduled sync
+- New read-only SCIM view (`POST /api/scim/overview`): each IdP with its SCIM switches, the SCIM group names ZPA holds and a sync status; needs ZPA ticked on the Scope page.
+- New audit-log full-text search (`GET /api/audit/search`): every word must appear in an entry, newest first, bounded; team servers see only their tenant profiles' entries.
+- Scheduled sync: the timer is now off by default (`DLP_CHECK_SYNC_TIMER=1` turns it on); plans wait in the change queue's "Awaiting approval" list (`GET /api/sync-jobs/awaiting-approval`) and are applied only after approval through the usual write gates and plan-hash check.
+
 ## 2026-11-06
 
 ### Store encryption in a read-only container, glass while scrolling, macOS installs

@@ -7551,7 +7551,7 @@ async def rule_csv_export(req: RuleCsvExportRequest):
 # target and policy in the change queue (four-eyes). The timer only starts
 # due jobs; nothing here or in sync_jobs writes to a tenant.
 _SYNC_STATE: Dict[str, Any] = {"enabled": False, "tick_seconds": 60, "last_tick_at": None, "last_error": None,
-                               "setting": "DLP_CHECK_SYNC_TIMER (0 turns the timer off; each job's own schedule decides when it runs)"}
+                               "setting": "DLP_CHECK_SYNC_TIMER (off by default; 1 turns the timer on, then each job's own schedule decides when it runs)"}
 _SYNC_RUN_LOCK = threading.Lock()
 
 
@@ -7616,6 +7616,18 @@ async def sync_jobs_list(request: Request):
     return {"jobs": [_sync_view(j) for j in jobs], "sources": await asyncio.to_thread(sync_jobs.sources),
             "timer": dict(_SYNC_STATE), "notifications": continuous_eval.notification_settings(),
             "viewer": {"actor": _cq_by(request), "may_write": _security.may_write()}}
+
+
+@app.get("/api/sync-jobs/awaiting-approval")
+async def sync_jobs_awaiting_approval():
+    """The "Awaiting approval" queue of scheduled sync: plans a sync job filed
+    that nobody has applied yet (pending or approved), filtered to the tenant
+    profiles the person may read. Read-only; applying one goes through
+    /api/change-queue/{rid}/approve and /apply (four-eyes, write gates, plan
+    hash re-check, read-back, Undo)."""
+    import sync_jobs
+    items = _team.visible(await asyncio.to_thread(sync_jobs.awaiting_approval))
+    return {"items": items, "count": len(items), "timer": dict(_SYNC_STATE)}
 
 
 @app.get("/api/sync-jobs/{jid}")
@@ -7693,7 +7705,8 @@ async def sync_jobs_run(jid: str, request: Request):
 
 
 def _sync_timer_on() -> bool:
-    return os.environ.get("DLP_CHECK_SYNC_TIMER", "1").strip().lower() not in ("0", "false", "no", "off")
+    # Off by default (opt in with DLP_CHECK_SYNC_TIMER=1): a scheduled run only reads, compares and queues plans for approval.
+    return os.environ.get("DLP_CHECK_SYNC_TIMER", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _sync_tick() -> List[str]:
@@ -13108,6 +13121,20 @@ async def report_audit_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
+@app.get("/api/audit/search")
+async def audit_search(q: str = "", event: str = "", limit: int = 100):
+    """Full-text search of this app's own audit log (audit.search): every
+    word of `q` must appear in the entry, optionally one `event`. Local file
+    only, no tenant is contacted; the entries are the redacted ones the log
+    holds; on a team server only the entries of tenant profiles the person
+    may read. Newest first, at most audit.MAX_SEARCH_RESULTS. An empty
+    search matches nothing (an empty list, never the whole log)."""
+    if len(q) > 500 or len(event) > 64:
+        raise HTTPException(status_code=400, detail="The search text is too long.")
+    keep = lambda e: bool(_team.filter_audit_entries([e]))  # noqa: E731
+    return await asyncio.to_thread(_audit.search, q, limit, event=event, keep=keep)
+
+
 class AuditTimelineRequest(ScopedTenantCredsRequest):
     """Body of the audit timeline: the window (`days` back from now, or
     `start` / `end` dates) and whether to read ZIA's admin audit log
@@ -15377,6 +15404,33 @@ async def path_analyzer_zpa_identity(req: PathZpaIdentityRequest):
     if out.get("error"):
         out["error"] = tenant_auth.mask_secrets(str(out["error"]), creds)
     return out
+
+
+class ScimViewRequest(MigrateRequest):
+    """Body of the SCIM view: the sign-in (with the ZPA customer ID) and the Scope page selection."""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+@app.post("/api/scim/overview")
+async def scim_overview(req: ScimViewRequest):
+    """Read-only SCIM visibility (scim_view): each IdP with its SCIM switches,
+    the SCIM groups ZPA holds for it and a sync status (groups, newest change).
+    400 before sign-in when ZPA is not ticked on the Scope page. Nothing is
+    written; no user's personal data is listed."""
+    import scim_view
+    _require_in_scope(req, "zpa", "The SCIM view")
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="ZPA cannot be read with the classic ZIA API sign-in: sign in with a OneAPI API client. Nothing was read.")
+    if not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail="ZPA cannot be read: the ZPA customer ID is missing (Connect to the tenant → Customer ID). Nothing was read.")
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    out = await asyncio.to_thread(scim_view.overview, sdk)
+    if out.get("error"):
+        out["error"] = tenant_auth.mask_secrets(str(out["error"]), creds)
+    return dict(out, tenant_label=tenant_auth.record_label(creds))
 
 
 def _path_device_record(ref: str, creds: Dict[str, Any]) -> Dict[str, Any]:
