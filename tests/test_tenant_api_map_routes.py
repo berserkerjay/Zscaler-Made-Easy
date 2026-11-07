@@ -308,5 +308,5 @@ def test_the_map_page_sends_the_scope_page_selection_and_links_to_it():
     import os
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     js = open(os.path.join(root, "static", "tenant_api_map.js"), encoding="utf-8").read()
-    assert "scopeSelection()" in js and "getSelectedScopes" in js and "zassess_scopes_live_v1" in js and "not in scope" in js and "scope_link" in js
+    assert "scopeSelection()" in js and "getSelectedScopes" in js and "zassess_scopes_live_v1" in js and "not in scope" in js and "#scopeField" in js
     assert "does not use the Scope page" not in js

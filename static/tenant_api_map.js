@@ -79,7 +79,7 @@
     if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
     return { scopes: scopes.map(String), channels: {}, from_page: true };
   }
-  const scopeLink = (plan, text) => el('a', { href: (plan && plan.scope_link) || '/#scopeField', cls: 'am-scope-link', text: text || 'the Scope page' });
+  const scopeLink = (plan, text) => el('a', { href: '/#scopeField', cls: 'am-scope-link', text: text || 'the Scope page' });
   function notInScope(plan) {
     const list = (plan && plan.not_in_scope) || [];
     if (!list.length) return null;
