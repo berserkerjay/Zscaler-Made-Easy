@@ -330,7 +330,7 @@ def test_tenant_strings_cannot_inject_hcl():
     assert not re.search(r"^\s*provisioner", text, re.M) and "$${file(" in text and "%%{ if" in text
     for line in text.split("\n"):
         assert line.startswith(("#", "resource ", "  name ", "  description ", "}")) or line == "", line
-    assert all(re.fullmatch(r"tenant-terraform/(README\.md|export_report\.json|(zia|zpa|ztc)/[A-Za-z0-9_.]+)", p) for p in files)
+    assert all(re.fullmatch(r"tenant-terraform/(README\.md|validate\.sh|export_report\.json|(zia|zpa|ztc)/[A-Za-z0-9_.]+)", p) for p in files)
 
 
 def test_options_prefix_namespace_exclude_and_personal_data():
