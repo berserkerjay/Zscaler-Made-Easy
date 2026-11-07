@@ -1,5 +1,7 @@
 # Feature evidence
 
+**Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
+
 Where each comparison row lives in the code and the test that proves it: `<area> row N — <file:line> — <test>`.
 
 - Terraform export row 4 (resource selection) — tenant_terraform.py:778 — test_types_and_exclude_take_keys_resource_names_and_patterns

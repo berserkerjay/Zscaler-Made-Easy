@@ -37,7 +37,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import safe_files
 
 STORE_FILE = "report_delivery.json"
-KEYRING_SERVICE = "DLP-Check report delivery"
+KEYRING_SERVICE = "Zscaler Made Easy report delivery"
 TRANSPORTS = ("sftp", "scp", "ssh", "smb")
 DEFAULT_PORTS = {"sftp": 22, "scp": 22, "ssh": 22, "smb": 445}
 MAX_TARGETS = 20

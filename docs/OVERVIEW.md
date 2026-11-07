@@ -233,6 +233,8 @@ what you get, what to do next.
   profiles. Every access rule is shown as nested AND, OR and NOT groups
   with names instead of IDs, plus one plain sentence. Excel and JSON
   exports. Read-only; Stop ends the read at once.
+- **Capacity review** — licensed against used counts (users, locations, tunnels, ZPA App Connectors and
+  segments) with headroom and a status per metric; read-only, from the tenant's own counts and licence list.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, every step the traffic takes, the
   rule that decides each one, one verdict in plain words (definite or
