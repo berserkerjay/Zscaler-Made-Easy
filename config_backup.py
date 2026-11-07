@@ -723,7 +723,7 @@ TYPES: List[Dict[str, Any]] = [
        clone_needs_empty=("users", "user_ids", "device_group_ids", "zia_posture_config_id", "bypass_app_ids",
                           "bypass_custom_app_ids", "app_service_ids", "app_identity_names"),
        no_delete="an app profile is never deleted here (only an Undo removes one this app created)",
-       why="its passwords and policy token are never read back or sent (an update leaves them as they are: assumed); a missing "
+       why="its passwords and policy token are never read unless revealed on demand, and never sent (an update leaves them as they are: assumed); a missing "
            "profile is created, inactive and without passwords, only when you include app profiles",
        clone_why="an app profile names the tenant's own user groups, device groups and forwarding profile by id: tick 'Include "
                  "Client Connector app profiles and entitlements' to clone them (groups matched by name, never widened)"),

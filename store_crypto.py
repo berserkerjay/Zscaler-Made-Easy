@@ -299,6 +299,20 @@ def _unlock(f) -> None:
     f.close()
 
 
+def _unlock_only(f) -> None:
+    """Release the OS lock on `f` and leave it open (the caller closes it)."""
+    try:
+        f.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+
+
 @contextmanager
 def _exclusive(what: str, wait: Optional[float] = None):
     """Hold the data folder's store lock for `what` (re-entrant in this

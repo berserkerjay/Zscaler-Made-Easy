@@ -727,6 +727,80 @@
   otpArm();
   window.addEventListener('pagehide', () => otpHide(''));
 
+  // ── Tamper-protection passwords for one user (help desk, off by default) ──
+  // The server refuses unless the operator turned the setting on, ZCC is in
+  // scope, the caller may change the tenant (an administrator on a team
+  // server), the assessor is named and the phrase is typed. The values stay
+  // in this closure: the page shows them masked, a button reveals one, and
+  // everything is cleared after 60 seconds. Nothing goes to browser storage.
+  let pwTimer = null, pwTick = null, pwValues = [];
+  const pwPhrase = () => `SHOW PASSWORDS ${$('zfPwUser').value.trim()} ${$('zfPwOs').value}`;
+  function pwArm() {
+    const need = [];
+    if (!$('zfPwUser').value.trim()) need.push('the enrolled user');
+    if (!$('zfPwAssessor').value.trim()) need.push("the assessor's name");
+    if ($('zfPwPhrase').value.trim().toUpperCase() !== pwPhrase().toUpperCase()) need.push(`${pwPhrase()} typed`);
+    $('zfPwPhraseLbl').textContent = `Type ${pwPhrase()} to confirm`;
+    setEnabled('zfPwShow', need.length === 0);
+    const st = $('zfPwStatus');
+    if (!$('zfPwOut').hidden) return;
+    st.classList.remove('bad');
+    st.textContent = need.length ? `Still needed: ${need.join(', ')}.` : 'Ready.';
+  }
+  function pwHide(why) {
+    clearTimeout(pwTimer); clearInterval(pwTick); pwTimer = pwTick = null; pwValues = [];
+    const box = $('zfPwOut'); box.textContent = ''; box.hidden = true;
+    if (why) { $('zfPwStatus').textContent = why; say(why); }
+  }
+  function pwRender(d) {
+    const box = $('zfPwOut');
+    const list = Array.isArray(d.passwords) ? d.passwords : [];
+    pwValues = list.map(o => String(o.value));
+    let left = Number(d.show_seconds) || 60;
+    box.innerHTML = `<p class="zf-dim">${E(d.user)} (${E(d.os)}) · ${E(d.note || '')}</p>
+      <ul class="zf-otp-list">${list.map((o, i) => `<li><span class="k">${E(o.label)}</span><code id="zfPwV${i}">\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022</code>
+        <button type="button" class="rp-btn" data-pwreveal="${i}" aria-pressed="false" aria-label="Reveal the ${E(o.label)} password">Reveal</button>
+        <button type="button" class="rp-btn" data-pwcopy="${i}" aria-label="Copy the ${E(o.label)} password">Copy</button></li>`).join('')}</ul>
+      <div class="zf-row"><span class="zf-dim" id="zfPwLeft" aria-live="off">Hidden in ${left} s.</span><button type="button" class="rp-btn" id="zfPwHide">Hide now</button></div>`;
+    box.hidden = false;
+    box.querySelectorAll('button[data-pwreveal]').forEach(b => b.addEventListener('click', () => {
+      const i = Number(b.dataset.pwreveal), el = $(`zfPwV${i}`), on = b.getAttribute('aria-pressed') !== 'true';
+      el.textContent = on ? pwValues[i] : '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+      b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.textContent = on ? 'Mask' : 'Reveal';
+    }));
+    box.querySelectorAll('button[data-pwcopy]').forEach(b => b.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(pwValues[Number(b.dataset.pwcopy)] || ''); say('Copied.'); }
+      catch (e) { say('Copy is blocked in this browser: reveal the password and copy it.'); }
+    }));
+    $('zfPwHide').addEventListener('click', () => { pwHide('Hidden. Nothing was kept.'); $('zfPwShow').focus(); });
+    pwTick = setInterval(() => { left -= 1; const el = $('zfPwLeft'); if (el) el.textContent = `Hidden in ${Math.max(0, left)} s.`; }, 1000);
+    pwTimer = setTimeout(() => pwHide('The passwords were hidden after 60 seconds. Nothing was kept.'), (Number(d.show_seconds) || 60) * 1000);
+  }
+  async function pwShow() {
+    pwHide('');
+    const st = $('zfPwStatus'); st.classList.remove('bad'); st.textContent = "Reading the user's passwords…";
+    setEnabled('zfPwShow', false);
+    const payload = Object.assign({}, credBody(), scopeSelection(), { user: $('zfPwUser').value.trim(), os: $('zfPwOs').value,
+      assessor: $('zfPwAssessor').value.trim(), confirm_text: $('zfPwPhrase').value });
+    $('zfPwPhrase').value = '';
+    try {
+      const r = await fetch('/api/zcc/passwords', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(d, r.status));
+      pwRender(d);
+      st.textContent = `Masked; shown for ${Number(d.show_seconds) || 60} seconds once revealed.`;
+      say(st.textContent);
+      const first = $('zfPwOut').querySelector('button[data-pwreveal]'); if (first) first.focus();
+    } catch (e) {
+      st.textContent = e.message; st.classList.add('bad'); say(e.message);
+    } finally { pwArm(); }
+  }
+  ['zfPwUser', 'zfPwOs', 'zfPwAssessor', 'zfPwPhrase'].forEach(id => $(id).addEventListener('input', pwArm));
+  $('zfPwShow').addEventListener('click', pwShow);
+  try { const a = window.opener && !window.opener.closed && window.opener.document.getElementById('assessor'); if (a && a.value) $('zfPwAssessor').value = String(a.value).trim(); } catch (e) { /* another origin: the assessor is typed */ }
+  pwArm();
+  window.addEventListener('pagehide', () => pwHide(''));
+
   instLoad();
   tenantChoices();
 })();

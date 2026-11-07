@@ -4197,6 +4197,46 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "#zfPwUser": {
+    "what": "The user whose Client Connector uninstall, log-out and turn-off passwords you need.",
+    "input": "Required. The enrolled user name, like jdoe@acme.example.",
+    "effect": "local"
+   },
+   "#zfPwOs": {
+    "what": "The operating system the passwords are for. The tenant keeps one set per system.",
+    "input": "Choose one system.",
+    "effect": "local"
+   },
+   "#zfPwAssessor": {
+    "what": "Your name, for the audit log entry that records who asked for the passwords.",
+    "input": "Required. A person's name, like Jane Doe.",
+    "effect": "local"
+   },
+   "#zfPwPhrase": {
+    "what": "Confirms you mean to fetch this one user's passwords.",
+    "input": "Required. Type SHOW PASSWORDS, the user and the system exactly as above, like SHOW PASSWORDS jdoe@acme.example windows.",
+    "effect": "local"
+   },
+   "#zfPwShow": {
+    "what": "Reads the user's passwords from the tenant and shows them masked for 60 seconds. Nothing is changed in the tenant and the passwords are never kept, logged, exported or backed up. Off unless the operator set ZSCALER_ZCC_TAMPER_REVEAL=1; needs ZCC on the Scope page and, on a team server, the administrator role.",
+    "input": "Fill in the user, the system, your name and the confirmation first.",
+    "effect": "read"
+   },
+   "#zfPwHide": {
+    "what": "Hides the passwords now. They are not kept anywhere.",
+    "input": "Nothing to type. Just click it. They hide on their own after 60 seconds.",
+    "effect": "local"
+   },
+   "#zfPwOut button[data-pwreveal]": {
+    "what": "Shows or masks this password on the page.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#zfPwOut button[data-pwcopy]": {
+    "what": "Copies this password to the clipboard, for the user who needs it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "a.rp-btn[href=\"/help#fleet\"]": {
     "what": "Opens the help for this page in a new tab.",
     "input": "Nothing to type. Just click it.",
@@ -6502,7 +6542,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#crZccProfiles": {
-    "what": "Adds Client Connector app profiles and ZPA and ZDX entitlements to a clone, and lets a missing app profile be made. Passwords and the policy token are never read, copied or sent.",
+    "what": "Adds Client Connector app profiles and ZPA and ZDX entitlements to a clone, and lets a missing app profile be made. Passwords and the policy token are never read unless revealed on demand, and never copied or sent.",
     "input": "Tick it to include them. A new app profile is made turned off and without passwords: set them in the Client Connector portal. A clone asks you to type CLONE n CLIENT CONNECTOR OBJECTS.",
     "effect": "local"
    },

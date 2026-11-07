@@ -96,6 +96,7 @@ self_heal.json
 # can hold a remembered secret, the UI token file the token, the fingerprint
 # key the install's key), so it is never committed.
 .profiles-*
+.datacheck-probe-*
 .ui_token_*
 .fingerprint-*
 .deployments-*

@@ -172,6 +172,7 @@ def tenant(tmp_path, monkeypatch) -> Reads:
     for k in list(os.environ):
         if (k.startswith("ZSCALER_") and k != "ZSCALER_UI_AUTH") or k in ("DLP_CHECK_SMTP_HOST", "DLP_CHECK_DIGEST_TO", "DLP_CHECK_DIGEST_WEBHOOK", "DLP_CHECK_NOTIFY"):
             monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("ZSCALER_ZCC_TAMPER_REVEAL", "1")   # the reveal is off by default; the scope rule is checked with it on
     log = Reads()
 
     def sdk_factory(creds):
@@ -488,6 +489,9 @@ ROUTES: List[Route] = [
     # One device's one-time passwords (zcc_otp): a sensitive read, ZCC only.
     Route("/api/zcc/otp", {"assessor": "QA tester", "user": "jdoe@acme.example", "device": "LT-1", "confirm_text": "SHOW OTP LT-1"},
           partial=ZCC, out=ZCC_OUT, ok=404, write_mode=True),
+    # One user's tamper-protection passwords (zcc_passwords): off by default, a sensitive read, ZCC only.
+    Route("/api/zcc/passwords", {"assessor": "QA tester", "user": "jdoe@acme.example", "os": "windows", "confirm_text": "SHOW PASSWORDS jdoe@acme.example windows"},
+          partial=ZCC, out=ZCC_OUT, ok=404),
     # ZDX cloud path and score analysis (zdx_insights); Client Connector device details and disable reasons (zcc_devices)
     Route("/api/zdx/cloudpath", {"app_id": "3002", "host": "billing.example.com"}, partial=ZDX, out=ZDX_OUT),
     Route("/api/zdx/analysis/status", {"analysis_id": "90001"}, partial=ZDX, out=ZDX_OUT),

@@ -7,6 +7,8 @@
   python log_pipeline_cli.py export NAME     print a saved report as CSV
   python log_pipeline_cli.py deliver NAME TARGET   send it through an enabled delivery target
   python log_pipeline_cli.py selftest        parse a built-in synthetic log line
+  python log_pipeline_cli.py completion bash|zsh|powershell   print a shell completion script
+  python log_pipeline_cli.py --version       print the app version (and build)
 
 Nothing here contacts a Zscaler tenant. Exit status 0 on success, 1 on a refusal.
 """
@@ -37,8 +39,10 @@ def reindex() -> dict:
     return {"indexed": len(good), "unreadable": len(cat["unreadable"])}
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    import cli_extras
     ap = argparse.ArgumentParser(prog="log_pipeline_cli", description="Traffic-log pipeline (read-only).")
+    cli_extras.add_version(ap)
     sub = ap.add_subparsers(dest="cmd", required=True)
     for n in ("health", "reports", "reindex", "regen", "selftest"):
         sub.add_parser(n)
@@ -46,7 +50,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     d = sub.add_parser("deliver")
     d.add_argument("name")
     d.add_argument("target")
+    sub.add_parser("completion", help="print a shell completion script").add_argument("shell", choices=("bash", "zsh", "powershell"))
+    return ap
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    ap = build_parser()
     a = ap.parse_args(argv)
+    if a.cmd == "completion":
+        import cli_extras
+        sys.stdout.write(cli_extras.completion(a.shell, "log_pipeline_cli", build_parser()))
+        return 0
     try:
         if a.cmd == "health":
             import syslog_listener

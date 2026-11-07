@@ -161,7 +161,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
 # neither in a sub-area's tests nor here, or when a glob here or above
 # matches no file.
 REGRESSION_ONLY: Tuple[str, ...] = (
-    "test_regression_*.py", "test_openapi_regression.py", "test_c6_open_low.py",
+    "test_regression_*.py", "test_openapi_regression.py", "test_c6_open_low.py", "test_zcc_reveal_passwords.py", "test_data_check.py", "test_cli_extras.py",
     "test_api_paths.py", "test_app_update.py", "test_assess_stream.py", "test_assessor_attribution.py",
     "test_assessor_attribution_r2.py", "test_assessor_not_tool.py", "test_assessor_required.py", "test_audit_timeline.py",
     "test_banking_baseline.py", "test_baselines.py", "test_beacon.py", "test_beacon_scope.py", "test_benchmarks.py",

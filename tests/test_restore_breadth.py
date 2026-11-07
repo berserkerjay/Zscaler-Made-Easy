@@ -1059,7 +1059,7 @@ def test_client_connector_profiles_clone_only_when_included_and_never_carry_a_pa
     p = ao.plan(tgt, sp, scope=WIDE, tenant_label="target")
     assert p["status"] == "ready", p["blockers"]
     assert p["confirm_phrase"] == "CLONE 3 CLIENT CONNECTOR OBJECTS"
-    assert any("never read back, copied or sent" in w and "without any password" in w for w in p["warnings"])
+    assert any("never read unless revealed on demand" in w and "without any password" in w for w in p["warnings"])
     assert "groups" in item(p, "zcc.app_profiles", "Finance only")["reason"]
     assert "without any password" in item(p, "zcc.app_profiles", "Everyone - Windows")["reason"]
     raw = json.dumps(p)
@@ -1094,7 +1094,7 @@ def test_the_client_connector_option_is_refused_where_it_does_not_belong_and_cre
     p = ao.plan(tgt, spec("zcc", bid, target="same", types=["zcc.app_profiles"]), scope=WIDE, tenant_label="target")
     assert "tick 'Include Client Connector app profiles" in item(p, "zcc.app_profiles", "Everyone - Windows")["reason"]
     assert p["counts"]["change"] == 0
-    assert any("never read back, copied or sent" in w for w in p["warnings"]) or not p["groups"]
+    assert any("never read unless revealed on demand" in w for w in p["warnings"]) or not p["groups"]
 
 
 def test_the_page_lists_the_new_types_and_both_options():
@@ -1104,7 +1104,7 @@ def test_the_page_lists_the_new_types_and_both_options():
     assert 'id="crZccProfiles"' in js and "include_zcc_profiles = true" in js
     for copy_ in ("static/help_catalog.js", "browser_extension/help_catalog.js"):
         help_ = (ROOT / copy_).read_text(encoding="utf-8")
-        assert '"#crTb"' in help_ and '"#crZccProfiles"' in help_ and "never read" in help_
+        assert '"#crTb"' in help_ and '"#crZccProfiles"' in help_ and "never read unless revealed on demand" in help_
 
 
 def test_the_sample_tenant_has_data_for_every_new_type():

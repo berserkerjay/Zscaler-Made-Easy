@@ -221,6 +221,21 @@
         <div class="zf-status" id="zfOtpStatus" role="status" aria-live="polite"></div>
         <div id="zfOtpOut" hidden></div>
       </section>
+      <section class="zf-sec" id="zfPw" aria-labelledby="zfPwH">
+        <h2 id="zfPwH">Uninstall, log-out and turn-off passwords for a user</h2>
+        <p class="zf-dim">Off by default: the operator turns it on with ZSCALER_ZCC_TAMPER_REVEAL=1. For the help desk only: one user's Client Connector uninstall, log-out, exit and turn-off passwords for one operating system. Only an administrator (on a team server) or someone allowed to change the tenant may ask, with ZCC ticked on the Scope page and the confirmation typed. They are shown masked, revealed with a button, hidden after 60 seconds, and never stored, logged, exported or put in a backup; the audit log records who asked, when and for which user, never a password.</p>
+        <div class="zf-row">
+          <label>Enrolled user <input type="search" id="zfPwUser" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Enrolled user name" placeholder="jdoe@acme.example"></label>
+          <label>Operating system <select id="zfPwOs" aria-label="Operating system"><option value="windows">Windows</option><option value="macos">macOS</option><option value="linux">Linux</option><option value="ios">iOS</option><option value="android">Android</option></select></label>
+          <label>Assessor's name <input type="search" id="zfPwAssessor" maxlength="80" autocomplete="off" aria-label="Assessor's name" placeholder="Jane Doe"></label>
+        </div>
+        <div class="zf-row">
+          <label><span id="zfPwPhraseLbl">Type SHOW PASSWORDS, the user and the system to confirm</span> <input type="text" id="zfPwPhrase" maxlength="260" autocomplete="off" spellcheck="false" aria-labelledby="zfPwPhraseLbl"></label>
+          <button type="button" class="rp-btn primary" id="zfPwShow" disabled aria-disabled="true" aria-describedby="zfPwStatus">Fetch the passwords</button>
+        </div>
+        <div class="zf-status" id="zfPwStatus" role="status" aria-live="polite"></div>
+        <div id="zfPwOut" hidden></div>
+      </section>
       <section class="zf-sec" id="zfDevice" aria-labelledby="zfDeviceH">
         <h2 id="zfDeviceH">One device's details</h2>
         <p class="zf-dim">Type a device id (UDID) from the Client Connector Portal to see which services run on it and whether they are healthy, its versions, strict enforcement, anti-tampering and device trust. Identifiers are hidden and the device's one-time passwords are never read into the answer. Reads only; needs ZCC ticked on the Scope page.</p>

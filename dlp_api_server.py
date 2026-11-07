@@ -9357,6 +9357,38 @@ async def favicon():
     return Response(status_code=204)
 
 
+@app.get("/api/data-check")
+async def data_check_report():
+    """Self-check of the data folder (data_check): exists, writable, store
+    encryption, store files readable with a known schema, stale lock and
+    temporary files, with suggested steps. Changes nothing on this computer
+    except a probe file it removes at once; reads no tenant."""
+    import data_check
+    out = await asyncio.to_thread(data_check.check)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+class DataCheckRepairRequest(BaseModel):
+    confirm_text: str = ""
+
+
+DATA_REPAIR_PHRASE = "REPAIR DATA FOLDER"
+
+
+@app.post("/api/data-check/repair")
+async def data_check_repair(req: DataCheckRepairRequest, request: Request):
+    """The one repair action: remove the stale lock files and leftover
+    temporary copies the check lists. Never a store, key, backup or
+    snapshot. Needs a person allowed to change things and the typed phrase;
+    the audit entry names the files removed, never contents."""
+    import data_check
+    _security.require_writer()
+    if not _security.typed_phrase_matches(req.confirm_text, DATA_REPAIR_PHRASE):
+        raise HTTPException(status_code=400, detail=f"Type {DATA_REPAIR_PHRASE} to confirm. Nothing was removed.")
+    out = await asyncio.to_thread(data_check.repair)
+    return JSONResponse(dict(out, check=await asyncio.to_thread(data_check.check)), headers={"Cache-Control": "no-store"})
+
+
 @app.get("/api/health")
 async def health():
     """Liveness plus the running git commit, so a user can see they are on the latest code."""
@@ -12451,6 +12483,71 @@ async def zcc_otp_show(req: ZccOtpRequest, request: Request):
         _close_quietly(sdk)
     zcc_otp.audit("shown", actor=actor, by=by, tenant=label, device=out["device"]["hostname"], ref=out["device"]["ref"],
                   kinds=[o["key"] for o in out["otps"]])
+    return JSONResponse(out, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
+class ZccPasswordsRequest(ScopedTenantCredsRequest):
+    """One user's Client Connector tamper-protection passwords for one
+    operating system (zcc_passwords): the enrolled user, the OS, the
+    assessor and the typed confirmation "SHOW PASSWORDS <user> <os>"."""
+    user: str = ""
+    os: str = ""
+    confirm_text: str = ""
+
+
+ZCC_PASSWORDS_WHAT = "Client Connector tamper-protection passwords"
+ZCC_PASSWORDS_ASSESSOR = ("Enter the assessor's name before revealing passwords: the audit log names the person who asked "
+                          "for them. Nothing was read.")
+
+
+@app.post("/api/zcc/passwords")
+async def zcc_passwords_reveal(req: ZccPasswordsRequest, request: Request):
+    """One user's uninstall, log-out, exit and turn-off passwords for one
+    operating system, revealed on demand. Off unless ZSCALER_ZCC_TAMPER_REVEAL=1.
+    Refused before sign-in unless ZCC is in scope, the caller may change the
+    tenant (an administrator on a team server), the assessor is named,
+    "SHOW PASSWORDS <user> <os>" is typed and the rate limit allows it. The
+    values are in this answer only (no-store): never logged, stored, cached,
+    exported or put in a backup; the audit entry names who, when, which user
+    and operating system, never a value (zcc_passwords)."""
+    import pack_deploy
+    import zcc_passwords
+    if not zcc_passwords.enabled():
+        raise HTTPException(status_code=403, detail=zcc_passwords.OFF_WORDS)
+    _require_in_scope(req, "zcc", ZCC_PASSWORDS_WHAT)
+    _security.require_writer()
+    if pack_deploy.is_tool_name(getattr(req, "assessor", "") or ""):
+        raise HTTPException(status_code=400, detail=ASSESSOR_NOT_TOOL)
+    by = _assessor(req)
+    if not by:
+        raise HTTPException(status_code=400, detail=ZCC_PASSWORDS_ASSESSOR)
+    try:
+        user = zcc_passwords.clean(req.user, "enrolled user name")
+        os_name = zcc_passwords.os_type(req.os)
+    except zcc_passwords.PasswordError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    want = zcc_passwords.phrase(user, os_name)
+    if not _security.typed_phrase_matches(req.confirm_text, want):
+        raise HTTPException(status_code=400, detail=f"Type {want} to confirm. Nothing was read.")
+    actor = _actor(request)
+    creds = _tenant_creds(req)
+    label = tenant_auth.record_label(creds)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="The classic ZIA API sign-in has no Client Connector API; sign in with a OneAPI API client.")
+    wait = zcc_passwords.LIMITER.take(actor or "local")
+    if wait:
+        zcc_passwords.audit("rate_limited", actor=actor, by=by, tenant=label, user=user, os_name=os_name, reason=f"retry after {wait}s")
+        raise HTTPException(status_code=429, detail=f"Too many password requests: try again in {wait} seconds. Nothing was read.",
+                            headers={"Retry-After": str(wait)})
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    try:
+        out = await asyncio.to_thread(zcc_passwords.retrieve, sdk, user, os_name)
+    except zcc_passwords.PasswordError as e:
+        zcc_passwords.audit("refused" if e.status < 500 else "failed", actor=actor, by=by, tenant=label, user=user, os_name=os_name, reason=str(e))
+        raise HTTPException(status_code=e.status, detail=str(e))
+    finally:
+        _close_quietly(sdk)
+    zcc_passwords.audit("shown", actor=actor, by=by, tenant=label, user=user, os_name=os_name, kinds=[p["key"] for p in out["passwords"]])
     return JSONResponse(out, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 

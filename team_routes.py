@@ -492,6 +492,9 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/operations/zpa/ba-certificate": APPLY,
     "POST /api/operations/zidentity/secret": APPLY,
     "POST /api/zcc/otp": APPLY,                          # a device's one-time passwords: a sensitive read guarded like a write
+    "POST /api/zcc/passwords": ADMIN,                    # tamper passwords revealed on demand: administrators only (off by default)
+    "GET /api/data-check": ADMIN,                       # the data folder self-check: paths and store names, administrators only
+    "POST /api/data-check/repair": ADMIN,               # removes stale lock and temporary files only
 
     # ── decide on someone else's change ──
     "POST /api/change-queue/{rid}/approve": APPROVE,

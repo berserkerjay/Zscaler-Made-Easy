@@ -30,6 +30,7 @@ Find the files a change touches here, then read only those.
 | `category_lookup.py` | Category lookup: what ZIA calls a URL, host or IP address (or a URL |
 | `change_queue.py` | The team change queue: change requests and four-eyes approval. |
 | `channel_scope.py` | Channel ownership, declared on the Scope page, applied to the assessment. |
+| `cli_extras.py` | version and `completion bash\|zsh\|powershell` for the command lines. |
 | `compliance_mapping.py` | Zscaler Configuration → Compliance Framework Mapping |
 | `compliance_pack.py` | The compliance pack: local files made from one compliance profile |
 | `compliance_profiles.py` | Compliance profiles: one compliance choice that drives the ZIA security |
@@ -39,6 +40,7 @@ Find the files a change touches here, then read only those.
 | `continuous_eval.py` | Continuous evaluation, phase 5: run when asked, and it tells you. |
 | `corpus_engines.py` | Local corpus test, beyond the custom dictionaries. |
 | `csv_safe.py` | One CSV path for every export in the app. |
+| `data_check.py` | Self-check of the app's data folder, with a safe repair for leftovers. |
 | `data_flow.py` | Data Flow Map: the path the tenant's configuration gives web traffic. |
 | `deployments.py` | Deployment records: what Deploy Policy Packs created in which tenant, so |
 | `detection_health.py` | Detection Health: what the tenant's DLP rules actually do, measured from |
@@ -200,6 +202,7 @@ Find the files a change touches here, then read only those.
 | `zcc_fleet_history.py` | Client Connector fleet history: counts-only snapshots and their trend. |
 | `zcc_fleet_import.py` | Client Connector fleet from the portal's CSV exports (offline source). |
 | `zcc_otp.py` | Client Connector one-time passwords for one device, for help-desk use. |
+| `zcc_passwords.py` | Client Connector uninstall, turn-off and log-out passwords, revealed on demand. |
 | `zcc_profiles.py` | Read complete Client Connector profile inventories without hiding failures. |
 | `zdx_insights.py` | ZDX on the Path analyzer page: the measured cloud path of an application, |
 | `zia_forwarding.py` | ZIA forwarding and traffic path: the pure analysis behind the FWD.* |
