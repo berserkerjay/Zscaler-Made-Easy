@@ -258,7 +258,7 @@ def _join(rdir: str, name: str) -> str:
 
 
 def _send_scp(chan_client: Any, rdir: str, name: str, data: bytes) -> None:
-    stdin, stdout, _ = chan_client.exec_command("scp -t " + shlex.quote(rdir or "."))  # nosec B601 - folder validated, shlex-quoted
+    stdin, stdout, _ = chan_client.exec_command("scp -t " + shlex.quote(rdir or "."))  # nosec B601 # folder validated, shlex-quoted
     def ack() -> None:
         if stdout.channel.recv(1) != b"\x00":
             raise DeliveryError("The remote side refused the copy.")
@@ -295,7 +295,7 @@ def _send(t: Dict[str, Any], name: str, data: bytes, secret: str, known_hosts: s
         elif tr == "scp":
             _send_scp(c, t["remote_dir"], name, data)
         else:
-            stdin, stdout, _ = c.exec_command("cat > " + shlex.quote(_join(t["remote_dir"], name)))  # nosec B601 - validated, shlex-quoted
+            stdin, stdout, _ = c.exec_command("cat > " + shlex.quote(_join(t["remote_dir"], name)))  # nosec B601 # validated, shlex-quoted
             stdin.write(data)
             stdin.channel.shutdown_write()
             if stdout.channel.recv_exit_status() != 0:
