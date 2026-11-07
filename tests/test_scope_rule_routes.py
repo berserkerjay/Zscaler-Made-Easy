@@ -186,6 +186,9 @@ def tenant(tmp_path, monkeypatch) -> Reads:
     monkeypatch.setattr(srv, "_raw_client", raw_factory)
     import pack_jobs
     monkeypatch.setattr(pack_jobs, "start", _sync_start)
+    import tenant_api_map
+    real_throttle = tenant_api_map.Throttle      # the API map's pace is proved in test_tenant_api_map.py: no waiting here
+    monkeypatch.setattr(tenant_api_map, "Throttle", lambda rps, **k: real_throttle(rps, clock=lambda: 0.0, sleeper=lambda s: None))
     # Injected time: no reader paces, polls or naps against the real clock.
     import audit_timeline
     import insights
@@ -242,6 +245,7 @@ AIG_ZIA_OUT = tuple(x for x in ZIA_OUT if x != "aiguard.")   # ZIA platform and 
 AIGUARD_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
 ZTW_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
 OTHER_OUT = ("zia.", "/zia/", "zpa.", "/zpa/", "zcc.", "/zcc/", "zins.", "zwa.", "zdx.", "zidentity.")
+ZIA_API_MAP_OUT = ("zpa.", "/zpa/", "zcc.", "/zcc/", "zins.", "zwa.", "/zdx/", "/ziam/", "/ztw/", "/easm/", "/ztb/", "/bi/", "/aiguard/", "/zcell/")
 ZTB_OUT = OTHER_OUT + ("/easm/", "/bi/", "/zcell/", "/zms/")
 ZMS_OUT = OTHER_OUT + ("/ztb/", "/easm/", "/bi/", "/zcell/")
 ZWA_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "aiguard.", "get_incident_evidence", "get_incident_transactions")
@@ -289,6 +293,13 @@ def _opened_snapshot(sel: Dict[str, Any]) -> Dict[str, Any]:
     doc = offline_tenant.build_snapshot({"/zia/api/v1/webDlpRules": {"status": 200, "body": []}}, {"tenant_label": "acme (production)"})
     st = offline_tenant.open_document(offline_tenant.dumps(doc))
     return dict(CREDS, snapshot_id=st.id, **sel)
+
+
+def _api_map_body(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """The Tenant API map's start body: the confirmed plan for exactly this Scope page selection (no exemption: it reads only what is ticked)."""
+    import tenant_api_map
+    plan = tenant_api_map.plan(None, False, scopes=sel.get("scopes") or [])
+    return dict(CREDS, confirm=True, plan_hash=plan["plan_hash"], **sel)
 
 
 def _cache_profile(sel: Dict[str, Any]) -> Dict[str, Any]:
@@ -363,6 +374,8 @@ ROUTES: List[Route] = [
     Route("/api/dlp-packs/removal/inventory"),
     Route("/api/dlp-packs/export/start", {"pack_name": "qa"}),
     Route("/api/tenant-terraform/start", {"products": ["zia"]}),
+    Route("/api/tenant-api-map/start", partial=ZIA, out=ZIA_API_MAP_OUT, setup=_api_map_body),
+    Route("/api/tenant-api-map/start", partial=ZCC, out=ZCC_OUT, setup=_api_map_body),
     Route("/api/dlp-packs/inventory/start"),
     Route("/api/shadow-rules/start"),
     Route("/api/shadow-rules"),

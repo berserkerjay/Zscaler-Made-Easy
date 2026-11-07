@@ -210,6 +210,20 @@ Words used across tools:
   ZPA.14), statuses as above; `nothing_streamed` names the products with
   no stream at all.
 
+## tenant_api_map
+
+- `features`: each Zscaler feature with `verdict` (present, not licensed or
+  not enabled, no permission, error, not probed), the `deciding_endpoint`,
+  HTTP `status`, `item_count` and a `detail` code. `counts` totals the
+  endpoints and features per verdict; `present_by_product` and
+  `not_licensed_by_product` count endpoints per product.
+- `no_permission_endpoints` are reads this API client may not make (widen
+  its role); `error_endpoints` failed for another reason. Not licensed or
+  not enabled does not say which: ask the admin to check the licence.
+- Live this tool answers only the newest map an admin saved on the app's
+  Tenant API map page (`saved_maps` lists them); if none, say how to make
+  one. It never reads the live tenant. Statuses, counts and verdicts only.
+
 ## timeline
 
 - What the app itself did (`summary`, `by_action`, `by_day`, `recent`):

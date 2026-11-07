@@ -1615,6 +1615,11 @@ def responses() -> Dict[str, Any]:
     for rule_type in CAC_RULE_TYPES:
         r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
     r.update(other_products())
+    # The Tenant API map (tenant_api_map.py) asks a few endpoints nothing else reads. Their shapes are assumed (only the
+    # status, the count and the field names are ever kept from them); DENIED_PATHS below answer 403 so the map's
+    # "no permission" state has an example.
+    r[f"{AIG}/llm-provider-types"] = [{"providerType": "OPENAI", "displayName": "OpenAI"}, {"providerType": "AZURE_OPENAI", "displayName": "Azure OpenAI"}]
+    r[f"{OP_ZTB3}/templates/names"] = {"result": {"count": 1, "names": ["Larkspur branch"]}}
     for path, body in builder_catalogues().items():
         r.setdefault(path, body)
     return copy.deepcopy(r)
@@ -1745,6 +1750,10 @@ def other_products() -> Dict[str, Any]:
             {"id": "rg1", "name": "Databases", "type": "MANAGED", "resourceMemberCount": 1},
             {"id": "rg2", "name": "Legacy file transfer", "type": "UNMANAGED", "resourceMemberCount": 1}]),
     }
+
+
+# Endpoints the sample tenant's API client may not read (HTTP 403): it is not a Super Admin, so the auditors list is refused.
+DENIED_PATHS = (f"{ZIA}/users/auditors",)
 
 
 def meta() -> Dict[str, Any]:

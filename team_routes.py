@@ -89,6 +89,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /report/traffic-logs": PUBLIC,
     "GET /report/ztw": PUBLIC,
     "GET /report/soc-review": PUBLIC,
+    "GET /report/api-map": PUBLIC,
     "GET /report/other-products": PUBLIC,
     "GET /report/aiguard": PUBLIC,
     "GET /report/dataflow": PUBLIC,
@@ -382,6 +383,13 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/soc-review/rbac/start": READ,
     "POST /api/soc-review/telemetry/start": READ,
     "GET /api/soc-review/report/{report_id}": READ,
+    # Tenant API map (tenant_api_map.py): a whole-tenant read like the other read jobs (data flow, SSL coverage, SOC review): `read`,
+    # so the shared sign-in works and a person needs read on the tenant profile; the plan is a calculation on what the page sends.
+    "POST /api/tenant-api-map/plan": SESSION,
+    "POST /api/tenant-api-map/start": READ,
+    "GET /api/tenant-api-map/saved": READ,
+    "GET /api/tenant-api-map/export/{report_id}": READ,
+    "GET /api/tenant-api-map/{report_id}": READ,
     "GET /api/ztw/report/{report_id}": READ,
     "GET /api/ztw/report/{report_id}/export": READ,
     "POST /api/other-products/start": READ,
@@ -437,6 +445,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/compliance-profiles/choice": "plan:profile",
     "POST /api/zcc/fleet/{job_id}/history": PLAN,       # keeps a counts-only snapshot of a read (the app's own record)
     "POST /api/zcc/fleet/history/forget": PLAN,
+    "POST /api/tenant-api-map/forget": PLAN,           # removes the app's own saved maps of a tenant
     "DELETE /api/traffic-logs/report/{report_id}": PLAN,
     "POST /api/traffic-logs/report/{report_id}/save": PLAN,   # keeps a traffic log report on this server
     "DELETE /api/traffic-logs/saved/{saved_name}": PLAN,

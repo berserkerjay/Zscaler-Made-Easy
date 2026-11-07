@@ -159,6 +159,7 @@ Find the files a change touches here, then read only those.
 | `team_passkeys.py` | Passkeys (WebAuthn) for team server accounts: a person registers a |
 | `team_routes.py` | The access rule of every route in team server mode (team_server.py). |
 | `team_server.py` | Team server mode: several named people on one server, each with a role |
+| `tenant_api_map.py` | Tenant API map: which Zscaler features this tenant has, and which API |
 | `tenant_auth.py` | Tenant credentials: the two ways Zscaler Made Easy can sign in to a ZIA tenant. |
 | `tenant_fingerprint.py` | A classic-API tenant's fingerprint: how two classic-API tenants on one |
 | `tenant_health.py` | Tenant health: the signals that break a tenant quietly, read only. |
@@ -284,6 +285,7 @@ Find the files a change touches here, then read only those.
 | `static/simple_entry.js` | Simple mode, from the assessment page |
 | `static/soc_review.js` | SOC review (static/report_soc_review.html): the RBAC review and the |
 | `static/ssl_flow.js` | SSL inspection flow renderer: a live, three-column flow diagram |
+| `static/tenant_api_map.js` | Tenant API map (static/report_api_map.html): which features the tenant has and which reads its API client may make |
 | `static/tenant_health.js` | Tenant health on /report/health (#th): ZIA changes waiting for |
 | `static/tool_tabs.js` | Tools open in their own tab |
 | `static/traffic_logs.js` | Traffic and session logs (static/report_traffic_logs.html) |
@@ -305,6 +307,7 @@ Find the files a change touches here, then read only those.
 | `static/login.html` | Sign in — Zscaler Made Easy |
 | `static/report_advanced.html` | Advanced settings — Zscaler Made Easy |
 | `static/report_aiguard.html` | AI Guard — Zscaler Made Easy |
+| `static/report_api_map.html` | Tenant API map — Zscaler Made Easy |
 | `static/report_audit.html` | Audit timeline — Zscaler Made Easy |
 | `static/report_beacon.html` | Beacon — Zscaler Made Easy |
 | `static/report_browser.html` | Browser security — Zscaler Made Easy |

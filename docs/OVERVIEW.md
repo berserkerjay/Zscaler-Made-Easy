@@ -622,6 +622,23 @@ what you get, what to do next.
   as false positives* in Bulk changes (four gates, typed phrase, the
   assessor named in each incident's note, read-back; Undo records the
   reversal because the API cannot reopen an incident).
+- **Tenant API map** (`/report/api-map`, toolbar *Tenant API map*) — its
+  own tool, separate from the licence and editions check, and its own
+  action, bound by the Scope page (a product that is not ticked there is
+  not read and is listed as "skipped: not in scope"): which Zscaler features the tenant has
+  and which reads its API client may make. *Map this tenant's APIs* shows
+  every endpoint it will read (the readable GET endpoints of the installed
+  SDK, `tenant_api_catalogue.json`) and each it skips, then reads nothing
+  until you confirm. GET only (the client it uses has no write method),
+  one at a time at 1 a second by default (5 at most), Stop-able, through the
+  signed-in tenant or the sample tenant; endpoints that need an id or return
+  credentials, one-time passwords, keys or exports, or whose name is an
+  action (sync, refresh, configure ...), are skipped. It keeps the
+  status, item count and top-level field names of each answer and never a
+  value, id, name or secret; the map is saved per tenant with its time
+  (sealed like the other stores), exports as JSON or CSV, writes one audit
+  entry of counts per run, and the assistant tool `tenant_api_map` returns
+  the newest saved map.
 - **AI Guard** (`/report/aiguard`, AI Guard ticked, OneAPI only) — the
   detection policies with their prompt and answer detectors, the policy
   match rules, the LLM providers, the LLM applications (whether they keep

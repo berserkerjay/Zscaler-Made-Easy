@@ -66,6 +66,7 @@ PAGES = {
     "/report/traffic-logs": "report_traffic_logs.html",
     "/report/other-products": "report_other_products.html",
     "/report/aiguard": "report_aiguard.html",
+    "/report/api-map": "report_api_map.html",
 }
 
 
@@ -370,6 +371,7 @@ TOURS = {
     "/report/fleet": [["click", "#zfRun"]],
     "/report/shadow": [["click", "#shRun"]],
     "/report/sslcoverage": [["click", "#scRun"]],
+    "/report/api-map": [["click", "#amRun"], ["wait", "#amConfirm"], ["click", "#amConfirm"], ["wait", "#amFeatures"]],
 }
 # Pages that show a stored report (?id=): the tour opens one built by the
 # app's own code from fake reads (filled in by the fixture).

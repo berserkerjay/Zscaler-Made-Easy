@@ -756,6 +756,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Nothing is read until you click a Read button in the new tab.",
     "effect": "nav"
    },
+   ".tool-group button[onclick=\"openApiMapTab()\"]": {
+    "what": "Opens the Tenant API map: which Zscaler features the tenant has and which reads its API client may make, found by asking. It lists every endpoint first and reads nothing until you confirm. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click Map this tenant's APIs and confirm the list in the new tab.",
+    "effect": "nav"
+   },
    ".tool-group button[onclick=\"openOtherProductsTab()\"]": {
     "what": "Reads Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation. Only the ones ticked on the Scope page are read. Lists what the tenant has and checks it. Read-only. Opens in a new tab.",
     "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
@@ -2947,6 +2952,108 @@ window.HELP_CATALOG = {
     "effect": "local"
    }
   },
+ "/report/api-map": {
+   "#amTenant": {
+    "what": "Picks which tenant sign-in the map uses.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or the tenant you are signed in to. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   ".am-scope-link": {
+    "what": "Opens the Scope page, where you tick the products the assessment and this map may read. A product that is not ticked is skipped.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#amRun": {
+    "what": "Shows the exact list of endpoints the map would read and asks you to confirm. Nothing is sent until you confirm.",
+    "input": "Nothing to type. Just click it. It uses the tenant you are signed in to (or the sample tenant) and never asks for new credentials.",
+    "effect": "read"
+   },
+   "#amProducts input[data-product]": {
+    "what": "Includes or leaves out this product's endpoints. The number is how many endpoints it would read.",
+    "input": "Ticked is included. At least one product must stay ticked.",
+    "effect": "local"
+   },
+   "#amFeaturesOnly": {
+    "what": "Reads only the endpoints that decide whether a feature is present (about 45) instead of every readable endpoint (about 380). Faster, and the feature table is complete.",
+    "input": "Ticked is features only. Unticked reads everything readable.",
+    "effect": "local"
+   },
+   "#amSpeed": {
+    "what": "How fast the map sends its requests. Slower is gentler on the tenant's API limits.",
+    "input": "Pick one: 1 every 2 seconds, 1 a second (the default) or 2 a second. The app never goes above 5 a second.",
+    "effect": "local"
+   },
+   "#amConfirm": {
+    "what": "Confirms the list above and starts the map: GET requests only, one at a time, through the tenant you are signed in to. It keeps statuses, counts and field names, never values.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#amCancel": {
+    "what": "Closes the list without reading anything.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#amStop": {
+    "what": "Stops the map at once. Nothing more is read and nothing is saved.",
+    "input": "Nothing to type. Just click it while the map is running.",
+    "effect": "local"
+   },
+   "#amExpJson": {
+    "what": "Downloads the whole map as a JSON file: features, every endpoint's status, item count and field names. No values.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#amExpFeat": {
+    "what": "Downloads the feature table as a CSV file for Excel or Sheets. Cells that start like a formula are made safe.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#amExpEps": {
+    "what": "Downloads the table of every endpoint read as a CSV file for Excel or Sheets. Cells that start like a formula are made safe.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#amBody .am-filter button[data-v]": {
+    "what": "Shows only the endpoints with this result. All shows every endpoint read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#amProdFilter": {
+    "what": "Shows the endpoints of one product, or all of them.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#amSaved": {
+    "what": "Picks one of the maps saved for this tenant on this computer, newest first.",
+    "input": "Pick one from the list, then click Open.",
+    "effect": "local"
+   },
+   "#amOpenSaved": {
+    "what": "Shows the saved map picked beside it. It reads no tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#amForget": {
+    "what": "Asks whether to remove this tenant's saved maps from this computer. Nothing in Zscaler changes.",
+    "input": "Nothing to type. Just click it, then confirm or keep them.",
+    "effect": "local"
+   },
+   "#amForgetYes": {
+    "what": "Removes this tenant's saved maps from this computer. It cannot be undone.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#amForgetNo": {
+    "what": "Keeps the saved maps.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "details.pa-details > summary": {
+    "what": "Shows or hides this list: the endpoints to be read, the endpoints skipped and why, or the log of what was read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   }
+  },
   "/report/soc-review": {
    "#scTenant": {
     "what": "Picks which tenant sign-in the SOC review uses.",
@@ -4766,6 +4873,11 @@ window.HELP_CATALOG = {
     "what": "Opens SSL coverage in a new tab. It shows how much web traffic Zscaler really inspects. It names the rule or bypass that leaves the rest locked, with a link back here to fix it.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#opApiMap a[href=\"/report/api-map\"]": {
+    "what": "Opens the Tenant API map: which features this tenant has and which reads its API client may make. It lists every endpoint first and reads only after you confirm.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    },
    "#opSocReview a[href=\"/report/soc-review\"]": {
     "what": "Opens the SOC review: who can administer each Zscaler product and what is sent to your SIEM. It only reads.",

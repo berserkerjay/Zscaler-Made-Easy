@@ -91,6 +91,7 @@ answer leaves the question open.
 | Which apps have a poor ZDX score? What ZDX alerts fired? | `zdx_summary` | `fleet_health` for the devices' Client Connector |
 | Who can administer the tenant? Too many super admins? Stale admins, MFA, API client scopes? | `rbac_review` | `readiness` for this API client's own rights; `run_section` for the RBAC section |
 | What do we send to the SIEM? Which logs are not streamed? Are NSS feeds or LSS on? | `telemetry_review` | `traffic_logs_summary` for logs the admin saved |
+| Which Zscaler features does this tenant have? Is a feature missing because of the licence or this API client's role? | `tenant_api_map` (the newest map saved on the app's page) | `readiness` for this API client's own rights |
 | What did the app change recently? What happened since Monday? | `timeline` (`since`) | `snapshot_diff` for what the configuration now differs by |
 | What did we note about this rule or finding? Note this for later | `case_notes` (`tag` or `kind`) | Ask the admin to add the note on the app's pages (you cannot add one) |
 

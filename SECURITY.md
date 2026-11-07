@@ -338,7 +338,8 @@ still opens only for people who may read its tenant profile.
 deployment and operation records, workspace notes, POVs and templates, the
 team accounts, the audit log, configuration backups with their list,
 templates and caches, scheduled sync jobs, the Client Connector fleet
-history, the SSL coverage history and saved traffic log reports are sealed
+history, the SSL coverage history, the Tenant API maps (statuses, item counts and
+field names only) and saved traffic log reports are sealed
 with AES-256-GCM. A sealed store whose key is not here is an error, never
 read as empty (so a save never overwrites it). The key is kept
 in the OS credential store (Windows Credential Manager, macOS Keychain),
