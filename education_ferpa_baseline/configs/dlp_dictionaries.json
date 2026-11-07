@@ -1,0 +1,66 @@
+[
+  {
+    "name": "EDU-Record-Markings",
+    "description": "Education record labels: the FERPA citation (20 U.S.C. 1232g, 34 CFR Part 99) and the words Education Record or Student Record.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b34\\s?C\\.?F\\.?R\\.?\\s*(?:Part\\s*)?99\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b20\\s?U\\.?S\\.?C\\.?\\s*\u00a7?\\s*1232g\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:EDUCATION|STUDENT)\\s+RECORDS?\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"FERPA PROTECTED\""
+      }
+    ]
+  },
+  {
+    "name": "EDU-Student-Record-Terms",
+    "description": "Names of documents that hold student record data: transcripts, grade reports, financial aid and disability service records.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:Official|Unofficial)?\\s*(?:Academic\\s+)?Transcript\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:Grade\\s+Report|Report\\s+Card|Cumulative\\s+GPA|Academic\\s+Standing)\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:Financial\\s+Aid|FAFSA|Disciplinary)\\s+(?:Award|Record|Letter|Hearing)?\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "\"individualized education program\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "\"student id\""
+      }
+    ]
+  },
+  {
+    "name": "EDU-Social Security Numbers (US) - Prox 500",
+    "description": "Cloned predefined SSN dictionary with 500-character proximity, used WITH the student record terms so only SSNs in student records fire.",
+    "predefined_clone": true,
+    "dict_template_name": "Social Security Numbers (US)",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_HIGH",
+    "proximity": 500,
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH"
+  }
+]

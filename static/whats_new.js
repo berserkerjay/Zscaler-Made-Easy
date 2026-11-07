@@ -26,7 +26,6 @@ window.WHATS_NEW = {
     "2026-11-04": "Sign in once on every page, clone breadth in restore and clone, a data flow map a newcomer can read, true SSL inspection coverage, device posture across products and in the Path analyzer, the whole POV build simulated, lighter glass on slow computers, the SOC review, app service groups out of the box, and encrypted stores on by default with a managed-name prefix"
   },
   "skipped": {
-    "2026-11-07": "Assistant tools (capacity review, postmortem, lookup, cite, investigation journal) and the Capacity review page: the assistant tools have no control on a page, and the page is listed here until the next release batch marks it.",
     "2026-11-06": "Fixes with no new control: a read-only container answers health and says why its stores are not encrypted, the glass costs less while scrolling, and the browser acceptance run follows Chrome 157's error-page frames; a * on them would push 2026-11-01 out, so this release is not marked",
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },

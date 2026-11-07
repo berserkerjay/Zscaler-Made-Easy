@@ -330,6 +330,31 @@ def search(query: str, limit: int = 100, *, event: str = "", keep: Any = None) -
     return {"entries": out, "matched": len(out), "scanned": scanned, "truncated": truncated}
 
 
+EXPORT_COLUMNS = ("at", "event", "actor", "method", "path", "status", "profile", "write_mode", "detail")
+
+
+def export(entries: list, fmt: str = "jsonl") -> str:
+    """The entries as JSON Lines (one compact object per line, the log's own structure, already redacted when written) or
+    CSV (the columns above; everything else in `detail` as JSON; every cell spreadsheet-safe through csv_safe). Entries
+    are data the caller already holds: this reads nothing and sends nothing."""
+    fmt = (fmt or "jsonl").lower()
+    if fmt not in ("jsonl", "csv"):
+        raise ValueError("the audit export format is jsonl or csv")
+    rows = [e for e in entries if isinstance(e, dict)]
+    if fmt == "jsonl":
+        return "".join(json.dumps(e, default=str, separators=(",", ":")) + "\n" for e in rows)
+    import csv_safe
+    import io
+    buf = io.StringIO()
+    w = csv_safe.writer(buf)
+    w.writerow(EXPORT_COLUMNS)
+    for e in rows:
+        rest = {k: v for k, v in e.items() if k not in EXPORT_COLUMNS[:-1]}
+        w.writerow([e.get("at"), e.get("event"), e.get("actor"), e.get("method"), e.get("path"), e.get("status"), e.get("profile"),
+                    e.get("write_mode"), json.dumps(rest, default=str, separators=(",", ":")) if rest else ""])
+    return buf.getvalue()
+
+
 class AuditMiddleware:
     """ASGI middleware: log every non-GET /api/* call with its outcome.
     Reads the body once and replays it to the app."""

@@ -1380,9 +1380,10 @@ function _dzRemovalSelect() {
   const byChan = {};
   shown.forEach(r => { (byChan[r.channel] = byChan[r.channel] || []).push(r); });
   const row = r => `<label class="dz-row dz-pick ${R.selected.has(key(r)) ? 'on' : ''}">
-      <input type="checkbox" ${R.selected.has(key(r)) ? 'checked' : ''} onchange="_dzPickToggle('${_dzE(key(r))}', this.checked)" aria-label="Remove ${_dzE(r.name)}">
+      ${r.leftover ? `<input type="checkbox" ${R.selected.has(key(r)) ? '' : 'checked'} onchange="_dzPickToggle('${_dzE(key(r))}', !this.checked)" aria-label="Keep ${_dzE(r.name)} (leftover: ${_dzE(r.leftover)})"><span class="dz-chip">Keep</span>`
+        : `<input type="checkbox" ${R.selected.has(key(r)) ? 'checked' : ''} onchange="_dzPickToggle('${_dzE(key(r))}', this.checked)" aria-label="Remove ${_dzE(r.name)}">`}
       <div><div class="nm">${_dzE(r.name)} <span class="dz-chip ${String(r.state).toUpperCase() === 'ENABLED' ? 'kind-policy' : ''}">${_dzE(String(r.state || '').toLowerCase() || 'state ?')}</span>${r.parent_id != null ? '<span class="dz-chip">sub-rule</span>' : ''}</div>
-        <div class="rs">${r.tagged ? `Zscaler Made Easy · ${_dzE(r.pack || 'pack')}` : 'not created by Zscaler Made Easy'}${(r.engines || []).length ? ` · engines: ${_dzE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ' · no engines'}${r.action ? ` · ${_dzE(String(r.action).toLowerCase())}` : ''}</div></div>
+        <div class="rs">${r.leftover ? `Leftover: ${_dzE(r.leftover)} · ` : ''}${r.tagged ? `Zscaler Made Easy · ${_dzE(r.pack || 'pack')}` : 'not created by Zscaler Made Easy'}${(r.engines || []).length ? ` · engines: ${_dzE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ' · no engines'}${r.action ? ` · ${_dzE(String(r.action).toLowerCase())}` : ''}</div></div>
     </label>`;
   const groups = Object.keys(byChan).map(ch => `<div class="dz-h" style="margin-top:0.8rem;">${_dzE(_dzChan(ch))}<span class="count">${byChan[ch].length}</span></div><div class="dz-rows">${byChan[ch].map(row).join('')}</div>`).join('');
   // Orphans: engines no rule uses and dictionaries no engine uses. Nothing
@@ -1404,6 +1405,7 @@ function _dzRemovalSelect() {
       <div class="d">Tick the leftovers to remove. The plan then adds the engines and dictionaries only those rules use; anything an unticked rule or a surviving engine still uses is kept and listed. Orphan engines and dictionaries are listed at the bottom so a leftover with no rule can go too. Predefined objects are never touched.${errs.length ? ` Not listed: ${_dzE(errs.map(([k, v]) => `${_dzChan(k)} (${v})`).join('; '))}.` : ''}</div></div></div>
     <div class="dz-pick-tools">
       <input type="search" class="dz-input" placeholder="Filter by rule, engine or pack" value="${_dzE(R.filter || '')}" oninput="_dzRefilter(DZ.removal, this, _dzRemovalRender)" aria-label="Filter rules">
+      <button type="button" class="dz-link" onclick="_dzPickSet(r => !!r.leftover)">Select only the leftovers (untick Keep)</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(r => r.tagged)">Select Zscaler Made Easy rules</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(r => String(r.state).toUpperCase() !== 'ENABLED')">Select disabled rules</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(() => true)">Select all shown</button>

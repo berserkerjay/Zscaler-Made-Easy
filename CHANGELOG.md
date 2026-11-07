@@ -23,6 +23,14 @@ lists what each batch of changes did, newest first.
 - New audit-log full-text search (`GET /api/audit/search`): every word must appear in an entry, newest first, bounded; team servers see only their tenant profiles' entries.
 - Scheduled sync: the timer is now off by default (`DLP_CHECK_SYNC_TIMER=1` turns it on); plans wait in the change queue's "Awaiting approval" list (`GET /api/sync-jobs/awaiting-approval`) and are applied only after approval through the usual write gates and plan-hash check.
 - Assistant: new read-only `capacity_review` (locations, tunnels, ZPA App Connectors and segments against locally recorded licensed counts, with headroom) and `postmortem` (incident postmortem template for a window from the app's own audit log and deployments, Markdown or CSV via `POST /api/postmortem`); every assistant answer now carries a `grade` (source tier, confidence, basis, as-of). Also: `lookup` and `cite` (answers and citations from the local reference corpus; fetching is off unless the operator allows it, Zscaler help and docs hosts only), a resumable investigation journal (`journal_open`, `journal_add`, `journal_show`, `/api/journal`), and the capacity review now counts ZIA users, reads licence seats from the subscription list, and has `POST /api/capacity-review` and a Capacity review page.
+### Policy wizard gaps
+
+- Block page theme builder: a local, read-only editor, preview and HTML download for the end-user block page (logo stored locally, colours, wording); applying its wording to ZIA's end-user notification is a Bulk changes operation (write mode off by default, APPLY EUN typed every time, Undo).
+- AI prompt capture: a dedicated Bulk changes builder for the GenAI prompt-capture switches (nothing pre-picked, CAPTURE PROMPTS typed, Undo).
+- Education (FERPA) policy pack, offered first for the Education industry and the FERPA compliance profile.
+- A POV now reopens with where it stands and the next step, and pairs a posture score at its start with one at its end (computed on the server).
+- The audit log exports as JSON Lines or CSV (spreadsheet-safe) from an authenticated route.
+- The rule picker marks leftovers from a pack that is gone or not deployed, with a Keep box ticked by default.
 
 ## 2026-11-06
 

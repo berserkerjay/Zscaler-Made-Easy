@@ -431,7 +431,7 @@ _FW = {
     "HITRUST": ("HITRUST CSF", "Healthcare", ["healthcare_phi_baseline"], "HITRUST"),
     "PCI": ("PCI DSS", "Financial services", ["global_banking_baseline"], "PCI"),
     "SOX": ("SOX", "Financial services", ["global_banking_baseline"], "SOX"),
-    "FERPA": ("FERPA", "Education", ["zbp_enterprise_baseline"], "FERPA"),
+    "FERPA": ("FERPA", "Education", ["education_ferpa_baseline", "zbp_enterprise_baseline"], "FERPA"),
     "CJIS": ("CJIS Security Policy", "Federal and public sector", ["cjis_policy_pack"], "CJIS"),
     "NIST_800_53": ("NIST SP 800-53", "Any industry", ["fed_policy_pack"], "NIST_800_53"),
     "NIST_800_171": ("NIST SP 800-171", "Any industry", ["fed_policy_pack"], "NIST_800_171"),
