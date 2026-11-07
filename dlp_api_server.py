@@ -10188,6 +10188,12 @@ def _tlw_tick() -> Optional[Dict[str, Any]]:
     return rec
 
 
+def _rd_tick() -> None:
+    """Opt-in report delivery on its cron schedule (off by default; sends the newest saved report only)."""
+    import report_delivery as rd
+    rd.tick()
+
+
 async def _tlw_loop() -> None:
     while _TLW_STATE.get("enabled"):
         try:
@@ -10196,6 +10202,7 @@ async def _tlw_loop() -> None:
             break
         try:
             await asyncio.to_thread(_tlw_tick)
+            await asyncio.to_thread(_rd_tick)
             _TLW_STATE["last_error"] = None
         except Exception as e:  # noqa: BLE001 — the timer never takes the server down
             _TLW_STATE["last_error"] = f"{type(e).__name__}: {str(e)[:200]}"

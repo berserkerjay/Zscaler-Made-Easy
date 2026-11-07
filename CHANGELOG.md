@@ -7,6 +7,12 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-07
+
+### Opt-in report delivery to shares and hosts, and a log pipeline command line
+- Saved traffic-log reports can be sent as CSV to an SFTP, SCP, SSH or SMB target, on demand or on a cron-style schedule. Off by default; the target's host must be in a host allowlist (a non-listed host is refused before any connection); the password is kept only in the operating system's credential store and is never logged, audited or returned; SSH host keys must already be known. paramiko and smbprotocol are optional and loaded only when a delivery is made (without them the feature says "not installed"). Scheduled runs only send the newest report; they change nothing on a tenant.
+- `log_pipeline_cli.py` (health, reports, regen, export, deliver, selftest): a read-only command line for the log pipeline.
+
 ## 2026-11-06
 
 ### Store encryption in a read-only container, glass while scrolling, macOS installs
