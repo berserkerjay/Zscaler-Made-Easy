@@ -38,6 +38,8 @@ mode, a named writer and assessor, a preview and a typed confirmation.
 | `traffic_logs_summary` | Traffic and session logs | A saved report as counts (people counted); never an upload through MCP |
 | `ztw_summary` | Cloud & Branch Connector | Connector counts and the connector checks (admins and keys counted) |
 | `zdx_summary` | ZDX | App score bands, the lowest apps, alerts by severity and rule (no devices) |
+| `rbac_review` | SOC review: admin access | Admins (numbered), roles, full vs limited rights, stale admins, API keys and clients, findings |
+| `telemetry_review` | SOC review: logging | Log streams, NSS servers, LSS, Client Connector log settings, destinations and gaps |
 | `timeline` | Audit timeline | What the app did since a date, from its own records (people counted) |
 | `case_notes` | Workspace notes | The admin's notes for the tenant (local) |
 | `run_assessment`, `run_section`, `list_checks`, `get_health` | The assessment | As before |

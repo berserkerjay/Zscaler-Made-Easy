@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from xml.etree import ElementTree as ET
 
 import pytest
+from conftest import read_store_text
 
 import csv_safe
 import md_safe
@@ -492,7 +493,7 @@ def test_pov_a_secret_in_a_prove_it_verdict_is_masked_before_it_is_kept(app):
     _start(app, pid)
     ev = pov.prove_evidence(pov.RUNBOOK_BY_ID["url-block"], {"verdict": {"outcome": "blocked", "headline": f"Blocked by rule {SECRET}", "blocked_by": SECRET}})
     pov.add_system_evidence(pid, dict(CREDS), "url-block", ev, by="app")
-    assert SECRET not in open(tenant_profiles.pov_path(pid), encoding="utf-8").read()
+    assert SECRET not in read_store_text(tenant_profiles.pov_path(pid))
 
 
 def test_pov_a_secret_in_insights_counts_is_masked_before_it_is_kept(app):
@@ -501,7 +502,7 @@ def test_pov_a_secret_in_insights_counts_is_masked_before_it_is_kept(app):
     _start(app, pid)
     counts = pov.insights_counts({"sections": {"web_action": {"title": "Web", "rows": [{"name": SECRET, "total": 3}]}}}, "7 days")
     pov.add_insights(pid, dict(CREDS), counts, by="app")
-    assert SECRET not in open(tenant_profiles.pov_path(pid), encoding="utf-8").read()
+    assert SECRET not in read_store_text(tenant_profiles.pov_path(pid))
 
 
 @pytest.mark.parametrize("created_at,fragment", [("9999-01-01T00:00:00+00:00", "future"), ("not a date", "not a date"), ("2999-12-31", "future")])

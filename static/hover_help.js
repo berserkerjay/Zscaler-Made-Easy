@@ -233,15 +233,20 @@
     if (content.note) parts.push('Note: ' + content.note);
     return parts;
   }
+  // Write an attribute or a text only when it changes: a rescan (any other
+  // change on the page asks for one) leaves settled marks untouched, so
+  // placing them is never a change of its own.
+  function setAttr(el, name, value) { if (el.getAttribute(name) !== value) el.setAttribute(name, value); }
   function describeMark(mark, content) {
     const host = descHost(mark);
     const shared = content.item && !content.note;
     const id = shared ? `hh-d-${content.item.idx}-${host.dataset.hhScope}` : (mark.__hhDesc || 'hh-n-' + (++serial));
     let span = document.getElementById(id);
     if (!span) { span = document.createElement('span'); span.id = id; host.appendChild(span); }
-    span.textContent = lines(content).join(' ');
+    const text = lines(content).join(' ');
+    if (span.textContent !== text) span.textContent = text;
     if (!shared) mark.__hhDesc = id;
-    mark.setAttribute('aria-describedby', id);
+    setAttr(mark, 'aria-describedby', id);
   }
 
   // ── Native titles ───────────────────────────────────────────────────
@@ -341,13 +346,13 @@
     if (news) {
       if (!rec.news) { rec.news = makeMark('new'); rec.news.__hhFor = el; }
       rec.news.__hhContent = { news };
-      rec.news.setAttribute('aria-label', 'New in this version: ' + name);
+      setAttr(rec.news, 'aria-label', 'New in this version: ' + name);
       describeMark(rec.news, rec.news.__hhContent);
     } else if (rec.news) { if (rec.news === current) hide(); rec.news.remove(); rec.news = null; }
     if (help) {
       if (!rec.help) { rec.help = makeMark('help'); rec.help.__hhFor = el; }
       rec.help.__hhContent = help;
-      rec.help.setAttribute('aria-label', 'Help: ' + name);
+      setAttr(rec.help, 'aria-label', 'Help: ' + name);
       describeMark(rec.help, help);
     } else if (rec.help) { if (rec.help === current) hide(); rec.help.remove(); rec.help = null; }
     rec.anchor = anchorOf(el);
@@ -366,7 +371,7 @@
       const news = norm(el.getAttribute('data-wn-new'));
       const help = item && !skipReason(el, item) ? { item, e: item.e, note: noteOf(el, item) } : null;
       if (help || news) want.set(el, { help, news });
-      if (item) el.setAttribute('data-hh', item.sel); else el.removeAttribute('data-hh');
+      if (item) setAttr(el, 'data-hh', item.sel); else el.removeAttribute('data-hh');
     });
     // Titles and headings marked as new, and the page title's help.
     document.querySelectorAll('[data-wn-new]').forEach(el => {

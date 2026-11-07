@@ -16,7 +16,7 @@ The frameworks share five phases. Use the same words in answers:
 | Detect | Recognise sensitive data in motion or at rest | `explain_dlp`, `dlp_incidents` |
 | Enforce | Block, isolate or coach when a rule matches | `path_check`, `rule_precedence`, `ssl_coverage` |
 | Respond | Follow up on incidents and alerts | `dlp_incidents`, `zdx_summary`, `case_notes` |
-| Govern | Prove it, keep it current, see who changed what | `compliance_map`, `snapshot_diff`, `timeline` |
+| Govern | Prove it, keep it current, see who changed what | `compliance_map`, `snapshot_diff`, `timeline`, `rbac_review`, `telemetry_review` |
 
 | Page | What it covers | Send the admin there when |
 |---|---|---|

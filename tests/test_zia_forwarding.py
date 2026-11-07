@@ -433,7 +433,12 @@ def test_the_ui_names_the_new_step_and_marks_the_features():
     wn = open(os.path.join(ROOT, "static", "whats_new.js"), encoding="utf-8").read()
     man = json.loads(re.search(r"window\.WHATS_NEW\s*=\s*(\{.*?\n\});", wn, re.S).group(1))
     ids = {f["id"]: f for f in man["features"]}
-    assert ids["zia-forwarding-checks"]["release"] == ids["path-forwarding-step"]["release"] == "2026-10-31"
+    # While 2026-10-31 is one of the newest two releases both are marked; once rotated out (keep: 2) they stay in CHANGELOG.md.
+    if "2026-10-31" in man["releases"]:
+        assert ids["zia-forwarding-checks"]["release"] == ids["path-forwarding-step"]["release"] == "2026-10-31"
+    else:
+        assert "## 2026-10-31" in open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8").read()
+        assert "zia-forwarding-checks" not in ids and "path-forwarding-step" not in ids
 
 
 class _PagedVips:

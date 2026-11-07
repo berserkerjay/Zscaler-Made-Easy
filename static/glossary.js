@@ -69,10 +69,13 @@
     'certificate pinning': { term: 'certificate pinning', def: 'Some apps only trust their own lock. When Zscaler opens their traffic, they stop working. We say they pin their certificate.' },
     'decrypt': { term: 'decrypt', def: 'To decrypt is to unlock traffic so Zscaler can read it. Then it is locked again on its way.' },
     'inspected': { term: 'inspected', def: 'Inspected traffic has been opened and checked by Zscaler. DLP can only check what is inspected.' },
+    'true inspection coverage': { term: 'true inspection coverage', def: 'True inspection coverage is the share of the web traffic that reaches Zscaler that it could look inside: plain HTTP plus the HTTPS it unlocked. Unsorted traffic never counts as inspected.' },
+    'plain http': { term: 'plain HTTP', def: 'Plain HTTP is web traffic that is not locked. Zscaler can read it without unlocking it.' },
     'coverage': { term: 'coverage', def: 'Coverage is how many checks could run. If the app was not let in to look, that check is not in the score.' },
     'projected score': { term: 'projected score', def: 'A projected score is your score after the fixes you pick. It is a guess made with the real math, before you change a thing.' },
     'score drop': { term: 'score drop', def: 'A score drop means your score went down since last time. The app shows which checks started to fail.' },
-    'device posture': { term: 'device posture', def: 'Device posture is a health check on a computer or phone. It asks things like: is it a work device, and is its guard app on?' },
+    'device posture': { term: 'device posture', def: 'Device posture is a health check on a computer or phone, set up in Client Connector. ZPA and ZIA rules can both ask for it.' },
+    'trust level': { term: 'trust level', def: 'A trust level is a grade for a device: high, medium or low. Client Connector gives it from the posture checks. ZIA rules can use it.' },
     'trusted network': { term: 'trusted network', def: 'A trusted network is a network you own, like the office one. It says where a device is, not if the device is safe.' },
     'edr': { term: 'EDR', def: 'EDR is a guard app on each computer. It watches for bad programs and stops them.' },
     'domain-joined': { term: 'domain-joined', def: 'A domain-joined computer is one your company set up and controls. Home computers are not.' },
@@ -154,6 +157,8 @@
     'incident receiver': { term: 'incident receiver', def: 'The incident receiver gets a copy of what a DLP rule caught. It puts it where Workflow Automation can see it.' },
     'quality score': { term: 'quality score', def: 'The quality score shows how well this app itself is tested. It goes from 0 to 100. Open problems pull it down.' },
     'severity': { term: 'severity', def: 'Severity says how bad a problem is. It goes from info and low up to medium, high and critical.' },
+    'forwarding profile': { term: 'forwarding profile', def: 'A forwarding profile tells Client Connector where to send traffic on each kind of network. It can send it to Zscaler or let it go straight out.' },
+    'file type control': { term: 'File Type Control', def: 'File Type Control checks the kind of file, like a zip or a spreadsheet. It can stop some kinds from being sent.' },
     'glass effect': { term: 'glass effect', def: 'The glass effect makes bars, cards and buttons see-through, like frosted glass. You can turn it off in Advanced settings.' },
   };
   // GLOSSARY-END

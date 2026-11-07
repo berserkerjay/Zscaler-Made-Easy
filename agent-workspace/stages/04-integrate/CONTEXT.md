@@ -13,6 +13,7 @@
 2. After each merge: syntax checks and the targeted tests for the areas both sides touched. Push.
 3. Every few merges, and at the end, run the full suite through the shared runner; rerun failing files alone to separate load timeouts from real failures; fix integration breakage; send real defects back to stage 1.
 4. When the full suite is 0 failed: record the test run with the score tool, regenerate the score, push.
+5. Archive child cloud sessions once their work is merged; answer their questions and blocked prompts yourself (the coordinator), never leave them for the owner.
 
 ## Outputs
 - The integration branch, pushed, with a full-suite run of 0 failed.

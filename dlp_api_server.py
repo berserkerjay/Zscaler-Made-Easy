@@ -244,6 +244,10 @@ app.add_middleware(
 # The browser's offline tenant (the sample or a snapshot, offline_tenant.py), for _tenant_creds.
 import offline_tenant as _offline_src
 app.add_middleware(_offline_src.SourceMiddleware)
+# The signed-in tenant (tenant_session.py): this browser's handle and the
+# request's route, so a tenant read may use the sign-in made on another page.
+import tenant_session as _tenant_session
+app.add_middleware(_tenant_session.Middleware, routes=lambda: app.router.routes)
 app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
 # Just inside the body cap: every answer the other layers make (the rate
 # limiter's 429, a CORS preflight, the UI token's 401) carries CSP, nosniff
@@ -794,6 +798,7 @@ async def auth_logout(request: Request):
     if not _sso.sso_enabled() and not _team.enabled():
         raise HTTPException(status_code=404, detail="Sign out is only used with SSO; this server uses the UI token.")
     actor = _security.current_actor()
+    _tenant_session.forget_caller()   # signing out of the app forgets the signed-in tenant too
     ended = _sso.end_session(request.cookies.get(_security.SSO_SESSION_COOKIE))
     _audit.record("team_logout" if _team.enabled() else "sso_logout", actor=actor if ended else "not signed in",
                   ended=bool(ended), client=request.client.host if request.client else "?")
@@ -1422,8 +1427,23 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     if off is not None:
         return off
     creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
+    pid = str(getattr(req, "profile_id", "") or "").strip()
+    # The signed-in tenant (tenant_session): the sign-in this person made on
+    # any page, kept in memory for them and this browser. Tenant reads only
+    # (never a write), and only while the request's own sign-in is incomplete.
+    signed = _tenant_session.for_read()
+    if signed is not None and _team.enabled():
+        # A team server reaches a tenant only through a tenant profile: the
+        # one the sign-in was made with, still checked against the person below.
+        # Typed sign-in details without a profile are refused as before.
+        if not pid and not tenant_auth.started(creds) and not creds["vanity_domain"]:
+            pid = signed["profile_id"]
+        if not pid or pid != signed["profile_id"]:
+            signed = None
     if _team.enabled():
-        _team_tenant_gate(req, creds)
+        _team_tenant_gate(req, creds, pid)
+        if signed is not None and not str(getattr(req, "profile_id", "") or "").strip():
+            _team.adopt_profile(pid)
     # Every request model leaves the cloud blank by default, so a blank one
     # here was not typed: the profile, environment or tenant_config.json
     # names the cloud. A request rebuilt from every field (cloud now counts
@@ -1432,7 +1452,12 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
         # Nothing typed for a tenant: the source that has the sign-in decides
         # its method (the form always sends its selector, OneAPI by default).
         creds["auth_method"] = ""
-    creds = _fill_from_profile(creds, getattr(req, "profile_id", ""))
+    creds = _fill_from_profile(creds, pid)
+    if not tenant_auth.complete(creds) and signed is not None and _same_sign_in(creds, signed["creds"]):
+        # The remembered sign-in, whole (its own identity with its own
+        # secret); the request keeps only what it said beside the identity.
+        creds = tenant_auth.merge(signed["creds"], tenant_auth.without_identity(creds))
+        _tenant_session.touch()
     if not tenant_auth.complete(creds):
         env = tenant_auth.from_env()
         base = tenant_auth.without_identity(creds)
@@ -1458,13 +1483,15 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     return creds
 
 
-def _team_tenant_gate(req: Any, typed: Dict[str, str]) -> None:
+def _team_tenant_gate(req: Any, typed: Dict[str, str], pid: Optional[str] = None) -> None:
     """Team server: a tenant is reached only through a saved tenant profile
     the person may use for this route's action (team_server), and nothing
     typed beside it may name another tenant than the profile's (a typed
     vanity domain, client id or admin login of another tenant is refused,
-    never used). 403 otherwise."""
-    pid = str(getattr(req, "profile_id", "") or "").strip()
+    never used). 403 otherwise. `pid`: the profile to check when it is not
+    the request's own (the signed-in tenant's, tenant_session)."""
+    if pid is None:
+        pid = str(getattr(req, "profile_id", "") or "").strip()
     _team.require_tenant_profile(pid)
     if _team.context() is None:
         return
@@ -1625,9 +1652,17 @@ def _same_sign_in(typed: Dict[str, Any], stored: Dict[str, Any]) -> bool:
     return True
 
 
+SIGNED_IN_NOT_FOR_CHANGES = ("You are signed in to the tenant for reading, but changes to the tenant need the sign-in details "
+                             "typed again (or a saved tenant profile that remembers them): signing in once never allows changes.")
+
+
 def _validate_creds(creds: Dict[str, str]) -> Dict[str, str]:
     """Validate every field the sign-in uses (400 with the field's name
-    otherwise) and return the checked dict. Nothing is echoed."""
+    otherwise) and return the checked dict. Nothing is echoed. A change
+    whose caller is signed in (tenant_session) but sent no sign-in of its
+    own is told in words that changes never use the remembered sign-in."""
+    if not tenant_auth.complete(creds) and _tenant_session.withheld_from_write():
+        raise HTTPException(status_code=400, detail=SIGNED_IN_NOT_FOR_CHANGES)
     c = tenant_auth.normalize(creds)
     c["cloud"] = validate_cloud(c["cloud"] or "production")
     c["vanity_domain"] = validate_vanity(c["vanity_domain"])
@@ -1808,7 +1843,7 @@ def _regenerate_terraform(pack_id: str, pack_dir: str) -> str:
     beside the pack (as for uploads) for a copy rebuilt in the library."""
     try:
         import pack_terraform
-        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
+        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir}, name_prefix="")
         shipped = os.path.realpath(os.path.dirname(pack_dir)) == os.path.realpath(_APP_DIR)
         out_dir = os.path.join(_APP_DIR, "terraform", pack_id) if shipped else os.path.join(pack_dir, "terraform")
         pack_terraform.write_workspace(files, out_dir)
@@ -3274,6 +3309,107 @@ async def ztw_export(report_id: str, format: str = "xlsx"):
                     headers={"Content-Disposition": f"attachment; filename=cloud_branch_connector_{ts}.xlsx"})
 
 
+# ── SOC review (read-only, soc_review): who can administer the tenant
+# (RBAC: admins, roles, full vs scoped rights, stale admins, API keys and
+# clients, findings) and what leaves it as logs (telemetry: Cloud NSS feeds,
+# NSS servers and collectors, ZPA Log Streaming Service, Client Connector
+# log settings, SIEM destinations, gaps). The RBAC review needs RBAC ticked
+# on the Scope page (and ZPA, Client Connector or ZIdentity for theirs); the
+# telemetry review needs ZIA platform, ZPA, Client Connector or ZDX. Kept as
+# reports "socrbac-…" and "soctel-…"; never holds a secret.
+class SocReviewRequest(MigrateRequest):
+    """Body of a SOC review: tenant credentials and the Scope page
+    selection; refused (400) before sign-in when nothing it reads is ticked."""
+
+
+SOC_PARTS = {"rbac": ("socrbac", "RBAC review"), "telemetry": ("soctel", "Telemetry review")}
+
+
+@app.get("/report/soc-review")
+async def report_soc_review_page():
+    """SOC review (static/report_soc_review.html)."""
+    page = os.path.join(STATIC_DIR, "report_soc_review.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _soc_scope(req: Any, part: str) -> Dict[str, Any]:
+    """The Scope rule of a SOC review, before any sign-in: 400 when nothing
+    the review reads is ticked."""
+    import soc_review
+    if part == "rbac":
+        return _require_in_scope(req, soc_review.RBAC_SCOPE, "The RBAC review")
+    sc, ch, source = _scope_selection(req)
+    if not soc_review.telemetry_in_scope(sc):
+        raise HTTPException(status_code=400, detail="The telemetry review is not in scope: on the Scope page tick ZIA platform, ZPA, "
+                                                    "Client Connector or ZDX, then run it again. Nothing was read.")
+    return {"scopes": sc, "channels": ch, "source": source}
+
+
+def _run_soc(part: str, client: Any, label: str, creds: Dict[str, Any], sel: Dict[str, Any], log, cancel) -> Dict[str, Any]:
+    """Run one SOC review on a signed-in (or offline) assessment client.
+    Stop ends it with nothing more read and no partial result kept."""
+    import soc_review
+    prefix, what = SOC_PARTS[part]
+    logs: List[str] = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    _log(f"{what} of {label}: reading. Nothing is written to the tenant."
+         + (f" In scope, from {sel.get('source')}: {', '.join(sel.get('scopes') or [])}." if sel.get("source") else ""))
+    fn = soc_review.rbac_review if part == "rbac" else soc_review.telemetry_review
+    try:
+        rep = fn(client, sel.get("scopes") or [], log=_log, cancel=cancel, creds=creds)
+    except soc_review.Stopped:
+        _log("STOPPED — you clicked Stop; nothing more was read and no partial result is kept.")
+        return {"stopped": soc_review.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    finally:
+        _close_quietly(client)
+    rid = _remember_report(prefix, rep, label)
+    return dict(_REPORTS[rid], status="done", logs=logs)
+
+
+async def _soc_start(part: str, req: SocReviewRequest, request: Request) -> Dict[str, Any]:
+    import pack_jobs
+    sel = _soc_scope(req, part)   # before signing in (user rule 1)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_signed_in_raw, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start(SOC_PARTS[part][0], lambda log, cancel: _run_soc(part, client, label, creds, sel, log, cancel),
+                          label=f"{SOC_PARTS[part][1]} {label}"[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/soc-review/rbac/start")
+async def soc_rbac_start(req: SocReviewRequest, request: Request):
+    """The RBAC review as a job the page follows: admins, roles, rights, API
+    keys and clients of ZIA, ZPA, Client Connector, ZDX and ZIdentity, and the
+    findings. Read-only (GET only). Poll GET /api/dlp-packs/jobs/{job_id}."""
+    return await _soc_start("rbac", req, request)
+
+
+@app.post("/api/soc-review/telemetry/start")
+async def soc_telemetry_start(req: SocReviewRequest, request: Request):
+    """The telemetry review as a job: log streams, log settings, SIEM
+    destinations and gaps. Read-only (GET only). Poll GET /api/dlp-packs/jobs/{job_id}."""
+    return await _soc_start("telemetry", req, request)
+
+
+@app.get("/api/soc-review/report/{report_id}")
+async def soc_review_report(report_id: str):
+    """A kept SOC review (RBAC or telemetry)."""
+    rep = _REPORTS.get(report_id or "")
+    if not rep or not str(report_id).startswith(("socrbac-", "soctel-")):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Read it again.")
+    return rep
+
+
 # ── Other Zscaler products (read-only): Zero Trust Branch, EASM, Business
 # Insights, Zero Trust Cellular and Microsegmentation (other_products). Each
 # is read only when its own Scope page key is ticked; kept as report
@@ -3405,10 +3541,20 @@ async def other_products_export(report_id: str, format: str = "xlsx"):
 
 
 # ── Device posture (read-only) ───────────────────────────────────────
-# device_posture reads ZPA through zpa_reader (plus the Client Connector
-# trusted networks when Client Connector is in scope too), classifies the
-# posture profiles, links them to the access rules and says each rule's
-# conditions in plain words. Kept as a "posture-" report for the exports.
+# Device posture is defined in Client Connector and used by ZPA (posture
+# conditions in access rules) and ZIA (the device trust level Client
+# Connector works out from a ZIA posture profile). device_posture reads ZPA
+# through zpa_reader; posture_cross reads Client Connector and the ZIA rules
+# and builds the one view across them. Each product is read only when it is
+# ticked on the Scope page; one that cannot be read (not licensed, no
+# customer ID, no role) is shown as such on the page, never as an error.
+# Kept as a "posture-" report for the exports.
+DEVICE_POSTURE_NOT_IN_SCOPE = ("Device posture is not in scope: on the Scope page tick ZPA, ZCC / Mobile Portal or ZIA platform (any of them: "
+                               "posture is defined in Client Connector and used by ZPA and ZIA rules), then run it again. Nothing was read.")
+DEVICE_POSTURE_NEEDS_ONEAPI = ("Device posture needs a ZIdentity (OneAPI) API client: Client Connector and ZPA are not reachable with the "
+                               "classic ZIA API. Sign in with an OneAPI API client, then run it again. Nothing was read.")
+
+
 @app.get("/report/device-posture")
 async def report_device_posture_page():
     """Device posture (static/report_device_posture.html)."""
@@ -3424,11 +3570,13 @@ def _posture_report(rid: str) -> Optional[Dict[str, Any]]:
     return rep if rep and str(rid).startswith("posture-") else None
 
 
-def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, scope: Dict[str, Any], zcc: bool) -> Dict[str, Any]:
-    """Read ZPA once (and the Client Connector trusted networks with `zcc`),
-    then build the device posture report. Stop ends it as stopped with
+def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, scope: Dict[str, Any], zpa_problem: str = "") -> Dict[str, Any]:
+    """Read each product in scope (ZPA, Client Connector, ZIA), then build
+    the device posture report across them. A product that cannot be read
+    is reported in `products`, never raised. Stop ends it as stopped with
     nothing more read and nothing kept."""
     import device_posture
+    import posture_cross
     import zpa_reader
     logs: list = []
 
@@ -3438,27 +3586,37 @@ def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, 
         if log:
             log(line)
 
+    scopes = list(scope.get("scopes") or [])
     if scope.get("source"):
-        _log(f"In scope, from {scope['source']}: ZPA{' and Client Connector' if zcc else ''}.")
+        names = [w for k, w in (("zpa", "ZPA"), ("zcc", "Client Connector"), ("zia_extras", "ZIA")) if k in scopes]
+        _log(f"In scope, from {scope['source']}: {', '.join(names)}.")
     try:
-        snap, raw, zout = device_posture.read(client, log=_log, cancel=cancel, zcc=zcc)
+        data = posture_cross.read_all(client, scopes, zpa_problem=zpa_problem, log=_log, cancel=cancel)
     except zpa_reader.Stopped as e:
         return {"stopped": str(e), "status": "stopped", "tenant_label": label, "logs": logs}
-    except zpa_reader.ReadError as e:
-        raise RuntimeError(tenant_auth.mask_secrets(str(e), creds))
     if cancel is not None and cancel.is_set():
-        _log("STOPPED — you clicked Stop; the ZPA read was abandoned and is not kept.")
+        _log("STOPPED — you clicked Stop; the read was abandoned and is not kept.")
         return {"stopped": zpa_reader.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    zr = data.get("zpa")
+    snap = zr["snap"] if zr else {"collections": {}, "policies": {}, "read_at": time.time()}
+    raw = zr["raw"] if zr else {}
     cols = snap.get("collections") or {}
     for v in cols.values():
         if v.get("error"):
             v["error"] = tenant_auth.mask_secrets(v["error"], creds)
+    zout = ((data.get("zcc") or {}).get("networks")) or {"read": False, "networks": [], "reason": (
+        "Client Connector is not ticked on the Scope page, so its trusted networks were not read.")}
     zout["reason"] = tenant_auth.mask_secrets(zout.get("reason") or "", creds)
+    data["zpa_error"] = tenant_auth.mask_secrets(data.get("zpa_error") or "", creds)
     rep = device_posture.analyze(snap, raw.get("posture_profiles"), raw.get("trusted_networks"), zout)
-    report = dict(rep, kind="posture", read_at=snap.get("read_at"), collections=cols, readable=zpa_reader.readable(snap))
+    rep = posture_cross.attach(rep, data)
+    for prod in (rep.get("products") or {}).values():
+        prod["reason"] = tenant_auth.mask_secrets(prod.get("reason") or "", creds)
+    report = dict(rep, kind="posture", read_at=snap.get("read_at"), collections=cols, readable=zpa_reader.readable(snap) if zr else None)
     rid = _remember_report("posture", report, label)
-    _log(f"Done: {rep['counts']['profiles']} posture profile(s), {rep['counts']['access_rules']} access rule(s), "
-         f"{rep['counts']['findings']} finding(s).")
+    c = rep["counts"]
+    _log(f"Done: {c['profiles']} device posture check(s), {c.get('cross_zia_postures', 0)} ZIA posture profile(s), "
+         f"{c['access_rules']} ZPA access rule(s), {c.get('cross_zia_rules_with_trust', 0)} ZIA rule(s) using the trust level, {c['findings']} finding(s).")
     out = dict(_REPORTS[rid])
     out["logs"] = logs
     return out
@@ -3466,15 +3624,30 @@ def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, 
 
 @app.post("/api/device-posture/start")
 async def device_posture_start(req: ZpaAnalysisRequest, request: Request):
-    """Read the ZPA posture profiles, trusted networks and access rules
-    (only when ZPA is ticked on the Scope page; the Client Connector
-    trusted networks too when Client Connector is ticked) as a job the page
-    follows. Read-only. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    """Read device posture across products as a job the page follows: ZPA's
+    posture profiles, trusted networks and access rules (ZPA ticked),
+    Client Connector's ZIA posture profiles, app profiles and trusted
+    networks (ZCC ticked) and the ZIA rules that can use the device trust
+    level (ZIA platform ticked). Read-only. 400 before sign-in when none of
+    them is in scope, or when ZPA alone is and cannot be read. Poll
+    GET /api/dlp-packs/jobs/{job_id}."""
     import pack_jobs
-    scope = _zpa_scope(req, "Device posture")          # before signing in (user rule 1)
-    zcc = "zcc" in (scope.get("scopes") or [])
-    client, label, creds = await _zpa_client(req)
-    job = pack_jobs.start("posture", lambda log, cancel: _run_device_posture(client, label, creds, log, cancel, scope, zcc),
+    sel = _scope_selection(req)
+    scopes = [s for s in sel[0] if s in ("zpa", "zcc", "zia_extras")]
+    if not scopes:                                     # before signing in (user rule 1)
+        raise HTTPException(status_code=400, detail=DEVICE_POSTURE_NOT_IN_SCOPE)
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=DEVICE_POSTURE_NEEDS_ONEAPI)
+    zpa_problem = ""
+    if "zpa" in scopes and not validate_customer_id(creds.get("customer_id") or ""):
+        if scopes == ["zpa"]:
+            raise HTTPException(status_code=400, detail=ZPA_NEEDS_CUSTOMER_ID)
+        zpa_problem = "the ZPA customer ID is missing (Connect to the tenant → Customer ID), so nothing was read from ZPA."
+    scope = {"scopes": scopes, "source": sel[2]}
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("posture", lambda log, cancel: _run_device_posture(client, label, creds, log, cancel, scope, zpa_problem),
                           label="Device posture", actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
@@ -3666,6 +3839,17 @@ async def _start_dh_refresh() -> None:
         _DH_REFRESH_STATE["last_status"] = "disabled"
 
 
+def _recorded_in_tenant(creds: Dict[str, str]) -> List[Tuple[str, str]]:
+    """(kind, id) of what this tenant's deployment records say the app
+    created: the only proof, besides the tag, that lets a removal delete an
+    object found under the managed-name prefix (pack_removal)."""
+    try:
+        import deployments
+        return deployments.created_in(lambda rec: _same_tenant(rec, creds))
+    except Exception:  # noqa: BLE001 - no readable record: prefix matches are kept
+        return []
+
+
 def _deployment_for_removal(req: "PackRemovalRequest", creds: Dict[str, str]) -> Dict[str, Any]:
     """The recorded deployment a removal names, checked against the tenant
     the credentials point at."""
@@ -3728,7 +3912,8 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal_selected(client, req.rules))
         _cq_remember("pack_removal", out, req, creds)   # lets "Request approval" file exactly this plan
     else:
-        out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
+        recorded = _recorded_in_tenant(creds)
+        out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all), recorded=recorded))
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
     return _mark_rehearsal(out, _rehearsal(creds))
@@ -3996,7 +4181,7 @@ def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Di
                                               confirm_text=req.confirm_phrase)
     else:
         result = pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel, everything=bool(req.all),
-                                     confirm_text=req.confirm_phrase)
+                                     confirm_text=req.confirm_phrase, recorded=_recorded_in_tenant(_tenant_creds(req)))
     result["logs"] = logs
     if result.get("status") in ("blocked", "stale"):
         result["message"] = "; ".join(result.get("blockers") or [
@@ -4242,14 +4427,54 @@ async def tenant_check(req: TenantCredsRequest):
         # an admin session open until it idles out otherwise).
         await asyncio.to_thread(_close_quietly, client)
     except HTTPException as e:
+        _tenant_session.forget()   # a failed sign-in ends the signed-in tenant: never a silent fall back to the previous one
         raise HTTPException(status_code=e.status_code, detail={"tenant_label": label, "auth_method": method, **_explain_connection_error(e.detail, method)})
     except Exception as e:  # noqa: BLE001
+        _tenant_session.forget()
         raise HTTPException(status_code=502, detail={"tenant_label": label, "auth_method": method,
                                                      **_explain_connection_error(tenant_auth.mask_secrets(str(e), creds), method)})
-    out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": [], "access": access}
+    # Signed in: kept in this server's memory for this person and browser
+    # (tenant_session), so every page reads this tenant without asking again.
+    # The sample tenant and snapshots are never kept (they need no sign-in).
+    signed_in = (not _offline.is_offline_creds(creds)
+                 and _tenant_session.remember(creds, profile_id=str(req.profile_id or "").strip(), label=label, method=method))
+    out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": [], "access": access,
+                           "signed_in": bool(signed_in)}
     if method == tenant_auth.LEGACY:
         out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
     return out
+
+
+SIGNED_IN_ENDED = ("Your sign-in to {label} has ended ({why}), so the sign-in details were forgotten. "
+                   "Sign in again to keep reading this tenant.")
+
+
+@app.get("/api/tenant/session")
+async def tenant_session_get():
+    """The signed-in tenant of this person and browser (tenant_session):
+    whether one is kept, its label, sign-in method and saved profile, and
+    the seconds until it ends unused. Never a credential. When it has
+    ended, `expired` and a plain sentence say so. Reads no tenant."""
+    out = _tenant_session.status()
+    if out.get("profile_id"):
+        try:
+            import tenant_profiles
+            out["profile_name"] = str((tenant_profiles.get(out["profile_id"], with_secret=False) or {}).get("name") or "")[:120]
+        except Exception:  # noqa: BLE001 — the name is only a nicety
+            out["profile_name"] = ""
+    if out.get("expired"):
+        why = (f"{out['idle_minutes']} minutes without use" if out.get("ended") == "idle"
+               else f"it is kept for at most {out['max_hours']} hours")
+        out["message"] = SIGNED_IN_ENDED.format(label=out.get("tenant_label") or "the tenant", why=why)
+    out["offline"] = _offline.status().get("mode", "live") != "live"
+    return out
+
+
+@app.delete("/api/tenant/session")
+async def tenant_session_delete():
+    """Sign out of the tenant: forget this person's signed-in tenant in
+    this browser (server memory only; the tenant is not contacted)."""
+    return {"ok": True, "forgotten": _tenant_session.forget()}
 
 
 # ---------------------------------------------------------------------------
@@ -6136,7 +6361,7 @@ def _transcribe_pack_to_terraform(pack_id: str, pack_dir: str) -> Dict[str, Any]
     <pack_dir>/terraform/. Returns what was written, or the error."""
     try:
         import pack_terraform
-        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
+        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir}, name_prefix="")
         out_dir = os.path.join(pack_dir, "terraform")
         pack_terraform.write_workspace(files, out_dir)
         resources = sum(len(re.findall(r'(?m)^resource "', body)) for body in files.values())
@@ -8890,6 +9115,9 @@ async def health():
         "is_git_checkout": _is_git_checkout(),
         "in_container": in_container,
         "tls": _tls_status(),
+        # Whether stores are being encrypted, and why not when they cannot be
+        # (e.g. a read-only container with no /data volume).
+        "store_encryption": _store_encryption_health(),
         # The branch this install is on (main unless it was switched from the
         # Update app card) and what it can be switched to; latest_commit is
         # GitHub's tip of that same branch, so "update available" is honest.
@@ -8898,6 +9126,14 @@ async def health():
         "latest_commit": _latest_remote_commit(hb),
         "latest_commit_error": _latest_error(hb),
     }
+
+
+def _store_encryption_health() -> Dict[str, Any]:
+    try:
+        import store_crypto
+        return store_crypto.health_view()
+    except Exception as e:  # noqa: BLE001 - health must answer
+        return {"enabled": None, "sealing": False, "problem": type(e).__name__}
 
 
 # GitHub's tip per branch: {branch: {"at", "sha", "error"}}, cached 10 minutes.
@@ -10810,9 +11046,14 @@ async def assess_stream(req: AssessRequest):
                 _v = str(getattr(req, _attr, "") or "").strip()
                 if _v and _op.valid_id(_v):
                     setattr(client, _attr, _v)
-            auth_result = await asyncio.to_thread(client.auth)
+            try:
+                auth_result = await asyncio.to_thread(client.auth)
+            except Exception:
+                _tenant_session.forget()   # a failed sign-in ends the signed-in tenant (as Authenticate's does)
+                raise
 
             if auth_result is not True:
+                _tenant_session.forget()   # never a silent fall back to the sign-in kept before
                 reason = ""
                 if isinstance(auth_result, tuple) and len(auth_result) == 2:
                     reason = str(auth_result[1])
@@ -10820,6 +11061,10 @@ async def assess_stream(req: AssessRequest):
                 yield _sse("error", {"message": f"Authentication failed: {reason[:200]}"})
                 return
 
+            if not _offline.is_offline_creds(creds):
+                # The assessment's own sign-in worked: remembered like Authenticate's (tenant_session).
+                _tenant_session.remember(creds, profile_id=str(req.profile_id or "").strip(),
+                                         label=tenant_auth.record_label(creds), method=creds["auth_method"])
             yield _sse("auth", {"status": "ok", "auth_method": creds["auth_method"],
                                 "note": ("Signed in through the classic ZIA API: ZIA checks only; ZPA, Client Connector and ZDX checks "
                                          "are reported as not available.") if creds["auth_method"] == tenant_auth.LEGACY else ""})
@@ -12267,8 +12512,58 @@ async def report_data_flow(req: DataFlowRequest):
         import traceback
         print(f"[error] data flow map: {type(e).__name__}: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"The tracer failed ({type(e).__name__}: {str(e)[:300]}). The full traceback is in server.log; please report it.")
+    # Traffic shares (optional): one ZIA Insights query when Insights is in
+    # scope, so the moving picture can weight each path by real uploads.
+    # Any failure, or no answer within its own time limit, leaves the map
+    # as it was, with the reason.
+    await _dataflow_traffic_bounded(req, report)
     rid = _remember_report("dataflow", report, _report_label(req))
     return _REPORTS[rid]
+
+
+# The Insights read gets its own time limit, so a slow Insights answer
+# never holds up the whole map.
+DATAFLOW_TRAFFIC_TIMEOUT_S = 20
+
+
+async def _dataflow_traffic_bounded(req: Any, report: Dict[str, Any]) -> None:
+    """_dataflow_traffic within DATAFLOW_TRAFFIC_TIMEOUT_S. The read works
+    on its own copy of what it needs, so an answer that comes after the
+    time limit is dropped and never changes the report."""
+    import data_flow
+    part: Dict[str, Any] = {"traces": report.get("traces") or [], "snapshot": report.get("snapshot") or {}}
+    try:
+        await asyncio.wait_for(asyncio.to_thread(_dataflow_traffic, req, part), timeout=DATAFLOW_TRAFFIC_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        data_flow.attach_traffic(report, None, data_flow.traffic_timeout_reason(DATAFLOW_TRAFFIC_TIMEOUT_S))
+        return
+    report["traffic"] = part.get("traffic") or data_flow.traffic_unavailable(data_flow.TRAFFIC_NOT_IN_SCOPE)
+
+
+def _dataflow_traffic(req: Any, report: Dict[str, Any]) -> None:
+    """report["traffic"]: the Data Flow Map's bytes per traffic class from
+    ZIA Insights (Shadow IT), read only when the Scope page ticks ZIA
+    Insights and the sign-in can read it; else why not. Read-only, never
+    raises, never names a secret."""
+    import data_flow
+    creds: Dict[str, Any] = {}
+    try:
+        sc, _ch, _src = _scope_selection(req)
+        if "insights" not in sc:
+            data_flow.attach_traffic(report, None, data_flow.TRAFFIC_NOT_IN_SCOPE)
+            return
+        creds = _tenant_creds(req)
+        if _offline_client(creds, "sdk") is None and tenant_auth.normalize(creds)["auth_method"] == tenant_auth.LEGACY:
+            data_flow.attach_traffic(report, None, data_flow.TRAFFIC_LEGACY)
+            return
+        sdk = _build_sdk_client(creds)
+        read = data_flow.read_traffic(getattr(sdk, "zins", None), scrub=lambda s: tenant_auth.mask_secrets(s, creds))
+        data_flow.attach_traffic(report, read)
+    except HTTPException as e:
+        data_flow.attach_traffic(report, None, "Traffic numbers were not read (" + tenant_auth.mask_secrets(str(e.detail), creds)[:200]
+                                 + "). The picture counts paths, not bytes.")
+    except Exception as e:  # noqa: BLE001 — traffic numbers are optional
+        data_flow.attach_traffic(report, None, f"Traffic numbers were not read ({type(e).__name__}). The picture counts paths, not bytes.")
 
 
 # ── Live DLP Feed ────────────────────────────────────────────────────
@@ -14923,7 +15218,10 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
     # 4. User device: ZPA first
     if zst is None and zsnap is not None:
         _log("Placing the destination in ZPA: application segment, bypass, client forwarding, access policy…")
-        zst = zpa_path.stage(zsnap, d, network=req.network, platform=req.platform, profiles=profiles, identity=zident)
+        # The device's posture, when given on the page (identity.device.posture_pass): the posture profiles it passes.
+        dev_in = (req.identity or {}).get("device") if isinstance(req.identity, dict) else None
+        zposture = zpa_path.given_posture(zsnap, dev_in.get("posture_pass")) if isinstance(dev_in, dict) and dev_in.get("posture_pass") else None
+        zst = zpa_path.stage(zsnap, d, network=req.network, platform=req.platform, profiles=profiles, identity=zident, posture=zposture)
         _log("ZPA: " + zst["headline"])
     if zst is not None and zst.get("carries") is True:
         res = zpa_path.standalone(zst["hops"], zst["modules"], outcome=zst["outcome"], headline=zst["headline"], summary=zst["summary"],
@@ -15370,6 +15668,37 @@ class SslCoverageRequest(ScopedTenantCredsRequest):
     numbers ("7d" or "30d") and whether to ask ZIA Insights for them."""
     window: str = "7d"
     include_volume: bool = True
+    # A traffic log report held in memory (POST /api/traffic-logs/analyze)
+    # whose ZIA web lines give the measured true inspection coverage.
+    logs_report_id: str = ""
+    # The admin's own figure (GB, from firewall or egress logs, same period)
+    # for web traffic that never reaches ZIA; counted as not inspected in
+    # the "including traffic that never reaches ZIA" figure. None: unknown.
+    bypass_gb: Optional[float] = None
+
+
+_SSL_LOGS_ID = re.compile(r"\Atlogs-[A-Za-z0-9_-]{6,40}\Z")
+SSL_BYPASS_MAX_GB = 1e9   # an exabyte: more than any tenant sends around ZIA in 30 days
+
+
+def _ssl_coverage_logs(rid: str) -> Optional[Dict[str, Any]]:
+    """The ZIA web SSL section of a traffic log report for the true
+    inspection coverage, checked before any sign-in: a malformed id, a
+    report no longer in memory, one this person may not open (team mode)
+    or one without ZIA web lines is a 400 with the reason. No tenant call."""
+    rid = str(rid or "").strip()
+    if not rid:
+        return None
+    if not _SSL_LOGS_ID.match(rid):
+        raise HTTPException(status_code=400, detail="The web logs reference is not a traffic log report id. Nothing was read.")
+    rep = _REPORTS.get(rid)
+    if not rep or not _team.may_reach("report_id", rid, "read"):
+        raise HTTPException(status_code=400, detail=("The uploaded web logs are no longer in memory (or not yours to use). Upload them again "
+                                                     "on the Traffic and session logs page. Nothing was read."))
+    web = ((rep.get("zia") or {}).get("zia_web") or {})
+    if not isinstance(web.get("ssl"), dict):
+        raise HTTPException(status_code=400, detail="Those logs hold no ZIA web traffic, so they cannot give the inspection coverage. Nothing was read.")
+    return {"ssl": web["ssl"], "period": dict(rep.get("period") or {}), "records": web.get("records"), "report_id": rid}
 
 
 def _ssl_coverage_inputs(req: SslCoverageRequest) -> Dict[str, Any]:
@@ -15385,6 +15714,11 @@ def _ssl_coverage_inputs(req: SslCoverageRequest) -> Dict[str, Any]:
     window = str(req.window or "7d").strip()
     if window not in ssl_coverage.WINDOWS:
         raise HTTPException(status_code=400, detail="The window must be the last 7 days or the last 30 days. Nothing was read.")
+    logs = _ssl_coverage_logs(req.logs_report_id)
+    bypass = req.bypass_gb
+    if bypass is not None and (isinstance(bypass, bool) or not 0 <= float(bypass) <= SSL_BYPASS_MAX_GB):
+        raise HTTPException(status_code=400, detail=(f"The traffic that bypasses ZIA must be a number of GB from 0 to {SSL_BYPASS_MAX_GB:,.0f}. "
+                                                     "Nothing was read."))
     creds = _tenant_creds(req)
     plan = {"ask": False, "window": window, "reason": ""}
     if not req.include_volume:
@@ -15396,7 +15730,8 @@ def _ssl_coverage_inputs(req: SslCoverageRequest) -> Dict[str, Any]:
         plan["reason"] = "Traffic numbers need a OneAPI API client: the classic ZIA API sign-in cannot read ZIA Insights."
     else:
         plan["ask"] = True
-    return {"scope": sel, "creds": creds, "label": tenant_auth.record_label(creds), "volume": plan}
+    return {"scope": sel, "creds": creds, "label": tenant_auth.record_label(creds), "volume": plan, "logs": logs,
+            "bypass_bytes": None if bypass is None else float(bypass) * 1e9}
 
 
 def _ssl_coverage_clients(req: SslCoverageRequest, inp: Dict[str, Any]):
@@ -15417,7 +15752,8 @@ def _run_ssl_coverage(client, sdk, inp: Dict[str, Any], log, cancel) -> Dict[str
     import ssl_coverage
     try:
         rep = ssl_coverage.run(client, inp["scope"], zins=getattr(sdk, "zins", None), volume_plan=inp["volume"], log=log, cancel=cancel,
-                               scrub=lambda s: tenant_auth.mask_secrets(s, inp["creds"]))
+                               scrub=lambda s: tenant_auth.mask_secrets(s, inp["creds"]), web_logs=inp.get("logs"),
+                               bypass_bytes=inp.get("bypass_bytes"))
     finally:
         _close_quietly(client)
     if rep.get("stopped"):
@@ -15604,6 +15940,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if problem:
         print(f"\n  Could not start: {problem}\n", file=sys.stderr)
         return 2
+    # Encrypted stores are on by default (store_crypto): stores an earlier
+    # version wrote in plain text are encrypted once, here, before anything is
+    # served (a verified backup first; resumable; never stops the app).
+    import store_crypto
+    store_crypto.startup(print)
     all_interfaces = "0.0.0.0"  # nosec B104 # compared below to word the address and a notice; binds nothing
     # Inside the container the server listens on 0.0.0.0 and docker-compose
     # publishes it on the host's 127.0.0.1 only, so the address a person

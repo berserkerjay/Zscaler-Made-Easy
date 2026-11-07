@@ -243,7 +243,7 @@ CHANNEL_READS: Dict[str, Sequence[str]] = {
                               "B.8", "B.9", "B.11", "B.16", "B.17"),
     "/zia/endPointDlpResourceGroups": ("B.17",),
     "/zia/dlpEndpointResource": ("B.17",),
-    "/zia/emailDlpRules": ("MC.4", "8.9", "D.2", "D.3", "D.4", "D.5", "D.6", "D.7", "D.8", "D.9"),
+    "/zia/emailDlpRules": ("MC.4", "8.9", "D.1", "D.2", "D.3", "D.4", "D.5", "D.6", "D.7", "D.8", "D.9"),
     "/zia/casbDlpRules": ("MC.3", "8.10", "C.2", "C.3", "C.4", "C.5", "C.6", "C.7", "C.8"),
     "/zia/casbTenant": ("C.1", "C.3", "D.1", "D.6", "SAAS.1", "SAAS.3"),
     "/zia/casbMalwareRules": ("SAAS.1", "SAAS.2"),

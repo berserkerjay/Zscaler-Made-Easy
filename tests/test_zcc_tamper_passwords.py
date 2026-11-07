@@ -15,6 +15,7 @@ import re
 import time
 
 import pytest
+from conftest import read_store_text
 
 import admin_ops as ao
 import ops_zcc as oz
@@ -172,7 +173,7 @@ def test_an_error_that_echoes_the_body_is_masked_everywhere(how, tmp_path):
     failed = next(u for u in res["items"] if u["key"] == "app")
     assert failed["status"] == "failed" and "********" in failed["error"]
     rec = ao.record(res, by=ASSESSOR)
-    sinks = [json.dumps(res), "\n".join(logs), (tmp_path / "audit.log").read_text(), json.dumps(rec)]
+    sinks = [json.dumps(res), "\n".join(logs), read_store_text(tmp_path / "audit.log"), json.dumps(rec)]
     assert not _leaks("\n".join(sinks), CANARIES)
 
 
@@ -183,7 +184,7 @@ def test_the_record_and_its_undo_hold_no_password(tmp_path):
     res = apply(sdk, s, plan(sdk, s))
     rec = ao.record(res, by=ASSESSOR)
     assert rec["inverse"]["type"] == oz.DELETE and "tamper" in json.dumps(rec["spec"])
-    files = (tmp_path / "deployments.json").read_text() + (tmp_path / "audit.log").read_text()
+    files = read_store_text(tmp_path / "deployments.json") + read_store_text(tmp_path / "audit.log")
     assert not _leaks(files, CANARIES) and "set (hidden)" in files
 
 
@@ -267,8 +268,8 @@ def test_preview_and_apply_through_the_routes_leave_no_password_in_any_sink(api,
     assert done["result"]["status"] == "applied", done
     assert sent_app(sdk)[0]["windowsPolicy"]["uninstall_password"] == PW["uninstall"]
     texts += [r.text, json.dumps(done), c.get("/api/operations").text, c.get(f"/api/operations/{done['result']['operation_id']}").text,
-              (tmp_path / "audit.log").read_text() if (tmp_path / "audit.log").exists() else "",
-              open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read(), open(os.environ["DLP_CHECK_DEPLOYMENTS"], encoding="utf-8").read()]
+              read_store_text(tmp_path / "audit.log") if (tmp_path / "audit.log").exists() else "",
+              read_store_text(os.environ["DLP_CHECK_AUDIT"]), read_store_text(os.environ["DLP_CHECK_DEPLOYMENTS"])]
     out = capsys.readouterr()
     texts += [out.out, out.err]
     assert not _leaks("\n".join(texts), CANARIES)

@@ -1032,6 +1032,8 @@ def workbook(report: Dict[str, Any]) -> bytes:
                  rows=[[r.get("order"), r["name"], r.get("action"), "no" if r.get("disabled") else "yes", r["sentence"], r["text"],
                         "; ".join(f"{p['name']} ({p['family_label']}, {SENSE_WORDS.get(p['sense'], p['sense']).lower()})" for p in r.get("posture") or []),
                         ", ".join(r.get("flags") or [])] for r in report.get("rules") or []])
+    import posture_cross
+    posture_cross.sheets(wb, report)
     return wb.to_bytes()
 
 

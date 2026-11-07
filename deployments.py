@@ -19,7 +19,7 @@ import secrets
 import tempfile
 import threading
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import safe_files
 import store_crypto
@@ -140,6 +140,21 @@ def list_all(tenant_label: Optional[str] = None) -> List[Dict[str, Any]]:
         rows = [r for r in rows if r.get("tenant_label") == tenant_label]
     rows.sort(key=lambda r: r.get("at") or "", reverse=True)
     return [summary(r) for r in rows]
+
+
+def created_in(same_tenant) -> List[Tuple[str, str]]:
+    """(kind, id) of every object a deployment record says this app created
+    and that was not undone since, for the records `same_tenant(record)`
+    accepts (the caller checks the tenant). Provenance for a removal of
+    objects found under the managed-name prefix (pack_removal)."""
+    out: List[Tuple[str, str]] = []
+    for r in _read()["deployments"]:
+        if not isinstance(r, dict) or not same_tenant(r):
+            continue
+        for c in r.get("created") or []:
+            if isinstance(c, dict) and not c.get("undone") and c.get("id") is not None and c.get("kind") in UNDOABLE_KINDS:
+                out.append((str(c["kind"]), str(c["id"])))
+    return out
 
 
 def get(dep_id: str) -> Optional[Dict[str, Any]]:

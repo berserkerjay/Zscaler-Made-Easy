@@ -12,6 +12,7 @@ const origin = new URL(base).origin;
 await fs.mkdir(profile, {recursive:true});
 await fs.mkdir(artifactDir, {recursive:true});
 const cases = [], runtimeErrors = [], consoleErrors = [], responses = [], blockedExternal = [];
+const embedNet = [];
 let browser, ws, sequence = 0, clickSequence = 0, failMapOnce = false, failure, spawnError = null;
 const harnessEvents = [];
 const pending = new Map();
@@ -21,22 +22,35 @@ const started = Date.now();
 let stderr = '';
 const watchdog = setTimeout(() => { browser?.kill('SIGKILL'); process.stderr.write('Browser acceptance exceeded 300 seconds\n'); process.exit(2); },300000);
 
-function send(method, params = {}) {
+function send(method, params = {}, sessionId) {
   return new Promise((resolve,reject) => {
     const id = ++sequence;
     const timer = setTimeout(() => { pending.delete(id); reject(new Error('CDP timed out: '+method)); }, 10000);
     pending.set(id,{resolve,reject,timer});
-    ws.send(JSON.stringify({id,method,params}));
+    ws.send(JSON.stringify(sessionId ? {id,method,params,sessionId} : {id,method,params}));
   });
 }
+const FETCH_PATTERNS = {patterns:[{urlPattern:'*',requestStage:'Request'}]};
 async function event(message) {
+  // A frame Chrome hosts as its own target (since Chrome 157 a sub-frame whose load failed shows its
+  // error page as one, and the retry's navigation is reported there, not on the page): attach to it,
+  // so its requests are recorded, and blocked off-origin, like the page's own.
+  const sid = message.sessionId;
+  if (message.method === 'Target.attachedToTarget') {
+    const child = message.params.sessionId;
+    harnessEvents.push({type:'child-target',target:message.params.targetInfo.type,at_ms:Date.now()-started});
+    await Promise.all([send('Network.enable',{},child),send('Fetch.enable',FETCH_PATTERNS,child),
+                       send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true},child)]).catch(()=>{});
+    await send('Runtime.runIfWaitingForDebugger',{},child).catch(()=>{});
+    return;
+  }
   if (message.method === 'Page.javascriptDialogOpening') {
     const answer=dialogAnswers.shift();
     if(!answer || answer.type!==message.params.type){
-      await send('Page.handleJavaScriptDialog',{accept:false});
+      await send('Page.handleJavaScriptDialog',{accept:false},sid);
       throw Error('Unexpected production dialog: '+message.params.type+' '+message.params.message);
     }
-    await send('Page.handleJavaScriptDialog',{accept:true,promptText:answer.text});
+    await send('Page.handleJavaScriptDialog',{accept:true,promptText:answer.text},sid);
   }
   if (message.method === 'Runtime.exceptionThrown') runtimeErrors.push(message.params.exceptionDetails);
   if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') consoleErrors.push(message.params.entry);
@@ -44,16 +58,21 @@ async function event(message) {
     const response=message.params.response;
     responses.push({url:response.url,status:response.status,headers:response.headers});
   }
+  // The embedded reference's network story, for a failure message that says what Chrome did.
+  if (/^Network\.(requestWillBeSent|responseReceived|loadingFailed|loadingFinished)$/.test(message.method) || message.method==='Fetch.requestPaused') {
+    const p=message.params, url=p.request?.url||p.response?.url||'';
+    if (url.includes('/reference/embed/') || embedNet.some(e=>e.id===p.requestId)) embedNet.push({m:message.method.split('.')[1],id:p.requestId,url:url.slice(-60),status:p.response?.status,err:p.errorText,type:p.type,frame:(p.frameId||'').slice(-6),at:Date.now()-started});
+  }
   if (message.method === 'Fetch.requestPaused') {
     const {requestId,request} = message.params;
     const url = new URL(request.url);
     if (url.origin !== origin && !['data:','about:','blob:'].includes(url.protocol)) {
       blockedExternal.push(request.url);
-      await send('Fetch.failRequest',{requestId,errorReason:'BlockedByClient'});
+      await send('Fetch.failRequest',{requestId,errorReason:'BlockedByClient'},sid);
     } else if (failMapOnce && url.pathname === '/reference/embed/portfolio-map') {
       failMapOnce=false;
-      await send('Fetch.failRequest',{requestId,errorReason:'Failed'});
-    } else await send('Fetch.continueRequest',{requestId});
+      await send('Fetch.failRequest',{requestId,errorReason:'Failed'},sid);
+    } else await send('Fetch.continueRequest',{requestId},sid);
   }
 }
 async function evaluate(expression) {
@@ -162,7 +181,8 @@ try {
   await Promise.all([send('Page.enable'),send('Runtime.enable'),send('Log.enable'),send('Network.enable')]);
   await send('Emulation.setFocusEmulationEnabled',{enabled:true});
   await send('Page.bringToFront');
-  await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});
+  await send('Fetch.enable',FETCH_PATTERNS);
+  await send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true});
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
   await send('Page.addScriptToEvaluateOnNewDocument',{source:`window.__acceptanceLifecycle=[];window.__acceptanceNativeClicks=[];const recordLifecycle=type=>{__acceptanceLifecycle.push({type,hidden:document.hidden,focused:document.hasFocus(),at:performance.now()});if(__acceptanceLifecycle.length>50)__acceptanceLifecycle.shift();};document.addEventListener('visibilitychange',()=>recordLifecycle('visibility'));window.addEventListener('focus',()=>recordLifecycle('focus'));window.addEventListener('blur',()=>recordLifecycle('blur'));window.addEventListener('pagehide',()=>recordLifecycle('pagehide'));matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',e=>recordLifecycle('motion:'+e.matches));document.addEventListener('click',e=>{const t=e.target.closest('button,a');if(t){__acceptanceNativeClicks.push({id:t.id,action:t.dataset.action,text:t.textContent.slice(0,80),trusted:e.isTrusted,at:performance.now()});if(__acceptanceNativeClicks.length>50)__acceptanceNativeClicks.shift();}},true);window.__acceptanceCsp=[];window.addEventListener('securitypolicyviolation',e=>__acceptanceCsp.push({directive:e.violatedDirective,blocked:e.blockedURI}));try{if(!sessionStorage.getItem('__acceptanceScopeStarted')){localStorage.setItem('zassess_scopes_live_v1',JSON.stringify({scopes:['dlp']}));localStorage.setItem('zassess_channels_v1',JSON.stringify({web_dlp:{choice:'zscaler'},endpoint_dlp:{choice:'zscaler'},email_dlp:{choice:'zscaler'},saas_casb:{choice:'zscaler'},ssl_inspection:{choice:'zscaler'},workflow_automation:{choice:'zscaler'}}));}}catch(e){}`});
@@ -248,8 +268,13 @@ try {
     assert.notEqual(await evaluate(`document.getElementById('mapFrame').src`),first);
     assert((await evaluate(`document.getElementById('mapFrame').contentDocument.title`)).includes('Portfolio Map'));
     assert.equal(await evaluate(`document.getElementById('mapFrame').contentWindow.__acceptanceCsp.length`),0);
-    const response=responses.findLast(r=>new URL(r.url).pathname==='/reference/embed/portfolio-map' && r.status===200);
-    assert(response,'No real HTTP response for embedded portfolio');
+    // CDP delivers Network.* events on their own channel, so the recorded response can land a
+    // moment after the child's ready handshake (seen on macOS runners). Wait for the event; the
+    // assertion itself is unchanged.
+    const findEmbed=()=>responses.findLast(r=>new URL(r.url).pathname==='/reference/embed/portfolio-map' && r.status===200);
+    for(let i=0;i<80&&!findEmbed();i++)await sleep(75);
+    const response=findEmbed();
+    assert(response,'No real HTTP response for embedded portfolio; embed network: '+JSON.stringify(embedNet)+'; frame: '+JSON.stringify(await evaluate(`({src:document.getElementById('mapFrame').src,url:document.getElementById('mapFrame').contentWindow.location.href,ua:navigator.userAgent})`)));
     const headers=Object.fromEntries(Object.entries(response.headers).map(([k,v])=>[k.toLowerCase(),v]));
     assert.equal(headers['x-frame-options'],'SAMEORIGIN');assert(headers['content-security-policy'].includes("frame-ancestors 'self'"));
     await screenshot('portfolio-embedded-loaded');

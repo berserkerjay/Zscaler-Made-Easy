@@ -18,6 +18,7 @@ import re
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 from starlette.routing import Mount, Route, WebSocketRoute
 
@@ -194,10 +195,18 @@ def test_the_static_mount_holds_only_shipped_assets_and_resists_traversal(gate_o
     mounts = [r for r in srv.app.routes if isinstance(r, Mount)]
     assert [m.path for m in mounts] == ["/static"]
     allowed = {".html", ".js", ".css", ".svg", ".png", ".webp", ".jpg", ".jpeg", ".gif", ".ico", ".woff2", ".md"}
+    samples = os.path.join(srv.STATIC_DIR, "samples")
     for root, _dirs, files in os.walk(srv.STATIC_DIR):
         for f in files:
             full = os.path.join(root, f)
             assert not os.path.islink(full), full
+            if root == samples and f.endswith(".jsonl"):
+                # The made-up web logs the Traffic logs page offers (static/traffic_logs.js): every
+                # line is a sample event of the made-up tenant, never a real user or address.
+                with open(full, encoding="utf-8") as fh:
+                    events = [json.loads(ln)["event"] for ln in fh if ln.strip()]
+                assert events and all(str(e.get("login", "")).endswith(".example") for e in events), full
+                continue
             assert os.path.splitext(f)[1].lower() in allowed, f"unexpected file type served without the token: {full}"
     for probe in ("/static/../security.py", "/static/%2e%2e/security.py", "/static/..%2fsecurity.py", "/static/%2e%2e%2fui_token.txt"):
         r = gate_on.get(probe)
@@ -264,7 +273,7 @@ def test_a_non_ascii_token_is_a_401_that_is_audited_not_a_500(gate_on, monkeypat
     monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
     status, body = _asgi("GET", "/api/health", [("host", "127.0.0.1:8000"), (security.UI_TOKEN_HEADER, header)])
     assert status == 401 and b"token_required" in body
-    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(log).splitlines()]
     assert [e["reason"] for e in events if e["event"] == "auth_denied"] == ["invalid UI token"]
 
 
@@ -520,14 +529,14 @@ def test_a_failed_unlock_is_audited_as_denied_and_never_credited_to_the_token_ho
     log = tmp_path / "audit.log"
     monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
     assert gate_on.post("/api/auth/unlock", json={"token": WRONG}).status_code == 401
-    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(log).splitlines()]
     denied = [e for e in events if e["event"] == "auth_denied"]
     assert [(e["path"], e["actor"]) for e in denied] == [("/api/auth/unlock", security.NOT_SIGNED_IN)]
     assert {e["actor"] for e in events} == {security.NOT_SIGNED_IN}, "no line credits the attempt to the local UI token"
-    assert WRONG not in log.read_text(encoding="utf-8") and TOKEN not in log.read_text(encoding="utf-8")
+    assert WRONG not in read_store_text(log) and TOKEN not in read_store_text(log)
     # Boundary: a request that does carry the token is still credited to it.
     assert gate_on.post("/api/tenant/check", json={}, headers={security.UI_TOKEN_HEADER: TOKEN}).status_code != 401
-    last = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    last = json.loads(read_store_text(log).splitlines()[-1])
     assert last["actor"] == security.LOCAL_TOKEN_ACTOR
 
 

@@ -19,6 +19,7 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import siem_queries
@@ -479,7 +480,7 @@ def test_analysing_writes_nothing_and_logs_no_log_content(client, tmp_path):
     assert r.status_code == 200
     after = {d: _files_under(d) for d in data_dirs if os.path.isdir(d)}
     assert after == before
-    audit = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read() if os.path.exists(os.environ["DLP_CHECK_AUDIT"]) else ""
+    audit = read_store_text(os.environ["DLP_CHECK_AUDIT"]) if os.path.exists(os.environ["DLP_CHECK_AUDIT"]) else ""
     assert "/api/traffic-logs/analyze" in audit and "ua.json" in audit
     assert "secret.user" not in audit and "hidden-host" not in audit
     assert client.get("/api/traffic-logs/saved").json() == {"reports": []}
@@ -507,16 +508,16 @@ def test_save_writes_an_owner_only_counts_only_file_that_opens_lists_and_deletes
     assert r.status_code == 200
     name = r.json()["saved"]["name"]
     path = tmp_path / "saved" / name
-    assert path.is_file() and "secret.user" not in path.read_text()
+    assert path.is_file() and "secret.user" not in read_store_text(path)
     if os.name == "posix":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
     listed = client.get("/api/traffic-logs/saved").json()["reports"]
     assert [x["name"] for x in listed] == [name] and listed[0]["title"] == "Week 44<b>" and listed[0]["names"] is False
     opened = client.post(f"/api/traffic-logs/saved/{name}/open").json()
     assert opened["report_id"] != rid and opened["counts_only"] is True
-    assert "secret.user" not in open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    assert "secret.user" not in read_store_text(os.environ["DLP_CHECK_AUDIT"])
     named = client.post(f"/api/traffic-logs/report/{rid}/save", json={"names": True}).json()["saved"]
-    assert "secret.user" in (tmp_path / "saved" / named["name"]).read_text()
+    assert "secret.user" in read_store_text(tmp_path / "saved" / named["name"])
     assert client.delete(f"/api/traffic-logs/saved/{name}").status_code == 200
     assert client.delete(f"/api/traffic-logs/saved/{name}").status_code == 404
 

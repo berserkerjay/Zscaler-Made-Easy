@@ -497,7 +497,8 @@ def test_the_connection_check_only_signs_in_and_reads_nothing(monkeypatch):
     assert r.status_code == 200, r.text
     body = r.json()
     assert built == ["acme"] and touched == [] and closed == [1]
-    assert set(body) == {"ok", "tenant_label", "auth_method", "problems", "access"} and body["ok"] is True
+    assert set(body) == {"ok", "tenant_label", "auth_method", "problems", "access", "signed_in"} and body["ok"] is True
+    assert body["signed_in"] is True   # kept in server memory (tenant_session): a flag, never the token or a read
     assert set(body["access"]) <= {"ok", "why", "products", "products_listed", "scopes", "expires_at", "issued_at", "source"}   # what the token says, never the token
     for key in ("dictionaries", "engines", "web_rules", "endpoint_rules", "saas_rules", "email_rules"):
         assert key not in body

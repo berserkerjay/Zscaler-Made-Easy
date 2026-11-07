@@ -85,7 +85,7 @@ def test_coverage_lists_each_product_and_what_is_written():
     levels = {r["key"]: r["level"] for p in cov["products"].values() for r in p}
     assert levels["zia.url_filtering_rules"] == "full" and levels["zia.advanced_settings"] == "update" and levels["zia.org_info"] == "read"
     bound = {r["key"] for p in cov["products"].values() for r in p if r["tenant_bound"]}
-    assert bound == {"zia.locations", "zia.static_ips", "zia.gre_tunnels"}
+    assert bound == {"zia.locations", "zia.sub_locations", "zia.static_ips", "zia.gre_tunnels"}
     assert not any(cb.writable(cb.BY_KEY[k]) for k in bound) and all(cb.writable(cb.BY_KEY[k], tenant_bound=True) for k in bound)
     assert all(r["why"] for p in cov["products"].values() for r in p if r["level"] == "read")
     assert sum(len(v) for v in cov["products"].values()) >= 80 and cov["not_covered"]
@@ -369,6 +369,23 @@ def test_a_sample_backup_reads_the_newer_application_profiles_api():
     assert "zcc.application_profiles" not in doc["meta"]["unread"], doc["meta"]["unread"].get("zcc.application_profiles")
     rows = doc["types"]["zcc.application_profiles"]
     assert sorted(int(r["id"]) for r in rows) == sorted(p["id"] for p in sample_tenant.APP_PROFILES)
+
+
+def test_a_sample_backup_holds_the_pra_credential_pools_and_zpa_isolation_profiles_without_secrets():
+    """ASVS V8.3.4 · CWE-359 · CWE-312 · WSTG-CONF-11: the sample tenant answers its PRA credential pools and ZPA isolation profiles, so a backup holds them (read, not unread); a pool names its credential by id and name only, and nothing secret is in either."""
+    import offline_tenant as ot
+    import sample_tenant
+    doc = cb.from_offline(ot.sample_store(reset=True))
+    pools, profiles = doc["types"]["zpa.pra_credential_pools"], doc["types"]["zpa.isolation_profiles"]
+    assert not {"zpa.pra_credential_pools", "zpa.isolation_profiles"} & set(doc["meta"]["unread"]), doc["meta"]["unread"]
+    assert [p["name"] for p in pools] == [p["name"] for p in sample_tenant.ZPA_PRA_CREDENTIAL_POOLS]
+    assert [c["id"] for c in pools[0]["credentials"]] == [sample_tenant.ZPA_PRA_CREDENTIALS[0]["id"]]
+    assert [p["name"] for p in profiles] == [p["name"] for p in sample_tenant.ZPA_ISOLATION_PROFILES]
+    import re
+
+    def keys(v):
+        return [k for x in v for k in ([*x.keys(), *keys(list(x.values()))] if isinstance(x, dict) else keys(x) if isinstance(x, list) else [])]
+    assert not [k for k in keys(pools + profiles) if re.search(r"password|passphrase|private_?key|secret|token", k, re.I)]
 
 
 def test_a_sample_backup_reads_the_gre_tunnels():

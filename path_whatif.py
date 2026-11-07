@@ -67,6 +67,26 @@ MAX_GROUPS = 20
 MAX_ENTRIES = 50
 SEARCH_LIMIT = 20
 SEARCH_KINDS = ("user", "group", "department", "location")
+# The device trust levels a ZIA rule names (deviceTrustLevels; zscaler-sdk-python
+# docstrings of url_filtering, cloudappcontrol, ssl_inspection_rules and
+# cloud_firewall_rules) and how the page says them.
+TRUST_LEVELS = {"HIGH_TRUST": "High trust", "MEDIUM_TRUST": "Medium trust", "LOW_TRUST": "Low trust",
+                "UNKNOWN_DEVICETRUSTLEVEL": "Unknown trust"}
+_TRUST_ALIASES = {"HIGH": "HIGH_TRUST", "MEDIUM": "MEDIUM_TRUST", "LOW": "LOW_TRUST", "UNKNOWN": "UNKNOWN_DEVICETRUSTLEVEL"}
+
+
+def trust_level(v: Any) -> Optional[str]:
+    """A device trust level as the ZIA rules name it, from HIGH_TRUST,
+    "High", "high trust" or a device record's "HIGH"; None when it is not
+    one. A Client Connector device record's deviceTrust values
+    HIGH / MEDIUM / LOW / UNKNOWN are the same levels the rules name
+    (the SDK documents the field, not its values)."""
+    # assumed: a device record's deviceTrust HIGH / MEDIUM / LOW / UNKNOWN are the levels the rules name.
+    s = re.sub(r"[^A-Z]+", "_", str(v or "").upper()).strip("_")
+    if s in TRUST_LEVELS:
+        return s
+    s = s.removesuffix("_TRUST")
+    return _TRUST_ALIASES.get(s)
 _QUERY = re.compile(r"^[^\x00-\x1f\x7f]{2,64}$")
 
 
@@ -130,7 +150,11 @@ def normalize_identity(raw: Any) -> Optional[Dict[str, Any]]:
             groups.append(r)
     ident = {"user": _ref(raw.get("user")), "groups": groups, "department": _ref(raw.get("department")),
              "location": _ref(raw.get("location"))}
-    if not any((ident["user"], ident["groups"], ident["department"], ident["location"])):
+    dev = raw.get("device") if isinstance(raw.get("device"), dict) else {}
+    trust = trust_level(dev.get("trust_level") or raw.get("device_trust"))
+    if trust:
+        ident["device_trust"] = trust
+    if not any((ident["user"], ident["groups"], ident["department"], ident["location"], trust)):
         return None
     return ident
 
@@ -147,6 +171,8 @@ def describe(ident: Optional[Dict[str, Any]]) -> str:
         parts.append(f"department {ident['department']['name']}")
     if ident.get("location"):
         parts.append(f"location {ident['location']['name']}")
+    if ident.get("device_trust"):
+        parts.append(f"device trust level {TRUST_LEVELS[ident['device_trust']]}" + (" (from the device you picked)" if ident.get("device_trust_from") == "device" else ""))
     return "; ".join(parts)
 
 
@@ -173,7 +199,9 @@ def _values(ident: Dict[str, Any], dim: str) -> Optional[List[Dict[str, Any]]]:
         return [ident["department"]] if ident.get("department") else None
     if dim == "locations":
         return [ident["location"]] if ident.get("location") else None
-    return None   # location groups, time windows, device trust, ...: never given
+    if dim == "device_trust":
+        return [{"id": ident["device_trust"], "name": ident["device_trust"]}] if ident.get("device_trust") else None
+    return None   # location groups, time windows, ...: never given
 
 
 def rule_criteria(rule: Dict[str, Any], ident: Optional[Dict[str, Any]]) -> Tuple[Optional[bool], List[Dict[str, Any]]]:
@@ -202,6 +230,8 @@ def rule_criteria(rule: Dict[str, Any], ident: Optional[Dict[str, Any]]) -> Tupl
             state = "unknown"
         else:
             hit = any(_same(i, v, EXCLUDED.get(key, key) == "users") for i in items[key] for v in vals)
+            if key == "device_trust" and any(str(i.get("name") or "").upper() == "ANY" for i in items[key]):
+                hit = True   # ANY: every trust level
             # An exclusion is met when the identity is NOT in it.
             state = ("nomatch" if hit else "match") if key in EXCLUDED else ("match" if hit else "nomatch")
         crit.append({"dim": key, "name": f"{label}: " + ", ".join(names[:5]) + (f" (+{len(names) - 5})" if len(names) > 5 else ""),
@@ -374,8 +404,11 @@ def assumption(ident: Optional[Dict[str, Any]]) -> Optional[str]:
     if not ident:
         return None
     return (f"Evaluated for {describe(ident)}: rules scoped to this identity apply, rules scoped to others are skipped. "
-            "The groups given are taken as the user's only groups; location groups, time windows, device trust and the other "
-            "criteria stay conditional and are listed under 'Policy action also depends on'.")
+            "The groups given are taken as the user's only groups; location groups, time windows"
+            + ("" if ident.get("device_trust") else ", device trust") + " and the other "
+            "criteria stay conditional and are listed under 'Policy action also depends on'."
+            + (" A device trust level is the one Client Connector works out from the ZIA posture profile of the device's app "
+               "profile; rules that name other levels are skipped." if ident.get("device_trust") else ""))
 
 
 # ── Live lookup ────────────────────────────────────────────────────────

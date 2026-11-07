@@ -2133,6 +2133,14 @@ def _capture_rule(area: str, r: Dict[str, Any], n: int, skipped: List[Dict[str, 
     if area == "ssl":
         fields["min_tls"] = tls if re.fullmatch(r"TLS_1_[0-3]", tls) else "TLS_1_2"
         fields.setdefault("url_categories", [])
+        if not fields["url_categories"] and r.get("cloud_applications") not in (None, "", [], {}):
+            # Cloud applications are left out of a capture: a rule that matched
+            # only them would come back as a rule for all remaining traffic
+            # (a catch-all), e.g. "Do not decrypt Zoom" as do not decrypt anything.
+            skipped.append({"name": name, "area": AREAS[area]["label"], "field": "cloud_applications",
+                            "reason": "it matched only cloud applications, which a framework leaves out; captured without them it would "
+                                      "match all remaining traffic, so the rule is not captured"})
+            return None
     if area == "dns" and action.startswith("REDIR"):
         fields["trusted_resolver"] = True
     used = [w for k, w in pack_export._TENANT_SCOPE.items() if r.get(k) not in (None, "", [], {})]

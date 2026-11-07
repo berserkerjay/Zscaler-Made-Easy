@@ -477,4 +477,9 @@ def test_the_field_has_help_and_the_builder_is_marked_new():
     cat = open(os.path.join(ROOT, "static", "help_catalog.js"), encoding="utf-8").read()
     assert '"#zsbHashes"' in cat and "MD5" in cat[cat.index('"#zsbHashes"'):cat.index('"#zsbHashes"') + 400]
     wn = open(os.path.join(ROOT, "static", "whats_new.js"), encoding="utf-8").read()
-    assert '"id": "sandbox-hashes", "release": "2026-10-31"' in wn and '"id": "threat-saas-checks", "release": "2026-10-31"' in wn
+    # While 2026-10-31 is one of the newest two releases they are marked; once rotated out (keep: 2) they stay in CHANGELOG.md.
+    if '"2026-10-31":' in wn.split('"skipped"')[0]:
+        assert '"id": "sandbox-hashes", "release": "2026-10-31"' in wn and '"id": "threat-saas-checks", "release": "2026-10-31"' in wn
+    else:
+        assert "## 2026-10-31" in open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8").read()
+        assert '"id": "sandbox-hashes"' not in wn and '"id": "threat-saas-checks"' not in wn

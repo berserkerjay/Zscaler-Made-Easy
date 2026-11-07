@@ -67,8 +67,13 @@ def store_path() -> str:
     return os.environ.get("DLPCHECK_PROPOSALS_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), STORE_FILE)
 
 
+def _utcnow() -> datetime:
+    """The clock (one place, so tests can fix it: snoozes and dismissals expire)."""
+    return datetime.now(timezone.utc)
+
+
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return _utcnow().isoformat(timespec="seconds")
 
 
 def _read() -> Dict[str, Any]:
@@ -252,7 +257,7 @@ def build_proposals(rep: Dict[str, Any], tenant: str) -> List[Dict[str, Any]]:
 # ── the queue ──────────────────────────────────────────────────────────
 def _active(p: Dict[str, Any], now: Optional[datetime] = None) -> bool:
     """Is this stored proposal still holding (not expired dismissal / snooze)?"""
-    now = now or datetime.now(timezone.utc)
+    now = now or _utcnow()
     st = p.get("status")
     if st == "dismissed":
         try:
@@ -341,7 +346,7 @@ def list_queue(tenant: str, *, include_closed: bool = False) -> List[Dict[str, A
         data = _read()
         q = data["tenants"].get(tenant_key(tenant)) or {"proposals": {}}
         items = list(q["proposals"].values())
-    now = datetime.now(timezone.utc)
+    now = _utcnow()
     out = []
     for p in items:
         if p.get("status") in ("dismissed", "snoozed") and not _active(p, now):
@@ -358,7 +363,7 @@ def list_queue(tenant: str, *, include_closed: bool = False) -> List[Dict[str, A
 def summary(tenant: str) -> Dict[str, int]:
     with _LOCK:
         q = (_read()["tenants"].get(tenant_key(tenant)) or {"proposals": {}})["proposals"]
-    now = datetime.now(timezone.utc)
+    now = _utcnow()
     c = {"open": 0, "approved": 0, "snoozed": 0, "dismissed": 0, "applied": 0, "resolved": 0}
     for p in q.values():
         st = p.get("status")
@@ -412,7 +417,7 @@ def decide(tenant: str, pid: str, decision: str, *, by: str = "", note: str = ""
             p["status"] = "dismissed"
         elif decision == "snooze":
             p["status"] = "snoozed"
-            p["snoozed_until"] = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec="seconds")
+            p["snoozed_until"] = (_utcnow() + timedelta(days=days)).isoformat(timespec="seconds")
         else:
             p["status"] = "open"; p.pop("snoozed_until", None)
         q["updated_at"] = now

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import pytest
+from conftest import read_store_text
 import os
 import sys
 import types
@@ -30,12 +31,12 @@ def test_audit_logs_write_calls_with_redacted_bodies(monkeypatch, tmp_path):
     r = c.post("/api/tenant/check", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"})
     assert r.status_code == 200
     assert calls == ["closed"]
-    lines = [json.loads(x) for x in log.read_text().splitlines()]
+    lines = [json.loads(x) for x in read_store_text(log).splitlines()]
     assert len(lines) == 1
     e = lines[0]
     assert e["event"] == "api" and e["method"] == "POST" and e["path"] == "/api/tenant/check" and e["status"] == r.status_code
     assert e["body"]["client_secret"] == "[redacted]" and e["body"]["vanity_domain"] == "acme"
-    assert "secret-secret-secret" not in log.read_text()
+    assert "secret-secret-secret" not in read_store_text(log)
     assert "write_mode" in e and "ms" in e
     if os.name != "nt":
         assert oct(os.stat(log).st_mode & 0o777) == "0o600"
@@ -77,9 +78,9 @@ def test_profile_secret_goes_to_the_keyring_when_available(monkeypatch, tmp_path
     monkeypatch.setenv("DLP_CHECK_PROFILES", str(tmp_path / "profiles.json"))
     assert tp.secret_storage() == "keyring"
     row = tp.upsert({"name": "Acme", "vanity_domain": "acme", "client_id": "abc123456789"}, client_secret="s3cret", remember_secret=True)
-    raw = json.loads((tmp_path / "profiles.json").read_text())
+    raw = json.loads(read_store_text(tmp_path / "profiles.json"))
     stored = raw["profiles"][row["id"]]
-    assert stored[tp.SECRET_FIELD] == tp.KEYRING_MARK and "s3cret" not in (tmp_path / "profiles.json").read_text()
+    assert stored[tp.SECRET_FIELD] == tp.KEYRING_MARK and "s3cret" not in read_store_text(tmp_path / "profiles.json")
     assert store[("dlp-check", row["id"])] == "s3cret"
     assert tp.get(row["id"], with_secret=True)[tp.SECRET_FIELD] == "s3cret"
     assert tp.get(row["id"])["has_secret"] is True
@@ -96,7 +97,7 @@ def test_profile_secret_goes_to_the_file_without_keyring_only_when_opted_in(monk
     assert tp.secret_storage() == "none"
     row = tp.upsert({"name": "Beta", "vanity_domain": "beta", "client_id": "abc123456789"}, client_secret="plain", remember_secret=True)
     assert row["has_secret"] is False and "secret_warning" in row and row["secret_not_remembered"] == ["client_secret"]
-    assert "plain" not in (tmp_path / "profiles.json").read_text()
+    assert "plain" not in read_store_text(tmp_path / "profiles.json")
     monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
     assert tp.secret_storage() == "file"
     row = tp.upsert({"name": "Beta", "vanity_domain": "beta", "client_id": "abc123456789"}, client_secret="plain", remember_secret=True)

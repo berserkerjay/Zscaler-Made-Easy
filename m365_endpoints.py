@@ -325,11 +325,32 @@ class EndpointList:
         c = self.checked()
         return None if c is None else max(0.0, ((now or _now()) - c).total_seconds() / 86400)
 
+    @property
+    def bundled(self) -> bool:
+        """The excerpt shipped with the app (endpoint_snapshots), not a kept list."""
+        return self.meta.get("source") == "bundled"
+
+    @property
+    def partial(self) -> bool:
+        """An excerpt (bundled or the sample's): an entry in it is published, one not in it settles nothing."""
+        return self.meta.get("partial") is True
+
+    def max_age(self) -> int:
+        if self.bundled:
+            import endpoint_snapshots
+            return endpoint_snapshots.BUNDLED_MAX_AGE_DAYS
+        return max_age_days()
+
     def stale(self, now: Optional[_dt.datetime] = None) -> bool:
         if self.meta.get("source") == "sample":
             return False
         age = self.age_days(now)
-        return age is None or age > max_age_days()
+        return age is None or age > self.max_age()
+
+    def freshness(self, now: Optional[_dt.datetime] = None) -> Dict[str, str]:
+        import endpoint_snapshots
+        return endpoint_snapshots.freshness("Microsoft", present=True, stale=self.stale(now), age=self.age_days(now),
+                                            source=self.meta.get("source"), max_age=self.max_age())
 
     def describe(self) -> str:
         """'list version 2026100100, fetched 2026-10-30' (the words every
@@ -340,6 +361,9 @@ class EndpointList:
         v = f"list version {self.version}" if self.version else "list version not stated"
         if src == "sample":
             return "the sample tenant's short excerpt of Microsoft's list, not the real list"
+        if src == "bundled":
+            return (f"the bundled excerpt of Microsoft's {v} from {when.strftime('%Y-%m-%d') if when else 'an unknown date'}"
+                    f"{', checked ' + self.checked().strftime('%Y-%m-%d') if self.checked() else ''}")
         return f"{v}, {verb} {when.strftime('%Y-%m-%d') if when else 'on an unknown date'}"
 
     # matching
@@ -529,6 +553,16 @@ def status(now: Optional[_dt.datetime] = None) -> Dict[str, Any]:
         out.update(version=lst.version, source=lst.meta.get("source"), fetched_at=lst.meta.get("fetched_at"),
                    checked_at=lst.meta.get("checked_at"), age_days=None if age is None else round(age, 1), stale=lst.stale(now),
                    counts=dict(lst.counts), describe=lst.describe())
+    import endpoint_snapshots
+    b = endpoint_snapshots.m365_list()
+    if b is not None:
+        bage = b.age_days(now)
+        out["bundled"] = {"date": endpoint_snapshots.SNAPSHOT_DATE, "checked": endpoint_snapshots.CHECKED_DATE, "version": b.version, "age_days": None if bage is None else round(bage, 1), "stale": b.stale(now),
+                          "counts": dict(b.counts), "source_url": b.meta.get("source_url"), "describe": b.describe()}
+    use = lst if lst is not None else b
+    out["in_use"] = None if use is None else ("kept" if use is lst else "bundled")
+    out["freshness"] = use.freshness(now) if use is not None else endpoint_snapshots.freshness(
+        "Microsoft", present=False, stale=None, age=None, source=None, max_age=0)
     return out
 
 

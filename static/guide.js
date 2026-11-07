@@ -423,11 +423,27 @@ function _gdAuthStatus() {
   // Called on every 2.5 s render: it is a live region, so it is written
   // only when the status changes (a rewrite of the same words is announced
   // again by some screen readers, and asks every page observer to rescan).
+  // The page writes this element too (Authenticate, the signed-in tenant,
+  // Sign out of tenant): the guide writes only when its own state really
+  // changed, and never replaces words it did not write
+  // except with news of its own sign-in (Authenticating…, Signed in, Could not connect).
   const put = (cls, text) => { if (st.className !== cls) st.className = cls; if (st.textContent !== text) st.textContent = text; };
   const c = GD.conn;
-  if (GD.testing) { put('auth-status', 'Authenticating…'); return; }
-  if (!c || c.vd !== _gdIdent()) { put('auth-status', ''); return; }
-  put('auth-status ' + (c.ok ? 'ok' : 'bad'), c.ok ? `Signed in to ${c.label || c.name || 'the tenant'}. The tenant's configuration was not read; the readiness check in Start here says what this API client can do. Choose what to assess on the Scope page, then click Run assessment.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`);
+  const own = GD.testing || !!(c && c.vd === _gdIdent());   // news of the guide's own sign-in
+  let cls = 'auth-status', text = '';
+  if (GD.testing) text = 'Authenticating…';
+  else if (c && c.vd === _gdIdent()) {
+    cls = 'auth-status ' + (c.ok ? 'ok' : 'bad');
+    text = c.ok ? `Signed in to ${c.label || c.name || 'the tenant'}. The tenant's configuration was not read; the readiness check in Start here says what this API client can do. Choose what to assess on the Scope page, then click Run assessment.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
+  } else if (window.__zmeSignedIn && typeof window.zmeSignedInText === 'function') {
+    text = window.zmeSignedInText(window.__zmeSignedIn);   // the tenant signed in on any page (tenant_session)
+  }
+  const state = cls + '\n' + text;
+  if (GD.authShown === state) return;
+  const mine = GD.authShown === undefined || !st.textContent || st.textContent === GD.authText;
+  GD.authShown = state; GD.authText = text;
+  if (!own && !mine) return;   // the page's own newer words (Authenticate, Sign out of tenant) stay
+  put(cls, text);
 }
 function _gdConnHtml() {
   const c = GD.conn;

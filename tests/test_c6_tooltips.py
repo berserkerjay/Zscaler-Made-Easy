@@ -48,7 +48,7 @@ EXT_PAGES = {"ext:popup": "popup.html", "ext:options": "options.html", "ext:pane
 # Every page the app serves to a person, with the file behind it.
 PAGES = {
     "/": "index.html", "/simple": "simple.html", "/help": "help.html",
-    "/report/queue": "report_queue.html", "/report/zpa": "report_zpa.html", "/report/browser": "report_browser.html", "/report/ztw": "report_ztw.html",
+    "/report/queue": "report_queue.html", "/report/zpa": "report_zpa.html", "/report/browser": "report_browser.html", "/report/ztw": "report_ztw.html", "/report/soc-review": "report_soc_review.html",
     "/report/device-posture": "report_device_posture.html", "/report/digest": "report_digest.html",
     "/report/health": "report_health.html", "/report/exports": "report_exports.html",
     "/report/operations": "report_operations.html", "/report/todo": "report_todo.html",
@@ -356,6 +356,8 @@ TOURS = {
                     ["click", "#tab-diagnose"], ["fill", "#dDest", "git.corp.example"], ["click", "#dRun"], ["wait", "#zpWalk button"]],
     "/report/device-posture": [["click", "#dvRun"], ["wait", "#dvTabs:not([hidden])"]],
     "/report/browser": [["click", "#bwRun"], ["wait", "#expXlsx:not([hidden])"]],
+    "/report/soc-review": [["click", "#scTelRun"], ["wait", "#scDestH"], ["click", "#scRbacRun"], ["wait", "#scP_zidentity"],
+                           ["click", "#scBody .sc-filter button[data-st=\"review\"]"]],
     "/report/ztw": [["click", "#ztRun"], ["wait", "#expXlsx:not([hidden])"], ["click", "#ztBody .zt-filter button[data-st=\"REVIEW\"]"]],
     "/report/other-products": [["click", "#opRun"], ["wait", "#expXlsx:not([hidden])"]],
     "/report/insights": [["click", "#tiRun"], ["wait", "#tiGrid"]],

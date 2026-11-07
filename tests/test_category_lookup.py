@@ -359,7 +359,12 @@ def test_the_lookup_is_a_tab_of_the_path_analyzer_with_labelled_controls_and_hel
     for sel in ("#tab-cat", "#clText", "#clRun", "#clFresh"):
         assert f'"{sel}": {{' in cat_
     assert _read("static", "help_catalog.js") == _read("browser_extension", "help_catalog.js")
-    assert '"at": "#tab-cat"' in _read("static", "whats_new.js")
+    wn = _read("static", "whats_new.js")
+    # While 2026-10-31 is one of the newest two releases the tab is marked; once rotated out (keep: 2) it stays in CHANGELOG.md.
+    if '"2026-10-31":' in wn.split('"skipped"')[0]:
+        assert '"at": "#tab-cat"' in wn
+    else:
+        assert "## 2026-10-31" in _read("CHANGELOG.md") and '"id": "category-lookup"' not in wn and '"at": "#tab-cat"' not in wn
 
 
 def test_test_a_list_rows_and_find_anything_open_the_lookup():

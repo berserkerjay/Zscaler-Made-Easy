@@ -542,7 +542,12 @@ def test_the_stream_picture_renders_with_a_text_alternative(motion, page):
     assert m["alt"]["role"] == "img" and m["alt"]["label"] and len(m["alt"]["lines"]) >= 2
 
 
-@pytest.mark.parametrize("page", STREAMS)
+# The bypass picture's widths count bypass items, not traffic: its motion is
+# an opt-in extra, so it starts still in both modes.
+MOVING = ("zpa", "insights")
+
+
+@pytest.mark.parametrize("page", MOVING)
 def test_the_stream_picture_moves_and_a_keyboard_press_pauses_it(motion, page):
     """WCAG 2.2 SC 2.2.2 · SC 2.1.1: packets are on the links as soon as the picture is ready and move on their own, the toggle is reached by Shift+Tab from the picture, and Enter pauses every packet."""
     m = motion["normal"][page]
@@ -556,6 +561,13 @@ def test_the_stream_picture_moves_and_a_keyboard_press_pauses_it(motion, page):
 def test_the_stream_picture_is_still_under_reduced_motion_until_play(motion, page):
     """WCAG 2.2 SC 2.3.3 · SC 2.2.2: under reduced motion nothing moves and the toggle offers Play; pressing it by keyboard starts the packets."""
     m = motion["reduce"][page]
+    assert m["button0"] == "Play motion" and m["first"]["n"] == 0
+    assert m["focusIsToggle"] and m["button1"] == "Pause motion" and m["second"]["n"] > 0 and m["second"]["moved"]
+
+
+def test_the_bypass_picture_starts_still_and_play_is_opt_in(motion):
+    """WCAG 2.2 SC 2.2.2 · SC 2.1.1: the bypass widths count items, not traffic, so the picture starts still; Play by keyboard starts it."""
+    m = motion["normal"]["bypass"]   # reduced motion: the test above
     assert m["button0"] == "Play motion" and m["first"]["n"] == 0
     assert m["focusIsToggle"] and m["button1"] == "Pause motion" and m["second"]["n"] > 0 and m["second"]["moved"]
 

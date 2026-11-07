@@ -12,6 +12,7 @@ import os
 import re
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import zcc_otp as zo
@@ -73,7 +74,7 @@ BODY = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "
 
 def audit_lines(tmp_path):
     p = tmp_path / "audit.log"
-    return [ln for ln in p.read_text().splitlines() if '"zcc_otp"' in ln] if p.exists() else []
+    return [ln for ln in read_store_text(p).splitlines() if '"zcc_otp"' in ln] if p.exists() else []
 
 
 # ── The happy path, and what is kept ─────────────────────────────────
@@ -90,7 +91,7 @@ def test_an_authorised_admin_sees_the_otps_once_and_the_audit_names_the_device_n
     assert ("otp", {"udid": "UDID-AAA-1"}) in sdk.calls and built == [1]
     (line,) = audit_lines(tmp)
     assert '"result":"shown"' in line and '"by":"Jane Doe"' in line and '"device":"LT-0042"' in line and '"uninstallOtp"' in line
-    assert not _leaks((tmp / "audit.log").read_text(), CANARIES), "the audit log holds no OTP (nor the api entry)"
+    assert not _leaks(read_store_text(tmp / "audit.log"), CANARIES), "the audit log holds no OTP (nor the api entry)"
 
 
 def test_a_device_is_found_by_its_udid_too(api):

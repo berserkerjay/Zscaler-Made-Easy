@@ -20,6 +20,7 @@ import threading
 import time
 
 import pytest
+from conftest import audit_events, read_store_json, read_store_text
 from fastapi.testclient import TestClient
 
 import change_queue
@@ -118,7 +119,7 @@ def _audit_lines():
     p = os.environ["DLP_CHECK_AUDIT"]
     if not os.path.exists(p):
         return []
-    return [json.loads(x) for x in open(p, encoding="utf-8") if x.strip()]
+    return audit_events(p)
 
 
 def _steps():
@@ -148,7 +149,7 @@ def test_filing_a_preflight_keeps_the_servers_plan_and_names_the_requester_from_
     assert again.status_code == 409 and rec["id"] in again.json()["detail"]
     # No secret is stored; the store is owner-only.
     path = os.environ["DLPCHECK_CHANGE_QUEUE_FILE"]
-    raw = open(path, encoding="utf-8").read()
+    raw = read_store_text(path)
     assert CREDS["client_secret"] not in raw and CREDS["client_id"] not in raw
     if os.name == "posix":
         assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
@@ -318,7 +319,7 @@ def test_every_step_is_audited_with_its_actor(monkeypatch, tenant):
     assert refused and all(e["actor"] == "bob@example.com" for e in refused), "the HTTP call is in the log too (AuditMiddleware)"
     entry = next(e for e in _audit_lines() if e.get("event") == "change_request" and e.get("action") == "approved")
     assert entry["request"] == rid and entry["requested_by"] == "alice@example.com" and entry["four_eyes"] is True
-    assert CREDS["client_secret"] not in open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    assert CREDS["client_secret"] not in read_store_text(os.environ["DLP_CHECK_AUDIT"])
 
 
 # ── removal and recipe kinds ────────────────────────────────────────────
@@ -436,7 +437,7 @@ def test_two_writers_never_lose_each_others_requests(tmp_path):
     env = dict(os.environ)
     procs = [subprocess.Popen([sys.executable, "-c", code, ROOT, f"p{k}-"], env=env) for k in range(2)]
     assert all(p.wait(timeout=60) == 0 for p in procs)
-    data = json.load(open(os.environ["DLPCHECK_CHANGE_QUEUE_FILE"], encoding="utf-8"))
+    data = read_store_json(os.environ["DLPCHECK_CHANGE_QUEUE_FILE"])
     assert len(data["requests"]) == 2 * 25 + 2 * 20
     # Concurrent decisions on one request: exactly one wins.
     rec = change_queue.file_request(kind="fix_recipe", tenant="acme", tenant_label="acme", title="race", summary={}, items=[],

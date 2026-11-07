@@ -10,6 +10,7 @@ import json
 import zipfile
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import admin_ops as ao
@@ -542,7 +543,7 @@ def test_every_write_goes_through_the_shared_path_and_is_audited(tmp_path, monke
     monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
     t = Tenant()
     apply(t, {"type": "zia_baseline", "tier": "strict", "areas": ["ftc", "sandbox", "dns", "firewall"]})
-    lines = [json.loads(x) for x in (tmp_path / "audit.log").read_text().splitlines() if x.strip()]
+    lines = [json.loads(x) for x in read_store_text(tmp_path / "audit.log").splitlines() if x.strip()]
     writes = [x for x in lines if x.get("event") == "object_write" or x.get("action") == "object_write" or x.get("type") == "object_write"]
     assert len(writes) == len(t.writes) > 10
     assert {w[0] for w in t.writes} == {"file_type_control_rule", "sandbox_rules", "cloud_firewall_dns", "cloud_firewall_rules"}

@@ -13,6 +13,7 @@ import json
 import os
 
 import pytest
+from conftest import read_any_text, read_store_json, read_store_text
 from fastapi.testclient import TestClient
 
 import continuous_eval as ce
@@ -117,8 +118,7 @@ def _all_text(path):
     out = []
     for root, _dirs, files in os.walk(path):
         for f in files:
-            with open(os.path.join(root, f), encoding="utf-8", errors="replace") as fh:
-                out.append(fh.read())
+            out.append(read_any_text(os.path.join(root, f)))
     return "\n".join(out)
 
 
@@ -131,8 +131,7 @@ def test_the_digest_and_proposal_store_never_name_a_classic_tenant_by_its_stale_
     d = ce.run_once(build_client=lambda creds: object(), notify=False)
     t = d["tenants"][0]
     assert t["errors"] == [] and t["tenant"] == "classic API (zscalertwo)", t
-    with open(os.environ["DLPCHECK_PROPOSALS_FILE"], encoding="utf-8") as f:
-        store = f.read()
+    store = read_store_text(os.environ["DLPCHECK_PROPOSALS_FILE"])
     assert json.loads(store)["tenants"], "the run raised proposals"
     for text in (json.dumps(d, default=str), _all_text(os.environ["DLP_CHECK_DIGESTS"]), store, ce.to_markdown(d)):
         assert "acmecorp" not in text and "api-admin" not in text
@@ -159,8 +158,7 @@ def test_proposals_queued_under_the_stale_vanity_domain_move_to_the_classic_key(
     first = proposals.list_queue("acmecorp")[0]["id"]
     proposals.decide("acmecorp", first, "dismiss", by="Jay")
     ce.run_once(build_client=lambda creds: object(), notify=False)
-    with open(os.environ["DLPCHECK_PROPOSALS_FILE"], encoding="utf-8") as f:
-        data = json.load(f)
+    data = read_store_json(os.environ["DLPCHECK_PROPOSALS_FILE"])
     assert "acmecorp" not in data["tenants"]
     key = ce.proposal_key(tp.creds_from(tp.get(pid, with_secret=True)), pid)
     items = proposals.list_queue(key, include_closed=True)

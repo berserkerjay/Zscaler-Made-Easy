@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 
 import pytest
+from conftest import read_store_text
 
 from test_pov_rehearsal import POV_PARTS, SCOPE, SOURCES, _use_sample, offline  # noqa: F401 (fixture)
 
@@ -151,31 +152,48 @@ def test_a_simulated_apply_needs_the_confirmation_and_the_rehearsals_hash(offlin
         assert out["status"] == "plan_changed" and ot.store(out["simulation"]["source"]).writes == 0
 
 
-def test_a_rehearsed_pov_build_applies_to_the_simulation(offline):
-    """ASVS V1.14.1 · CWE-441: the whole rehearsed POV build applies to a simulation part by part, labelled a simulation; the sample is unchanged."""
+@pytest.mark.parametrize("source", list(SOURCES))
+def test_a_rehearsed_pov_build_applies_to_the_simulation_end_to_end(offline, source):
+    """ASVS V1.14.1 · CWE-441 · WSTG-BUSL-06: every POV part (the ZIA baseline with Cloud App Control, SSL certificates, the ZPA connector group, app segments and policy rules, Client Connector profiles, ZDX probes, AI Guard routing and policy) applies to the simulation of the sample or of a snapshot and reads back there; the base tenant is unchanged and no tenant is reached."""
     # Arrange
     c = offline["c"]
-    base = _use_sample(c)
-    parts = {k: copy.deepcopy(POV_PARTS[k]) for k in ("zia_baseline", "zpa_connector_group", "zpa_app_segments")}
-    # Cloud App Control and ZPA policy rules are left out: the offline tenant does not model
-    # the rule-type-partitioned policy-set endpoints (ZIA CAC rules per rule type do not read
-    # back as written; a ZPA policy set has no offline get, so a rule cannot be created offline).
-    # Modelling those is a sample-tenant change, outside this task's files; the simulation of the
-    # parts the offline tenant does read back (ZIA baseline, ZPA connector group and app segments,
-    # the segment built on the group created a step earlier) is proven here.
-    parts["zia_baseline"]["areas"] = ["firewall", "url", "ssl", "sandbox", "dns", "ftc"]
+    base = SOURCES[source](c)
+    before = copy.deepcopy(base.responses)
+    parts = copy.deepcopy(POV_PARTS)
     prev = c.post("/api/pov/build/preview", json=dict(SCOPE, parts=parts)).json()
+    assert prev["status"] == "ready", prev.get("blockers")
     # Act
     r = c.post("/api/offline/simulate/pov-build", json=dict(SCOPE, parts=parts, plan_hash=prev["plan_hash"], confirm=True,
                                                            confirm_text=prev["confirm_phrase"]))
     # Assert
     assert r.status_code == 200, r.text[:400]
     out = r.json()
-    assert out["status"] == "applied", (out["status"], out.get("message"), [(s["key"], s["status"], s.get("message"), s.get("problems")) for s in out.get("steps") or []])
-    assert out["simulation"]["base_kind"] == "sample" and base.writes == 0
+    steps = [(s["key"], s["status"], s.get("message"), s.get("problems")) for s in out.get("steps") or []]
+    assert out["status"] == "applied", (out["status"], out.get("message"), steps)
+    assert [s["key"] for s in out["steps"]] == list(POV_PARTS) and all(s["status"] == "applied" for s in out["steps"]), steps
+    assert all(not s["verification"].get("mismatched") and not s["verification"].get("unread") for s in out["steps"]), steps
+    assert out["simulation"]["base_kind"] == source and base.writes == 0 and base.responses == before
+    assert offline["built"] == [] and offline["attempts"] == []
     sim = ot.store(out["simulation"]["source"])
-    segs = sim.answer_get("/zpa/mgmtconfig/v1/admin/customers/1/application")[1]
-    assert any(str(x.get("name", "")).startswith("LKF-") for x in (segs.get("list") if isinstance(segs, dict) else segs) or [])
+    names = lambda path: {str(x.get("name")) for x in (ot._items(sim.answer_get(path)[1]) or []) if isinstance(x, dict)}   # noqa: E731
+    assert any(n.startswith("LKF-CAC-") for t in ("SOCIAL_NETWORKING", "AI_ML", "FILE_SHARE") for n in names(f"/zia/api/v1/webApplicationRules/{t}"))
+    assert "LKF-timeout" in names("/zpa/mgmtconfig/v1/admin/customers/1/policySet/rules/policyType/TIMEOUT_POLICY")
+    assert any(n.startswith("LKF-") for n in names("/zpa/mgmtconfig/v1/admin/customers/1/application"))
+    assert "LKF POV forwarding" in names("/zcc/papi/public/v1/webForwardingProfile/listByCompany")
+    assert "Larkspur intranet" in names("/zdx/v1/config/applications")
+
+
+def test_a_simulated_pov_build_on_the_live_tenant_is_refused_before_any_client(offline):
+    """ASVS V4.1.1 · CWE-441 · WSTG-ATHZ-02: the POV build simulation route on the live tenant answers 409 before any client is built or any socket opened."""
+    # Arrange
+    c = offline["c"]
+    body = dict(SCOPE, parts=copy.deepcopy(POV_PARTS), plan_hash="a" * 64, confirm=True, confirm_text="APPLY 9 STEPS",
+                vanity_domain="acme", client_id="abc123456789", client_secret="never-kept-secret", customer_id="7200000000000001")
+    # Act
+    r = c.post("/api/offline/simulate/pov-build", json=body)
+    # Assert
+    assert r.status_code == 409 and "never" in r.json()["detail"], r.text[:300]
+    assert offline["built"] == [] and offline["attempts"] == []
 
 
 def test_a_simulation_store_is_a_copy_and_the_live_kind_is_refused():
@@ -197,7 +215,7 @@ def test_a_simulation_store_is_a_copy_and_the_live_kind_is_refused():
 def _audit(tmp_path):
     import json
     p = tmp_path / "audit.log"
-    return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()] if p.exists() else []
+    return [json.loads(x) for x in read_store_text(p).splitlines() if x.strip()] if p.exists() else []
 
 
 def test_the_audit_entries_of_a_simulated_apply_say_simulation_and_nothing_is_recorded(offline, tmp_path):

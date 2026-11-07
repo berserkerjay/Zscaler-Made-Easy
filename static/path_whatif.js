@@ -46,6 +46,13 @@
     if (picked.groups && out.group === picked.groups.map(g => g.name).join(', ')) { out.groups = picked.groups; delete out.group; }
     const z = zpaIdentity();
     if (z) out.zpa = z;
+    // Device posture: the trust level ZIA rules can use and the ZPA posture checks the device passes.
+    const tl = document.getElementById('paWi_trust'), pp = document.getElementById('paWi_posture');
+    const dev = {};
+    if (tl && tl.value) dev.trust_level = tl.value;
+    const passing = pp ? pp.value.split(',').map(x => x.trim().slice(0, 200)).filter(Boolean).slice(0, 50) : [];
+    if (passing.length) dev.posture_pass = passing;
+    if (Object.keys(dev).length) out.device = dev;
     return out;
   }
   function zpaIdentity() {

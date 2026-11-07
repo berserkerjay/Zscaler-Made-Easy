@@ -222,6 +222,10 @@ URL_FILTERING_RULES = [
      "urlCategories": ["FILE_HOST"], "protocols": ["ANY_RULE"], "requestMethods": []},
     {"id": 603, "order": 3, "rank": 7, "name": "Allow partner portals", "state": "ENABLED", "action": "ALLOW", "urlCategories": ["CUSTOM_01"],
      "protocols": ["ANY_RULE"], "requestMethods": []},
+    # Device posture across products: a rule that uses the trust level Client Connector works out
+    # from the ZIA posture profile (deviceTrustLevels, SDK models/url_filtering_rules.py).
+    {"id": 604, "order": 4, "rank": 7, "name": "Block personal webmail on untrusted devices", "state": "ENABLED", "action": "BLOCK",
+     "urlCategories": ["WEB_MAIL"], "protocols": ["ANY_RULE"], "requestMethods": [], "deviceTrustLevels": ["LOW_TRUST", "UNKNOWN_DEVICETRUSTLEVEL"]},
 ]
 SSL_RULES = [
     {"id": 701, "order": 1, "rank": 7, "name": "Zscaler Recommended Exemptions", "state": "ENABLED", "predefined": True, "defaultRule": False,
@@ -232,10 +236,18 @@ SSL_RULES = [
     {"id": 705, "order": 3, "rank": 7, "name": "Inspect partner portals", "state": "ENABLED", "urlCategories": ["CUSTOM_01"],
      "action": {"type": "DECRYPT", "overrideDefaultCertificate": False,
                 "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minClientTLSVersion": "CLIENT_TLS_1_2"}}},
-    {"id": 703, "order": 4, "rank": 7, "name": "Decrypt everything else", "state": "ENABLED", "defaultRule": True,
+    {"id": 703, "order": 5, "rank": 7, "name": "Decrypt everything else", "state": "ENABLED", "defaultRule": True,
      "action": {"type": "DECRYPT", "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minClientTLSVersion": "CLIENT_TLS_1_2",
                                                      "minServerTLSVersion": "SERVER_TLS_1_2"}},
      "urlCategories": ["ANY"]},
+    # Zoom left encrypted for call quality: an exempted application with
+    # Shadow IT bytes, so SSL coverage's true coverage ties a measured share
+    # of the HTTPS left encrypted to this rule on the sample tenant. Its
+    # order follows the other rules' (1 to 4, no gap) and the default rule
+    # is last, as ZIA keeps them: a write that appends a rule must not
+    # find a gap the real policy never has.
+    {"id": 706, "order": 4, "rank": 7, "name": "Do not decrypt Zoom", "state": "ENABLED", "cloudApplications": ["ZOOM"],
+     "action": {"type": "DO_NOT_DECRYPT", "doNotDecryptSubActions": {"bypassOtherPolicies": False}}},
 ]
 FIREWALL_RULES = [
     {"id": 801, "order": 1, "rank": 7, "name": "Block QUIC to force inspection", "state": "ENABLED", "action": "BLOCK_DROP",
@@ -325,6 +337,17 @@ LOCATIONS = [
      "sslScanEnabled": False, "authRequired": False, "xffForwardEnabled": False, "surrogateIP": False, "ofwEnabled": True, "ipsControl": False,
      "ipAddresses": ["203.0.113.20"], "profile": "SERVER"},
 ]
+# Sub-locations (zscaler/zia/locations.py list_sub_locations: GET /locations/{id}/sublocations), one
+# made by the customer and Zscaler's own "other" sub-location; the restore clones the first with its parent.
+SUB_LOCATIONS = {
+    1101: [{"id": 1111, "name": "HQ guest Wi-Fi", "parentId": 1101, "ipAddresses": ["10.20.0.0/16"], "authRequired": False,
+            "sslScanEnabled": True, "ofwEnabled": True, "aupEnabled": True, "profile": "GUESTWIFI", "description": "Visitors"},
+           {"id": 1112, "name": "other", "parentId": 1101, "otherSubLocation": True, "ipAddresses": []}],
+    1102: [],
+}
+# SaaS Security API lookups the SaaS DLP rules name (zscaler/zia/saas_security_api.py *_lite lists).
+DOMAIN_PROFILES = [{"profileId": 8701, "profileName": "Larkspur partners", "includeCompanyDomains": True, "customDomains": ["harborline-logistics.example"]}]
+CASB_EMAIL_LABELS = [{"id": 8801, "name": "Confidential", "labelColor": "RED", "labelDesc": "Larkspur confidential mail"}]
 # Forwarding and traffic path (zia_forwarding, the FWD.* checks and the Path
 # analyzer's Forwarding control step), with the gaps an assessment should
 # find: a proxy-chaining gateway with no secondary proxy that does not fail
@@ -401,7 +424,13 @@ USERS = [{"id": 41, "name": "Avery Quinn", "email": "avery.quinn@larkspur-freigh
          {"id": 42, "name": "Rowan Ellis", "email": "rowan.ellis@larkspur-freight.example", "department": _ref(23, "Engineering"), "groups": [_ref(34, "Developers")]},
          {"id": 43, "name": "Jordan Blake", "email": "jordan.blake@larkspur-freight.example", "department": _ref(21, "Operations"), "groups": [_ref(32, "Drivers")]}]
 RULE_LABELS = [{"id": 51, "name": "Data protection", "description": "Rules owned by the data protection team."}]
-NSS_FEEDS = [{"id": 61, "name": "Web logs to SIEM", "feedStatus": "ENABLED", "nssLogType": "WEBLOG"}]
+# The web feed goes to a SIEM's HTTPS collector; the admin audit feed was set up but left disabled
+# (the SOC review's telemetry part finds it). No token or header value is in the sample.
+NSS_FEEDS = [{"id": 61, "name": "Web logs to SIEM", "feedStatus": "ENABLED", "nssLogType": "WEBLOG", "nssType": "NSS_FOR_WEB",
+              "siemType": "SPLUNK", "connectionURL": "https://siem.larkspur-freight.example:8088/services/collector/raw",
+              "lastSuccessFullTest": 1792915200000},
+             {"id": 62, "name": "Admin audit to SIEM", "feedStatus": "DISABLED", "nssLogType": "ADMIN_AUDIT", "nssType": "NSS_FOR_WEB",
+              "siemType": "SPLUNK", "connectionURL": "https://siem.larkspur-freight.example:8088/services/collector/raw"}]
 # Governance and audit (zscaler-sdk-python 1.11.3 zia/models: system_audit.ConfigAudit,
 # admin_roles.PasswordExpiry, remoteassistance.RemoteAssistance,
 # alert_subscriptions.AlertSubscriptions, nss_servers.Nssservers,
@@ -434,15 +463,15 @@ ISOLATION_PROFILES = [{"id": "iso-1", "name": "Larkspur isolation", "url": "http
 # WebPolicy model (assumed: the readers ask for it, and a device reports it).
 APP_PROFILES = [
     {"id": 1201, "name": "Windows - Corporate", "device_type": 3, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
-     "strictEnforcement": 1, "logLevel": 0, "windowsPolicy": {"install_ssl_certs": 1, "disableLoopBackRestriction": 0},
+     "ziaPostureConfigId": 81, "strictEnforcement": 1, "logLevel": 0, "logMode": 0, "logFileSize": 100, "windowsPolicy": {"install_ssl_certs": 1, "disableLoopBackRestriction": 0},
      "policyExtension": {"enableZdpService": "1", "packetTunnelExcludeList": "10.0.0.0/8"}, "groups": [], "users": []},
-    {"id": 1202, "name": "macOS - Corporate", "device_type": 4, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
+    {"id": 1202, "name": "macOS - Corporate", "device_type": 4, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301, "logMode": 0,
      "strictEnforcement": 1, "macPolicy": {"installCerts": 1}, "policyExtension": {"enableZdpService": "0"}, "groups": [], "users": []},
     {"id": 1203, "name": "Windows - Contractors", "device_type": 3, "active": 1, "ruleOrder": 2, "forwardingProfileId": 1302,
-     "strictEnforcement": 0, "windowsPolicy": {"install_ssl_certs": 1},
+     "strictEnforcement": 0, "logMode": 3, "windowsPolicy": {"install_ssl_certs": 1},
      "policyExtension": {"enableZdpService": "0", "packetTunnelExcludeList": "10.0.0.0/8,192.0.2.0/24"},
      "bypassCustomAppIds": ["5001"], "groups": [_ref(32, "Drivers")], "users": []},
-    {"id": 1204, "name": "iOS - Drivers", "device_type": 1, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
+    {"id": 1204, "name": "iOS - Drivers", "device_type": 1, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301, "logMode": 0,
      "strictEnforcement": 0, "groups": [_ref(32, "Drivers")], "users": []},
 ]
 # The custom IP-based application the contractors' profile bypasses
@@ -489,7 +518,8 @@ FAIL_OPEN = [{"id": 1, "enableFailOpen": 1, "enableCaptivePortalDetection": 1, "
               "enableStrictEnforcementPrompt": 0, "tunnelFailureRetryCount": 25}]
 # zscaler/zcc/models/company_info.py: zpnEnabled is ZPA, upmEnabled is ZDX, proxyEnabled is ZIA.
 COMPANY_INFO = {"businessName": COMPANY, "orgId": 7200001, "proxyEnabled": 1, "zpnEnabled": 1, "upmEnabled": 1, "dlpEnabled": 1,
-                "zadEnabled": 0, "enableGlobalZCCTelemetry": 1}
+                "zadEnabled": 0, "enableGlobalZCCTelemetry": 1,
+                "fetchLogsForAdminsEnabled": 1, "enableFlowLogger": 0, "disableLoggingControls": 0}
 WEB_PRIVACY_INFO = {"id": 1, "active": "1", "collectUserInfo": "1", "collectMachineHostname": "1", "collectZdxLocation": "1",
                     "enablePacketCapture": "0", "disableCrashlytics": "0", "exportLogsForNonAdmin": "0"}
 # Client Connector v2 objects the SDK has no call for (read raw; the zcc provider's
@@ -503,11 +533,18 @@ NOTIFICATION_TEMPLATES = [
      "zpaNotificationTemplate": {"enableDevicePostureFailure": True, "enableZpaReauth": True, "zpaReauthIntervalInMinutes": 60,
                                  "delayPostureFailureSeconds": 5}},
 ]
+# The device posture each one names is a Client Connector device posture check (udid: the posture
+# UDID ZPA reads it by, POSTURE_PROFILES below). The Windows corporate app profile picks profile 81
+# (ziaPostureConfigId); the macOS one picks none, and profile 82 is used by no app profile.
 ZIA_POSTURE_PROFILES = [
     {"id": 81, "name": "Larkspur laptops (Windows)", "platform": 3,
-     "highTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled"}, {"id": "5", "name": "Full disk encryption"}]}]},
-     "mediumTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled"}]}]},
+     "highTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled", "udid": "a1b2c3d4-0000-4000-8000-000000002701"},
+                                          {"id": "5", "name": "Full disk encryption", "udid": "a1b2c3d4-0000-4000-8000-000000002702"}]}]},
+     "mediumTrustCriteria": {"cs": [{"cn": [{"id": "1", "name": "Antivirus enabled", "udid": "a1b2c3d4-0000-4000-8000-000000002701"}]}]},
      "lowTrustCriteria": {"cs": []}},
+    {"id": 82, "name": "Driver phones (iOS)", "platform": 1,
+     "highTrustCriteria": {"cs": [{"cn": [{"id": "9", "name": "Not jailbroken", "udid": "a1b2c3d4-0000-4000-8000-000000002709"}]}]},
+     "mediumTrustCriteria": {"cs": []}, "lowTrustCriteria": {"cs": []}},
 ]
 DEVICE_CLEANUP = {"id": 1, "active": 1, "autoRemovalDays": 30, "autoPurgeDays": 60, "deviceExceedLimit": 16}
 
@@ -625,12 +662,36 @@ ZPA_API_KEYS = [{"id": "2981", "name": "terraform-ci", "enabled": True, "roleId"
                 {"id": "2982", "name": "siem-export", "enabled": True, "roleId": "2991", "readOnly": True, "tokenExpiryTimeInSec": "3600",
                  "clientId": "lkf-siem-export", "creationTime": "1735689600"}]
 ZPA_SSO_OPTIONS = {"ssologinonly": False}
+# Log Streaming Service (zscaler/zpa/models/lss.py LSSResourceModel; sourceLogType codes from zpa/lss.py
+# source_log_map): User Activity streams over TLS, App Connector Status was left disabled, and
+# User Status and Audit logs are not streamed at all (the SOC review's telemetry part finds both).
+ZPA_LSS_CONFIGS = [{"id": "2995", "connectorGroups": [{"id": "2401", "name": "Portland connectors"}],
+                    "config": {"id": "2995", "name": "User activity to SIEM", "enabled": True, "sourceLogType": "zpn_trans_log",
+                               "useTls": True, "lssHost": "siem.larkspur-freight.example", "lssPort": "6514", "format": "json"}},
+                   {"id": "2996", "connectorGroups": [{"id": "2401", "name": "Portland connectors"}],
+                    "config": {"id": "2996", "name": "Connector status to SIEM", "enabled": False, "sourceLogType": "zpn_ast_auth_log",
+                               "useTls": False, "lssHost": "siem.larkspur-freight.example", "lssPort": "6515", "format": "json"}}]
 ZPA_EMERGENCY_USERS = [{"userId": "2985", "emailId": "breakglass@larkspur-freight.example", "firstName": "Break", "lastName": "Glass",
                         "userStatus": "ACTIVE", "lastLoginTime": "1735689600", "activatedOn": "1735689600"}]
 ZPA_PROVISIONING_KEYS = [{"id": "2986", "name": "Portland DC connectors", "enabled": True, "maxUsage": "100", "usageCount": "2",
                           "zcomponentId": "2401", "zcomponentName": "Portland connectors", "creationTime": "1735689600"}]
 ZPA_PRA_CREDENTIALS = [{"id": "2987", "name": "Yard server admin", "credentialType": "USERNAME_PASSWORD",
                         "lastCredentialResetTime": "1735689600", "creationTime": "1735689600"}]
+# A PRA credential pool (zpa/models/pra_cred_pool_controller.py; read from
+# the waap-pra-config service): the stored credential above by reference
+# only (id and name), no secret. The made-up pool lets the backup, the RBAC
+# check ("pooled") and the restore of a credential reference exercise pools.
+ZPA_PRA_CREDENTIAL_POOLS = [{"id": "2989", "name": "Depot jump host logins", "description": "Shared logins the depot jump consoles use",
+                             "credentialType": "USERNAME_PASSWORD", "credentialMappingCount": "1",
+                             "credentials": [{"id": "2987", "name": "Yard server admin"}], "microtenantId": "0",
+                             "creationTime": "1735689600", "modifiedTime": "1735689600", "modifiedBy": "2971"}]
+# A ZPA isolation profile (zpa/models/cbi_zpa_profile.py ZPACBIProfile): the
+# same made-up isolation tenant as the ZIA profile (ISOLATION_PROFILES), so
+# Browser security matches the two by their isolation URL.
+ZPA_ISOLATION_PROFILES = [{"id": "5761", "name": "Larkspur isolation", "description": "Isolates Browser Access apps for unmanaged browsers",
+                           "enabled": True, "isolationProfileId": "iso-1", "isolationTenantId": "lkf-isolation-tenant",
+                           "isolationUrl": "https://isolation.example/larkspur", "microtenantId": "0",
+                           "creationTime": "1735689600", "modifiedTime": "1735689600", "modifiedBy": "2971"}]
 ZPA_PRA_APPROVALS = [{"id": "2988", "emailIds": ["vendor.support@larkspur-freight.example"], "status": "ACTIVE",
                       "startTime": "1767225600", "endTime": "1893456000", "applications": [{"id": "2201", "name": "Freight billing"}],
                       "workingHours": {"days": ["MON", "TUE", "WED", "THU", "FRI"], "startTime": "08:00", "endTime": "18:00",
@@ -888,6 +949,20 @@ ZINS = {
                     {"classifications": "Label printer", "classification_uuid": "lkf-iot-2", "category": "IoT", "total": 31},
                     {"classifications": "Handheld scanner", "classification_uuid": "lkf-iot-3", "category": "IoT", "total": 27}]}}}},
 }
+# ZIA Insights web traffic by protocol (WEB_TRAFFIC.protocols), one answer
+# per traffic unit, for SSL coverage's true inspection coverage. Realistic
+# proportions: most transactions are HTTPS decrypted, about a fifth stays
+# encrypted (the webmail and Finance exemptions, pinned apps), a few percent
+# is still plain HTTP, and tunnels and FTP are left unclassified (unknown).
+# The transactions add up to WebTrafficNoGrouping's total.
+ZINS_BY_UNIT = {
+    "WebProtocols": {
+        "TRANSACTIONS": _zins("WEB_TRAFFIC", "protocols", _nt(("HTTPS", 3_330_000), ("SSL", 1_050_000), ("HTTP", 290_000),
+                                                             ("TUNNEL", 140_000), ("FTP", 10_000))),
+        "BYTES": _zins("WEB_TRAFFIC", "protocols", _nt(("HTTPS", 38_400_000_000), ("SSL", 16_200_000_000), ("HTTP", 1_900_000_000),
+                                                      ("TUNNEL", 2_100_000_000), ("FTP", 40_000_000))),
+    },
+}
 # The licences (GET /subscriptions, organization_information.get_subscriptions):
 # ids as readiness.SKU_INFO knows them.
 SUBSCRIPTIONS = [{"id": sid, "subscribed": True, "status": "ACTIVE", "endDate": 1830297600000} for sid in (
@@ -919,7 +994,7 @@ ZTW_WORKLOAD_GROUPS = [
         {"tagType": "ATTR", "operator": "AND", "tagContainer": {"operator": "AND", "tags": [{"key": "Role", "value": "backup"}]}}]}},
 ]
 ZTW_FORWARDING_RULES = [
-    {"id": 4401, "name": "Billing to ZPA", "order": 1, "rank": 7, "state": "ENABLED", "type": "EC_RDR", "forwardMethod": "ZPA",
+    {"id": 4401, "name": "Billing to ZPA", "order": 1, "rank": 7, "state": "ENABLED", "type": "EC_RDR", "forwardMethod": "ECZPA",
      "srcWorkloadGroups": [{"id": 4201, "name": "Billing servers"}], "zpaAppSegments": [{"id": 4501, "name": "Freight billing", "externalId": "2201"}]},
     {"id": 4402, "name": "Backups direct to S3", "order": 2, "rank": 7, "state": "ENABLED", "type": "EC_RDR", "forwardMethod": "DIRECT",
      "srcWorkloadGroups": [{"id": 4202, "name": "Backup agents"}], "destAddresses": ["52.218.128.0/17"],
@@ -1055,8 +1130,8 @@ ZIA_WORKLOAD_GROUPS = [{"id": 5711, "name": "Billing workloads", "description": 
                              "tagContainer": {"operator": "AND", "tags": [{"key": "Vpc-id", "value": "vpc-0larkspur1"}]}}]}}]
 # HTTP header insertion (zia/models/http_header_control.py): the Microsoft 365
 # tenant restriction header, complete.
-HTTP_HEADER_PROFILES = [{"id": 5721, "name": "Microsoft 365 sign-in", "description": "Sign-in hosts.", "deleted": False,
-                         "profileReadyForUse": True, "httpHeaderProfileCriteria": [{"id": 1, "header": "Host", "operator": "CONTAINS"}]}]
+HTTP_HEADER_PROFILES = [{"id": 5721, "name": "Microsoft 365 sign-in", "description": "Sign-in from Edge, any version.", "deleted": False,
+                         "profileReadyForUse": True, "httpHeaderProfileCriteria": [{"id": 1, "header": "USERAGENT", "operator": "UAVERSIONANY", "userAgentBitmap": "MSEDGE"}]}]
 HTTP_HEADER_ACTION_PROFILES = [{"id": 5731, "name": "Tenant restrictions v1", "description": "Larkspur tenant only.", "deleted": False,
                                 "profileReadyForUse": True,
                                 "httpHeaderActionProfileKeys": [{"id": 1, "key": "Restrict-Access-To-Tenants", "value": "larkspur.example"}]}]
@@ -1077,7 +1152,7 @@ CBI_CERTIFICATES = [{"id": "5751", "name": "Larkspur isolation root", "isDefault
     "LQNSRLAR\n"
     "-----END CERTIFICATE-----\n")}]
 # Cloud & Branch Connector IP groups (ztw/models/ip_groups.py): one holds no address.
-ZTW_IP_GROUPS = [{"id": 5761, "name": "Billing subnets", "description": "Billing VPC.", "ipAddresses": ["10.40.0.0/24", "10.40.1.0/24"]},
+ZTW_IP_GROUPS = [{"id": 5761, "name": "Billing subnets", "description": "Billing VPC.", "ipAddresses": ["10.40.0.0/23"]},
                  {"id": 5762, "name": "Retired DR subnets", "description": "Emptied after the move.", "ipAddresses": []}]
 
 # A made-up detector for "Test a prompt" on the sample: keyword rules only,
@@ -1124,9 +1199,27 @@ _INCIDENTS = (
 )
 
 
+def _clock():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc)
+
+
+_ANCHOR = None
+
+
+def _now():
+    """The sample's "now", read from _clock once per process: the incidents
+    stay recent, and two reads of the sample (a snapshot compare) give the
+    same timestamps even when a second ticks over between them."""
+    global _ANCHOR
+    if _ANCHOR is None:
+        _ANCHOR = _clock().replace(microsecond=0)
+    return _ANCHOR
+
+
 def _iso(days_ago: float) -> str:
-    from datetime import datetime, timedelta, timezone
-    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    from datetime import timedelta
+    return (_now() - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
 def zwa_answers() -> Dict[str, Any]:
@@ -1251,6 +1344,8 @@ ZPA_SCIM_ATTRIBUTES = [{"id": "2611", "name": "department", "idpId": "2601", "da
                         "schemaURI": "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"}]
 ZPA_SCIM_GROUPS = [{"id": 2621, "name": "Finance", "idpId": 2601, "idpGroupId": "00g1finance"},
                    {"id": 2622, "name": "Depot operations", "idpId": 2601, "idpGroupId": "00g2depot"}]
+# Client Connector portal roles (zscaler/zcc/models/admin_roles.py: roleName and per-area permissions).
+ZCC_ADMIN_ROLES = [{"id": 1, "roleName": "Super Admin", "isEditable": False}, {"id": 2, "roleName": "Helpdesk read only", "isEditable": True}]
 ZCC_ADMIN_USERS = [{"id": 41, "userName": "it.admin@larkspur-freight.example", "companyRole": {"id": 1, "roleName": "Super Admin"},
                     "accountEnabled": True, "editEnabled": True, "isDefaultAdmin": False, "serviceType": "ZIA"}]
 ZCC_PREDEFINED_IP_APPS = [{"id": 7001, "appName": "Microsoft Teams calls", "active": True, "uid": "p-7001",
@@ -1313,6 +1408,8 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/fileTypeRules": FILE_TYPE_RULES,
         f"{ZIA}/pacFiles": PAC_FILES,
         f"{ZIA}/locations": LOCATIONS,
+        **{f"{ZIA}/locations/{lid}/sublocations": subs for lid, subs in SUB_LOCATIONS.items()},
+        f"{ZIA}/domainProfiles/lite": DOMAIN_PROFILES, f"{ZIA}/casbEmailLabel/lite": CASB_EMAIL_LABELS,
         f"{ZIA}/advancedSettings": ADVANCED_SETTINGS,
         f"{ZIA}/webDlpGlobalOptions": WEB_DLP_GLOBAL_OPTIONS,
         f"{ZIA}/security/advanced": {"blacklistUrls": ["malware-drop.example"]},
@@ -1385,7 +1482,7 @@ def responses() -> Dict[str, Any]:
                                              "zpaInitialSyncDone": 1, "zpaLastSyncTime": "2026-10-28 02:00:00", "zpaSyncErrorCode": 0, "zpaSyncStatus": 1},
         f"{ZCC}/getPacFiles": [], f"{ZCC}/webAppService/listByCompany": [], f"{ZCC}/webBypassAppConfig/listByCompany": [],
         f"{ZCC}/custom-ip-based-apps": ZCC_CUSTOM_IP_APPS, f"{ZCC}/predefined-ip-based-apps": {"appServiceContracts": ZCC_PREDEFINED_IP_APPS},
-        f"{ZCC}/getAdminUsers": ZCC_ADMIN_USERS, f"{ZCC}/getAdminRoles": [], f"{ZCC}/webDeviceGroups/listByCompany": [],
+        f"{ZCC}/getAdminUsers": ZCC_ADMIN_USERS, f"{ZCC}/getAdminRoles": ZCC_ADMIN_ROLES, f"{ZCC}/webDeviceGroups/listByCompany": [],
         f"{ZCC}/getZpaGroupEntitlements": {"zpaEnableForAll": True}, f"{ZCC}/getZdxGroupEntitlements": {"zdxEnableForAll": True},
         # ZPA
         f"{ZPA1}/application": _zpa(SEGMENTS),
@@ -1399,8 +1496,8 @@ def responses() -> Dict[str, Any]:
         f"{ZPA2}/posture": _zpa(POSTURE_PROFILES),
         f"{ZPA2}/network": _zpa(ZPA_TRUSTED_NETWORKS),
         f"{ZPA1}/machineGroup": _zpa(MACHINE_GROUPS),
-        f"{ZPA1}/certificate": _zpa([]), f"{ZPA2}/lssConfig": _zpa([]), f"{ZPA2}/clientlessCertificate/issued": _zpa([]),
-        f"{ZPA1}/inspectionProfile": _zpa(INSPECTION_PROFILES), f"{ZPA1}/isolation/profiles": _zpa([]), f"{ZPA1}/browserProtectionProfile": _zpa([]),
+        f"{ZPA1}/certificate": _zpa([]), f"{ZPA2}/lssConfig": _zpa(ZPA_LSS_CONFIGS), f"{ZPA2}/clientlessCertificate/issued": _zpa([]),
+        f"{ZPA1}/inspectionProfile": _zpa(INSPECTION_PROFILES), f"{ZPA1}/isolation/profiles": _zpa(ZPA_ISOLATION_PROFILES), f"{ZPA1}/browserProtectionProfile": _zpa([]),
         f"{ZPA1}/inspectionControls/custom": _zpa(CUSTOM_CONTROLS), f"{ZPA1}/server": _zpa(APP_SERVERS),
         f"{ZPA1}/businessContinuitySettings": _zpa(BUSINESS_CONTINUITY),
         f"{ZPA1}/privateCloud": _zpa([]), f"{ZPA1}/privateCloudControllerGroup": _zpa([]), f"{ZPA1}/privateCloudController": _zpa([]),
@@ -1416,7 +1513,7 @@ def responses() -> Dict[str, Any]:
         f"{ZPA1}/emergencyAccess/users": _zpa(ZPA_EMERGENCY_USERS),
         f"{ZPA1}/microtenants": _zpa(ZPA_MICROTENANTS),
         f"{ZPA1}/credential": _zpa(ZPA_PRA_CREDENTIALS),
-        f"{ZPA_PRA}/credential-pool": _zpa([]),
+        f"{ZPA_PRA}/credential-pool": _zpa(ZPA_PRA_CREDENTIAL_POOLS),
         f"{ZPA1}/approval": _zpa(ZPA_PRA_APPROVALS),
         f"{ZPA2}/enrollmentCert": _zpa(ZPA_ENROLLMENT_CERTIFICATES),
         f"{ZPA1}/clientSetting": {"enrollmentCertId": "2604", "enrollmentCertName": "Client", "singningCertExpiryInEpochSec": "2082758400"},
@@ -1494,6 +1591,9 @@ def responses() -> Dict[str, Any]:
     r[f"{ZIA}/subscriptions"] = SUBSCRIPTIONS
     for op, body in ZINS.items():
         r[f"/zins/graphql/{op}"] = body
+    for op, units in ZINS_BY_UNIT.items():
+        for unit, body in units.items():
+            r[f"/zins/graphql/{op}/{unit}"] = body
     r.update(zwa_answers())
     for aid, devs in ZDX_AFFECTED_DEVICES.items():
         r[f"{ZDX}/alerts/{aid}/affected_devices"] = {"devices": devs, "next_offset": None}
