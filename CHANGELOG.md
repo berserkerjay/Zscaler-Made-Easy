@@ -16,6 +16,8 @@ lists what each batch of changes did, newest first.
 - Data, not a guess: `tenant_api_catalogue.json` is every GET endpoint of the installed zscaler-sdk-python (687, of which 377 are read), made by `tools/build_tenant_api_catalogue.py`; a test fails until it is regenerated when the SDK changes. The sample tenant answers the map offline, with one read its API client may not make.
 - Routes: `POST /api/tenant-api-map/plan` (no sign-in), `POST /api/tenant-api-map/start` (a `read` route, so the shared sign-in works; refused 400 before sign-in unless the plan is confirmed), `GET /api/tenant-api-map/saved`, `GET /api/tenant-api-map/{report_id}` and `/export/{report_id}`, `POST /api/tenant-api-map/forget`.
 - Terraform export: object types can be picked by type key, provider resource name or pattern (`zia.*`, `zpa_policy_*`) in both the include and exclude lists; an output folder name option; a local static check of the written files (balanced HCL, no repeated address, every import has its resource) reported as `validation` in the export report; a `validate.sh` the operator runs themselves (never run by the app); and an opt-in masked support log in the zip.
+### Policy simulator: is this port blocked for everyone?
+- New `POST /api/report/data-flow/{report_id}/port-check`: give a protocol and a port and, from a Path analyzer read already kept in memory, it says whether the Cloud Firewall blocks or allows that traffic for every destination and source, or that it depends (the rules limited to some destinations or sources are named). Offline and read-only: no tenant call, nothing written. The default assumptions each result states and the per-area lists to paste (Test a list) are now covered by tests.
 
 ## 2026-11-06
 
