@@ -163,6 +163,12 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/offline/simulate/operation": SESSION,
     "POST /api/offline/simulate/pov-build": SESSION,
     "POST /api/offline/simulation/discard": SESSION,
+    "GET /api/block-page/themes": SESSION,         # local block page themes; no tenant
+    "GET /api/block-page/export": SESSION,
+    "POST /api/pov/posture": "plan:profile",       # records a score on the profile's own POV; no tenant read
+    "POST /api/block-page/preview": SESSION,
+    "PUT /api/block-page/theme": PLAN,             # edits the app's own saved themes; applying one is a Bulk changes operation
+    "DELETE /api/block-page/theme": PLAN,
     "POST /api/zia-baseline/selection": SESSION,   # saves or checks a baseline selection the page sends; reads and writes no tenant
     "POST /api/tenant-profiles/snapshots/open-file": SESSION,
     "GET /api/pack-library": SESSION,
@@ -325,6 +331,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/bulk-test/fix/{fix_id}": READ,
     "POST /api/audit-timeline/start": READ,   # this app's own audit entries filtered to the person's profiles
     "GET /api/audit-timeline/{job_id}/export": READ,
+    "GET /api/audit/export": READ,            # the person's own view of the audit log (filtered to their profiles)
     "POST /api/shadow-rules/start": READ,
     "POST /api/shadow-rules": READ,
     "GET /api/shadow-rules/jobs/{job_id}/export": READ,

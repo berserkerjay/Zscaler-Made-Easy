@@ -20,6 +20,7 @@ Find the files a change touches here, then read only those.
 | `beacon.py` | Beacon: what changed upstream since the last run — the Zscaler SDK, the |
 | `beacon_scope.py` | Which tenant endpoints Beacon's tenant API watch may read: only the ones |
 | `benchmarks.py` | Benchmarks: how an assessment stacks up against Zscaler's best practices, |
+| `block_page_theme.py` | Block page (end-user notification) theme builder: a local, read-only |
 | `bp_crawler.py` | Zscaler Best-Practices Discovery Crawler |
 | `bp_sources.py` | Zscaler Best-Practices Source Registry |
 | `browser_security.py` | Browser security: Zscaler Zero Trust Browser (cloud browser isolation), |
@@ -81,8 +82,10 @@ Find the files a change touches here, then read only those.
 | `ops_zdx.py` | ZDX probe setup: Zscaler Digital Experience applications and probes as |
 | `ops_zdx_trace.py` | ZDX deep trace on the Bulk changes engine (admin_ops.register). |
 | `ops_zia_activation.py` | Activate pending ZIA changes, on the Bulk changes engine (admin_ops plugin). |
+| `ops_zia_ai_prompt.py` | AI prompt capture on the Bulk changes engine (admin_ops plugin): a dedicated |
 | `ops_zia_baseline.py` | ZIA security baseline builder and SSL certificate manager: two operation |
 | `ops_zia_directory.py` | ZIA users, groups and departments: day-to-day admin on the Bulk changes engine. |
+| `ops_zia_eun.py` | Apply a block page theme to ZIA's end-user notification settings, on the |
 | `ops_zia_objects.py` | The objects around the rule editor, on the Bulk changes engine |
 | `ops_zia_pac.py` | ZIA hosted PAC files on the Bulk changes engine: list, view, validate, |
 | `ops_zia_sandbox.py` | Bulk changes plugin: block known-bad files by their MD5 hash in Cloud Sandbox. |
@@ -259,7 +262,9 @@ Find the files a change touches here, then read only those.
 | `static/ops_zcc_live.js` | Client Connector live changes on Bulk changes (/report/operations, ops_zcc_live.py). |
 | `static/ops_zdx.js` | ZDX probe setup: the forms of the three ZDX operation types (ops_zdx.py) |
 | `static/ops_zia_admin.js` | Day-to-day ZIA admin on Bulk changes (/report/operations, "Day-to-day admin"). |
+| `static/ops_zia_ai_prompt.js` | AI prompt capture on Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zia_baseline.js` | Bulk changes builders: the ZIA security baseline and the SSL certificate |
+| `static/ops_zia_eun.js` | Block page theme on Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zia_sandbox.js` | Cloud Sandbox file hashes on Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zid.js` | ZIdentity users and API clients on Bulk changes (/report/operations, |
 | `static/ops_zid_groups.js` | ZIdentity group members on Bulk changes (/report/operations, ops_zid_groups.py). |

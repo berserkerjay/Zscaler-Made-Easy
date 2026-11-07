@@ -4105,7 +4105,11 @@ async def dlp_pack_removal_inventory(req: ScopedTenantCredsRequest):
     channels = _pack_channels_in_scope(req, "The rule picker")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
+    import deployments as _deps
+    label = tenant_auth.record_label(creds)
+    live = {p for d in _deps.list_all(label) if d.get("remaining") for p in (d.get("packs") or [])}
     out = await asyncio.to_thread(pack_removal.inventory, client, channels)
+    pack_removal.mark_leftovers(out, live)   # with this tenant's live deployments, a pack nothing holds is a leftover too
     out["channels_in_scope"] = channels
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
@@ -8007,6 +8011,71 @@ async def workspace_notes_delete(request: Request, kind: str, ref: str, tenant: 
     if not gone:
         raise HTTPException(status_code=404, detail="There is no note on this object.")
     return {"tenant": label, "deleted": True}
+
+
+# ── Block page theme: a local, read-only preview and generator ────────────
+# block_page_theme.py keeps themes in this app's own store and builds the HTML
+# and the end-user notification settings from them; nothing here reads or
+# writes a tenant. Applying a theme is the Bulk changes operation
+# zia_eun_theme (write mode, assessor, typed phrase). Every route needs the UI
+# token; who saved a theme is the server's view of the caller.
+class BlockPageThemeRequest(BaseModel):
+    name: str = "default"
+    settings: Optional[Dict[str, Any]] = None
+    logo: str = ""
+
+
+def _bpt_call(fn, *args, **kwargs):
+    import block_page_theme as bpt
+    try:
+        return fn(*args, **kwargs)
+    except bpt.ThemeError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+@app.get("/api/block-page/themes")
+async def block_page_themes():
+    """The saved themes (the logo's facts, never its bytes) and the limits. Read-only, local."""
+    import block_page_theme as bpt
+    return {"themes": [bpt.get(n) for n in bpt.names()], "defaults": bpt.DEFAULTS,
+            "limits": {"themes": bpt.MAX_THEMES, "logo_bytes": bpt.MAX_LOGO_BYTES, **bpt.LIMITS}}
+
+
+@app.put("/api/block-page/theme")
+async def block_page_theme_save(req: BlockPageThemeRequest, request: Request):
+    """Save a theme (and its logo, when sent) in this app's own store. A local write, audited; no tenant is touched."""
+    import block_page_theme as bpt
+    return _bpt_call(bpt.save, req.name, req.settings if req.settings is not None else {}, logo=req.logo or None, by=_cq_by(request))
+
+
+@app.delete("/api/block-page/theme")
+async def block_page_theme_delete(request: Request, name: str = "default", logo_only: bool = False):
+    """Delete a theme, or only its logo. Local; no tenant is touched."""
+    import block_page_theme as bpt
+    if logo_only:
+        return _bpt_call(bpt.remove_logo, name, by=_cq_by(request))
+    if not _bpt_call(bpt.delete, name, by=_cq_by(request)):
+        raise HTTPException(status_code=404, detail="There is no such theme.")
+    return {"deleted": True}
+
+
+@app.post("/api/block-page/preview")
+async def block_page_preview(req: BlockPageThemeRequest):
+    """The page and the settings a theme produces, with sample values; unsaved edits (settings) override the saved theme.
+    Reads and writes nothing, here or in a tenant. Show the html only in a sandboxed frame."""
+    import block_page_theme as bpt
+    return _bpt_call(bpt.generate, req.name, req.settings)
+
+
+@app.get("/api/block-page/export")
+async def block_page_export(name: str = "default"):
+    """The generated page as a downloadable HTML file (an authenticated route; never a public link)."""
+    import block_page_theme as bpt
+    out = _bpt_call(bpt.generate, name)
+    fname = "block-page-" + out["name"] + ".html"
+    return Response(out["html"], media_type="text/html; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"', "Cache-Control": "no-store",
+                             "X-Content-Type-Options": "nosniff", "Content-Security-Policy": bpt.CSP})
 
 
 @app.get("/report/todo")
@@ -13172,6 +13241,21 @@ async def audit_timeline_start(req: AuditTimelineRequest, request: Request):
     return {"job_id": job.id, "status": job.status, "kind": job.kind, "window": {k: win[k] for k in ("start", "end", "days")}}
 
 
+@app.get("/api/audit/export")
+async def audit_export(format: str = "jsonl", limit: int = 5000):
+    """This app's own audit log (the last `limit` entries, at most 50000) as JSON Lines or CSV, an authenticated download.
+    On a team server only the entries of tenant profiles the person may read. Secrets were redacted when each line was
+    written; CSV cells are spreadsheet-safe."""
+    if (format or "").lower() not in ("jsonl", "csv"):
+        raise HTTPException(status_code=400, detail="format must be jsonl or csv")
+    entries = _team.filter_audit_entries(_audit.tail(max(1, min(int(limit), 50000))))
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    ext = (format or "jsonl").lower()
+    return Response(content=_audit.export(entries, ext), media_type="text/csv; charset=utf-8" if ext == "csv" else "application/x-ndjson",
+                    headers={"Content-Disposition": f"attachment; filename=audit_{ts}.{ext}", "Cache-Control": "no-store",
+                             "X-Content-Type-Options": "nosniff"})
+
+
 @app.get("/api/audit-timeline/{job_id}/export")
 async def audit_timeline_export(job_id: str, format: str = "csv"):
     """A finished timeline as CSV (spreadsheet-safe, csv_safe) or JSON
@@ -14372,7 +14456,7 @@ def _pov_typed(req: Any) -> Dict[str, str]:
 
 def _pov_view(b: Dict[str, str], p: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     import pov
-    return {"tenant_label": b["label"], "pov": p, "templates": _pov_templates()}
+    return {"tenant_label": b["label"], "pov": p, "progress": pov.progress(p) if p else None, "templates": _pov_templates()}
 
 
 @app.get("/report/pov")
@@ -14423,6 +14507,20 @@ async def pov_update(req: PovRequest, request: Request):
     """Save changes to parts of the POV made on revision `rev`."""
     import pov
     p = _pov_call(pov.update, req.profile_id, _pov_typed(req), req.rev, req.changes, by=_cq_by(request))
+    return _pov_view(p["tenant"], p)
+
+
+class PovPostureRequest(PovRequest):
+    """Record a posture score on the POV: the assessment results the page holds (the score is computed here)."""
+    checks: List[Dict[str, Any]] = []
+
+
+@app.post("/api/pov/posture")
+async def pov_posture(req: PovPostureRequest, request: Request):
+    """Record the posture score of the results sent. The first reading is the POV's start, the latest later one its end;
+    the pair and the change are in the view. Computed from the results sent: no tenant read, no tenant write."""
+    import pov
+    p = _pov_call(pov.add_posture, req.profile_id, _pov_typed(req), req.checks, by=_cq_by(request))
     return _pov_view(p["tenant"], p)
 
 

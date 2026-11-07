@@ -7,6 +7,17 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-07
+
+### Policy wizard gaps
+
+- Block page theme builder: a local, read-only editor, preview and HTML download for the end-user block page (logo stored locally, colours, wording); applying its wording to ZIA's end-user notification is a Bulk changes operation (write mode off by default, APPLY EUN typed every time, Undo).
+- AI prompt capture: a dedicated Bulk changes builder for the GenAI prompt-capture switches (nothing pre-picked, CAPTURE PROMPTS typed, Undo).
+- Education (FERPA) policy pack, offered first for the Education industry and the FERPA compliance profile.
+- A POV now reopens with where it stands and the next step, and pairs a posture score at its start with one at its end (computed on the server).
+- The audit log exports as JSON Lines or CSV (spreadsheet-safe) from an authenticated route.
+- The rule picker marks leftovers from a pack that is gone or not deployed, with a Keep box ticked by default.
+
 ## 2026-11-06
 
 ### Store encryption in a read-only container, glass while scrolling, macOS installs

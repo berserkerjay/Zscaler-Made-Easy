@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-552 markers.
+558 markers.
 
 | File:line | Note |
 |---|---|
@@ -37,6 +37,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `app_services.py:70` | service areas they hold. Assumed: Zscaler's app service names are not in |
 | `app_update.py:196` | fork or a mirror is never assumed to be the upstream repository.""" |
 | `audit_timeline.py:167` | CORRELATE_SECONDS match with Zscaler Made Easy's own writes. Assumed: CST |
+| `block_page_theme.py:17` | settings have no logo field (assumed, the SDK lists none), so the logo |
+| `block_page_theme.py:389` | "The logo image is not part of the settings: ZIA's API lists no logo field (assumed), so upload it in the ZIA Admin Portal; " |
 | `bulk_test.py:124` | SUSPICIOUS_DESTINATION; the others are assumed from ZIA's category list. |
 | `bulk_test.py:128` | category costs little. Names this app already uses (ssl_flow) or assumed. |
 | `compliance_pack.py:7` | the control catalogue with sources and the assumed flag |
@@ -106,9 +108,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
 | `dlp_api_server.py:4038` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
-| `dlp_api_server.py:9662` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
-| `dlp_api_server.py:9664` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
-| `dlp_api_server.py:9797` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
+| `dlp_api_server.py:9731` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
+| `dlp_api_server.py:9733` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
+| `dlp_api_server.py:9866` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
 | `dlp_assessment_full_auto.py:200` | times of a provider credential are assumed (not named by the SDK model). |
 | `dns_forward_zones.py:50` | * Assumed (not in the SDK or Zscaler's API reference): that the resolver |
 | `editions.py:12` | tenants, and are ASSUMED (not in the SDK). The ZDX edition is not exposed by |
@@ -215,8 +217,12 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_zia_activation.py:30` | ASSUMED (the SDK has no enumeration and this was not checked against a live |
 | `ops_zia_activation.py:49` | assumed: ZIA's activation status values (the SDK's Activation model has no enumeration). |
 | `ops_zia_activation.py:59` | "tool or this app): check with the other admins first (assumed: the SDK does not say whose changes it activates).") |
+| `ops_zia_ai_prompt.py:24` | ASSUMED (the SDK model lists only six prompt fields; the others come from |
 | `ops_zia_baseline.py:65` | read them; the others are assumed and the tenant refuses what it lacks. |
 | `ops_zia_directory.py:42` | delete_department. ASSUMED (not checkable without a tenant): that ZIA |
+| `ops_zia_eun.py:16` | the settings (assumed, the SDK lists none). |
+| `ops_zia_eun.py:23` | snake_case list in its docstring, camelCased: assumed, not checked against a |
+| `ops_zia_eun.py:45` | LOGO_NOTE = ("The logo image is not sent: ZIA's API lists no logo field (assumed). Upload it in the ZIA Admin Portal; the display-logo " |
 | `ops_zia_objects.py:53` | NAME_MAX = 255           # assumed for these objects (the API refuses longer) |
 | `ops_zia_pac.py:40` | pacFiles/{id}/version/{v}/action/DEPLOY), delete_pac_file. ASSUMED: that |
 | `ops_zia_sandbox.py:21` | Assumed (not modelled by the SDK): the fileHashCount fields |
