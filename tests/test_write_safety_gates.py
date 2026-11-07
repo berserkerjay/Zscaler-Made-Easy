@@ -653,6 +653,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/path-analyzer/compare/start"): "reads (two analyses on one read)",
     ("POST", "/api/path-analyzer/test-from-here"): "no tenant call: DNS, a TCP connect and a TLS handshake from this computer (path_probe)",
     ("POST", "/api/report/data-flow/{report_id}/trace"): "reads",
+    ("POST", "/api/report/data-flow/{report_id}/port-check"): "reads",
     ("POST", "/api/report/ssl-flow"): "reads",
     ("POST", "/api/ssl-coverage/start"): "reads",
     ("POST", "/api/report/bypass/export"): "report",

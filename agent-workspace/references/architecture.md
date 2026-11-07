@@ -109,6 +109,7 @@ Find the files a change touches here, then read only those.
 | `path_compare.py` | Path analyzer: the same destination for two identities, side by side. |
 | `path_device.py` | Path analyzer: trace for one user's enrolled device. |
 | `path_manual.py` | Manual bypass and PAC what-if for the Path analyzer. |
+| `path_port_check.py` | Port and service check: "is this protocol and port blocked for everyone?" |
 | `path_probe.py` | Path analyzer: "Test from here", an opt-in observation from the computer |
 | `path_whatif.py` | What-if for the Path analyzer: the same destination for one user, |
 | `pdf_writer.py` | A small PDF 1.4 writer for the app's printable exports (a deployment |

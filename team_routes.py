@@ -315,6 +315,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/report/data-flow": READ,
     "GET /api/report/data-flow/{report_id}": READ,
     "POST /api/report/data-flow/{report_id}/trace": READ,
+    "POST /api/report/data-flow/{report_id}/port-check": READ,
     "GET /api/report/data-flow/export/{report_id}": READ,
     "POST /api/path-analyzer/batch/start": READ,
     "GET /api/path-analyzer/batch/{job_id}/host": READ,

@@ -7,6 +7,11 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-07
+
+### Policy simulator: is this port blocked for everyone?
+- New `POST /api/report/data-flow/{report_id}/port-check`: give a protocol and a port and, from a Path analyzer read already kept in memory, it says whether the Cloud Firewall blocks or allows that traffic for every destination and source, or that it depends (the rules limited to some destinations or sources are named). Offline and read-only: no tenant call, nothing written. The default assumptions each result states and the per-area lists to paste (Test a list) are now covered by tests.
+
 ## 2026-11-06
 
 ### Store encryption in a read-only container, glass while scrolling, macOS installs

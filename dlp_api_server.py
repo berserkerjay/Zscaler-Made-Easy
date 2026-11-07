@@ -15588,6 +15588,27 @@ async def report_data_flow_trace(report_id: str, req: DataFlowTraceRequest):
     return await asyncio.to_thread(trace_from_report, rep, req.destination.strip()[:200], req.network, req.platform)
 
 
+class PortCheckRequest(BaseModel):
+    protocol: str = "tcp"
+    port: Any = None
+
+
+@app.post("/api/report/data-flow/{report_id}/port-check")
+async def report_data_flow_port_check(report_id: str, req: PortCheckRequest):
+    """Is this protocol and port blocked for everyone? Answered from the
+    stored tenant snapshot's Cloud Firewall rules; no tenant call, nothing
+    is written (path_port_check)."""
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("dataflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    import path_port_check
+    zia = (rep.get("snapshot") or {}).get("zia") or {}
+    try:
+        return await asyncio.to_thread(path_port_check.check, zia, req.protocol[:8], req.port)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/report/data-flow/export/{report_id}")
 async def report_data_flow_export(report_id: str, format: str = "markdown"):
     rep = _REPORTS.get(report_id)
