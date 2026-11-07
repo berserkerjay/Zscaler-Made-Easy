@@ -611,12 +611,15 @@ def register(app: FastAPI) -> None:
         with it, then the old key forgotten. Audited. 409 when encryption is off."""
         _on()
         if not store_crypto.enabled():
-            raise HTTPException(status_code=409, detail="Store encryption is off (DLP_CHECK_STORE_ENCRYPTION=1 turns it on).")
+            raise HTTPException(status_code=409, detail="Store encryption is off: the server was started with DLP_CHECK_STORE_ENCRYPTION=0. Remove that setting (on is the default) and start again.")
         try:
-            out = store_crypto.rotate()
+            out = store_crypto.rotate(wait=0)     # never holds the server up: another process rotating is a 409 at once
         except store_crypto.StoreLocked as e:
             raise HTTPException(status_code=409, detail=f"Rotation stopped, both keys kept: {e}")
-        return {"new_key": out["new_key"], "files": len(out["files"]), "kept_in": out["kept_in"]}
+        except store_crypto.StoreBusy as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        return {"new_key": out["new_key"], "files": len(out["files"]), "kept_in": out["kept_in"],
+                "old_keys_kept": len(out.get("old_keys_kept") or [])}
 
     @app.post("/api/team/scim-token")
     async def team_scim_token():

@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlparse
 
 import jwt
 import pytest
+from conftest import read_store_text
 
 import audit
 import safe_files
@@ -395,7 +396,7 @@ def test_a_huge_body_key_is_cut_short_and_a_secret_in_a_key_is_masked(audit_log)
     """ASVS V7.1.2 · CWE-779 · CWE-532 · WSTG-INPV-01: a megabyte-long key name is written cut short; a secret pasted as a key is masked."""
     audit.record("api", body={"k" * 100_000: 1, "client_secret": SECRET, f"note {SECRET}": 1})
 
-    line = audit_log.read_text()
+    line = read_store_text(audit_log)
     assert len(line) < 2000 and SECRET not in line
 
 
@@ -500,7 +501,7 @@ def test_forgetting_a_secret_removes_it_from_the_store_and_the_profile(store, tm
     out = tenant_profiles.upsert({"name": "acme"}, remember_secret=False, profile_id="acme")
 
     assert not store.items and out["has_secret"] is False
-    assert "FIRST-SECRET" not in (tmp_path / "tenant_profiles.json").read_text()
+    assert "FIRST-SECRET" not in read_store_text(tmp_path / "tenant_profiles.json")
 
 
 @pytest.mark.parametrize("content", ["[1, 2]", '{"profiles": []}', '{"profiles": {"a": 5, "b": "x"}}', '"text"', "7"])
@@ -887,7 +888,7 @@ def test_a_classic_profile_named_after_its_login_is_renamed_with_its_secrets(sto
 
     assert [r["id"] for r in rows] == ["classic-api-zscalertwo"] and rows[0]["name"] == "classic API (zscalertwo)"
     assert store.items == {("dlp-check", "classic-api-zscalertwo:password"): "PW-1234567"}
-    kept = json.loads((tmp_path / "tenant_profiles.json").read_text())["profiles"]
+    kept = json.loads(read_store_text(tmp_path / "tenant_profiles.json"))["profiles"]
     assert list(kept) == ["classic-api-zscalertwo"] and "admin" not in kept["classic-api-zscalertwo"]["name"]
 
 

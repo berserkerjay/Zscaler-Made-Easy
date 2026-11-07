@@ -10,6 +10,7 @@ import random
 import threading
 
 import pytest
+from conftest import audit_events
 from fastapi.testclient import TestClient
 
 import admin_ops as ao
@@ -330,7 +331,7 @@ def by_key(result):
 def audit_entries(tmp_audit=None):
     import audit
     try:
-        return [json.loads(l) for l in open(audit.path(), encoding="utf-8")]
+        return audit_events(audit.path())
     except FileNotFoundError:
         return []
 

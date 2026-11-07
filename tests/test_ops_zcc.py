@@ -14,6 +14,7 @@ import os
 import re
 
 import pytest
+from conftest import read_store_text
 
 import admin_ops as ao
 import ops_zcc as oz
@@ -411,9 +412,9 @@ def test_the_build_and_its_undo_are_recorded_and_audited_without_secrets(tmp_pat
     _p, res = build(sdk)
     rec = ao.record(res, by=ASSESSOR, actor=None)
     assert rec and deployments.list_operations()[0]["can_undo"] is True
-    log = (tmp_path / "audit.log").read_text()
+    log = read_store_text(tmp_path / "audit.log")
     assert log.count('"object_write"') >= 2 and '"zcc_app_profile"' in log
-    assert "CANARY" not in log and "CANARY" not in (tmp_path / "deployments.json").read_text()
+    assert "CANARY" not in log and "CANARY" not in read_store_text(tmp_path / "deployments.json")
 
 
 # ── Install command builder ─────────────────────────────────────────────
@@ -511,7 +512,7 @@ def test_the_install_route_masks_the_token_and_the_audit_log_never_holds_it(app,
     assert masked.status_code == 200 and "CANARY" not in masked.text and "POLICYTOKEN=********" in masked.json()["command"]
     assert "POLICYTOKEN=CANARYpolicyToken42" in shown.json()["command"]
     assert ("GET", "application-profiles", "21") in sdk.calls and sdk.writes() == []
-    assert "CANARY" not in (tmp_path / "audit.log").read_text()
+    assert "CANARY" not in read_store_text(tmp_path / "audit.log")
 
 
 def test_the_builder_is_offered_on_bulk_changes_with_its_form():

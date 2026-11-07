@@ -46,6 +46,8 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 # home in the app's pages to mark. A new phrase must either be covered by a
 # manifest feature's "changelog" list or be added here with its reason.
 EXCLUDED = {
+    # POV follow-ups (2026-11-04): made-up data in the sample tenant, no control of its own.
+    "PRA credential pools and ZPA isolation profiles in the sample tenant": "sample tenant data read by backups and checks, not a control",
     # The agent workspace is for the agents that build the app, not a page or a control.
     "Layered context": "agent workspace files in the repository, not in the app",
     "Compiled references that can't drift": "agent workspace files in the repository, not in the app",
@@ -77,6 +79,9 @@ EXCLUDED = {
     "bandit, offline, in every test run": "a test-run gate (tests/test_sast.py, make sast), not a page",
     "CodeQL in CI": "a GitHub Actions workflow, outside the app",
     "Every current finding triaged": "code fixes and reviewed suppressions, nothing to see",
+    # SOC review (2026-11-04): the assistant's tools and a status word in the text.
+    "Assistant tools": "the MCP server's tools, used by an assistant, not a page",
+    "Unknown": "a status word on the page, not a control",
 }
 
 
@@ -432,12 +437,24 @@ for (const [page, marks] of Object.entries(MARKS)) {
 // settings when it has one). Only changes to the marks count: a page's own
 // live content (a running flow, a status line) is not the marks' doing.
 const quietPage = out.both.some(b => b.page === '/report/advanced') ? '/report/advanced' : (out.both.length ? out.both[0].page : '/report/advanced');
+// The page's own reads, in flight (a busy computer answers them late, and
+// content they reveal shows its marks then: that is not a rescan loop).
+const inflight = new Set();
+const _onmsgNet = ws.onmessage;
+ws.onmessage = e => { _onmsgNet(e); const m = JSON.parse(e.data);
+  if (m.method === 'Network.requestWillBeSent' && m.params.request.url.startsWith(base)) inflight.add(m.params.requestId);
+  if (m.method === 'Network.loadingFinished' || m.method === 'Network.loadingFailed') inflight.delete(m.params.requestId); };
 await open(quietPage);
 // The page's own late content (a status box filled after its fetch) lands
-// first: wait for 600 ms without any change (at most 8 s), then measure.
-await ev(`new Promise(r => { let t = null; const done = () => { mo.disconnect(); clearTimeout(cap); r(true); };
-  const mo = new MutationObserver(() => { clearTimeout(t); t = setTimeout(done, 600); });
-  mo.observe(document.body, { subtree: true, childList: true, attributes: true }); t = setTimeout(done, 600); const cap = setTimeout(done, 8000); })`);
+// first: wait until none of its reads is in flight, then for 600 ms without
+// any change (at most 8 s), and again if that change started another read.
+for (let i = 0; i < 3; i++) {
+  await until(async () => inflight.size === 0, quietPage + ' reads answered', 15000).catch(() => null);   // a stream never ends: measure anyway
+  await ev(`new Promise(r => { let t = null; const done = () => { mo.disconnect(); clearTimeout(cap); r(true); };
+    const mo = new MutationObserver(() => { clearTimeout(t); t = setTimeout(done, 600); });
+    mo.observe(document.body, { subtree: true, childList: true, attributes: true }); t = setTimeout(done, 600); const cap = setTimeout(done, 8000); })`);
+  if (inflight.size === 0) break;
+}
 out.quiet = await ev(`new Promise(r => { let n = 0;
   const MARK = /(^|\\s)(hh-mark|hh-mark-new|wn-legend|wn-legend-mark)(\\s|$)/;
   const isMark = x => x && x.nodeType === 1 && (MARK.test(x.className || '') || !!(x.querySelector && x.querySelector('.hh-mark, .wn-legend')));
@@ -445,7 +462,11 @@ out.quiet = await ev(`new Promise(r => { let n = 0;
   const mo = new MutationObserver(ms => { ms.forEach(m => {
     if (m.type === 'attributes' ? (ATTRS.includes(m.attributeName) || isMark(m.target)) : ([...m.addedNodes].some(isMark) || [...m.removedNodes].some(isMark))) n++; }); });
   mo.observe(document.body, { subtree: true, childList: true, attributes: true });
-  setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
+  // The page's own late change (a status line filled after a slow read)
+  // asks the marks to rescan: a rescan of settled marks changes nothing.
+  const own = document.createElement('p'); own.textContent = 'status'; document.body.appendChild(own);
+  setTimeout(() => { own.textContent = 'status, later'; own.className = 'later'; }, 300);
+  setTimeout(() => { mo.disconnect(); own.remove(); r(n); }, 1500); })`);
 out.quietPage = quietPage;
 
 if (PR.pick) {
@@ -658,7 +679,7 @@ def test_no_sideways_scroll_at_320px(marks_browser, page):
 
 
 def test_placing_the_marks_settles(marks_browser):
-    """CWE-835 (loop with unreachable exit) · ASVS V11.1.4: on a page with a * and a ? in one title, nothing changes the page once the marks are placed (no rescan loop)."""
+    """CWE-835 (loop with unreachable exit) · ASVS V11.1.4: on a page with a * and a ? in one title, nothing changes the marks once they are placed (no rescan loop), even when the page's own late content asks for a rescan."""
     assert marks_browser["quiet"] == 0, (marks_browser["quietPage"], marks_browser["quiet"])
 
 

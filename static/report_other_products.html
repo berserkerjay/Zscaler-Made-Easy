@@ -84,7 +84,9 @@
       return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
     const $ = id => document.getElementById(id);
     const body = $('opBody'), meta = $('rpMeta'), live = $('liveRegion');
-    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    // A new message is set at once, so the result and its announcement land together; only the
+    // same words again are cleared first and set a moment later, so a screen reader repeats them.
+    const say = t => { if (live.textContent !== t) { live.textContent = t; return; } live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
     const SEVS = ['high', 'medium', 'low', 'info'];
     const SEV_CLS = { high: 'st-fail', medium: 'st-warn', low: 'st-block', info: '' };
     const ID_RE = /^[A-Za-z0-9_-]{0,64}$/;

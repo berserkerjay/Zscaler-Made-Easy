@@ -32,10 +32,11 @@
   .sev-chip.medium { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
   .sev-chip.low { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
   .zp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 0.7rem 1rem; margin: 0 0 1rem; }
-  .zp-form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--dim); }
+  .zp-form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--dim); min-width: 0; }
   .zp-form :is(input, select, textarea) { font: inherit; font-size: 0.88rem; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.4rem 0.55rem; min-height: 34px; max-width: 100%; box-sizing: border-box; }
   .zp-form textarea { min-height: 64px; resize: vertical; }
-  .zp-form fieldset { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 0.7rem 1rem; }
+  /* A fieldset's min-width is min-content by default: 0 lets a long IdP or client type option shrink at 320px. */
+  .zp-form fieldset { min-width: 0; grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 0.7rem 1rem; }
   .zp-form legend { font-size: 0.8rem; font-weight: 600; color: var(--text); padding: 0 0.3rem; }
   .zp-actions { grid-column: 1 / -1; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
   .zp-hops { list-style: none; margin: 0 0 1rem; padding: 0; border-left: 2px solid var(--border); }

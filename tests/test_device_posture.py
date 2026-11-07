@@ -157,6 +157,8 @@ class FakeService:
         if attr.startswith("_"):
             raise AttributeError(attr)
         t = self._t
+        if attr.startswith("get_"):   # a read the fake has no data for (Client Connector company info)
+            return lambda *a, **k: (None, None, "not in the fake tenant")
         if not attr.startswith("list_"):
             def write(*a, **k):
                 t.writes.append(f"{self._name}.{attr}")
@@ -448,7 +450,9 @@ def _wait(t, job, timeout=15):
     raise AssertionError("job did not finish")
 
 
-@pytest.mark.parametrize("body", [{"scopes": ["dlp", "zcc"], "channels": {}, "from_page": True}, {"scopes": [], "channels": {}, "from_page": True}])
+# Client Connector or ZIA alone is enough now (posture is defined in Client Connector and used by ZIA too:
+# tests/test_device_posture_cross.py); a scope with none of ZPA, ZCC and ZIA platform is still refused.
+@pytest.mark.parametrize("body", [{"scopes": ["dlp", "zdx"], "channels": {}, "from_page": True}, {"scopes": [], "channels": {}, "from_page": True}])
 def test_refused_before_any_read_unless_zpa_is_in_scope(api, body):
     srv, t, tenant, built = api
     r = t.post("/api/device-posture/start", json=dict(CREDS, **body))
@@ -486,7 +490,9 @@ def test_client_connector_networks_are_read_only_when_it_is_in_scope(api):
     srv, t, tenant, built = api
     r = t.post("/api/device-posture/start", json=dict(CREDS, **ZPA_ZCC_SCOPE))
     res = _wait(t, r.json()["job_id"])["result"]
-    assert [c[1:3] for c in tenant.calls if c[0] == "zcc"] == [("trusted_networks", "list_by_company")]
+    zcc_calls = [c[1:3] for c in tenant.calls if c[0] == "zcc"]
+    assert ("trusted_networks", "list_by_company") in zcc_calls
+    assert {c for c in zcc_calls} <= {("trusted_networks", "list_by_company"), ("web_policy", "list_by_company")}
     assert res["zcc"]["read"] is True and any(f["id"] == "DP-09" for f in res["findings"])
 
 

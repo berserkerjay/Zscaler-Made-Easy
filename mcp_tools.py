@@ -1224,6 +1224,41 @@ def zdx_summary(ctx: Ctx) -> Dict[str, Any]:
             "evidence": "observed: ZDX application scores (last 24 hours) and alerts (ongoing, last 14 days)"}
 
 
+# ── 18b. SOC review: RBAC and telemetry (soc_review) ────────────────
+def _soc(ctx: Ctx, part: str) -> Dict[str, Any]:
+    import soc_review
+    a = _api()
+    req = ctx.request(a.SocReviewRequest)
+    sel = a._soc_scope(req, part)   # the Scope rule, before sign-in
+    creds = a._tenant_creds(req)
+    cl = a._signed_in_raw(creds)
+    try:
+        fn = soc_review.rbac_review if part == "rbac" else soc_review.telemetry_review
+        rep = fn(cl, sel["scopes"], creds=creds)
+    finally:
+        _close(cl)
+    out = soc_review.for_assistant(rep)
+    out["evidence"] = ("configuration: admins, roles, API keys and clients (GET only)" if part == "rbac"
+                       else "configuration: Cloud NSS feeds, NSS servers and collectors, LSS configurations, Client Connector log settings (GET only)")
+    return out
+
+
+def rbac_review(ctx: Ctx) -> Dict[str, Any]:
+    """Who can administer ZIA, ZPA, Client Connector, ZDX and ZIdentity:
+    admins (numbered, never named), roles, full vs scoped rights, stale
+    admins, API keys and clients with their scopes, the findings and the
+    RBAC checks. Needs RBAC in scope (plus ZPA, Client Connector or ZIdentity for theirs)."""
+    return _soc(ctx, "rbac")
+
+
+def telemetry_review(ctx: Ctx) -> Dict[str, Any]:
+    """What is streamed out of the tenant and where: Cloud NSS feeds, NSS
+    servers and collectors, ZPA LSS, Client Connector log settings, SIEM
+    destinations (host names only) and the gaps. Needs ZIA platform, ZPA,
+    Client Connector or ZDX in scope."""
+    return _soc(ctx, "telemetry")
+
+
 # ── 19. Timeline of the app's own records ───────────────────────────
 def timeline(ctx: Ctx, since: str = "") -> Dict[str, Any]:
     """What Zscaler Made Easy did (deployments, tenant writes, jobs,

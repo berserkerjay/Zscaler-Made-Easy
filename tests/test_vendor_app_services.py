@@ -16,11 +16,13 @@ import ipaddress
 import os
 
 import pytest
+from conftest import read_store_text
 import requests
 import requests.adapters
 from requests.models import Response
 
 import app_services as aps
+import endpoint_snapshots
 import m365_endpoints as m365
 import vendor_endpoints as ve
 
@@ -31,6 +33,7 @@ WEBEX_TXT = "*.webex.com\nwebex.com\n62.109.192.0/18  # Webex media\n"
 ONE_CLICK = {"id": 90, "name": "UCaaS One Click Rule", "order": 2, "state": "ENABLED", "predefined": True, "action": "ALLOW",
              "appServiceGroups": [{"id": 2, "name": "ZOOM"}, {"id": 3, "name": "WEBEX"}]}
 T443 = {"protocol": "tcp", "port": 443}
+BUNDLED = (endpoint_snapshots.vendor_list, endpoint_snapshots.m365_list)   # the real excerpts, for the page test
 
 
 @pytest.fixture(autouse=True)
@@ -42,6 +45,10 @@ def _own_folder(tmp_path, monkeypatch):
     def refuse(self, request, **kw):
         raise AssertionError(f"no network in tests: {request.url}")
     monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", refuse)
+    # These tests pin the kept-list logic, so the bundled excerpts are left
+    # out here; tests/test_app_service_snapshots.py tests them on their own.
+    monkeypatch.setattr(endpoint_snapshots, "vendor_list", lambda pid: None)
+    monkeypatch.setattr(endpoint_snapshots, "m365_list", lambda: None)
     ve._CACHE.clear()
     ve._CURRENT["lists"] = None
     m365._CACHE.update(key=None, list=None)
@@ -169,14 +176,15 @@ class Net:
 
 
 def test_fetching_is_off_by_default_and_import_only_providers_cannot_fetch(monkeypatch):
-    """ASVS V12.6.1 · CWE-918 · WSTG-INPV-19: every provider starts off; Fetch now while off sends nothing; Webex and the others publish no file, so fetching them cannot be turned on."""
+    """ASVS V12.6.1 · CWE-918 · WSTG-INPV-19: every provider starts off; Fetch now while off sends nothing; Webex, RingCentral and Talkdesk publish no machine-readable file, so fetching them cannot be turned on."""
     net = Net(monkeypatch)
     st = ve.status()
     assert all(p["enabled"] is False for p in st["providers"])
-    assert [p["id"] for p in st["providers"] if p["fetchable"]] == ["zoom"]
-    with pytest.raises(ve.FetchDisabled, match="off"):
-        ve.fetch("zoom")
-    for pid in ("webex", "ringcentral", "goto", "talkdesk"):
+    assert [p["id"] for p in st["providers"] if p["fetchable"]] == ["zoom", "goto"]
+    for pid in ("zoom", "goto"):
+        with pytest.raises(ve.FetchDisabled, match="off"):
+            ve.fetch(pid)
+    for pid in ("webex", "ringcentral", "talkdesk"):
         with pytest.raises(ve.FetchDisabled, match="import its list by hand"):
             ve.set_enabled(pid, True)
         with pytest.raises(ve.FetchDisabled):
@@ -224,9 +232,10 @@ def test_the_fetcher_refuses_any_other_address(monkeypatch, url):
 
 
 def test_the_fetch_host_is_declared_with_the_other_outbound_destinations():
-    """ASVS V14.1.1 · V12.6.1 · CWE-1059: the one host fetched is listed in SECURITY.md's outbound calls."""
+    """ASVS V14.1.1 · V12.6.1 · CWE-1059: every host fetched is listed in SECURITY.md's outbound calls."""
     sec = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SECURITY.md"), encoding="utf-8").read()
-    assert ve.FETCH_HOSTS == {"assets.zoom.us"} and "https://assets.zoom.us" in sec
+    assert ve.FETCH_HOSTS == {"assets.zoom.us", "goto-ipblocks.live.gtc.goto.com"}
+    assert "https://assets.zoom.us" in sec and "https://goto-ipblocks.live.gtc.goto.com" in sec
 
 
 # ── Test a list: two destinations, two answers ───────────────────────
@@ -280,7 +289,7 @@ def test_the_api_imports_switches_and_removes_and_audits_each_change():
                 if p["id"] == "zoom")["enabled"] is True
     assert not next(p for p in c.delete("/api/vendor-endpoints/webex").json()["providers"] if p["id"] == "webex")["present"]
     assert c.delete("/api/vendor-endpoints/nope").status_code == 400
-    log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    log = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     for event in ("vendor_endpoints_import", "vendor_endpoints_settings", "vendor_endpoints_remove"):
         assert event in log
 
@@ -308,7 +317,8 @@ await ev(`(() => { window.dlpDialog = { ask: async () => true };
   const f = window.fetch; window.__vend = []; window.fetch = (u, o) => { if (String(u).includes('/api/vendor-endpoints')) window.__vend.push([(o && o.method) || 'GET', String(u), (o && o.body) || '']); return f(u, o); }; return 1; })()`);
 out.start = await ev(`({ on: document.getElementById('advVendZoomOn').checked, fetchDisabled: document.getElementById('advVendFetch').disabled,
   removeDisabled: document.getElementById('advVendRemove').disabled, box: document.getElementById('advVendBox').textContent,
-  switchRole: document.getElementById('advVendZoomOn').getAttribute('role') })`);
+  switchRole: document.getElementById('advVendZoomOn').getAttribute('role'), gotoOn: document.getElementById('advVendGotoOn').checked,
+  gotoFetchDisabled: document.getElementById('advVendGotoFetch').disabled, gotoRole: document.getElementById('advVendGotoOn').getAttribute('role') })`);
 // Import Webex's list from a text file.
 await ev(`(() => { const s = document.getElementById('advVendProv'); s.value = 'webex'; s.dispatchEvent(new Event('change')); return 1; })()`);
 const root = (await send('DOM.getDocument', { depth: 0 })).result.root.nodeId;
@@ -326,7 +336,7 @@ await ev(`(document.getElementById('advVendRemove').click(), 1)`);
 await until(() => ev(`document.getElementById('advVendBox').textContent.includes('Removed.')`), 'the removal', 30000);
 out.removed = await ev(`({ box: document.getElementById('advVendBox').textContent, removeDisabled: document.getElementById('advVendRemove').disabled,
   calls: window.__vend.map(c => c[0] + ' ' + c[1].replace(location.origin, '')) })`);
-out.names = await ev(`['advVendZoomOn', 'advVendFetch', 'advVendProv', 'advVendFile', 'advVendImport', 'advVendRemove'].map(id => { const e = document.getElementById(id); e.disabled = false; e.focus();
+out.names = await ev(`['advVendZoomOn', 'advVendFetch', 'advVendGotoOn', 'advVendGotoFetch', 'advVendProv', 'advVendFile', 'advVendImport', 'advVendRemove'].map(id => { const e = document.getElementById(id); e.disabled = false; e.focus();
   return { id, focused: document.activeElement === e, name: ((e.labels && e.labels.length ? e.labels[0].textContent : '') || e.textContent || '').trim() }; })`);
 await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
 await sleep(300);
@@ -336,9 +346,11 @@ ws.close(); p.kill(); process.exit(0);
 """
 
 
-def test_the_advanced_settings_card_imports_switches_and_removes_with_zoom_fetching_off_by_default(tmp_path):
-    """ASVS V1.14.6 · V12.6.1 · CWE-918 · WCAG 2.2 SC 4.1.2 · SC 1.4.10: the card exists in Advanced settings, as SECURITY.md says; fetching Zoom's list is off by default and turning it on fetches nothing; a provider's list is imported from a text file and removed; every control is named and reachable; nothing scrolls sideways at 320px."""
+def test_the_advanced_settings_card_imports_switches_and_removes_with_zoom_fetching_off_by_default(tmp_path, monkeypatch):
+    """ASVS V1.14.6 · V12.6.1 · CWE-918 · WCAG 2.2 SC 4.1.2 · SC 1.4.10: the card exists in Advanced settings, as SECURITY.md says; fetching Zoom's and GoTo's lists is off by default and turning it on fetches nothing; with none kept no excerpt is shown (none ships for these providers); a provider's list is imported from a text file and removed; every control is named and reachable; nothing scrolls sideways at 320px."""
     from test_findings_reflow import run_in_browser
+    monkeypatch.setattr(endpoint_snapshots, "vendor_list", BUNDLED[0])    # the page shows the excerpts as shipped
+    monkeypatch.setattr(endpoint_snapshots, "m365_list", BUNDLED[1])
     lst = tmp_path / "webex.txt"
     lst.write_text(WEBEX_TXT, encoding="utf-8")
     (tmp_path / "b").mkdir()
@@ -346,6 +358,9 @@ def test_the_advanced_settings_card_imports_switches_and_removes_with_zoom_fetch
     s = out["start"]
     assert s["on"] is False and s["fetchDisabled"] is True and s["removeDisabled"] is True and s["switchRole"] == "switch"
     assert "Zoom: no list kept" in s["box"] and "Fetching from assets.zoom.us: off" in s["box"] and "Webex: no list kept" in s["box"]
+    assert s["gotoOn"] is False and s["gotoFetchDisabled"] is True and s["gotoRole"] == "switch"
+    assert "Fetching from goto-ipblocks.live.gtc.goto.com: off" in s["box"] and "Using the excerpt that comes with the app" not in s["box"]
+    assert "GoTo: no list kept, so its app service group" in s["box"] and "never returns their members" in s["box"]
     assert "Webex's list, imported" in out["imported"]["box"] and "host names" in out["imported"]["box"] and out["imported"]["removeDisabled"] is False
     assert "Fetching from assets.zoom.us: on" in out["on"]["box"] and "Nothing is fetched until you click" in out["on"]["box"]
     assert [c.split(" ")[0] + " " + c.split(" ")[1] for c in out["on"]["calls"]] == ["POST /api/vendor-endpoints/import", "PUT /api/vendor-endpoints/settings"]

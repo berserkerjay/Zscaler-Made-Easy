@@ -20,6 +20,7 @@ import types
 from typing import Any, Dict, List, Optional
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
@@ -342,7 +343,7 @@ def test_sign_in_returns_what_the_token_says_and_never_the_token(app, capsys):
     assert acc["ok"] and [p["product"] for p in acc["products"]] == ["ZIA", "ZCC", "ZPA", "ZINSIGHTS"]
     assert app["client"].calls == []     # sign-in only: nothing in the tenant was read
     out = capsys.readouterr()
-    audit = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read() if os.path.exists(os.environ["DLP_CHECK_AUDIT"]) else ""
+    audit = read_store_text(os.environ["DLP_CHECK_AUDIT"]) if os.path.exists(os.environ["DLP_CHECK_AUDIT"]) else ""
     assert _no_canary(r.text + audit + out.out + out.err) == []
 
 

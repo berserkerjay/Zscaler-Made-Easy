@@ -83,16 +83,38 @@ jobs:
           print("smoke OK")
           EOF
 
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3.1.2
-        with:
-          terraform_version: "1.9.8"
-          terraform_wrapper: false
-
       - name: Every pack mirrors its inline rules onto endpoint, saas and email
         run: python tools/fan_out_channels.py --check
 
       - name: Every payload field the app sends is known to the installed SDK (offline upstream check)
         run: python upstream_check.py --offline
+
+      - name: Print file fingerprints
+        run: sha1sum $(git ls-files '*.py' 'static/*' 'tests/*' 'POLICY_PACKS.md')
+
+  terraform:
+    # Generated Terraform: committed workspaces current, fmt-clean, and valid against each
+    # provider. Its own job, so a validation failure shows in minutes, not after the unit run.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Install the same hash-pinned application and test dependencies
+        run: |
+          python -m pip install --require-hashes --no-deps -r requirements-pip.lock
+          pip install --require-hashes --no-deps -r requirements.lock
+          pip install --require-hashes --no-deps -r requirements-dev.lock
+          pip check
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3.1.2
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
 
       - name: Committed Terraform workspaces are up to date
         run: |
@@ -115,14 +137,12 @@ jobs:
           done
           exit $rc
 
-      # Advisory until a first green run: the whole-tenant export (tenant_terraform) of the
-      # sample tenant, every product's workspace the export writes (zia, zpa, ztc and zcc; the
-      # samples tool fails when one is missing), against the provider each one pins. The
-      # zscaler/zcc provider is a beta pinned exactly (0.1.2-beta.3). Owner decision (wave 9):
-      # this step becomes blocking (remove continue-on-error) after its first green run; it has
-      # never run yet (no Actions minutes), so ztc and zcc have never been validated in CI.
-      - name: Validate the whole-tenant export of the sample tenant, every product (advisory)
-        continue-on-error: true
+      # The whole-tenant export (tenant_terraform) of the sample tenant: every product's
+      # workspace the export writes (zia, zpa, ztc and zcc; the samples tool fails when one
+      # is missing), validated against the provider each one pins (zscaler/zcc is a beta,
+      # pinned exactly to 0.1.2-beta.3). Owner decision (wave 9): blocking after its first
+      # green run.
+      - name: Validate the whole-tenant export of the sample tenant, every product
         run: |
           rc=0
           for p in zia zpa ztc zcc; do
@@ -130,13 +150,14 @@ jobs:
           done
           for d in /tmp/tf_samples/tenant/tenant-terraform/*/; do
             echo "== $d"
-            terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null || { rc=1; continue; }
-            terraform -chdir="$d" validate -no-color || rc=1
+            # An init failure (a provider version the registry does not have) prints its own tail.
+            out="$(terraform -chdir="$d" init -backend=false -input=false -no-color 2>&1)" || { printf '%s\n' "$out" | tail -n 15; rc=1; continue; }
+            # One line per diagnostic (file:line, resource, summary, detail), so every error fits a short log tail.
+            res="$(terraform -chdir="$d" validate -json -no-color)" || true
+            printf '%s' "$res" | jq -r '.diagnostics[] | "\(.severity) \(.range.filename // "-"):\(.range.start.line // 0) \(.snippet.context // "") \(.summary): \(.detail // "" | gsub("\n"; " ") | .[0:220])"'
+            [ "$(printf '%s' "$res" | jq -r .valid)" = "true" ] || rc=1
           done
           exit $rc
-
-      - name: Print file fingerprints
-        run: sha1sum $(git ls-files '*.py' 'static/*' 'tests/*' 'POLICY_PACKS.md')
 
   browser-acceptance:
     # Real production-page checks. A green unit run or DOM shim is not this gate.

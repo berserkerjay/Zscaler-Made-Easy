@@ -181,6 +181,35 @@ Words used across tools:
 - `alerts_ongoing` and `alerts_last_14_days`: counts by severity and type,
   and the rules that fired. Devices and users are never listed.
 
+## rbac_review
+
+- `products`: ZIA, ZPA, Client Connector, ZDX, ZIdentity, each with a
+  `state` (`read`, `derived` for ZDX from ZIdentity entitlements,
+  `not_in_scope`, `not_permitted`, `not_available`, `not_readable`) and
+  `why`. Read ones list `admins` (numbered, never named) with `role`,
+  `access` (full, scoped, read_only, unknown), `enabled`, `mfa` (null when
+  the API does not say), `last_sign_in` and `stale`; `roles`; and
+  `api_clients` (ZPA API keys, ZIdentity OneAPI clients: `access`,
+  `scopes`, `broad`, token lifetime). `counts` sums them per product.
+- `findings` (SOC.R1 to SOC.R4) and `checks` (RBAC.*, ZID.5 to ZID.7):
+  `status` is fail, review, pass, unknown or na. Unknown is never fine:
+  say what the API does not report (second factor on ZIA, Client
+  Connector and ZIdentity; most last sign-in times).
+
+## telemetry_review
+
+- `products`: ZIA (Cloud NSS feeds as `streams`, NSS `servers`,
+  `collectors`, `licensed`), ZPA (LSS configurations as `streams`, with
+  `tls`), Client Connector (`profiles` log mode, `settings`) and ZDX
+  (always unknown: the API has no streaming read). Each stream has
+  `log_type`, `enabled`, `destination` (host only), `siem`, and the
+  Traffic logs page family it matches.
+- `destinations`: where the logs go, the products and log types each
+  receives, and the ready-made SIEM query language for it.
+- `findings` (SOC.T1 to SOC.T5) and `checks` (USR.5, GOV.7, GOV.8,
+  ZPA.14), statuses as above; `nothing_streamed` names the products with
+  no stream at all.
+
 ## timeline
 
 - What the app itself did (`summary`, `by_action`, `by_day`, `recent`):

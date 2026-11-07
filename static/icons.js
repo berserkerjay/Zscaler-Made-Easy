@@ -104,7 +104,7 @@
     '🩺': 'stethoscope', '📖': 'book', '📚': 'books', '⚙': 'gear', '✨': 'sparkles', '🏗': 'hammer', '🧪': 'flask', '🇺🇸': 'flag', '🇪🇺': 'flag',
     '🏥': 'cross-case', '💳': 'credit-card', '🏦': 'bank', '💡': 'lightbulb', '🎨': 'palette', '🌙': 'moon', '☀': 'sun', '⚡': 'bolt', '⏳': 'hourglass',
     '🗑': 'trash', '🔧': 'wrench', '☰': 'menu', '⤢': 'expand', '✎': 'pencil', '🖨': 'print',
-    '🎞': 'film', '🛰': 'satellite', '⏸': 'pause', '⬇': 'download',
+    '🎞': 'film', '🛰': 'satellite', '⏸': 'pause', '⬇': 'download', '🛂': 'check-seal',
   };
   // Dingbats the pages use as glyphs get the same treatment.
   Object.assign(EMOJI, { '✕': 'x', '✗': 'x', '✓': 'check', '↻': 'refresh', '↺': 'refresh', '↗': 'arrow-up-right', '←': 'arrow-left', '▾': 'chevron-down', '▴': 'chevron-up', '▲': 'chevron-up', '▼': 'chevron-down' });

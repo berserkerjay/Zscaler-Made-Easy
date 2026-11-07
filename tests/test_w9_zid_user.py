@@ -14,6 +14,7 @@ import os
 import sys
 
 import pytest
+from conftest import read_store_text
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -109,7 +110,7 @@ def test_edit_sends_the_user_as_read_with_only_the_changed_fields_and_undo_puts_
     assert r2["status"] == "applied"
     row = c.tenant.zid_users["u-1"]
     assert row["displayName"] == "Avery Quinn" and row["department"] == {"id": "d-1", "name": "Finance"}
-    audit = [json.loads(x) for x in (isolated / "audit.log").read_text(encoding="utf-8").splitlines() if x.strip()]
+    audit = [json.loads(x) for x in read_store_text(isolated / "audit.log").splitlines() if x.strip()]
     assert any(e.get("event") == "admin_operation" and e.get("actor") == "alice" for e in audit)
 
 

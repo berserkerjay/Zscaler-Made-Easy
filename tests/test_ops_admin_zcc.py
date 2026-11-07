@@ -9,6 +9,7 @@ import os
 import sys
 
 import pytest
+from conftest import read_store_text
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -266,7 +267,7 @@ def test_bulk_removal_is_batched_typed_confirmed_verified_and_audited(no_delay, 
     assert r["status"] == "applied" and r["verification"]["confirmed"] == 30
     assert [len(w[2]["udids"]) for w in c.tenant.writes] == [7, 7, 7, 7, 2] and all(set(w[2]) == {"udids"} for w in c.tenant.writes)
     rec = ao.record(r, by=ASSESSOR, actor="alice")
-    audit = [json.loads(x) for x in (isolated / "audit.log").read_text(encoding="utf-8").splitlines() if x.strip()]
+    audit = [json.loads(x) for x in read_store_text(isolated / "audit.log").splitlines() if x.strip()]
     assert sum(1 for e in audit if e.get("event") == "object_write" and e.get("object_type") == "zcc_device_remove") == 5
     assert any(e.get("event") == "admin_operation" and e.get("actor") == "alice" for e in audit) and rec["inverse"] is None
 

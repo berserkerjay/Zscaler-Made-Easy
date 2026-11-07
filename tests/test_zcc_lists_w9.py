@@ -15,6 +15,7 @@ import sys
 import zipfile
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -265,7 +266,7 @@ def test_the_domain_user_names_are_a_safe_labelled_csv_and_the_audit_holds_only_
     assert not evil.startswith("=") and evil.startswith(("'", '"\''))
     assert "personal-data" in r.headers["content-disposition"] and "no-store" in r.headers["cache-control"]
     assert r.headers.get("x-content-type-options") == "nosniff"
-    audit = (tmp / "audit.log").read_text(encoding="utf-8")
+    audit = read_store_text(tmp / "audit.log")
     rec = [json.loads(x) for x in audit.splitlines() if "zcc_domain_users_export" in x][-1]
     assert rec.get("users") == 3 or rec.get("details", {}).get("users") == 3
     assert "jdoe@acme.com" not in audit

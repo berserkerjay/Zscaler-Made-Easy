@@ -5,7 +5,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.parametrize('file,jobs', [
-    ('tests.yml', ('test', 'browser-acceptance', 'supply-chain', 'windows-lock', 'container')),
+    ('tests.yml', ('test', 'terraform', 'browser-acceptance', 'supply-chain', 'windows-lock', 'container')),
     ('native-install.yml', ('native-install',)),
 ])
 def test_full_checks_run_on_pr_and_main_with_manual_dispatch(file, jobs):

@@ -18,6 +18,7 @@ import time
 import zipfile
 
 import pytest
+from conftest import read_store_text
 
 import pack_deploy as pd
 import pack_export as pe
@@ -388,7 +389,7 @@ def test_the_export_runs_as_a_read_only_job_and_the_zip_comes_from_its_download(
     assert meta["name"] == "Acme export" and meta["exported_from"] == "acme (production)"
     fin = [e for e in audit.tail(1000) if e.get("event") == "job_finished" and e.get("job_id") == job_id]
     assert len(fin) == 1 and fin[0]["kind"] == "export" and fin[0]["status"] == "done" and fin[0]["tenant"] == "acme (production)"
-    assert SECRET not in open(audit.path(), encoding="utf-8").read()
+    assert SECRET not in read_store_text(audit.path())
 
     # The pack library's upload accepts the downloaded zip as it is, and lists it as a pack.
     monkeypatch.setattr(srv, "PACKS_ROOT", str(tmp_path))

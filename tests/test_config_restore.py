@@ -14,6 +14,7 @@ import os
 import sys
 
 import pytest
+from conftest import read_any_text
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -326,8 +327,7 @@ def test_a_pre_shared_key_reaches_only_the_write(isolated, caplog):
     r = ao.execute(Client(t), sp, plan_hash=p["plan_hash"], scope=SCOPE, writes_enabled=True, assessor=ASSESSOR, confirm_text=p["confirm_phrase"])
     assert r["status"] == "applied" and t.rows("zia.vpn_credentials")[0]["pre_shared_key"] == CANARY
     rec = ao.record(r, by=ASSESSOR)
-    files = "".join(open(os.path.join(dp, f), encoding="utf-8", errors="replace").read()
-                    for dp, _d, fs in os.walk(isolated) for f in fs)
+    files = "".join(read_any_text(os.path.join(dp, f)) for dp, _d, fs in os.walk(isolated) for f in fs)   # sealed stores opened
     assert CANARY not in json.dumps([p, r, rec], default=str) + caplog.text + files
     assert ocr._HANDOVER == {}
 

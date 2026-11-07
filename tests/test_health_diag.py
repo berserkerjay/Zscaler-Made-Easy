@@ -495,12 +495,12 @@ def test_a_session_row_never_holds_a_header_body_query_or_tenant_value(calls, mo
     from test_secret_canaries import ACCESS_TOKEN, CLIENT_SECRET, _leaks
     sess = api_calls.attach(requests.Session())
     assert api_calls.attach(sess) is sess, "attaching twice wraps once"
-    _send_over_fake_transport(monkeypatch, sess, f"https://acme.zsapi.net/zia/api/v1/users/42?pw={CLIENT_SECRET}", method="POST",
+    _send_over_fake_transport(monkeypatch, sess, f"https://acme.zsapi.net/zia/api/v1/users/918273645?pw={CLIENT_SECRET}", method="POST",
                               headers={"Authorization": f"Bearer {ACCESS_TOKEN}"}, json={"client_secret": CLIENT_SECRET})
     rows = calls.rows()
     assert len(rows) == 1 and rows[0]["path"] == "/zia/api/v1/users/{id}" and rows[0]["status"] == 401 and rows[0]["error"] == "denied"
     blob = json.dumps(rows) + calls.to_csv(rows) + calls.to_json(rows)
-    assert _leaks(blob, [CLIENT_SECRET, ACCESS_TOKEN]) == [] and "acme" not in blob and "42" not in blob.split("summary")[0].replace('"seq"', "")
+    assert _leaks(blob, [CLIENT_SECRET, ACCESS_TOKEN]) == [] and "acme" not in blob and "918273645" not in blob
 
 
 def test_the_api_calls_view_and_exports_hold_no_secret_after_real_sdk_calls(token_echo, monkeypatch):

@@ -38,7 +38,10 @@
   .tm-note { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0.6rem 0; font-size: 0.86rem; }
   .tm-row-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; }
   .tm-row-actions .rp-btn { font-size: 0.78rem; padding: 0.15rem 0.5rem; }
-  @media (max-width: 600px) { .tm-form { grid-template-columns: 1fr; } }
+  /* A grid item's minimum is its content's width: a file picker or a long label would push the form past a 320px screen. */
+  .tm-form > *, .tm-form label { min-width: 0; }
+  .tm-form input[type=file] { max-width: 100%; }
+  @media (max-width: 600px) { .tm-form { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <link rel="stylesheet" href="/static/hover_help.css">
 <script src="/static/glass.js"></script>
@@ -214,7 +217,7 @@
     });
     $('tmStoreRotate').addEventListener('click', async () => {
       if (!(await window.dlpDialog.ask({ title: 'Rotate the store key?', body: 'A new key is made, every store is encrypted again with it, then the old key is forgotten.', okLabel: 'Rotate' }))) return;
-      try { const j = await call('POST', '/api/team/store-key/rotate'); say(`Store key rotated: ${j.files} file(s) re-encrypted, key kept in the ${j.kept_in}.`); await load(); }
+      try { const j = await call('POST', '/api/team/store-key/rotate'); say(`Store key rotated: ${j.files} file(s) re-encrypted, key kept in the ${j.kept_in}.${j.old_keys_kept ? ` ${j.old_keys_kept} old key(s) kept: a file still needs them.` : ''}`); await load(); }
       catch (err) { say(err.message, true); }
     });
     async function call(method, url, body) {
@@ -274,7 +277,10 @@
         + (t.fingerprint ? tile('Certificate SHA-256', t.fingerprint) : '')
         + tile('Sessions', `end after ${st.idle_minutes} quiet minutes, at most ${st.session_hours} hours`)
         + tile('Lockout', `${st.lockout_attempts} wrong passwords lock an account for ${st.lockout_minutes} minutes`)
-        + tile('Stores on disk', data.stores.enabled ? `encrypted (${data.stores.algorithm}), key ${data.stores.key || '—'} in the ${data.stores.kept_in}` : 'not encrypted (DLP_CHECK_STORE_ENCRYPTION is off)')
+        + tile('Stores on disk', !data.stores.enabled ? 'not encrypted (opted out with DLP_CHECK_STORE_ENCRYPTION=0)'
+          : data.stores.problem ? `on, but new data is not encrypted: ${data.stores.problem}`
+          : `encrypted (${data.stores.algorithm}${data.stores.default ? ', the default' : ''}), key ${data.stores.key || '—'} in the ${data.stores.kept_in}`)
+        + (data.stores.migration && data.stores.migration.plaintext_backup ? `<div class="tm-note" id="tmStorePlainBackup" style="grid-column:1/-1">${E(data.stores.migration.plaintext_backup)}</div>` : '')
         + tile('FIPS mode', data.fips.on ? 'on: FIPS-approved algorithms only' : 'off') + (data.fips.on ? `<div class="tm-note" style="grid-column:1/-1">${E(data.fips.honest_note)}</div>` : '');
       $('tmStoreRotate').disabled = !data.stores.enabled;
     }

@@ -47,6 +47,26 @@
   still();
   document.addEventListener('visibilitychange', still);
 
+  // ── While the page scrolls ──
+  // Every blurred layer is drawn again on each frame its backdrop moves; on a
+  // computer without a graphics card (or with two slow cores) the blur of the
+  // cards and the hero in the page flow, re-drawn on every scrolled frame,
+  // brought the page down to a few frames a second. Behind those there is
+  // only the soft colour backdrop, which looks the same unblurred, so while
+  // the page (or any scrolling box in it) scrolls, html.glass-scrolling turns
+  // their blur off and holds the drift; floating bars, the sidebar and
+  // dialogs keep theirs (what scrolls under them is what the blur is for).
+  // One passive scroll listener (capture, so a scrolling box counts too): the
+  // class is set once per gesture and cleared 180 ms after the last scroll
+  // event. Nothing runs per frame.
+  var scrollTimer = 0;
+  function scrolled() {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(function () { scrollTimer = 0; root.classList.remove('glass-scrolling'); }, 180);
+    if (!root.classList.contains('glass-scrolling')) root.classList.add('glass-scrolling');
+  }
+  document.addEventListener('scroll', scrolled, { passive: true, capture: true });
+
   // ── The lens ──
   var lensTarget = null, lastEvent = null, frame = 0;
   function lensAllowed() {

@@ -11,6 +11,7 @@ import os
 import sys
 
 import pytest
+from conftest import read_store_text
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -120,7 +121,7 @@ def test_rename_move_and_schedule_send_the_object_as_read_with_the_changes(isola
     row = c.tenant.rows["connector_group"][s["g1"]["id"]]
     assert row["upgradeTimeInSecs"] == "66600" and row["versionProfileId"] == "0" and row["overrideVersionProfile"] is False
     assert c.tenant.rows["connector"][s["c1"]["id"]]["appConnectorGroupId"] == s["g1"]["id"]
-    audit = [json.loads(x) for x in (isolated / "audit.log").read_text(encoding="utf-8").splitlines() if x.strip()]
+    audit = [json.loads(x) for x in read_store_text(isolated / "audit.log").splitlines() if x.strip()]
     assert any(e.get("event") == "admin_operation" and e.get("actor") == "alice" for e in audit) and rec["actor"] == "alice"
 
 

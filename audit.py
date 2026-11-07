@@ -198,9 +198,11 @@ def record(event: str, **fields: Any) -> Optional[str]:
         entry["profile"] = str(team["profile"])[:64]
     secrets = tuple(_secret_values(fields))
     entry.update({k: redact(v, 0, secrets) for k, v in fields.items()})
-    line = store_crypto.seal_text(json.dumps(entry, default=str, separators=(",", ":"))) + "\n"
     p = path()
     try:
+        # Inside the try: DLP_CHECK_STORE_ENCRYPTION=1 with no key keepable
+        # here raises KeyUnavailable, and auditing must never break a call.
+        line = store_crypto.seal_text(json.dumps(entry, default=str, separators=(",", ":"))) + "\n"
         with _LOCK:
             _rotate_if_needed(p)
             # Append-only, never through a link planted at the log's name
@@ -214,7 +216,7 @@ def record(event: str, **fields: Any) -> Optional[str]:
                         pass
                 f.write(line)
         return p
-    except OSError as e:
+    except (OSError, store_crypto.KeyUnavailable) as e:
         report_failure(f"the '{event}' event", e)
         return None
 

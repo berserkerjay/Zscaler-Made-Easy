@@ -16,6 +16,7 @@ import time
 import zipfile
 
 import pytest
+from conftest import read_store_text
 
 import bulk_test as bt
 import path_analyzer as pa
@@ -852,7 +853,7 @@ def test_the_route_runs_a_job_exports_lists_and_hands_off(monkeypatch, tmp_path)
     assert lst.split() == ["203.0.113.0", "203.0.113.1", "203.0.113.2", "203.0.113.3"]
     assert fix.status_code == 200 and fix.json()["open"].startswith("/report/operations?fix=") and got["urls"] == ["news.example"]
     assert not c.writes
-    log = audit_log.read_text(encoding="utf-8")
+    log = read_store_text(audit_log)
     assert "/api/bulk-test/start" in log and "alice@example.com" not in log and "casino.example" not in log and "secret-secret-secret" not in log
 
 

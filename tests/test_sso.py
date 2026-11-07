@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 import jwt
 import pytest
+from conftest import read_store_text
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from jwt.algorithms import RSAAlgorithm
@@ -277,7 +278,7 @@ def test_a_failed_sso_sign_in_is_audited(monkeypatch, idp, tmp_path):
     forged = idp.make_id_token(nonce=q["nonce"][0], sign_key=rsa.generate_private_key(public_exponent=65537, key_size=2048))
     _mock_http(monkeypatch, idp, token_response={"id_token": forged})
     assert c.get(f"/api/auth/sso/callback?code=abc&state={q['state'][0]}", follow_redirects=False).status_code == 401
-    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(log).splitlines()]
     failed = [e for e in events if e["event"] == "sso_login_failed"]
     assert len(failed) == 2 and all(e["path"] == "/api/auth/sso/callback" for e in failed), events
     assert not any(e["event"] == "sso_login" for e in events)
@@ -333,7 +334,7 @@ def test_the_static_ui_token_is_refused_in_every_form_under_sso(monkeypatch, tmp
     assert r.status_code != 303 and security.UI_TOKEN_COOKIE not in r.headers.get("set-cookie", "")
     assert fresh.post("/api/auth/unlock", json={"token": tok}).status_code == 403
     assert fresh.get("/api/auth/status").json()["unlocked"] is False
-    assert tok not in (tmp_path / "audit.log").read_text(encoding="utf-8")
+    assert tok not in read_store_text(tmp_path / "audit.log")
 
 
 def test_sessions_end_after_the_idle_timeout_and_after_12_hours(monkeypatch, idp):
@@ -365,11 +366,11 @@ def test_sign_out_ends_the_session_clears_the_cookie_and_is_audited(monkeypatch,
     replay = TestClient(srv.app)
     replay.cookies.set(security.SSO_SESSION_COOKIE, sid)    # a copied cookie is dead too
     assert replay.get("/api/health").status_code == 401
-    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(log).splitlines()]
     out = [e for e in events if e["event"] == "sso_logout"]
     assert out and out[0]["actor"] == "leaver@example.com" and out[0]["ended"] is True
     assert any(e["event"] == "sso_login" and e["actor"] == "leaver@example.com" for e in events)
-    assert sid not in log.read_text(encoding="utf-8")
+    assert sid not in read_store_text(log)
 
 
 def test_sso_does_not_print_or_write_the_ui_token(monkeypatch, tmp_path, capsys):
@@ -390,7 +391,7 @@ def test_every_audit_line_names_the_signed_in_person(monkeypatch, idp, tmp_path)
     _env(monkeypatch)
     c = _sign_in(monkeypatch, idp, email="auditor@example.com")
     c.post("/api/tenant/check", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "x" * 20})
-    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(log).splitlines()]
     api = [e for e in events if e["event"] == "api"]
     assert api and all(e["actor"] == "auditor@example.com" for e in api)
     assert all("actor" in e for e in events)
@@ -408,7 +409,7 @@ def test_allowed_groups_refuse_and_audit_a_sign_in_from_outside_them(monkeypatch
     assert none.last_callback.status_code == 403 and "'groups' claim" in none.last_callback.text
     ok = _sign_in(monkeypatch, idp, email="member@example.com", groups=["SecOps"])
     assert ok.last_callback.status_code == 303 and ok.get("/api/health").status_code == 200
-    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(log).splitlines()]
     refused = [e for e in events if e["event"] == "sso_login_refused"]
     assert [e["actor"] for e in refused] == ["stranger@example.com", "nogroups@example.com"]
 
@@ -505,7 +506,7 @@ def test_proposal_decisions_record_the_signed_in_person_not_the_body(monkeypatch
     r = c.post(f"/api/proposals/acme/{pid}/decide", json={"decision": "dismiss", "by": "someone-else", "note": "n"})
     assert r.status_code == 200, r.text
     assert r.json()["decided_by"] == "approver@example.com" and "someone-else" not in r.text
-    events = [json.loads(ln) for ln in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()]
+    events = [json.loads(ln) for ln in read_store_text(tmp_path / "audit.log").splitlines()]
     d = [e for e in events if e["event"] == "proposal_decision"][0]
     assert d["by"] == "approver@example.com" and d["actor"] == "approver@example.com"
 
