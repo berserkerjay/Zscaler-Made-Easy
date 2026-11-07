@@ -263,8 +263,7 @@
         dash(e.item_count), fields(e), [e.error_code_hint, e.error].filter(Boolean).join(' · ')]), 'No endpoint has this result.', 'df-tablewrap am-scroll'));
   }
   function exports(rid) {
-    const q = encodeURIComponent(rid || '');
-    const set = (id, qs) => { const a = $(id); a.href = `/api/tenant-api-map/export/${q}?${qs}`; a.hidden = !rid; };
+    const set = (id, qs) => { const a = $(id); a.href = `/api/tenant-api-map/export/${encodeURIComponent(rid || '')}?${qs}`; a.hidden = !rid; };
     set('amExpJson', 'format=json'); set('amExpFeat', 'format=csv&what=features'); set('amExpEps', 'format=csv&what=endpoints');
   }
 

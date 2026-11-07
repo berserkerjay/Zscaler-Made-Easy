@@ -70,7 +70,7 @@ out.result = await ev(`(() => {
   return { features: rows.length, webDlp: rows.find(r => r[0] === 'Web DLP'), zwa: rows.find(r => r[0].startsWith('Workflow Automation')), eps, chips,
     tiles: [...document.querySelectorAll('.am-stat')].map(t => t.textContent), meta: document.getElementById('rpMeta').textContent,
     exportHrefs: ['amExpJson', 'amExpFeat', 'amExpEps'].map(id => { const a = document.getElementById(id); return [a.hidden, a.getAttribute('href')]; }),
-    saved: !!document.getElementById('amSaved'), startCalls: performance.getEntriesByType('resource').filter(r => r.name.includes('/tenant-api-map/start')).length };
+    saved: !!document.getElementById('amSaved'), saveError: (document.getElementById('amBody').textContent.match(/could not be saved[^.]*/) || [''])[0], startCalls: performance.getEntriesByType('resource').filter(r => r.name.includes('/tenant-api-map/start')).length };
 })()`);
 
 // 4. Filter to the endpoint that refused this API client.
@@ -126,7 +126,13 @@ ws.close(); p.kill(); process.exit(0);
 
 @pytest.fixture(scope="module")
 def page(tmp_path_factory):
-    return run_in_browser(tmp_path_factory.mktemp("apimap"), DRIVER, timeout=420)
+    folder = tmp_path_factory.mktemp("apimap")
+    mp = pytest.MonkeyPatch()
+    mp.setenv("DLP_CHECK_API_MAP", str(folder / "tenant_api_map.json"))   # the maps this run saves: its own file, never another test's
+    try:
+        return run_in_browser(folder, DRIVER, timeout=420)
+    finally:
+        mp.undo()
 
 
 def test_the_page_says_it_is_its_own_tool_and_its_own_action(page):
@@ -157,7 +163,8 @@ def test_the_result_has_the_feature_table_the_endpoint_table_and_the_verdict_wor
     r = page["result"]
     assert r["features"] >= 27 and r["webDlp"][1] == "Present" and r["webDlp"][2] == "/zia/api/v1/webDlpRules" and r["zwa"][1] == "Not checked"
     assert r["eps"] > 300 and {"Present", "Not licensed or not enabled", "No permission"} <= set(r["chips"]) and r["startCalls"] == 1
-    assert r["saved"] is True and "Sample tenant" in r["meta"]
+    assert r["saved"] is True, r["saveError"]
+    assert "Sample tenant" in r["meta"]
     assert all(h[0] is False and "/api/tenant-api-map/export/apimap-" in h[1] for h in r["exportHrefs"])
 
 
