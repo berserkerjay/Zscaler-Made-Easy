@@ -230,7 +230,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage", "/report/browser", "/report/pov", "/report/other-products", "/report/aiguard"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage", "/report/browser", "/report/pov", "/report/other-products", "/report/aiguard", "/report/api-map"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -3408,6 +3408,184 @@ async def soc_review_report(report_id: str):
     if not rep or not str(report_id).startswith(("socrbac-", "soctel-")):
         raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Read it again.")
     return rep
+
+
+# ── Tenant API map (tenant_api_map.py): which Zscaler features this tenant has
+# and which reads its API client may make, found by asking. Its own page and
+# its own action, separate from the licence and editions check and from the
+# Scope page's assessment reads: the admin sees every endpoint it will read
+# (POST /api/tenant-api-map/plan), confirms, and only then is it started.
+# GET only, one at a time, throttled, Stop-able; it keeps statuses, item
+# counts and top-level field names, never a value. Uses the signed-in tenant
+# (tenant_session) or the sample tenant; never new credentials. Refused (400)
+# before sign-in unless the confirmed plan is the one sent; kept as report
+# "apimap-…" and saved per tenant label, sealed (store_crypto).
+class TenantApiMapPlanRequest(BaseModel):
+    """What to map: the products (blank: all), features only, the speed."""
+    products: List[str] = []
+    features_only: bool = False
+    rps: float = 1.0
+
+
+class TenantApiMapRequest(TenantApiMapPlanRequest, MigrateRequest):
+    """Body of POST /api/tenant-api-map/start: the plan's fields, the
+    sign-in as on every page, `confirm` and the `plan_hash` the plan answered."""
+    confirm: bool = False
+    plan_hash: str = ""
+
+
+class TenantApiMapForget(BaseModel):
+    """Remove one tenant label's saved maps (local file only)."""
+    tenant: str = ""
+    confirm: bool = False
+
+
+API_MAP_ID = re.compile(r"\Aapimap-[A-Za-z0-9_-]{6,40}\Z")
+
+
+@app.get("/report/api-map")
+async def report_api_map_page():
+    """Tenant API map (static/report_api_map.html)."""
+    page = os.path.join(STATIC_DIR, "report_api_map.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _api_map_plan(req: TenantApiMapPlanRequest) -> Dict[str, Any]:
+    import tenant_api_map
+    if len(req.products) > 20 or any(len(str(p)) > 20 for p in req.products):
+        raise HTTPException(status_code=400, detail="Pick products from the list.")
+    chosen = tenant_api_map.normalise_products(req.products) if req.products else None
+    if req.products and not chosen:
+        raise HTTPException(status_code=400, detail="None of those products is one the map knows. Pick products from the list.")
+    return tenant_api_map.plan(chosen, req.features_only, req.rps)
+
+
+@app.post("/api/tenant-api-map/plan")
+async def tenant_api_map_plan(req: TenantApiMapPlanRequest):
+    """Every endpoint the map would read (and each it skips, with why), the
+    speed and a plan_hash to confirm. No sign-in and no tenant call."""
+    return await asyncio.to_thread(_api_map_plan, req)
+
+
+def _run_api_map(client: Any, the_plan: Dict[str, Any], label: str, creds: Dict[str, Any], profile_id: str, log, cancel) -> Dict[str, Any]:
+    """The map itself, on a signed-in (or offline) client. Stop ends it with
+    nothing more read and nothing kept. One audit entry per run (counts only)."""
+    import pack_jobs
+    import tenant_api_map as tam
+    logs: List[str] = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    job = pack_jobs.current()
+    actor = getattr(job, "actor", None)
+    base = {"tenant": label, "planned": the_plan["count"], "rps": the_plan["rps"], "plan_hash": the_plan["plan_hash"], "method": "GET",
+            "features_only": the_plan["features_only"], "products": the_plan["products"]}
+    try:
+        rep = tam.run(client, the_plan, label=label, log=_log, cancel=cancel, progress=pack_jobs.progress)
+    except tam.Stopped as e:
+        _log("STOPPED — " + str(e).removeprefix("Stopped: "))
+        pack_jobs.write_audit("tenant_api_map_run", actor=actor, stopped=True, **base)
+        return {"stopped": str(e), "status": "stopped", "tenant_label": label, "logs": logs}
+    except tam.Busy as e:
+        pack_jobs.write_audit("tenant_api_map_run", actor=actor, refused="busy", **base)
+        raise RuntimeError(str(e))
+    finally:
+        _close_quietly(client)
+    pack_jobs.note(tenant=label, api_map_counts=rep["counts"])
+    pack_jobs.write_audit("tenant_api_map_run", actor=actor, stopped=False, counts=rep["counts"], **base)
+    try:
+        rep["history"] = tam.summaries(tam.save(label, rep, profile_id=profile_id))
+    except Exception as e:  # noqa: BLE001 — saving is best effort
+        rep["history"] = []
+        rep["history_error"] = f"This map could not be saved ({type(e).__name__})."
+    rid = _remember_report("apimap", rep, label)
+    return dict(_REPORTS[rid], logs=logs)
+
+
+@app.post("/api/tenant-api-map/start")
+async def tenant_api_map_start(req: TenantApiMapRequest, request: Request):
+    """Start the map as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}). Refused (400) before sign-in unless the
+    request confirms the plan (`confirm` true and the plan's `plan_hash`).
+    GET only; Stop ends it with nothing kept."""
+    import pack_jobs
+    import tenant_api_map as tam
+    the_plan = _api_map_plan(req)
+    if req.confirm is not True:
+        raise HTTPException(status_code=400, detail="Confirm the list of endpoints first. Nothing was read.")
+    if req.plan_hash != the_plan["plan_hash"]:
+        raise HTTPException(status_code=400, detail="The list of endpoints changed since you looked at it. Look at it again and confirm. Nothing was read.")
+    if tam._RUN_LOCK.locked():
+        raise HTTPException(status_code=409, detail="Another API map is running. Wait for it to finish.")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_signed_in_raw, creds)
+    label = tenant_auth.record_label(creds)
+    profile_id = str(req.profile_id or "").strip()
+    job = pack_jobs.start("apimap", lambda log, cancel: _run_api_map(client, the_plan, label, creds, profile_id, log, cancel),
+                          label=f"API map {label}"[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _api_map_report(report_id: str) -> Dict[str, Any]:
+    rep = _REPORTS.get(report_id or "")
+    if not rep or not API_MAP_ID.match(str(report_id)):
+        raise HTTPException(status_code=404, detail="Map not found or expired (maps live in memory while the server runs; the saved ones are on this computer). Open a saved map or run it again.")
+    return rep
+
+
+@app.get("/api/tenant-api-map/saved")
+async def tenant_api_map_saved(tenant: str = "", at: str = ""):
+    """The maps saved for a tenant label (no tenant call): their summaries,
+    and the newest (or the one made at `at`) in full, kept as a report so it
+    can be exported."""
+    import tenant_api_map as tam
+    maps = await asyncio.to_thread(tam.load, tenant[:120])
+    out: Dict[str, Any] = {"tenant": tam.tenant_key(tenant), "saved": tam.summaries(maps), "keep": tam.KEEP_PER_TENANT, "map": None}
+    pick = next((x for x in reversed(maps) if not at or x["started_at"] == at[:40]), None)
+    if pick is not None:
+        rid = _remember_report("apimap", dict(pick, saved=True), pick["tenant_label"] or tenant[:120])
+        out["map"] = _REPORTS[rid]
+    return out
+
+
+@app.get("/api/tenant-api-map/export/{report_id}")
+async def tenant_api_map_export(report_id: str, format: str = "json", what: str = "endpoints"):
+    """A kept map as JSON, or one of its two tables as CSV (what=features or
+    endpoints). Statuses, counts and field names only; cells are escaped."""
+    import tenant_api_map as tam
+    rep = _api_map_report(report_id)
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "json").lower()
+    if fmt == "json":
+        return _attachment(tam.to_json(rep).encode("utf-8"), "application/json", f"tenant_api_map_{ts}.json")
+    if fmt != "csv" or what not in ("features", "endpoints"):
+        raise HTTPException(status_code=400, detail="format must be json or csv, and for csv what must be features or endpoints.")
+    return _attachment(tam.to_csv(rep, what).encode("utf-8"), "text/csv; charset=utf-8", f"tenant_api_map_{what}_{ts}.csv")
+
+
+@app.get("/api/tenant-api-map/{report_id}")
+async def tenant_api_map_get(report_id: str):
+    """A kept map (this server's memory)."""
+    return _api_map_report(report_id)
+
+
+@app.post("/api/tenant-api-map/forget")
+async def tenant_api_map_forget(req: TenantApiMapForget):
+    """Delete a tenant label's saved maps from this computer. The request
+    must say confirm: true (the page asks first). No tenant call."""
+    import tenant_api_map as tam
+    if req.confirm is not True:
+        raise HTTPException(status_code=400, detail="Confirm that the saved maps of this tenant should be removed from this computer.")
+    if not _team.may_reach("tenant", req.tenant[:120], "plan"):
+        raise HTTPException(status_code=404, detail="Not found, or not yours to see.")
+    return {"tenant": req.tenant[:120], "removed": await asyncio.to_thread(tam.forget, req.tenant[:120])}
 
 
 # ── Other Zscaler products (read-only): Zero Trust Branch, EASM, Business

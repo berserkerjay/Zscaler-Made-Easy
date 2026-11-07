@@ -11,8 +11,9 @@
                                    backups with their index, templates and
                                    per-profile configuration caches,
                                    scheduled sync jobs, the Client Connector
-                                   fleet history, the SSL coverage history
-                                   and saved traffic log reports.
+                                   fleet history, the SSL coverage history,
+                                   the Tenant API maps and saved traffic log
+                                   reports.
                                    0 (or off/false/no): the opt-out; stores
                                    are written as the plain owner-only JSON
                                    they always were (sealed files still
@@ -458,7 +459,8 @@ def _store_paths() -> List[Dict[str, Any]]:
                     out.append({"path": p, "lines": lines})
     for mod, fn in (("tenant_profiles", "store_path"), ("change_queue", "store_path"), ("proposals", "store_path"),
                     ("deployments", "store_path"), ("workspace_notes", "store_path"), ("team_server", "store_path"),
-                    ("sync_jobs", "store_path"), ("zcc_fleet_history", "history_path"), ("ssl_coverage", "history_path")):
+                    ("sync_jobs", "store_path"), ("zcc_fleet_history", "history_path"), ("ssl_coverage", "history_path"),
+                    ("tenant_api_map", "history_path")):
         try:
             add(getattr(__import__(mod), fn)())
         except Exception:  # noqa: BLE001 - a store that cannot say where it is has nothing to seal

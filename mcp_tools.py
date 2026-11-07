@@ -1302,6 +1302,33 @@ def timeline(ctx: Ctx, since: str = "") -> Dict[str, Any]:
             "evidence": "the app's own records: deployment records and its audit log"}
 
 
+# ── 21. Tenant API map (tenant_api_map): the last saved map, or the sample's ──
+def tenant_api_map(ctx: Ctx) -> Dict[str, Any]:
+    """Which Zscaler features the tenant has and which reads its API client may make, as the app's Tenant API map found
+    them. Live: the newest map the admin saved on the app's page (this tool never reads the live tenant: the map is a
+    long, throttled, confirmed run). Sample and snapshot: mapped offline now. Statuses, counts and verdicts only."""
+    import tenant_api_map as tam
+    if ctx.source == "live":
+        maps = tam.load(ctx.label)
+        if not maps:
+            return {"saved_maps": 0, "how_to": "No map is saved for this tenant yet: an admin runs 'Map this tenant\'s APIs' on the app's Tenant API map "
+                    "page (it lists every endpoint and asks first). This tool only reads what was saved.",
+                    "evidence": "the app's saved maps (none for this tenant)"}
+        out = tam.for_assistant(maps[-1])
+        out["saved_maps"] = tam.summaries(maps)
+        return out
+    a = _api()
+    req = ctx.request(a.TenantApiMapRequest)
+    cl = a._signed_in_raw(a._tenant_creds(req))
+    try:
+        rep = tam.run(cl, tam.plan(), label=ctx.label)
+    finally:
+        _close(cl)
+    out = tam.for_assistant(rep)
+    out["evidence"] = "the " + ("sample tenant" if ctx.source == "sample" else "snapshot") + "'s answers, mapped offline (GET only, nothing sent)"
+    return out
+
+
 # ── 20. Case notes (the admin's own notes; local, never the tenant) ──
 def _notes_tenant(ctx: Ctx) -> str:
     return ctx.label or ("Sample tenant" if ctx.source == "sample" else "")

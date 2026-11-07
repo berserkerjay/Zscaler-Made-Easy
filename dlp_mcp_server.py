@@ -56,6 +56,7 @@ Tools exposed (every one read-only; none changes the tenant):
     telemetry_review  — SOC review: log streams, SIEM destinations and the gaps
     timeline          — What the app did since a date (its own records, people counted)
     case_notes        — The admin's workspace notes for the tenant (local)
+    tenant_api_map    — Which Zscaler features the tenant has and which API reads its client may make (the last saved map)
 
 There are no tenant write tools: changes are made in the app's UI, behind
 write mode, a named writer and assessor, a preview and a typed confirmation.
@@ -760,6 +761,23 @@ async def case_notes(tag: Annotated[str, Field(max_length=40)] = "", kind: Annot
     object kind. Authors are counted, not named. Reads no tenant. Read-only.
     """
     return await _run("case_notes", mcp_tools.case_notes, dict(tag=tag, kind=kind), source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def tenant_api_map(source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    The Tenant API map: for each Zscaler feature (Web DLP, Email DLP,
+    Endpoint DLP, SaaS Security, Sandbox, Cloud Firewall, SSL inspection,
+    ZPA, ZDX, Client Connector, AI Guard...) whether the tenant has it
+    (present), does not have it or has not enabled it, or its API client may
+    not read it, with the deciding endpoint, and counts per product. HTTP
+    statuses, item counts and verdicts only: never a value, id or name.
+    live: the newest map an admin saved on the app's page (this tool never
+    reads the live tenant; the map is run on the page, after a confirmation
+    that lists every endpoint). sample or snapshot (with snapshot_id): mapped
+    offline now. Read-only: never changes the tenant.
+    """
+    return await _run("tenant_api_map", mcp_tools.tenant_api_map, {}, source=source, snapshot_id=snapshot_id)
 
 
 # ── Entrypoint ───────────────────────────────────────────────────────

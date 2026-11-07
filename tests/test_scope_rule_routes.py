@@ -786,6 +786,8 @@ EXEMPT: Dict[str, str] = {
     "POST /api/pov/build/apply/start": "a write: writer, confirm, plan_hash, the assessor and write mode first, then each part's scope rule as in the preview",
     "POST /api/pov/build/undo/apply/start": "a write: as /api/pov/build/apply/start, over the build's recorded Undos",
     "POST /api/pov/build/undo/preview/start": "plans a recorded build's Undos: each part's scope rule (_pov_build_scope) runs before a client is built (tests/test_pov_build.py)",
+    "POST /api/tenant-api-map/start": ("an explicit action of its own, separate from the Scope page: GET-only reads of exactly the endpoint list the admin "
+                                       "confirmed (confirm and plan_hash are checked before sign-in: tests/test_tenant_api_map_routes.py)"),
     "ON_EVENT startup": "the continuous evaluation timer: the same run as POST /api/digests/run (in ROUTES)",
 }
 

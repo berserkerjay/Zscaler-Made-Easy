@@ -677,6 +677,10 @@
                 aria-label="Open SOC review: who can administer ZIA, ZPA, Client Connector, ZDX and ZIdentity, and what is sent to your SIEM, with a fix for each gap (opens in a new tab)">
           <span aria-hidden="true">🛂</span> SOC review
         </button>
+        <button class="btn btn-ghost" onclick="openApiMapTab()"
+                aria-label="Open the Tenant API map: which Zscaler features the tenant has and which reads its API client may make, found by asking after you confirm every endpoint (opens in a new tab)">
+          <span aria-hidden="true">🗺️</span> Tenant API map
+        </button>
         <button class="btn btn-ghost" onclick="openOtherProductsTab()"
                 aria-label="Open other Zscaler products: what the tenant has in Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation, with best-practice findings (opens in a new tab)">
           <span aria-hidden="true">🔌</span> Other Zscaler products
@@ -5537,6 +5541,12 @@ function openSocReviewTab() {
   // Scope page's selection from this page through window.opener when a Read
   // button is clicked, so nothing is read until then.
   const w = window.open('/report/soc-review', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openApiMapTab() {
+  // Its own page and its own action: the tab lists every endpoint it will read and asks first; it uses the
+  // signed-in tenant (or the sample tenant) and never asks for new credentials.
+  const w = window.open('/report/api-map', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openOtherProductsTab() {

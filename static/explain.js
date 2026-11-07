@@ -153,6 +153,14 @@
     get: 'For each product: what it is in plain words, what the tenant has in tables, best-practice checks with why each matters, what to do and its source (or "assumed"), "not licensed" when the tenant does not own it, and an Excel or JSON export. The same checks are scored in the assessment when the product is ticked.',
     next: 'Fix the high findings first (an exploited internet-facing weakness, an alarm nobody handled, tamper protection off), then read again to confirm each finding is gone.',
   };
+  X.apimap = {
+    group: 'Find the gaps', name: 'Tenant API map', href: '/report/api-map',
+    what: 'Finds out which Zscaler features this tenant has, and which reads its API client may make, by asking. It shows you every endpoint it will read, you confirm, and it reads them one at a time (GET only, one a second by default) through the tenant you are signed in to. A separate tool from the licence and editions check, and a separate action from the Scope page.',
+    why: 'A feature missing from a report is either not bought, not switched on, or not readable by this API client, and each needs a different fix. Asking every readable endpoint once tells them apart, and shows which products the assessment can see at all.',
+    when: 'Before the first assessment of a tenant, after changing the API client\'s role, and when a page says "not licensed" and you want to know whether that is the licence or the role.',
+    get: 'A feature table (present, not licensed or not enabled, no permission, error, with the deciding endpoint) and a table of every endpoint read: status, number of items and the names of the top-level fields. Never a value, id, name or secret. Saved on this computer per tenant with the time, sealed like the app\'s other stores; export as JSON or CSV.',
+    next: 'Fix "no permission" by widening the API client\'s role, ask Zscaler about "not licensed or not enabled" features you expected, then run it again to see the change.',
+  };
   X.aiguard = {
     group: 'Find the gaps', name: 'AI Guard', href: '/report/aiguard',
     what: 'Reads Zscaler AI Guard, only when AI Guard is ticked on the Scope page: its detection policies (what each checks in prompts and in answers, and whether it blocks or only detects), the policy match rules that pick a policy, the LLM providers, the LLM applications (whether they keep prompts and encrypt them) and the applications\' credentials by name. Test a prompt sends one made-up prompt from a fixed list and shows what each detector did.',
@@ -504,7 +512,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/aiguard': 'aiguard', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/aiguard': 'aiguard', '/report/api-map': 'apimap', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate', '/report/plugin': 'plugin', '/report/team': 'team',
       '/report/logs': 'logs', '/report/ztw': 'ztw', '/report/soc-review': 'socreview', '/report/other-products': 'otherproducts', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
@@ -555,7 +563,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'aiguard', 'ztw', 'socreview', 'otherproducts', 'fleet', 'health', 'compliance', 'posture',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'aiguard', 'apimap', 'ztw', 'socreview', 'otherproducts', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'plugin', 'team', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
     'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'trafficlogs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];

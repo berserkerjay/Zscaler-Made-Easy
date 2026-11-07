@@ -7,6 +7,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-07
+
+### Tenant API map: which features the tenant has and which reads the API client may make
+- **Tenant API map.** A page of its own (`/report/api-map`, toolbar *Tenant API map*, Find anything), separate from the licence and editions check and its own action, apart from the Scope page: *Map this tenant's APIs* first shows every endpoint it will read (and each it skips, with why), the speed and a plan hash, and reads nothing until you confirm. It then sends GET requests only (the client it uses has no write method, and refuses a path that is not on the confirmed list), one at a time at 1 a second by default (0.1 to 5 at most), through the tenant you are signed in to (the shared sign-in) or the sample tenant, never new credentials. Stop ends it with nothing kept; three "too many requests" answers in a row end it too. It skips endpoints that need an object id and those that return credentials, one-time passwords, passwords, keys or exports.
+- The answer: a feature table (present, not licensed or not enabled, no permission or error, with the deciding endpoint) and a table of every endpoint read: HTTP status, number of items and the top-level field names only, never a value, id, name or secret. 2xx is present; 404 or a "not subscribed" code is not licensed or not enabled; 401 and 403 are no permission; anything else is an error.
+- Saved and exported: each finished map is kept on this computer per tenant with its time (the newest 3, sealed through the store encryption like the app's other stores, and read back as untrusted), can be opened or removed from the page, and exports as JSON or CSV (escaped). Each run writes one `tenant_api_map_run` audit entry (counts only). The assistant tool `tenant_api_map` returns the newest saved map's features and counts (the sample and snapshots are mapped offline); it never reads the live tenant.
+- Data, not a guess: `tenant_api_catalogue.json` is every GET endpoint of the installed zscaler-sdk-python (687, of which 377 are read), made by `tools/build_tenant_api_catalogue.py`; a test fails until it is regenerated when the SDK changes. The sample tenant answers the map offline, with one read its API client may not make.
+- Routes: `POST /api/tenant-api-map/plan` (no sign-in), `POST /api/tenant-api-map/start` (a `read` route, so the shared sign-in works; refused 400 before sign-in unless the plan is confirmed), `GET /api/tenant-api-map/saved`, `GET /api/tenant-api-map/{report_id}` and `/export/{report_id}`, `POST /api/tenant-api-map/forget`.
+
 ## 2026-11-06
 
 ### Store encryption in a read-only container, glass while scrolling, macOS installs
