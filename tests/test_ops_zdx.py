@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from urllib.parse import unquote
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import admin_ops as ao
@@ -601,10 +602,10 @@ def test_every_zdx_write_leaves_an_audit_entry_without_the_body(zdx, tmp_path, m
     log = tmp_path / "audit.log"
     monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
     apply(fake, client, dict(BEST, predefined=[]))
-    rows = [json.loads(x) for x in log.read_text().splitlines()]
+    rows = [json.loads(x) for x in read_store_text(log).splitlines()]
     writes = [r for r in rows if r.get("event") == "object_write"]
     assert {r["object_type"] for r in writes} == {"zdx_collection", "zdx_app", "zdx_probe"} and len(writes) == len(fake.writes)
-    assert all(r["result"] == "ok" for r in writes) and "intranet.example.com/home" not in log.read_text()
+    assert all(r["result"] == "ok" for r in writes) and "intranet.example.com/home" not in read_store_text(log)
 
 
 def test_sdk_error_objects_and_plain_words():

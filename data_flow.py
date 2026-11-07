@@ -1620,6 +1620,168 @@ def visibility(t: Dict[str, Any]) -> str:
     return {"enforce": "enforce", "monitor": "monitor"}.get(t.get("outcome"), "decrypted")
 
 
+# ── Traffic shares (optional, from ZIA Insights) ─────────────────────
+# The map's moving picture weights each traffic class by the bytes users
+# really uploaded to it, when ZIA Insights is in scope: one Shadow IT query
+# (SHADOW_IT.apps, the same query the SSL coverage page asks), each
+# application put into a traffic class by its name in the tenant's cloud
+# application catalogue, else by its Shadow IT category, else "All other
+# web traffic". Insights has no network dimension, so the page shows one
+# network at a time and says so. Without Insights the map says the numbers
+# were not read and counts paths, never bytes (unknown, not invented).
+TRAFFIC_WINDOW = "7d"
+TRAFFIC_APPS_MAX = 200
+TRAFFIC_FALLBACK = "general"
+TRAFFIC_BASIS = ("Bytes uploaded to cloud applications in ZIA Insights (Shadow IT), put into the map's traffic classes by the "
+                 "application's name in the tenant's cloud application catalogue, else by a short list of well-known applications "
+                 "(such as ChatGPT and Pastebin), else by its Shadow IT category, else counted "
+                 "as all other web traffic. Insights cannot say which network a byte used, so each network shows where all of "
+                 "it would go on that network. Web traffic outside cloud applications is not counted.")
+TRAFFIC_NOT_IN_SCOPE = ("Traffic numbers were not read: ZIA Insights is not in scope on the Scope page. "
+                        "The map shows settings only, and the picture counts paths, not bytes.")
+TRAFFIC_LEGACY = ("Traffic numbers were not read: they need a OneAPI API client, and the classic ZIA API sign-in cannot read "
+                  "ZIA Insights. The map shows settings only.")
+
+
+# assumed: the Shadow IT category names ZIA Insights gives applications
+# (compared loosely: letters and digits, upper case) and the traffic class
+# each one carries. Zscaler does not publish this list; the names come from
+# the Insights console and the sample tenant, so an unlisted category falls
+# back to the cloud application class names, then to "All other web traffic".
+SHADOW_IT_CATEGORY_CLASS: Dict[str, str] = {
+    "FILESHARE": "file_share", "FILESHARING": "file_share", "ONLINESTORAGE": "file_share", "CLOUDSTORAGE": "file_share",
+    "WEBMAIL": "webmail", "EMAIL": "webmail", "PERSONALEMAIL": "webmail",
+    "GENERATIVEAI": "ai_ml", "GENAI": "ai_ml", "AIML": "ai_ml", "AIMLAPPLICATIONS": "ai_ml", "AIMLAPPS": "ai_ml",
+    "ARTIFICIALINTELLIGENCE": "ai_ml",
+    "SOCIALNETWORKING": "social", "SOCIALMEDIA": "social",
+    "ENTERPRISECOLLABORATION": "collab", "COLLABORATION": "collab", "INSTANTMESSAGING": "collab", "ONLINECHAT": "collab",
+    "PASTESITES": "forums", "PASTEBIN": "forums", "BLOGS": "forums", "BLOG": "forums", "DISCUSSIONFORUMS": "forums", "FORUMS": "forums",
+    "REMOTEACCESS": "remote", "REMOTEACCESSTOOLS": "remote", "ANONYMIZER": "remote", "P2P": "remote", "DNSOVERHTTPS": "remote",
+    "FINANCE": "privacy", "HEALTHCARE": "privacy", "HEALTH": "privacy", "GOVERNMENT": "privacy",
+}
+# assumed: well-known applications whose Shadow IT category says nothing
+# about their class (the sample lists ChatGPT under "System and
+# Development" and Pastebin under "Consumer"). Used only when the tenant's
+# cloud application catalogue does not name the application.
+KNOWN_APP_CLASS: Dict[str, str] = {
+    "CHATGPT": "ai_ml", "OPENAI": "ai_ml", "OPENAICHATGPT": "ai_ml", "GOOGLEGEMINI": "ai_ml", "GEMINI": "ai_ml", "GOOGLEBARD": "ai_ml",
+    "CLAUDE": "ai_ml", "ANTHROPICCLAUDE": "ai_ml", "MICROSOFTCOPILOT": "ai_ml", "COPILOT": "ai_ml", "PERPLEXITY": "ai_ml",
+    "PERPLEXITYAI": "ai_ml", "DEEPSEEK": "ai_ml", "MISTRALAI": "ai_ml", "POE": "ai_ml", "CHARACTERAI": "ai_ml",
+    "PASTEBIN": "forums", "PASTEBINCOM": "forums", "GITHUBGIST": "forums", "HASTEBIN": "forums", "JUSTPASTEIT": "forums",
+    "CONTROLC": "forums", "PRIVATEBIN": "forums", "RENTRY": "forums", "GHOSTBIN": "forums",
+    "WETRANSFER": "file_share", "MEGA": "file_share", "DROPBOX": "file_share", "BOX": "file_share", "SENDANYWHERE": "file_share",
+    "GMAIL": "webmail", "YAHOOMAIL": "webmail", "OUTLOOKCOM": "webmail", "PROTONMAIL": "webmail", "AOLMAIL": "webmail",
+}
+
+
+def _app_key(v: Any) -> str:
+    """An application or category name compared loosely: letters and digits, upper case."""
+    return re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
+
+
+def _nonneg(v: Any) -> float:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    return f if f == f and 0 <= f < float("inf") else 0.0
+
+
+def read_traffic(zins: Any, *, window_key: str = TRAFFIC_WINDOW, scrub: Any = None, now_ms: Optional[int] = None) -> Dict[str, Any]:
+    """Ask ZIA Insights once for Shadow IT applications (bytes per
+    application) over the window. Never raises: {status, apps, window,
+    error}."""
+    import insights
+    _scrub = scrub or (lambda s: s)
+    try:
+        win = insights.window(window_key, now_ms=now_ms)
+    except Exception as e:  # noqa: BLE001 — a bad window is reported, never crashes the map
+        return {"status": "error", "apps": [], "window": None, "error": _scrub(str(e))[:240]}
+    if zins is None or not hasattr(zins, "shadow_it"):
+        return {"status": "error", "apps": [], "window": dict(win, key=window_key), "error": "ZIA Insights is not available on this sign-in."}
+    s, e = win["start_ms"], win["end_ms"]
+    r = insights._ask(lambda: zins.shadow_it.get_apps(start_time=s, end_time=e, limit=TRAFFIC_APPS_MAX), ("SHADOW_IT", "apps"), _scrub,
+                      parse=lambda x: insights.app_rows(x, TRAFFIC_APPS_MAX))
+    return {"status": r.get("status") or "error", "apps": list(r.get("rows") or []), "window": dict(win, key=window_key),
+            "error": r.get("error") or ""}
+
+
+def traffic_timeout_reason(seconds: float) -> str:
+    return (f"Traffic numbers were not read: ZIA Insights did not answer within {seconds:g} seconds, so the map is shown "
+            "without them. The picture counts paths, not bytes. Try again later.")
+
+
+def traffic_unavailable(reason: str) -> Dict[str, Any]:
+    return {"available": False, "reason": str(reason)[:400]}
+
+
+def traffic_shares(traces: Sequence[Dict[str, Any]], apps: Sequence[Dict[str, Any]], catalogue: Optional[Dict[str, Any]] = None,
+                   window: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Bytes per traffic class from Shadow IT rows. An application goes to
+    the first traffic class whose catalogue applications name it, else the
+    class of a well-known application of that name (KNOWN_APP_CLASS), else
+    the class its Shadow IT category carries (SHADOW_IT_CATEGORY_CLASS),
+    else a class whose cloud application classes match that category, else
+    "All other web traffic"; each byte is counted once. Negative, missing
+    or non-numeric amounts count as 0."""
+    classes: Dict[str, Dict[str, Any]] = {}
+    for t in traces or []:
+        d = t.get("destination") or {}
+        k = d.get("class")
+        if d.get("kind") != "class" or not k or k in classes:
+            continue
+        names = {_app_key(a) for a in d.get("applications") or []}
+        for cls in d.get("app_classes") or []:
+            names |= {_app_key(a) for a in (catalogue or {}).get(cls, []) or []}
+        classes[k] = {"label": d.get("label") or k, "names": names - {""}, "cats": {_app_key(c) for c in d.get("app_classes") or []} - {""},
+                      "upload": 0.0, "total": 0.0, "apps": []}
+    fallback = TRAFFIC_FALLBACK if TRAFFIC_FALLBACK in classes else None
+    unmatched = {"upload": 0.0, "total": 0.0, "apps": []}
+    for a in apps or []:
+        if not isinstance(a, dict):
+            continue
+        name = str(a.get("application") or "")[:200]
+        if not name:
+            continue
+        up = _nonneg(a.get("data_uploaded"))
+        tot = _nonneg(a.get("data_consumed")) or up + _nonneg(a.get("data_downloaded"))
+        nk, ck = _app_key(name), _app_key(a.get("application_category"))
+        known = KNOWN_APP_CLASS.get(nk)
+        by_cat = SHADOW_IT_CATEGORY_CLASS.get(ck)
+        key = next((k for k, c in classes.items() if nk and nk in c["names"]), None) \
+            or (known if known in classes else None) or (by_cat if by_cat in classes else None) \
+            or next((k for k, c in classes.items() if ck and ck in c["cats"]), None) or fallback
+        bucket = classes[key] if key else unmatched
+        bucket["upload"] += up
+        bucket["total"] += tot
+        if len(bucket["apps"]) < 12:
+            bucket["apps"].append(name)
+    total_up = sum(c["upload"] for c in classes.values()) + unmatched["upload"]
+    total = sum(c["total"] for c in classes.values()) + unmatched["total"]
+    if total_up <= 0 and total <= 0:
+        return traffic_unavailable("ZIA Insights had no cloud application traffic for this window, so the picture counts paths, not bytes.")
+    return {"available": True, "source": "ZIA Insights (Shadow IT)", "unit": "bytes uploaded",
+            "window": {"key": (window or {}).get("key") or TRAFFIC_WINDOW, "label": (window or {}).get("label") or "",
+                       "start_ms": (window or {}).get("start_ms"), "end_ms": (window or {}).get("end_ms")},
+            "total_upload": total_up, "total": total, "apps_read": len([a for a in apps or [] if isinstance(a, dict)]),
+            "classes": {k: {"label": c["label"], "upload": c["upload"], "total": c["total"], "apps": c["apps"]} for k, c in classes.items()},
+            "unmatched": unmatched, "basis": TRAFFIC_BASIS}
+
+
+def attach_traffic(report: Dict[str, Any], read: Optional[Dict[str, Any]] = None, reason: str = "") -> Dict[str, Any]:
+    """Put report["traffic"]: the shares from an Insights read, else why
+    there are none. In place; returns the traffic part."""
+    if read is None:
+        report["traffic"] = traffic_unavailable(reason or TRAFFIC_NOT_IN_SCOPE)
+    elif read.get("status") == "error":
+        report["traffic"] = traffic_unavailable("Traffic numbers could not be read from ZIA Insights"
+                                                + (f" ({read.get('error')})" if read.get("error") else "") + ". The picture counts paths, not bytes.")
+    else:
+        report["traffic"] = traffic_shares(report.get("traces") or [], read.get("apps") or [],
+                                           ((report.get("snapshot") or {}).get("zia") or {}).get("catalogue") or {}, read.get("window"))
+    return report["traffic"]
+
+
 def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = None, platform: str = "windows", *,
                               scope: Optional[Dict[str, Any]] = None, cancel: Any = None) -> Dict[str, Any]:
     """Read the tenant once, trace every traffic class (or the given
@@ -1716,6 +1878,40 @@ def to_markdown(report: Dict[str, Any], label: str = "") -> str:
         for p in t["packs"]:
             lines.append(f"- Pack {p['name']}: {p['coverage']}" + (f" — {p['weak_point']}" if p.get("weak_point") else ""))
         lines.append("")
+    lines.extend(_traffic_markdown(report.get("traffic") or {}))
     import dlp_analysis
     lines.extend(dlp_analysis.markdown(raw))
     return "\n".join(lines)
+
+
+def _human_bytes(n: Any) -> str:
+    v, i, units = _nonneg(n), 0, ["B", "KB", "MB", "GB", "TB", "PB"]
+    while v >= 1000 and i < len(units) - 1:
+        v /= 1000
+        i += 1
+    return f"{v:.1f} {units[i]}" if i else f"{round(v)} {units[i]}"
+
+
+def _traffic_markdown(tr: Dict[str, Any]) -> List[str]:
+    """The traffic shares (the same numbers as the JSON export's
+    "traffic"), or why there are none. Strings are already inert."""
+    out = ["## Where uploads go (ZIA Insights)", ""]
+    if not tr.get("available"):
+        return out + [str(tr.get("reason") or TRAFFIC_NOT_IN_SCOPE), ""]
+    total = _nonneg(tr.get("total_upload"))
+    win = (tr.get("window") or {}).get("label") or (tr.get("window") or {}).get("key") or TRAFFIC_WINDOW
+    out.append(f"{_human_bytes(total)} uploaded to cloud applications ({win}, {tr.get('source') or 'ZIA Insights'}), "
+               f"{tr.get('apps_read', 0)} applications read. Share of the uploads by traffic class; what happens to it on each "
+               "network is in the paths above.")
+    out.append("")
+    rows = sorted((tr.get("classes") or {}).values(), key=lambda c: -_nonneg(c.get("upload")))
+    for c in rows:
+        up = _nonneg(c.get("upload"))
+        pct = round(100 * up / total) if total else 0
+        apps = ", ".join(str(a) for a in c.get("apps") or [])
+        out.append(f"- {c.get('label')}: {pct}% ({_human_bytes(up)} uploaded)" + (f" — {apps}" if apps else ""))
+    un = tr.get("unmatched") or {}
+    if _nonneg(un.get("upload")):
+        out.append(f"- Not put in any traffic class: {_human_bytes(un.get('upload'))} uploaded")
+    out += ["", f"Basis: {tr.get('basis') or TRAFFIC_BASIS}", ""]
+    return out

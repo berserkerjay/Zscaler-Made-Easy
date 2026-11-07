@@ -13,6 +13,7 @@ import os
 import sys
 
 import pytest
+from conftest import read_store_text
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -318,8 +319,8 @@ def test_the_secret_through_the_api_is_in_no_job_record_or_audit_and_is_revealed
     second = api.post("/api/operations/zidentity/secret", json={"token": token})
     assert first.status_code == 200 and first.json()["secret"] == CANARY_SECRET and "no-store" in first.headers["cache-control"]
     assert second.status_code == 404 and CANARY_SECRET not in second.text
-    assert CANARY_SECRET not in open(os.path.join(isolated, "audit.log"), encoding="utf-8").read()
-    assert '"event":"admin_operation"' in open(os.path.join(isolated, "audit.log"), encoding="utf-8").read()
+    assert CANARY_SECRET not in read_store_text(os.path.join(isolated, "audit.log"))
+    assert '"event":"admin_operation"' in read_store_text(os.path.join(isolated, "audit.log"))
 
 
 def test_the_reveal_route_needs_a_writer_and_a_known_token(monkeypatch):

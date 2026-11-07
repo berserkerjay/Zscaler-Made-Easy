@@ -10,6 +10,7 @@ import os
 import sys
 
 import pytest
+from conftest import read_store_text
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -63,7 +64,7 @@ def test_turning_off_one_private_service_edge_sends_only_that_edge_and_undo_turn
     assert inv and ao.is_undo_only(inv)
     _p2, r2 = _apply(c, inv)
     assert r2["status"] == "applied" and c.tenant.rows["service_edge"][se]["enabled"] is True
-    audit = [json.loads(x) for x in (isolated / "audit.log").read_text(encoding="utf-8").splitlines() if x.strip()]
+    audit = [json.loads(x) for x in read_store_text(isolated / "audit.log").splitlines() if x.strip()]
     writes = [e for e in audit if e.get("event") == "object_write" and e.get("action") == "update"]
     assert writes and all(str(e.get("id")) == se for e in writes)
     assert any(e.get("event") == "admin_operation" and e.get("actor") == "alice" for e in audit)

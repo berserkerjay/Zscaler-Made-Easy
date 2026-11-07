@@ -140,7 +140,7 @@ def test_every_blur_sheen_and_shadow_goes_through_its_solid_switch():
     switch = {"-webkit-backdrop-filter": "var(--glass-solid-filter,", "backdrop-filter": "var(--glass-solid-filter,",
               "background-image": "var(--glass-solid-img,", "box-shadow": "var(--glass-solid-shadow,"}
     # Act
-    bad = [(p, v[:60]) for p, v in decls if not v.startswith(switch[p]) and v != "none"]   # "none" only ever takes glass away
+    bad = [(p, v[:60]) for p, v in decls if not v.startswith(switch[p]) and v not in ("none", "none !important")]   # "none" only ever takes glass away
     # Assert
     assert len(decls) >= 20 and not bad, bad
 
@@ -606,3 +606,60 @@ def test_extension_glass_is_local_static_and_on_every_page():
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(|url\(|https?:", EXT_CSS)
     assert not re.search(r"backdrop-filter|animation|transition|@keyframes", EXT_CSS)
     assert len(decls) >= 5 and all(v.startswith(("var(--glass-solid-img,", "var(--glass-solid-shadow,")) for _, v in decls), decls
+
+
+# ── What the glass costs to draw (measured: tests/test_glass_perf_browser.py) ──
+
+def test_the_drift_steps_about_once_a_second_on_both_layers_together():
+    """CWE-400 · CWE-1050 · performance: each drift step draws every blurred layer again, so each backdrop layer steps at most once a second, and both at the same moments (the same seconds per step), never four or more times a second as before.
+    An animation's timing function applies to each keyframe interval, not to the whole run: steps(n) over k intervals is k * n steps."""
+    # Arrange
+    drift = float(_decls(_block(CSS_NO_COMMENTS, "body"))["--glass-drift"].rstrip("s"))
+    uses = re.findall(r"(?<![\w-])animation\s*:\s*var\(--glass-solid-motion, (glass-drift-\w+) (var\(--glass-drift\)|calc\(var\(--glass-drift\) \* ([\d.]+)\)) steps\((\d+)\)", CSS_NO_COMMENTS)
+    intervals = {name: len(re.findall(r"[\d.]+%\s*\{", _block(CSS_NO_COMMENTS, "@keyframes " + name))) - 1 for name, *_ in uses}
+    # Act
+    per_step = [drift * (float(scale) if scale else 1.0) / (intervals[name] * int(n)) for name, _dur, scale, n in uses]
+    # Assert
+    assert len(per_step) == 2 and all(s >= 1.0 for s in per_step), per_step
+    assert abs(per_step[0] - per_step[1]) < 1e-9, per_step
+
+
+def test_while_the_page_scrolls_the_in_flow_glass_drops_its_blur_and_the_drift_holds():
+    """CWE-400 · CWE-1050 · WCAG 2.2 SC 2.2.2: glass.js sets html.glass-scrolling from one passive capturing scroll listener (cleared after the scroll ends, nothing per frame); glass.css then drops the blur of the cards and the tier 2 chrome in the page flow (the same selectors that blur them) and holds the drift, while the floating tier keeps its blur."""
+    # Arrange
+    js = _read("glass.js")
+    rule = re.search(r":root:not\(\.glass-off\)\.glass-scrolling :is\(\.rp-card[^{]+\{([^{}]*)\}", CSS_NO_COMMENTS)
+    # Act
+    selectors = rule.group(0).split("{")[0] if rule else ""
+    # Assert
+    assert "document.addEventListener('scroll', scrolled, { passive: true, capture: true });" in js
+    assert "root.classList.remove('glass-scrolling')" in js and "requestAnimationFrame(scrolled" not in js
+    assert rule and "backdrop-filter: none" in rule.group(1), rule
+    assert ".glass-fit" in selectors and ".rp-hero" in selectors and "#stepBar" in selectors
+    assert not re.search(r"\.rp-bar|#dbSidebar|dialog|\.hh-tip", selectors), selectors
+    body = _block(CSS_NO_COMMENTS, ":root:not(.glass-off).glass-scrolling body::before,\n:root:not(.glass-off).glass-scrolling body::after")
+    assert "animation-play-state: paused" in body
+
+
+def test_while_the_page_scrolls_the_page_bar_drops_its_blur_and_the_small_floating_glass_keeps_it():
+    """CWE-400 · CWE-1050 · WCAG 2.2 SC 1.4.3: the page bar (floating, as wide as the page, 95% opaque) drops its backdrop blur while html.glass-scrolling is set, so a scrolled frame does not read its backdrop back each frame; the theme button and the help pop-up keep theirs."""
+    # Arrange
+    rp_bar = dict((k.strip(), v.strip()) for k, v in re.findall(r"([\w-]+)\s*:\s*([^;]+);", _block(CSS_NO_COMMENTS, ":root:not(.glass-off).glass-scrolling .rp-bar")))
+    # Act
+    scrolling_heads = re.findall(r"([^{}]*glass-scrolling[^{}]*)\{", CSS_NO_COMMENTS)
+    # Assert
+    assert rp_bar["backdrop-filter"] == "none !important" and rp_bar["-webkit-backdrop-filter"] == "none !important", rp_bar
+    assert not any(re.search(r"themeToggleBtn|\.hh-tip|#dbSidebar|dialog", h) for h in scrolling_heads), scrolling_heads
+
+
+def test_the_drift_only_translates_its_layers_so_a_scrolled_frame_never_resamples_them():
+    """CWE-400 · CWE-1050: the backdrop drift's keyframes are translations only (no rotate or scale), so its two page-sized layers, drawn on every scrolled frame, are never resampled; the drift still moves both layers."""
+    # Arrange
+    frames = dict(re.findall(r"@keyframes\s+(glass-drift-\w+)\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}", CSS_NO_COMMENTS))
+    # Act
+    values = {name: re.findall(r"transform\s*:\s*([^;}]+)", body) for name, body in frames.items()}
+    # Assert
+    assert set(values) == {"glass-drift-a", "glass-drift-b"}, values
+    for name, vs in values.items():
+        assert vs and all(re.fullmatch(r"translate3d\([^()]*\)", v.strip()) for v in vs), (name, vs)
+        assert len({v.strip() for v in vs}) > 1, (name, vs)

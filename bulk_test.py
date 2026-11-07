@@ -1117,6 +1117,11 @@ class PathEvaluator:
             # Zoom's ranges and one outside them are traced apart too.
             import vendor_endpoints
             self._vendors = vendor_endpoints.current() if named else {}
+            if named:   # the bundled excerpts (endpoint_snapshots) can match too, so they trace rows apart as well
+                for pid in vendor_endpoints.PROVIDERS:
+                    ex = vendor_endpoints.bundled(pid)
+                    if ex is not None:
+                        self._vendors[pid + ":bundled"] = ex
         vend = tuple(sorted((pid, vl.lookup_ip(ip) if ip is not None else vl.lookup_host(host)) for pid, vl in (self._vendors or {}).items()))
         if self._m365 is None:
             return vend or None

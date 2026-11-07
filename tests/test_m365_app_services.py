@@ -22,11 +22,13 @@ import re
 from pathlib import Path
 
 import pytest
+from conftest import read_store_text
 import requests
 import requests.adapters
 from requests.models import Response
 
 import app_services as aps
+import endpoint_snapshots
 import m365_endpoints as m365
 import path_analyzer as pa
 import shadow_rules as sr
@@ -50,6 +52,10 @@ def _own_folder(tmp_path, monkeypatch):
     def refuse(self, request, **kw):
         raise AssertionError(f"no network in tests: {request.url}")
     monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", refuse)
+    # These tests pin the kept-list logic, so the bundled excerpts are left
+    # out here; tests/test_app_service_snapshots.py tests them on their own.
+    monkeypatch.setattr(endpoint_snapshots, "vendor_list", lambda pid: None)
+    monkeypatch.setattr(endpoint_snapshots, "m365_list", lambda: None)
     m365._CACHE.update(key=None, list=None)
     yield
     m365._CACHE.update(key=None, list=None)
@@ -143,7 +149,7 @@ def test_the_match_reads_as_one_plain_sentence():
     # Another provider's group: unknown until that provider's list is kept (vendor_endpoints, tests/test_vendor_app_services.py).
     ({"appServiceGroups": [{"id": 4, "name": "ZOOM"}]}, "40.97.1.2", "unknown", "no Zoom list is kept"),
     ({"appServiceGroups": [{"id": 4, "name": "WEBEX_TEAMS"}]}, "40.97.1.2", "unknown", "no Webex list is kept"),
-    ({"appServiceGroups": [{"id": 4, "name": "ZSCALER_SERVICES"}]}, "40.97.1.2", "unknown", "no published list is used"),
+    ({"appServiceGroups": [{"id": 4, "name": "ZSCALER_SERVICES"}]}, "40.97.1.2", "unknown", "no published list settles them"),
     ({"appServiceGroups": [{"id": 3, "name": "OFFICE365"}, {"id": 4, "name": "ZOOM"}]}, "203.0.113.9", "unknown", "no Zoom list is kept"),
     ({"appServiceGroups": [{"id": 3, "name": "OFFICE365"}, {"id": 4, "name": "ZOOM"}]}, "40.97.1.2", "match", "OFFICE365"),
     ({"appServiceGroups": ["ANY"]}, "40.97.1.2", None, None),
@@ -629,7 +635,7 @@ def test_the_api_reads_switches_imports_and_removes_and_audits_each_change():
     assert ok.status_code == 200 and ok.json()["version"] == VERSION and ok.json()["source"] == "imported"
     assert c.put("/api/m365-endpoints/settings", json={"enabled": True}).json()["enabled"] is True
     assert c.delete("/api/m365-endpoints").json()["present"] is False
-    log = open(os.environ["DLP_CHECK_AUDIT"], encoding="utf-8").read()
+    log = read_store_text(os.environ["DLP_CHECK_AUDIT"])
     for event in ("m365_endpoints_import", "m365_endpoints_settings", "m365_endpoints_remove"):
         assert event in log
 

@@ -1,0 +1,108 @@
+{
+ "area": "Path analyzer: app service groups (endpoint_snapshots.py, vendor_endpoints.py, m365_endpoints.py, app_services.py, zia_path_modules.py, bulk_test.py, Advanced settings card)",
+ "title": "App service groups out of the box: a dated excerpt of Microsoft's published Microsoft 365 list (version 2026043000, match only, expiring), no unchecked excerpts for other providers, GoTo's list fetchable, Zscaler's own groups unknown with the exact reason",
+ "standards": [
+  "ASVS V1.4.4",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V12.1.1",
+  "ASVS V12.6.1",
+  "ASVS V14.1.1",
+  "CWE-20",
+  "CWE-345",
+  "CWE-400",
+  "CWE-672",
+  "CWE-674",
+  "CWE-697",
+  "CWE-754",
+  "CWE-918",
+  "CWE-1059",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 4.1.2"
+ ],
+ "checks": [
+  {
+   "id": "W10-ASG-C01",
+   "what": "Microsoft 365 groups match a published destination from the bundled excerpt with nothing fetched, naming the excerpt, its version and when it was checked; Zoom, Webex, RingCentral, GoTo and Talkdesk ship no excerpt and stay unknown until a fetch or an import",
+   "standard": "ASVS V1.4.4 \u00b7 CWE-697",
+   "result": "pass"
+  },
+  {
+   "id": "W10-ASG-C02",
+   "what": "An excerpt never yields no match; an expired excerpt (over 180 days) settles nothing",
+   "standard": "ASVS V1.4.4 \u00b7 CWE-754 \u00b7 CWE-672",
+   "result": "pass"
+  },
+  {
+   "id": "W10-ASG-C03",
+   "what": "GoTo's JSON list: only address ranges taken; malformed JSON, private, over-broad or malformed ranges, too deep, too many values or over 1 MB refuse the whole list",
+   "standard": "ASVS V5.1.3 \u00b7 V12.1.1 \u00b7 CWE-20 \u00b7 CWE-400 \u00b7 CWE-674",
+   "result": "pass"
+  },
+  {
+   "id": "W10-ASG-C04",
+   "what": "No outbound request from matching, status or page load; GoTo is fetched only when switched on and Fetch now is clicked, from its one declared host, no redirect followed",
+   "standard": "ASVS V12.6.1 \u00b7 CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "W10-ASG-C05",
+   "what": "Zscaler's own app service groups stay unknown, and the reason says the API lists them only by id and name (appServiceGroups/lite, appServices/lite) and never their members; the SDK fact (no call for either) is checked against the installed SDK",
+   "standard": "ASVS V1.4.4 \u00b7 CWE-1059",
+   "result": "pass"
+  },
+  {
+   "id": "W10-ASG-C06",
+   "what": "The Microsoft 365 excerpt is Microsoft's published version 2026043000 entry for entry: Teams media holds no 13.107.64.0/18, SharePoint is *.sharepoint.com, Teams and SharePoint carry UDP 443; dated by that version and checked date",
+   "standard": "ASVS V5.1.3 \u00b7 CWE-345 \u00b7 CWE-697",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W10-ASG-01",
+   "title": "Microsoft 365 app service groups never matched out of the box (only after an opt-in fetch or an import); the other providers' groups still match only after a fetch (Zoom, GoTo) or an import, as no excerpt of their lists could be checked",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "endpoint_snapshots.py (bundled dated Microsoft 365 excerpt, match only), app_services.criterion/current, m365_endpoints and vendor_endpoints status",
+   "test": "tests/test_app_service_snapshots.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-ASG-02",
+   "title": "GoTo publishes a machine-readable list but could only be imported by hand",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V12.6.1",
+   "status": "fixed",
+   "fix": "vendor_endpoints PROVIDERS goto fetch, parse_json; Advanced settings switch advVendGotoOn; SECURITY.md and secure_by_design outbound line",
+   "test": "tests/test_app_service_snapshots.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-ASG-03",
+   "title": "A bundled excerpt entry not in the provider's published list gives a false match (13.107.64.0/18 in Teams media; unchecked Zoom, Webex, RingCentral, GoTo and Talkdesk entries)",
+   "severity": "medium",
+   "cwe": "CWE-345",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "endpoint_snapshots.M365_SETS copied from Microsoft's version 2026043000; VENDOR emptied",
+   "test": "tests/test_app_service_snapshots.py",
+   "commit": ""
+  },
+  {
+   "id": "W10-ASG-04",
+   "title": "The reason shown for Zscaler's own groups said the API has no call that lists them; it has lite lists by id and name",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "app_services.ZSCALER_OWN, vendor_endpoints.ZSCALER_GROUPS_NOTE, Advanced settings #advVendZs",
+   "test": "tests/test_app_service_snapshots.py",
+   "commit": ""
+  }
+ ],
+ "tests_added": 50
+}

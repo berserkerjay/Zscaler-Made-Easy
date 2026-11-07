@@ -19,6 +19,7 @@
     </header>
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" id="opSslCov" href="/report/sslcoverage" target="_blank" rel="noopener">True inspection coverage</a>
       <span class="sep"></span>
       <label class="df-ctl" id="opTenantWrap" hidden><span class="lbl">Tenant</span><select id="opTenant" aria-label="Tenant to read and change"></select></label>
       <span class="df-chip" id="opWrite" role="status" aria-live="polite">Checking write mode…</span>
@@ -42,7 +43,9 @@
           <legend class="df-h">Day-to-day admin</legend>
         </fieldset>
         <div class="df-hint" id="opSanction">Cloud application sanction (Sanctioned / Unsanctioned) is the operation <strong>Sanction or unsanction cloud apps</strong> above; it needs ZIA platform and ZIA Insights ticked on the Scope page.</div>
+        <div class="df-hint" id="opCloneNew">Backups: restore and clone now also write PAC files, Endpoint and SaaS Security API DLP rules, ZPA gateways, sub-locations with their location (when tenant-bound objects are included) and, when you include them, Client Connector app profiles and entitlements, never with a password.</div>
         <div class="df-hint" id="opAdminNew">New day-to-day edits: activate pending ZIA changes, rename or delete a URL category, IP groups, DLP dictionaries and engines, and one ZIdentity user (details, password or MFA). Each is listed above once the page has loaded.</div>
+        <div class="df-hint" id="opSocReview">Before you change admins, roles or API clients, the <a href="/report/soc-review">SOC review</a> shows who can administer the tenant today and what it sends to your SIEM. It only reads.</div>
       </section>
 
       <section aria-labelledby="opH2">

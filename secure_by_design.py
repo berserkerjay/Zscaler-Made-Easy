@@ -97,6 +97,16 @@ def _middleware_names(app: Any) -> List[str]:
     return names
 
 
+def _vendor_hosts() -> str:
+    """The providers' endpoint-list hosts (m365_endpoints.ALLOWED_HOSTS, vendor_endpoints.FETCH_HOSTS), as the outbound line names them."""
+    try:
+        import m365_endpoints
+        import vendor_endpoints
+        return ", ".join(sorted(set(m365_endpoints.ALLOWED_HOSTS) | set(vendor_endpoints.FETCH_HOSTS)))
+    except Exception:  # noqa: BLE001
+        return "Microsoft's, Zoom's and GoTo's list hosts"
+
+
 def _python_sources() -> List[str]:
     out: List[str] = []
     for base in (APP_DIR, os.path.join(APP_DIR, "tools")):
@@ -274,7 +284,7 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
             hosts = []
     if hosts:
         checks.append(_check("outbound", "Outbound calls go to an allowlist of hosts", P_OWN, "secure_defaults", "pass",
-                             f"{len(hosts)} documentation hosts allowed for the update check, the best-practice library and the SaaS matrix; the Zscaler API for the tenant; GitHub for updates; Zscaler's config portal for published IP ranges only when turned on and asked; your own SMTP relay or https webhook only when configured; the Path analyzer's Test from here only on an explicit click (one destination, ports 443, 80, 8443, 8080). No AI or LLM service is called.",
+                             f"{len(hosts)} documentation hosts allowed for the update check, the best-practice library and the SaaS matrix; the Zscaler API for the tenant; GitHub for updates; Zscaler's config portal for published IP ranges only when turned on and asked; {_vendor_hosts()} for the providers' published endpoint lists (app service groups) only when turned on, each on its own switch; your own SMTP relay or https webhook only when configured; the Path analyzer's Test from here only on an explicit click (one destination, ports 443, 80, 8443, 8080). No AI or LLM service is called.",
                              "Nothing to do."))
     else:
         checks.append(_check("outbound", "Outbound calls go to an allowlist of hosts", P_OWN, "secure_defaults", "warn", "The documentation-host allowlist could not be read.", "Check bp_crawler.ALLOWED_HOSTS."))

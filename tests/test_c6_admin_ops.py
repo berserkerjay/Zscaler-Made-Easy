@@ -16,6 +16,7 @@ import threading
 from datetime import datetime
 
 import pytest
+from conftest import read_store_json
 from fastapi.testclient import TestClient
 
 import admin_ops as ao
@@ -488,7 +489,7 @@ def test_an_approval_does_not_carry_over_to_a_changed_request(field, value):
     """ASVS V11.1.1 · A08:2021 · CWE-345 · WSTG-BUSL-01: a request whose plan_hash, payload, tenant or kind changed after approval is not applied."""
     rid = _file()["id"]
     change_queue.decide(rid, "approve", by="bob@example.com")
-    data = json.load(open(change_queue.store_path()))
+    data = read_store_json(change_queue.store_path())
     data["requests"][rid][field] = value
     json.dump(data, open(change_queue.store_path(), "w"))
     with pytest.raises(change_queue.QueueError, match="not the one that was approved"):
@@ -499,7 +500,7 @@ def test_a_request_approved_by_an_earlier_version_still_applies():
     """ASVS V1.14.6 · CWE-1188 (regression): a stored approval without approved_digest is still applied (plan_hash re-checked by the apply path)."""
     rid = _file()["id"]
     change_queue.decide(rid, "approve", by="bob@example.com")
-    data = json.load(open(change_queue.store_path()))
+    data = read_store_json(change_queue.store_path())
     data["requests"][rid].pop("approved_digest", None)
     json.dump(data, open(change_queue.store_path(), "w"))
     assert change_queue.begin_apply(rid, by="bob@example.com")["applying"]["by"] == "bob@example.com"

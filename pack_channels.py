@@ -1092,16 +1092,7 @@ def fetch_channel_state(zia, need: Dict[str, Any], log: Optional[Callable[[str],
                 # live tenant: casbTenant/lite listed only SharePoint while an
                 # Email DLP rule was scoped to the Exchange tenant). The rules
                 # that already use one are the reliable way to find it.
-                seen_ids = set()
-                found = []
-                for raw in data or []:
-                    for t in (_field(raw, "email_tenants", "emailTenants", default=[]) or []):
-                        tid, tname = _field(t, "id"), str(_field(t, "name", default="") or "").strip()
-                        if tid is not None and str(tid) not in seen_ids:
-                            seen_ids.add(str(tid))
-                            found.append({"id": tid, "name": tname or str(tid), "app": "EMAIL",
-                                          "status": [], "from_rule": str(_field(raw, "name", default="") or "").strip()})
-                state["email_tenants_in_rules"] = found
+                state["email_rules_raw"] = list(data or [])
             state["rules"][ch] = rules
             _log(f"Reading the tenant: {label(ch)} rules: {len(rules)} found.")
         except Exception as e:  # noqa: BLE001 — surfaced as a dependency failure
@@ -1140,6 +1131,7 @@ def fetch_channel_state(zia, need: Dict[str, Any], log: Optional[Callable[[str],
             data, err = _nx(svc.list_casb_tenant_lite(query_params={"active_only": True}))
             if err:
                 raise RuntimeError(str(err))
+            state["casb_tenants_raw"] = list(data or [])
             tenants = []
             for t in data or []:
                 tid = _field(t, "tenant_id", "tenantId", "id")
@@ -1158,6 +1150,7 @@ def fetch_channel_state(zia, need: Dict[str, Any], log: Optional[Callable[[str],
             try:
                 edata, eerr = _nx(svc.list_casb_tenant_lite(query_params={"active_only": True, "app_type": "EMAIL"}))
                 if not eerr:
+                    state["email_tenant_rows_raw"] = list(edata or [])
                     ids = {_field(t, "tenant_id", "tenantId", "id") for t in (edata or [])}
                     state["email_tenant_ids"] = sorted(str(i) for i in ids if i is not None)
                     known = {str(t["id"]) for t in tenants}
@@ -1216,11 +1209,13 @@ def email_tenants(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     the ones Zscaler lists as EMAIL, any whose application name says so, and
     the email tenants existing Email DLP rules are scoped to (an Exchange
     integration the SaaS tenant list does not return)."""
-    tenants = state.get("casb_tenants") or []
-    by_type = set(state.get("email_tenant_ids") or [])
-    out = [t for t in tenants if str(t["id"]) in by_type or _is_email_tenant(t)]
-    have = {str(t["id"]) for t in out}
-    out += [t for t in (state.get("email_tenants_in_rules") or []) if str(t["id"]) not in have]
+    import email_tenants as et
+    out = et.onboarded_email_tenants(state.get("casb_tenants_raw") or [], state.get("email_tenant_rows_raw") or [],
+                                     state.get("email_rules_raw") or [])
+    for t in out:
+        t.setdefault("status", [])
+        if t["found_by"].startswith(et.BY_RULE + " "):
+            t["from_rule"] = t["found_by"][len(et.BY_RULE) + 1:]
     return out
 
 

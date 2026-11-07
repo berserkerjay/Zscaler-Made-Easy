@@ -18,7 +18,13 @@ and are routed by it; an add or update is stored the way ZPA would answer
 for a _v2 call, the blocks the SDK's own _create_conditions_v2 builds from the
 tuples). `Tenant.foreign_ips` are static IP addresses another organisation
 holds: check_static_ip refuses them (HTTP 409), as it refuses one the tenant
-already has. A Client Connector entitlement PUT updates the stored one."""
+already has. A Client Connector entitlement PUT updates the stored one.
+
+Sub-locations live with the locations (zia.locations rows with a parent_id),
+as in ZIA: list_sub_locations(location_id) answers that location's ones, and
+get_location / add_location / delete_location serve both. A SaaS Security API
+rule's get and delete take the rule type after the id (`args` records the
+positional arguments of every get and delete)."""
 from __future__ import annotations
 
 import copy
@@ -39,6 +45,7 @@ class Tenant:
         self.next_id = 5000
         self.calls: List[Tuple[str, str, Dict[str, Any]]] = []
         self.foreign_ips: set = set()
+        self.args: List[Tuple[str, str, Tuple[Any, ...]]] = []
 
     def rows(self, key: str) -> List[Dict[str, Any]]:
         return self.data.setdefault(key, [])
@@ -219,6 +226,13 @@ class _Service:
                 kw = dict(kw)
                 apps = [{k: v for k, v in x.items() if k != "app_types"} for x in kw.pop("common_apps_dto").get("apps_config") or []]
                 kw["pra_apps" if t["app_kind"] == "pra" else "inspection_apps"] = apps
+        if role == "ls" and t["per_parent"]:
+            tenant.reads.append(("list", key))
+            if t["per_parent"] not in tenant.data:
+                return None, None, f"HTTP 404 {key} not found"
+            return copy.deepcopy([r for r in tenant.rows(t["per_parent"]) if str(r.get("parent_id") or "0") == str(a[0])]), None, None
+        if role in ("get", "rm"):
+            tenant.args.append((key, role, tuple(a)))
         if role == "ls":
             tenant.reads.append(("list", key))
             if key not in tenant.data:
@@ -235,7 +249,7 @@ class _Service:
             tenant.reads.append(("get", key))
             return (copy.deepcopy(rows[0]), None, None) if rows else (None, None, "HTTP 404 not found")
         if role == "get":
-            oid = a[-1]
+            oid = a[0] if t["type_arg"] else a[-1]
             tenant.reads.append(("get", key))
             hit = next((r for r in rows if str(r.get("id")) == str(oid)), None)
             return (copy.deepcopy(hit), None, None) if hit else (None, None, "HTTP 404 NOT_FOUND: no such object")
@@ -244,7 +258,7 @@ class _Service:
         if t["per_type"] and lead:
             body["type"] = lead.pop(0)
         if role == "rm":
-            oid = lead[-1]
+            oid = lead[0] if t["type_arg"] else lead[-1]
             hit = next((r for r in rows if str(r.get("id")) == str(oid)), None)
             err = tenant._write("delete", key, cb.name_of(t, hit) if hit else str(oid))
             if err:

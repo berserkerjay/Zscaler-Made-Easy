@@ -130,6 +130,8 @@
           <h3 class="adv-qs-h" id="advLicH">Licence</h3>
           <p class="adv-lead" id="advOpenSource"><strong>Open source.</strong> Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.</p>
           <p class="adv-lead">The full licence is the LICENSE file in the app folder. NOTICE and THIRD_PARTY_NOTICES.md, beside it, list what the app is built with and each part's own licence.</p>
+          <h3 class="adv-qs-h" id="advStoreH">Encrypted stores</h3>
+          <p class="adv-lead" id="advStoreNote">On by default: what this app keeps on disk about your tenants (profiles, snapshots, configuration backups, sync jobs, saved reports, the audit log) is encrypted with AES-256-GCM. The key is in this computer's credential store, or, where there is none (Linux, the container), in the owner-only file <code>store_keys.json</code> beside the data: keep it with the data. Files an earlier version wrote are encrypted once at the first start, after a verified backup. To opt out, start the app with <code>DLP_CHECK_STORE_ENCRYPTION=0</code>; INSTALL.md, "Encrypted stores", says more.</p>
         </section>
 
         <section id="plugins" aria-labelledby="advPlugH">
@@ -146,6 +148,10 @@
           <h2 class="df-h" id="advSrvH">This server</h2>
           <div class="tw"><table class="bp-table adv-table" id="advServer" aria-describedby="advSrvH"><tbody><tr><td class="dim">Loading…</td></tr></tbody></table></div>
           <p class="adv-lead" id="advSignInNote">On a team server, people can sign in through your identity provider with SAML 2.0, and use a passkey after their password. An administrator sets both up in the Sign-in section of the Team server page.</p>
+          <h3 class="adv-qs-h" id="advTenantSessionH">Signed-in tenant</h3>
+          <p class="adv-lead" id="advTenantSessionBox" role="status" aria-live="polite">Checking…</p>
+          <p class="adv-lead dim">After you sign in to a tenant once (Authenticate, an assessment or Simple mode), every page reads it without asking again. The server keeps that sign-in in its memory only, for you and this browser, until 30 minutes without use or 8 hours at most, or until you sign out of it here. Changes to the tenant still need the sign-in details.</p>
+          <div class="adv-actions"><button type="button" class="rp-btn" id="advTenantSignOut" hidden>Sign out of tenant</button></div>
         </section>
 
         <section id="m365" aria-labelledby="advM365H">
@@ -168,15 +174,21 @@
         <section id="vendors" aria-labelledby="advVendH">
           <h2 class="df-h" id="advVendH">Other providers' endpoint lists</h2>
           <p class="adv-lead">ZIA's UCaaS One Click rule names app service groups such as ZOOM, WEBEX, RINGCENTRAL, GOTO and TALKDESK, and Zscaler's API never says which sites and addresses they hold. With the provider's own list, the Path analyzer and Test a list can say whether a destination is in the group; without it they say "unknown". A list older than 30 days is not trusted until it is fetched or imported again.</p>
-          <p class="adv-lead">Only Zoom publishes its list as a file. Fetching it contacts <code>assets.zoom.us</code> over HTTPS, sends nothing about your tenant, and happens only when you click Fetch now; it is off until you turn it on here. Webex, RingCentral, GoTo and Talkdesk publish theirs as web pages: copy the address ranges and host names into a text file, one per line, and import it.</p>
+          <p class="adv-lead">Zoom and GoTo publish their lists as files. Fetching contacts <code>assets.zoom.us</code> (Zoom) or <code>goto-ipblocks.live.gtc.goto.com</code> (GoTo) over HTTPS, sends nothing about your tenant, and happens only when you click Fetch now; each is off until you turn it on here. Webex, RingCentral and Talkdesk publish theirs only as web pages: copy the address ranges and host names into a text file, one per line, and import it.</p>
+          <p class="adv-lead" id="advVendBundled">Only Microsoft 365 has an excerpt that comes with the app (copied from Microsoft's published list, version 2026043000; see Microsoft 365 endpoint list). No excerpt of Zoom's, Webex's, RingCentral's, GoTo's or Talkdesk's list comes with the app, because none could be checked against the provider's own list: their app service groups show as unknown until you fetch (Zoom, GoTo) or import the provider's list here.</p>
+          <p class="adv-lead" id="advVendZs">Zscaler's own app service groups stay unknown. Zscaler's API lists them only by id and name (<code>/appServiceGroups/lite</code>, <code>/appServices/lite</code>; zscaler-sdk-python 1.11.3 has no call for either) and never returns their members, ports or addresses: a Cloud Firewall rule carries each one only as an id and a name. Network application groups are a different object: they name application signatures, not addresses or host names.</p>
           <div id="advVendBox" class="adv-sbd adv-m365-box" role="status" aria-live="polite"><span class="dim">Loading…</span></div>
           <label class="adv-switch" for="advVendZoomOn"><input type="checkbox" id="advVendZoomOn" role="switch" aria-describedby="advVendBox"><span>Fetch Zoom's list</span></label>
           <div class="adv-actions">
             <button type="button" class="rp-btn" id="advVendFetch">Fetch Zoom's list now</button>
           </div>
+          <label class="adv-switch" for="advVendGotoOn"><input type="checkbox" id="advVendGotoOn" role="switch" aria-describedby="advVendBox"><span>Fetch GoTo's list</span></label>
+          <div class="adv-actions">
+            <button type="button" class="rp-btn" id="advVendGotoFetch">Fetch GoTo's list now</button>
+          </div>
           <div class="adv-m365-import">
             <label class="adv-field" for="advVendProv"><span>Provider</span><select id="advVendProv"><option value="zoom">Zoom</option><option value="webex">Webex</option><option value="ringcentral">RingCentral</option><option value="goto">GoTo</option><option value="talkdesk">Talkdesk</option></select></label>
-            <label class="adv-field" for="advVendFile"><span>Import its list from a text file</span><input type="file" id="advVendFile" accept=".txt,.csv,text/plain"></label>
+            <label class="adv-field" for="advVendFile"><span>Import its list from a text file</span><input type="file" id="advVendFile" accept=".txt,.csv,.json,text/plain,application/json"></label>
             <div class="adv-actions">
               <button type="button" class="rp-btn" id="advVendImport">Import</button>
               <button type="button" class="rp-btn danger" id="advVendRemove">Remove this provider's list</button>

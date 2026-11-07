@@ -51,6 +51,8 @@ Find the files a change touches here, then read only those.
 | `dns_forward_zones.py` | DNS records for Client Connector hostnames: download-only text, never applied. |
 | `docker_healthcheck.py` | Container healthcheck: is the app answering on its own port? |
 | `editions.py` | Licensed editions: Cloud Firewall (standard or advanced), Cloud Sandbox |
+| `email_tenants.py` | One answer to "which email tenants are onboarded?". |
+| `endpoint_snapshots.py` | A bundled, dated excerpt of Microsoft's published Microsoft 365 |
 | `engine_explain.py` | DLP engine explainability: an engine expression as people read it. |
 | `guidance.py` | Continuous evaluation, phase 4: guidance that keeps itself current. |
 | `insights.py` | ZIA Insights traffic data: read-only, paced, Stop-able wrappers over the |
@@ -59,6 +61,7 @@ Find the files a change touches here, then read only those.
 | `m365_endpoints.py` | Microsoft's published Microsoft 365 endpoint list: kept on disk, checked |
 | `mcp_tools.py` | Read-only analysis tools for AI assistants (the MCP server's live analysis). |
 | `md_safe.py` | One way to put untrusted text into a Markdown export. |
+| `name_prefix.py` | Managed-name prefix: an optional, operator-chosen text put in front of |
 | `native_zscaler.py` | Native Zscaler JSON → pack definitions. |
 | `offline_tenant.py` | Offline tenants: the sample tenant and saved snapshots, served to every |
 | `open_source.py` | The open-source note every Zscaler Made Easy document carries: Apache-2.0, built from information Zscaler and third parties provide. |
@@ -112,6 +115,7 @@ Find the files a change touches here, then read only those.
 | `permissions.py` | Permissions: run what the API client is allowed to run, and say exactly |
 | `plain_english.py` | One plain-English block for every finding, in every output. |
 | `policy_exports.py` | Policy exports: one formatted workbook (or PDF review copy) per ZIA |
+| `posture_cross.py` | Device posture across products: where each posture check is defined, |
 | `posture_plus.py` | Posture plus: the score explains itself and says what to do next. |
 | `pov.py` | POV planner: one proof of value per tenant, planned, run and reported. |
 | `pov_build.py` | POV build: one combined plan, one dry run and one apply across the Build |
@@ -141,12 +145,14 @@ Find the files a change touches here, then read only those.
 | `server_tls.py` | Built-in HTTPS for the server (optional; off by default). |
 | `shadow_rules.py` | Shadowed and unreachable rules: rules that can never match, or never act. |
 | `siem_queries.py` | SIEM query templates for the questions the traffic and session log page answers. |
+| `soc_review.py` | SOC review: who can administer the tenant (RBAC) and what leaves it as logs (telemetry). |
 | `ssl_coverage.py` | SSL coverage investigation: how much traffic is NOT inspected, why, and |
 | `ssl_flow.py` | SSL Inspection Flow — what is decrypted, what is not, and where inline |
+| `ssl_true_coverage.py` | True inspection coverage: one correlated answer to "how much of our web |
 | `sso.py` | Optional SSO (OpenID Connect, Authorization Code + PKCE) — off by |
 | `sso_saml.py` | Team server SAML 2.0 sign-in (SP-initiated Web Browser SSO profile, |
 | `standalone_main.py` | Entry point of the standalone (no-install) edition of Zscaler Made Easy. |
-| `store_crypto.py` | Encryption at rest for the app's own local stores (optional; off by |
+| `store_crypto.py` | Encryption at rest for the app's own local stores: ON by default. |
 | `sync_jobs.py` | Scheduled sync, done safely: plans for a person to approve, never an |
 | `syslog_listener.py` | An optional syslog listener for ZIA NSS and ZPA LSS log lines (off by default). |
 | `team_api.py` | The team server's own routes (team_server.py): sign-in with a local |
@@ -157,6 +163,7 @@ Find the files a change touches here, then read only those.
 | `tenant_fingerprint.py` | A classic-API tenant's fingerprint: how two classic-API tenants on one |
 | `tenant_health.py` | Tenant health: the signals that break a tenant quietly, read only. |
 | `tenant_profiles.py` | Tenant profiles — one saved record per customer tenant, so a consultant |
+| `tenant_session.py` | The signed-in tenant: one verified sign-in, remembered in server memory |
 | `tenant_terraform.py` | Export a whole tenant to Terraform: ZIA, ZPA, Cloud & Branch Connector and |
 | `tenant_terraform_schema.py` | The provider attributes a whole-tenant Terraform export writes, per |
 | `traffic_log_watch.py` | A daily traffic and session log report from a watched folder (opt-in). |
@@ -218,6 +225,7 @@ Find the files a change touches here, then read only those.
 | `static/compliance_choice.js` | The one compliance choice (compliance_profiles.py), shared by the ZIA |
 | `static/dashboard.js` | Dashboard layout add-on |
 | `static/data_flow.js` | Data flow map renderer |
+| `static/data_flow_simple.js` | Data flow map: the simple view for first-time readers |
 | `static/deploy_studio.js` | Policy Pack Deploy Studio |
 | `static/detection_health.js` | FP/TP detection ratio renderer |
 | `static/eval_all.js` | Evaluate All Rules: how ZIA decides |
@@ -274,6 +282,7 @@ Find the files a change touches here, then read only those.
 | `static/sidebar_order.js` | Sidebar order: drag, keyboard and a per-browser saved order |
 | `static/simple.js` | Simple mode (/simple) |
 | `static/simple_entry.js` | Simple mode, from the assessment page |
+| `static/soc_review.js` | SOC review (static/report_soc_review.html): the RBAC review and the |
 | `static/ssl_flow.js` | SSL inspection flow renderer: a live, three-column flow diagram |
 | `static/tenant_health.js` | Tenant health on /report/health (#th): ZIA changes waiting for |
 | `static/tool_tabs.js` | Tools open in their own tab |
@@ -322,6 +331,7 @@ Find the files a change touches here, then read only those.
 | `static/report_queue.html` | Change queue — Zscaler Made Easy |
 | `static/report_self_heal.html` | Self-healing — Zscaler Made Easy |
 | `static/report_shadow.html` | Shadowed rules — Zscaler Made Easy |
+| `static/report_soc_review.html` | SOC review — Zscaler Made Easy |
 | `static/report_ssl_coverage.html` | SSL coverage — Zscaler Made Easy |
 | `static/report_sslflow.html` | SSL inspection flow — Zscaler Made Easy |
 | `static/report_team.html` | Team server — Zscaler Made Easy |

@@ -630,10 +630,14 @@ def read_snapshot(snapshot_id: str, limit: int) -> bytes:
     try:
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(path, flags)
+        cap = 2 * limit + 64              # room for a sealed snapshot's base64 and header around `limit` bytes
         with os.fdopen(fd, "rb") as f:
-            raw = f.read(2 * limit + 64)
+            raw = f.read(cap + 1)
     except OSError:
         raise ValueError("The snapshot file is missing.")
+    if len(raw) > cap:
+        # Over the cap whether sealed or not: never opened cut short (that would read as "damaged").
+        raise ValueError("The snapshot file is too large.")
     try:
         raw = store_crypto.open_bytes(raw)   # a sealed snapshot (DLP_CHECK_STORE_ENCRYPTION) is opened here
     except store_crypto.StoreLocked as e:

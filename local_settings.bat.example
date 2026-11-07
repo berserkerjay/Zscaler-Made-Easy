@@ -55,3 +55,7 @@ REM set DLP_CHECK_DIGEST_TO=soc@example.com
 REM set DLP_CHECK_DIGEST_WEBHOOK=https://example.webhook.office.com/webhookb2/...
 REM Send the digest: noteworthy (default: only when there is something to decide), always, or never.
 REM set DLP_CHECK_NOTIFY=noteworthy
+REM Encrypted stores are on by default; 0 opts out (INSTALL.md, "Encrypted stores").
+REM set DLP_CHECK_STORE_ENCRYPTION=0
+REM Managed-name prefix for what policy packs deploy or build (off by default).
+REM set DLP_CHECK_NAME_PREFIX=ZME-

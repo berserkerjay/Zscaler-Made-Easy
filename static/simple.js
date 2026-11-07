@@ -45,7 +45,8 @@
       tagChange: 'Can change things, but only after you say yes',
     },
     lights: { good: 'Good', look: 'Needs a look', fix: 'Fix this' },
-    conn: { none: 'Not connected yet', yes: 'Connected to {name}', here: 'the details saved on this computer' },
+    conn: { none: 'Not connected yet', yes: 'Connected to {name}', here: 'the details saved on this computer',
+      ended: 'Your sign-in ended because it was not used for a while. Please connect again.' },
     home: {
       banner: 'New here? Try Simple mode',
     },
@@ -389,18 +390,59 @@
   const SS_RESULTS = 'zassess_last_results';
   const S = { conn: readJSON('local', LS_CONN), secret: '', report: readJSON('session', SS_RESULTS), catalog: null };
   function setConn(c) { S.conn = c; writeJSON('local', LS_CONN, c); if (c && c.kind === 'profile' && c.id) writeRaw('zassess_profile', c.id); renderConn(); }
-  function needsKey() { return !!(S.conn && S.conn.kind === 'profile' && !S.conn.has_secret && !S.secret); }
+  // The signed-in tenant (GET /api/tenant/session): a sign-in made on any
+  // page of this app, kept in the server's memory for this browser only.
+  // Simple mode uses it when it has no connection of its own; nothing
+  // about it is stored in the browser.
+  S.signed = null; S.ended = '';
+  function signedIn() { return !!(S.signed && S.signed.connected); }
+  function needsKey() { return !!(S.conn && S.conn.kind === 'profile' && !S.conn.has_secret && !S.secret && !signedIn()); }
   function credBody() {
     if (!S.conn) return {};
     if (S.conn.kind === 'profile') return S.secret ? { profile_id: S.conn.id, client_secret: S.secret } : { profile_id: S.conn.id };
+    if (S.conn.kind === 'signed') return S.conn.id ? { profile_id: S.conn.id } : {};
     return {};
+  }
+  // On load: no connection of our own → the signed-in tenant, else the
+  // tenant profile the guide picked (zassess_profile).
+  function adoptProfile() {
+    let id = '';
+    try { const s = store('local'); id = (s && s.getItem('zassess_profile')) || ''; } catch (e) { id = ''; }
+    if (!id || S.conn) return Promise.resolve();
+    return getJSON(`/api/tenant-profiles/${encodeURIComponent(id)}`).then(p => {
+      if (p && !S.conn) setConn({ kind: 'profile', id: p.id || id, name: p.name || p.vanity_domain || id, has_secret: !!p.has_secret, org: p.org_name || '', who: p.assessor || '' });
+    }).catch(() => {});
+  }
+  function adoptSignedIn() {
+    if (S.conn && S.conn.kind === 'sample') return Promise.resolve();
+    return getJSON('/api/tenant/session').then(d => {
+      S.signed = d || null;
+      if (d && d.connected) {
+        S.ended = '';
+        if (!S.conn) { S.conn = { kind: 'signed', id: d.profile_id || '', name: d.profile_name || d.tenant_label || '', org: d.profile_name || '', who: '' }; renderConn(); }
+        return null;
+      }
+      if (d && d.expired && !S.conn) { S.ended = COPY.conn.ended; renderConn(); }
+      return adoptProfile();
+    }).catch(() => adoptProfile());
+  }
+  // After a read failed: did the signed-in tenant end? Then say so in plain words.
+  async function signedInEnded() {
+    if (!(S.conn && S.conn.kind === 'signed') && !signedIn()) return '';
+    let d = null;
+    try { d = await getJSON('/api/tenant/session'); } catch (e) { return ''; }
+    S.signed = d;
+    if (d && d.connected) return '';
+    if (S.conn && S.conn.kind === 'signed') S.conn = null;
+    S.ended = COPY.conn.ended; renderConn();
+    return S.ended;
   }
   // A remembered sample connection holds only while the server still uses the sample for this browser.
   if (S.conn && S.conn.kind === 'sample') getJSON('/api/offline/status').then(d => { if (!d || d.mode !== 'sample') setConn(null); }).catch(() => {});
   function connName() { return S.conn ? (S.conn.kind === 'server' ? (S.conn.name || COPY.conn.here) : S.conn.name) : ''; }
   function renderConn() {
     const el = $('smConn'); if (!el) return;
-    el.innerHTML = S.conn ? `${light('good')} ${E(plain(COPY.conn.yes, { name: connName() }))}` : `${light('look')} ${E(COPY.conn.none)}`;
+    el.innerHTML = S.conn ? `${light('good')} ${E(plain(COPY.conn.yes, { name: connName() }))}` : `${light('look')} ${E(S.ended || COPY.conn.none)}`;
   }
   function saveReport(rep) {
     S.report = rep;
@@ -566,9 +608,10 @@
   const CHANNELS = [['web', 'web_dlp'], ['endpoint', 'endpoint_dlp'], ['email', 'email_dlp'], ['saas', 'saas_casb']];
   function connStep(text) {
     return { id: 'conn', q: () => CK.conn.q,
+      load: () => signedReady,
       render: () => S.conn && !needsKey()
         ? `<p class="sm-row">${light('good')} <span>${rich(text || CK.conn.yes, { name: connName() })}</span></p><p class="sm-dim">${rich(CK.conn.other)}</p>`
-        : `<p class="sm-row">${light('look')} <span>${rich(needsKey() ? COPY.ui.needKey : COPY.ui.needConn)}</span></p><p><button type="button" class="sm-btn primary" data-tile="connect">${E(COPY.tiles.connect.title)}</button></p>`,
+        : `<p class="sm-row">${light('look')} <span>${rich(needsKey() ? COPY.ui.needKey : (S.ended || COPY.ui.needConn))}</span></p><p><button type="button" class="sm-btn primary" data-tile="connect">${E(COPY.tiles.connect.title)}</button></p>`,
       check: () => (!S.conn ? COPY.ui.needConn : needsKey() ? COPY.ui.needKey : '') };
   }
   W.check = {
@@ -642,7 +685,7 @@
       if (e && e.name === 'AbortError') { ui.error(COPY.ui.stopped); return false; }
       failure = String((e && e.message) || e);
     }
-    if (!report) { ui.error(failure || COPY.ui.failed); return false; }
+    if (!report) { ui.error((await signedInEnded()) || failure || COPY.ui.failed); return false; }
     saveReport(report);
     return true;
   }
@@ -1083,6 +1126,7 @@
   writeRaw(LS_MODE, 'simple');
 
   renderConn();
+  const signedReady = adoptSignedIn();
   renderHome();
   const first = location.hash.slice(1);
   if (W[first]) open(first, false);

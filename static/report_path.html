@@ -57,7 +57,7 @@
       </div>
       <section role="tabpanel" id="panel-one" aria-labelledby="tab-one" tabindex="0">
       <details class="pa-framework pa-whatif" id="paWhatIf">
-        <summary>What-if: a user, group, location or ZPA identity (optional)</summary>
+        <summary id="paWiSum">What-if: a user, group, location, device posture or ZPA identity (optional)</summary>
         <div class="df-hint">Leave these empty to analyze for anyone; the result then lists what the policy action also depends on. Fill any of them to evaluate rules scoped to that identity: rules for it apply, rules for others are skipped. Groups you give are taken as the user's only groups.</div>
         <div class="pa-wi-grid">
           <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">User</span><input type="text" id="paWi_user" placeholder="jane@acme.com or a display name" autocomplete="off" spellcheck="false" maxlength="200"></label>
@@ -70,6 +70,16 @@
             <button type="button" class="rp-btn" data-wi-find="location" aria-describedby="paWiScope">Look up in ZIA</button><ul class="pa-wi-results" id="paWiRes_location" aria-label="Location matches in ZIA" hidden></ul></div>
         </div>
         <p class="df-hint" id="paWiScope"></p>
+        <fieldset class="pa-wi-zpa" id="paWiPosture">
+          <legend>Device posture</legend>
+          <div class="df-hint">How healthy the device is. ZIA rules can act on its trust level (High, Medium or Low, worked out by Client Connector from the ZIA posture profile of its app profile). ZPA access rules can ask for posture checks. Leave these empty and rules that use them stay conditional; ZPA is then answered for every check passing and every check failing.</div>
+          <div class="pa-wi-grid">
+            <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">Device trust level (ZIA)</span><select id="paWi_trust">
+              <option value="">Not given</option><option value="HIGH_TRUST">High trust</option><option value="MEDIUM_TRUST">Medium trust</option>
+              <option value="LOW_TRUST">Low trust</option><option value="UNKNOWN_DEVICETRUSTLEVEL">Unknown trust</option></select></label></div>
+            <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">Posture checks it passes (ZPA)</span><input type="text" id="paWi_posture" placeholder="CrowdStrike running, Disk encrypted" autocomplete="off" spellcheck="false" maxlength="2000"></label></div>
+          </div>
+        </fieldset>
         <fieldset class="pa-wi-zpa" id="paWiZpa">
           <legend>ZPA identity</legend>
           <div class="df-hint">For ZPA's access policy. Pick the IdP the user signs in with and type their SCIM user name: their SCIM groups are looked up in ZPA (read-only, kept only for this analysis). Type SAML or SCIM attribute values by hand, one Name=value per line. Anything you leave out stays unknown, never a match.</div>
@@ -99,7 +109,7 @@
       </details>
       <!-- Manual inputs: a PAC or bypass lists that are not in the tenant, evaluated, never run (path_manual.py, static/path_extras.js) -->
       <details class="pa-framework pa-whatif" id="paManual">
-        <summary>Manual inputs (what-if): a PAC file or bypass lists not in the tenant (optional)</summary>
+        <summary id="paManualSum">Manual inputs (what-if): a PAC file or bypass lists not in the tenant (optional)</summary>
         <div class="df-hint">For a PAC file ZIA does not host, or a bypass you have not set up yet. Paste the PAC and type VPN gateways and Z-Tunnel 2.0 lists, one entry per line. The analysis says what they would do. Nothing is written to the tenant, nothing typed here is kept, and the PAC is read, never run. Applies to traffic from a user device.</div>
         <fieldset class="op-inline" id="paManMode"><legend>How to use them</legend>
           <label class="df-ctl"><input type="radio" name="paManMode" id="paManAlone" value="alone" checked><span>On their own, next to the tenant's answer</span></label>

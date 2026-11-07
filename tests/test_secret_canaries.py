@@ -19,6 +19,8 @@ import stat
 import sys
 
 import pytest
+
+from conftest import is_store_bookkeeping, read_any_text, read_store_json, read_store_text
 import requests
 from fastapi.testclient import TestClient
 from urllib3.connectionpool import HTTPSConnectionPool
@@ -180,7 +182,7 @@ def test_no_sign_in_route_returns_or_audits_a_secret_the_api_echoed(app_client, 
             job.thread.join(30)
         texts.append(c.get(f"/api/dlp-packs/jobs/{job_id}").text)
     try:
-        texts.append(open(audit.path(), encoding="utf-8").read())
+        texts.append(read_store_text(audit.path()))
     except OSError:
         pass
     out = capsys.readouterr()
@@ -300,7 +302,7 @@ def test_the_credential_store_is_the_default_and_wins_over_the_file_opt_in(profi
     out = profiles.upsert({"name": "acme", "vanity_domain": "acme", "client_id": "cid"}, client_secret=CLIENT_SECRET, remember_secret=True)
 
     assert profiles.secret_storage() == "keyring" and out["has_secret"] is True and "secret_warning" not in out
-    raw = open(profiles.store_path(), encoding="utf-8").read()
+    raw = read_store_text(profiles.store_path())
     assert not _leaks(raw) and profiles.KEYRING_MARK in raw
     assert kr.items[(profiles.KEYRING_SERVICE, "acme")] == CLIENT_SECRET
     assert profiles.get("acme", with_secret=True)["client_secret"] == CLIENT_SECRET
@@ -314,7 +316,7 @@ def test_without_a_credential_store_the_secret_is_not_written_anywhere(profiles,
 
     assert out["secret_warning"] == profiles.NOT_REMEMBERED and out["has_secret"] is False
     folder = os.path.dirname(profiles.store_path())
-    assert not _leaks("".join(open(os.path.join(folder, f), encoding="utf-8").read() for f in os.listdir(folder)))
+    assert not _leaks("".join(_opened(os.path.join(folder, f)) for f in os.listdir(folder)))
 
 
 @pytest.mark.parametrize("then", ["forget", "delete", "replace"])
@@ -333,10 +335,10 @@ def test_a_forgotten_file_store_secret_is_not_kept_in_the_last_good_copy(profile
         profiles.upsert({"name": "acme"}, client_secret="the-new-secret-value", remember_secret=True)
 
     folder = os.path.dirname(profiles.store_path())
-    names = sorted(os.listdir(folder))
+    names = sorted(n for n in os.listdir(folder) if not is_store_bookkeeping(n))   # the store key file is not a store
     assert names == ["tenant_profiles.json", "tenant_profiles.json.last-good"], names
-    for n in names:
-        assert not _leaks(open(os.path.join(folder, n), encoding="utf-8").read(), [CLIENT_SECRET]), n
+    for n in os.listdir(folder):
+        assert not _leaks(_opened(os.path.join(folder, n)), [CLIENT_SECRET]), n
 
 
 def test_a_write_that_forgets_no_secret_keeps_the_previous_version_as_last_good(profiles, monkeypatch):
@@ -347,7 +349,7 @@ def test_a_write_that_forgets_no_secret_keeps_the_previous_version_as_last_good(
 
     profiles.upsert({"name": "other", "vanity_domain": "other", "client_id": "cid2"})
 
-    previous = json.load(open(profiles.store_path() + ".last-good", encoding="utf-8"))
+    previous = read_store_json(profiles.store_path() + ".last-good")
     assert list(previous["profiles"]) == ["acme"]
 
 
@@ -416,8 +418,8 @@ def test_self_heal_sign_in_reset_logs_and_keeps_nothing_sensitive(monkeypatch, t
 
     res = run["checks"][0]
     assert res["status"] == sh.HEALED and Cached.cleared and OAuth._instance is None
-    assert "self_heal_run" in open(audit.path(), encoding="utf-8").read(), "the reset is audited"
-    everything = json.dumps([res, run]) + open(audit.path(), encoding="utf-8").read() + caplog.text + "".join(capsys.readouterr())
+    assert "self_heal_run" in read_store_text(audit.path()), "the reset is audited"
+    everything = json.dumps([res, run]) + read_store_text(audit.path()) + caplog.text + "".join(capsys.readouterr())
     assert not _leaks(everything, [CLIENT_SECRET, "CANARYatAccessToken0001"]), everything[-600:]
     assert "acmeclientid0001" not in everything
 
@@ -513,7 +515,7 @@ def test_the_ui_token_reaches_no_audit_line_url_or_error_in_any_form_it_is_offer
     redirect = answers[0]
     assert redirect.status_code in (302, 303, 307) and UI_TOKEN not in redirect.headers.get("location", "")
     bodies = "\n".join(a.text for a in answers)
-    log = open(audit.path(), encoding="utf-8").read()
+    log = read_store_text(audit.path())
     assert "auth_denied" in log, "the refusals are audited"
     for token in (UI_TOKEN, wrong):
         assert token not in bodies and token not in log
@@ -735,9 +737,14 @@ def _data_files() -> str:
     out = []
     for root, _dirs, files in os.walk(folder):
         for f in files:
-            with open(os.path.join(root, f), encoding="utf-8", errors="replace") as fh:
-                out.append(fh.read())
+            out.append(_opened(os.path.join(root, f)))
     return "\n".join(out)
+
+
+def _opened(path) -> str:
+    """A file's content as the app would read it: a sealed store (or audit
+    line) opened, so a canary check tests the secret, never the ciphertext."""
+    return read_any_text(path)
 
 
 ECHO_SCOPE = {"scopes": ["dlp", "zia_extras", "zcc", "zpa", "insights"], "channels": CHANNELS, "from_page": True}
@@ -893,8 +900,7 @@ def test_a_snapshot_saved_from_the_tenant_carries_no_token_value(tmp_path, monke
     assert r.status_code == 200, r.text
     snaps = tenant_profiles.list_snapshots("")
     assert snaps, _job_text(c, r)
-    with open(tenant_profiles.snapshot_path(snaps[0]["id"]), encoding="utf-8") as f:
-        text = f.read()
+    text = read_store_text(tenant_profiles.snapshot_path(snaps[0]["id"]))
     assert "(set)" in text and not [v for v in TOKEN_FIELDS.values() if v in text]
     assert CLIENT_SECRET not in text and json.dumps(CLIENT_SECRET)[1:-1] not in text
 
@@ -916,7 +922,7 @@ def test_a_typed_secret_pasted_into_a_pov_reaches_no_pov_sink(app_client, sink):
     assert created.status_code == 200, created.text
     # Act
     if sink == "file":
-        text = _data_files().replace(open(audit.path(), encoding="utf-8").read(), "")
+        text = _data_files().replace(read_store_text(audit.path()), "")
     elif sink == "export":
         text = c.post("/api/pov/export", json=dict(ECHO_CREDS, profile_id=pid)).text
     elif sink in ("docx", "pdf"):
@@ -924,7 +930,7 @@ def test_a_typed_secret_pasted_into_a_pov_reaches_no_pov_sink(app_client, sink):
         assert rep.status_code == 200
         text = _office_text(rep.content)
     else:
-        text = open(audit.path(), encoding="utf-8").read()
+        text = read_store_text(audit.path())
     # Assert
     assert not _leaks(text + created.text, [CLIENT_SECRET]), (sink, _leaks(text, [CLIENT_SECRET]))
 
@@ -942,7 +948,7 @@ def test_a_job_that_fails_with_a_token_in_its_error_keeps_it_out_of_its_log_erro
     job = pack_jobs.start("qa-canary", fn, label="qa", actor="qa")
     job.thread.join(10)
     # Assert
-    blob = json.dumps(job.logs) + str(job.error) + open(audit.path(), encoding="utf-8").read()
+    blob = json.dumps(job.logs) + str(job.error) + read_store_text(audit.path())
     assert job.status == "failed" and "[redacted token]" in job.error
     assert not _leaks(blob, ACCESS_PARTS), _leaks(blob, ACCESS_PARTS)
 

@@ -324,6 +324,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Sign in to the tenant first.",
     "effect": "read"
    },
+   "#dlpDeployModal #dzNamePrefix": {
+    "what": "The name prefix the operator set. Each name this plan creates starts with it, in the tenant and in Terraform. An object already in the tenant under that name is reused. But a name alone does not prove this app made it. Without this app's tag it is shown as adopted. Remove a pack keeps it unless a deployment record for this tenant lists it. Trade-off: it keeps your objects apart and easy to find. But names get longer, and a SaaS rule name may only have 31 letters. If you change the prefix after a deploy, the next deploy makes new copies under the new names. The old ones stay until you remove them.",
+    "input": "Nothing to type here. The operator sets it before starting the app: letters, digits, spaces and - _ . : only, at most 16 characters, starting with a letter or digit. The words AND, OR and NOT are not allowed.",
+    "effect": "local"
+   },
    "#dlpDeployModal #dzBody button[onclick*=\"openToolTab('terraform'\"]": {
     "what": "Hand this pack to a platform team as a Terraform workspace (official zscaler/zia provider): what you get, how to run it, download. Opens in a new tab.",
     "input": "Nothing to type. Just click it.",
@@ -746,6 +751,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
     "effect": "nav"
    },
+   ".tool-group button[onclick=\"openSocReviewTab()\"]": {
+    "what": "Reads who can administer each Zscaler product and what is sent to your SIEM, and names each gap with a fix. Only what the Scope page ticks is read. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click a Read button in the new tab.",
+    "effect": "nav"
+   },
    ".tool-group button[onclick=\"openOtherProductsTab()\"]": {
     "what": "Reads Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation. Only the ones ticked on the Scope page are read. Lists what the tenant has and checks it. Read-only. Opens in a new tab.",
     "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
@@ -1108,9 +1118,14 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#authBtn": {
-    "what": "Signs in to the tenant with these values and nothing else: it reads nothing from the tenant. Run the assessment from the Scope page.",
+    "what": "Signs in to the tenant with these values and nothing else: it reads nothing from the tenant. Run the assessment from the Scope page. Once you are signed in, every page reads this tenant without asking again. Simple mode does too. The server keeps the sign-in in memory only, for this browser. It ends after 30 minutes without use, or 8 hours at most. Changes still need the sign-in details.",
     "input": "The sign-in fields above must be filled in first: vanity domain, client ID and secret for OneAPI, or username, password and API key for the classic API.",
     "effect": "read"
+   },
+   "#authSignOutBtn": {
+    "what": "Signs out of the tenant: the server forgets the sign-in it kept in memory for this browser. Pages then ask for the sign-in details again. It changes nothing in the tenant.",
+    "input": "Nothing to type. Shown only while you are signed in. The sign-in also ends by itself after 30 minutes without use, 8 hours after you signed in, or when the app restarts.",
+    "effect": "local"
    },
    "#runBtn": {
     "what": "Starts the assessment: reads the tenant for what is ticked on the Scope page and shows the score and findings. This copy is hidden; use Run assessment on the Scope page.",
@@ -2428,6 +2443,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/advanced": {
+   "#advTenantSignOut": {
+    "what": "Signs out of the tenant: the server forgets the sign-in it kept in memory for this browser. Pages then ask for the sign-in details again. It changes nothing in the tenant.",
+    "input": "Nothing to type. Shown only while you are signed in.",
+    "effect": "local"
+   },
    "#advUpdNotify": {
     "what": "Sends one notice per new version, by the e-mail or webhook the digests use, when the update check finds a newer version.",
     "input": "Optional. Ticked turns it on. Needs the digests' e-mail or webhook set up; a writer may change it.",
@@ -2533,6 +2553,16 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Turn on fetching first. A list that fails the checks is refused and the old one stays.",
     "effect": "local"
    },
+   "#advVendGotoOn": {
+    "what": "Lets this app fetch GoTo's published IP ranges (a JSON file) from goto-ipblocks.live.gtc.goto.com, for the GOTO and LOGMEIN app service groups. It sends nothing about your tenant.",
+    "input": "Tick it or clear it. Off by default. On, nothing is fetched until you click Fetch GoTo's list now.",
+    "effect": "local"
+   },
+   "#advVendGotoFetch": {
+    "what": "Fetches GoTo's IP ranges now. The Path analyzer and Test a list match the GOTO and LOGMEIN app service groups with them. Until a list is fetched or imported, those groups show as unknown.",
+    "input": "Nothing to type. Turn on fetching GoTo's list first. A list that fails the checks is refused and the old one stays.",
+    "effect": "local"
+   },
    "#advVendProv": {
     "what": "Picks the provider whose list you import or remove: Zoom, Webex, RingCentral, GoTo or Talkdesk.",
     "input": "Pick one from the list.",
@@ -2540,7 +2570,7 @@ window.HELP_CATALOG = {
    },
    "#advVendFile": {
     "what": "Picks a text file with the provider's address ranges and host names, copied from its network requirements page.",
-    "input": "Required to import. Plain text, one entry per line, like 203.0.113.0/24 or *.webex.com, up to 1 MB. A # starts a comment.",
+    "input": "Required to import. Plain text, one entry per line, like 203.0.113.0/24 or *.webex.com, up to 1 MB. A # starts a comment. GoTo's JSON file works too.",
     "effect": "local"
    },
    "#advVendImport": {
@@ -2917,6 +2947,38 @@ window.HELP_CATALOG = {
     "effect": "local"
    }
   },
+  "/report/soc-review": {
+   "#scTenant": {
+    "what": "Picks which tenant sign-in the SOC review uses.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or what is saved on this computer. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   "#scRbacRun": {
+    "what": "Reads who can administer ZIA, ZPA, Client Connector, ZDX and ZIdentity: admins, roles, full or limited rights, disabled and unused admins, API keys and clients. Then lists the findings. It never reads a password or key value.",
+    "input": "Nothing to type. Just click it. Tick RBAC on the Scope page first (and ZPA, Client Connector or ZIdentity for theirs).",
+    "effect": "read"
+   },
+   "#scTelRun": {
+    "what": "Reads what the tenant sends to your SIEM: ZIA Cloud NSS feeds and NSS servers, ZPA log streaming and Client Connector log settings. Then lists the gaps. A destination shows its host name only.",
+    "input": "Nothing to type. Just click it. Tick ZIA platform, ZPA, Client Connector or ZDX on the Scope page first.",
+    "effect": "read"
+   },
+   "#scStop": {
+    "what": "Stops the read at once. Nothing more is read and nothing is kept.",
+    "input": "Nothing to type. Just click it while a read is running.",
+    "effect": "local"
+   },
+   "#scBody .sc-filter button[data-st]": {
+    "what": "Shows only the findings with this result. All shows every finding. Unknown means the API does not say.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#scBody details.pa-details > summary": {
+    "what": "Shows or hides this list: the assumptions, or the log of what was read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   }
+  },
   "/report/ztw": {
    "#ztTenant": {
     "what": "Picks which tenant sign-in the Cloud & Branch Connector read uses.",
@@ -3064,6 +3126,71 @@ window.HELP_CATALOG = {
    }
   },
   "/report/dataflow": {
+   "#dfViewSimple": {
+    "what": "Shows the simple view: one path as numbered steps, with a legend and the details of one step at a time.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#dfViewAll": {
+    "what": "Shows every part of the map: the full reference order, every path, every table and every rule. Nothing is left out.",
+    "input": "Nothing to type. Just click it. Simple view goes back.",
+    "effect": "local"
+   },
+   ".df-about summary": {
+    "what": "Opens or closes the full description of what this map reads and what it leaves out.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#dfsPath": {
+    "what": "Picks which traced path the numbered steps show: a kind of traffic on one network.",
+    "input": "Pick one from the list. The steps, the legend and the details follow it.",
+    "effect": "local"
+   },
+   "#dfsWalk": {
+    "what": "Starts a walk-through: the map shows one step at a time, with what it decided and why. Back and Next move between steps.",
+    "input": "Nothing to type. Just click it. Click it again, or press Esc, to stop.",
+    "effect": "local"
+   },
+   "#dfsNext": {
+    "what": "Moves the walk-through to the next step and shows what it decided and why.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#dfsWalkEnd": {
+    "what": "Stops the walk-through and goes back to the step you chose before.",
+    "input": "Nothing to type. Just click it. Esc does the same.",
+    "effect": "local"
+   },
+   "#dfsSteps button.dfs-btn": {
+    "what": "One step of the path, in the order the traffic meets it. Pointing at it or focusing it shows its details; a click keeps them shown.",
+    "input": "Nothing to type. Point at it, tab to it, or click it.",
+    "effect": "local"
+   },
+   "#dfsMore": {
+    "what": "Opens Show all details at this step, with every rule and setting behind it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#dfsDetail a.dfs-term": {
+    "what": "Opens the help page's list of words in a new tab. The meaning is also shown right here, next to the word.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#dfsNet": {
+    "what": "Picks the network for the uploads picture. It follows the path you pick above. Insights cannot say which network was used, so it shows where all of the uploads would go on the one you pick.",
+    "input": "Pick one: Off network (remote), On trusted network (office) or On VPN.",
+    "effect": "local"
+   },
+   "#dfsFlowPlay": {
+    "what": "Plays or pauses the moving dots in the uploads picture. It starts still, because the widths already show the shares. The list under it says the same in words.",
+    "input": "Nothing to type. Just click it. The label says what a click does now.",
+    "effect": "local"
+   },
+   "#dfsFlowStage path.fa-band": {
+    "what": "One road the uploads take, as wide as its share of the bytes. Point at it for its share; press Enter to show that path in the steps.",
+    "input": "Nothing to type. Point at it, or click it.",
+    "effect": "local"
+   },
    "a.rp-btn[href^=\"/reference/data-security-architect\"]": {
     "what": "Data Security Architect: the reference architecture this flow is measured against (inline web module; opens in a new tab)",
     "input": "Nothing to type. Just click it.",
@@ -3209,8 +3336,8 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#dvRun": {
-    "what": "Reads the ZPA posture profiles, trusted networks and access rules once. Then it shows the findings.",
-    "input": "Nothing to type. Just click it. Tick ZPA on the Scope page and give the ZPA customer ID first.",
+    "what": "Reads device posture once from each product in scope: Client Connector, ZPA and ZIA. Then it shows the findings.",
+    "input": "Nothing to type. Just click it. Tick ZCC / Mobile Portal, ZPA or ZIA platform on the Scope page first (any one).",
     "effect": "read"
    },
    "#dvStop": {
@@ -3230,6 +3357,11 @@ window.HELP_CATALOG = {
    },
    "#tab-findings": {
     "what": "Shows the findings: rules that let devices in without a real check. Fix high before medium.",
+    "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
+    "effect": "local"
+   },
+   "#tab-cross": {
+    "what": "Shows each posture check across products: where it is made, which devices it covers, and every ZPA and ZIA rule that uses it.",
     "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
     "effect": "local"
    },
@@ -4625,6 +4757,21 @@ window.HELP_CATALOG = {
    }
   },
   "/report/operations": {
+   "#opObjects a[href=\"/report/vendor#panos\"]": {
+    "what": "Opens Migrate from another vendor, where you build the migration plan this operation loads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opSslCov": {
+    "what": "Opens SSL coverage in a new tab. It shows how much web traffic Zscaler really inspects. It names the rule or bypass that leaves the rest locked, with a link back here to fix it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opSocReview a[href=\"/report/soc-review\"]": {
+    "what": "Opens the SOC review: who can administer each Zscaler product and what is sent to your SIEM. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#fwiFile": {
     "what": "Loads a migration plan saved from Migrate from another vendor (Palo Alto Networks). The server checks it again before the preview.",
     "input": "Optional when the plan was handed over from that page. One .json plan file under 4 MB.",
@@ -6110,6 +6257,16 @@ window.HELP_CATALOG = {
     "input": "Tick it only after you checked the two tenants' licences.",
     "effect": "local"
    },
+   "#crTb": {
+    "what": "Adds static IP addresses, GRE tunnels, locations and their sub-locations to the restore or clone. Each sub-location is made after its parent location. Nothing tenant-bound is ever changed or deleted.",
+    "input": "Tick it, then tick the tenant-bound types to include. Off to start with. The apply asks you to type CREATE n TENANT-BOUND OBJECTS.",
+    "effect": "local"
+   },
+   "#crZccProfiles": {
+    "what": "Adds Client Connector app profiles and ZPA and ZDX entitlements to a clone, and lets a missing app profile be made. Passwords and the policy token are never read, copied or sent.",
+    "input": "Tick it to include them. A new app profile is made turned off and without passwords: set them in the Client Connector portal. A clone asks you to type CLONE n CLIENT CONNECTOR OBJECTS.",
+    "effect": "local"
+   },
    "#crRollback": {
     "what": "Undoes what a run applied at once if the run stops or fails. Without it, Undo is offered.",
     "input": "Tick it before you apply.",
@@ -7220,6 +7377,16 @@ window.HELP_CATALOG = {
    "#paWi_location": {
     "what": "Sets the location to check rules for.",
     "input": "Optional. A location name, like HQ office. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paWi_trust": {
+    "what": "Sets the device's trust level for the ZIA steps. Rules that name other levels are skipped. Client Connector gives each device a level from its ZIA posture profile.",
+    "input": "Optional. Pick High, Medium, Low or Unknown trust. Not given keeps those rules open.",
+    "effect": "local"
+   },
+   "#paWi_posture": {
+    "what": "Sets which ZPA posture checks the device passes. Every other check fails. The ZPA access step then gives one answer for this device.",
+    "input": "Optional. Posture check names, split by commas, like CrowdStrike running. Empty answers for all passing and all failing.",
     "effect": "local"
    },
    "#paWhatIf button[data-wi-find]": {
@@ -8621,6 +8788,36 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "#scLogsDrop": {
+    "what": "Stops using the web logs you uploaded. The next check uses ZIA Insights, or an estimate from your rules.",
+    "input": "Nothing to type. Just click it. It shows when you came from the Traffic and session logs page.",
+    "effect": "local"
+   },
+   "#scBypassGb": {
+    "what": "How much web traffic goes around ZIA (Client Connector or PAC bypasses, networks sent direct), so the true coverage can also be given out of all your web traffic. That traffic counts as not inspected.",
+    "input": "A number of gigabytes (GB) from your firewall or egress logs, for the same period as the check. Leave it empty if you do not know it.",
+    "effect": "local"
+   },
+   "#scTrueH": {
+    "what": "The true share of the web traffic that reaches ZIA that Zscaler can see inside: plain HTTP plus HTTPS it decrypted. Unknown traffic never counts as inspected. A second line says the share of all web traffic, with traffic sent around ZIA counted as not inspected, or that it is not measured. Without traffic numbers it is an estimate, and it says so.",
+    "input": "Nothing to type. It shows after a check.",
+    "effect": "local"
+   },
+   "#scTrue button[data-unit=\"BYTES\"]": {
+    "what": "Shows the true coverage by amount of data (bytes).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#scTrue button[data-unit=\"TRANSACTIONS\"]": {
+    "what": "Shows the true coverage by number of requests (transactions).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#scTrue a.sc-fix": {
+    "what": "Opens the builder in Bulk changes that fixes this cause, in a new tab. Nothing changes until you preview and apply it there.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#scBody details.pa-details summary": {
     "what": "Shows or hides the list of what was read from the tenant during the check.",
     "input": "Nothing to type. Just click it.",
@@ -8742,6 +8939,21 @@ window.HELP_CATALOG = {
    }
   },
   "/report/traffic-logs": {
+   "#tlSample": {
+    "what": "Analyses a small made-up ZIA web log for the sample tenant, so you can see the results and the true inspection coverage without logs of your own.",
+    "input": "Nothing to type. Just click it. Nothing is read from a tenant.",
+    "effect": "local"
+   },
+   "#tlSslCov": {
+    "what": "Opens SSL coverage in a new tab: the true share of web traffic Zscaler inspected. After you read ZIA web logs here, use the link in the SSL box to bring them along.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlTrueCoverage": {
+    "what": "Opens SSL coverage with these logs. It gives the true share of web traffic that was inspected and ties each line left encrypted to the SSL rule behind it.",
+    "input": "Nothing to type. Just click it. It shows when the logs say whether SSL was inspected.",
+    "effect": "local"
+   },
    "#tlWatchBox > summary": {
     "what": "Opens the daily report settings: a report made once a day from log files in a folder you name.",
     "input": "Nothing to type. Just click it.",
@@ -9618,6 +9830,11 @@ window.HELP_CATALOG = {
     "input": "Pick the .xml metadata file, up to 256 KB.",
     "effect": "local"
    },
+   "#tmSamlManual summary": {
+    "what": "Opens three boxes to type the identity provider's values yourself, when you have no metadata file.",
+    "input": "Nothing to type here. Click it, then fill in the entity ID, the sign-on URL and the signing certificate.",
+    "effect": "local"
+   },
    "#tmSamlIdp": {
     "what": "The identity provider's entity ID: the name it signs its answers with.",
     "input": "Copy it from your identity provider: the entity ID its metadata or settings page shows. Not needed when you give the metadata.",
@@ -9774,7 +9991,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#tmStoreRotate": {
-    "what": "Makes a new key for the app's encrypted stores, encrypts every store again with it, then forgets the old key. Only when store encryption is on.",
+    "what": "Makes a new key for the encrypted stores. Every store is encrypted again with it, then the old key is forgotten. Store encryption is on by default. The button is off only when the server was started with DLP_CHECK_STORE_ENCRYPTION=0.",
     "input": "Nothing to type. You are asked to confirm.",
     "effect": "local"
    }

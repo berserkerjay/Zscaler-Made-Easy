@@ -82,6 +82,7 @@ COMPAT = {
         "a `DLP-Check` folder? That install keeps working",
         "container called `dlp-check`? Follow",
         "SECTION:### Moving to the new name",             # the migration note names every old Docker name
+        '"dlp-check" entry: choose **Always Allow**',     # the Keychain prompt shows the keyring service's real name (KEYRING_SERVICE)
     },
     # ── The Docker image's own user (internal; owns files on existing volumes)
     "Dockerfile": {"groupadd --system dlpcheck && useradd --system --gid dlpcheck --home-dir /app --shell /usr/sbin/nologin dlpcheck",

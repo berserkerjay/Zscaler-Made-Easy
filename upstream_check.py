@@ -132,7 +132,7 @@ def app_payload_keys() -> Dict[str, Set[str]]:
 
     packs = [{"id": p["id"], "dir": p["dir"]} for p in discover_packs()]
     targets = {p["id"]: [pc.WEB, pc.ENDPOINT, pc.SAAS, pc.EMAIL] for p in packs}
-    merged = pd.merge_sources(pd.load_sources(packs, targets))
+    merged = pd.merge_sources(pd.load_sources(packs, targets, name_prefix=""))   # the pack's own names, as upstream knows them
     keys: Dict[str, Set[str]] = {k: set() for k in ENDPOINTS}
 
     keys["dictionary"] |= {"name", "custom_phrase_match_type", "dictionary_type"}

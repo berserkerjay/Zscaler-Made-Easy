@@ -20,6 +20,7 @@ import stat
 import time
 
 import pytest
+from conftest import read_store_text
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from starlette.routing import Mount
@@ -301,7 +302,7 @@ def test_sign_in_attempts_are_rate_limited_per_address(world):
 
 def test_passwords_are_scrypt_hashes_and_the_policy_holds(world):
     """ASVS V2.4.1 · V2.1.1 · CWE-916 · CWE-521: the store holds an scrypt hash with a salt, never the password; a short password or the user name is refused."""
-    raw = open(team.store_path(), encoding="utf-8").read()
+    raw = read_store_text(team.store_path())
     assert PW not in raw and "scrypt$" in raw
     assert stat.S_IMODE(os.stat(team.store_path()).st_mode) == 0o600
     with pytest.raises(team.TeamError):
@@ -396,7 +397,7 @@ def test_scim_needs_its_bearer_token_which_is_stored_hashed_and_shown_once(world
     r = root.post("/api/team/scim-token", headers=ORIGIN)
     token = r.json()["token"]
     assert r.headers["cache-control"] == "no-store" and len(token) > 40
-    raw = open(team.store_path(), encoding="utf-8").read()
+    raw = read_store_text(team.store_path())
     assert token not in raw and team.hashlib.sha256(token.encode()).hexdigest() in raw
     assert "token" not in json.dumps(root.get("/api/team/overview").json()["scim"]).replace("token_", "").replace('"configured"', "")
     assert anon.get("/api/scim/v2/Users", headers={"Authorization": "Bearer wrong"}).status_code == 401

@@ -14,12 +14,14 @@ from __future__ import annotations
 import json
 import os
 import urllib.parse
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
+import proposals
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TENANT = "acme (zscalertwo)"
@@ -27,6 +29,11 @@ TQ = urllib.parse.quote(TENANT)
 
 with open(os.path.join(HERE, "fixtures", "pre_wave5_stores.json"), "r", encoding="utf-8") as _f:
     BUNDLE: Dict[str, Any] = json.load(_f)["stores"]
+
+# The moment tools/pre_wave5_fixtures.py saved the bundle (every created_at in
+# it). The stores are read as of then: a snooze it saved for a week is still
+# a snooze, whatever today's date (the real clock made this test expire).
+SAVED_AT = datetime(2026, 10, 29, 0, 57, 23, tzinfo=timezone.utc)
 
 ENV_FOR = {
     "tenant_profiles.json": "DLP_CHECK_PROFILES", "proposals.json": "DLPCHECK_PROPOSALS_FILE",
@@ -40,6 +47,7 @@ ENV_FOR = {
 def old_data(tmp_path, monkeypatch):
     """The pre-Wave-5 stores in this test's own folder; secrets in the owner-only file, as they were saved."""
     monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+    monkeypatch.setattr(proposals, "_utcnow", lambda: SAVED_AT)
     for name, env in ENV_FOR.items():
         path = tmp_path / name
         path.write_text(json.dumps(BUNDLE[name]), encoding="utf-8")

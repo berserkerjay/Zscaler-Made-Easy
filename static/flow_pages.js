@@ -452,8 +452,10 @@
     const clock = FA.animator();
     const SPEED = 140, MAX = 160;
     // o.motion: the viewer's earlier Play / Pause choice (kept across redraws); o.onMotion is told of a new one.
+    // o.optIn: the widths count items, not traffic, so motion adds nothing the still picture does not say:
+    // it starts still and Play motion starts it (o.still says why).
     let dots = [], last = 0, stopJob = null, chosen = typeof o.motion === 'boolean' ? o.motion : null, dead = false;
-    const playing = () => (chosen != null ? chosen : !FA.reduced());
+    const playing = () => (chosen != null ? chosen : !o.optIn && !FA.reduced());
     function tick(now) {
       const dt = last ? Math.min(0.05, (now - last) / 1000) : 0; last = now;
       L.forEach(x => {
@@ -503,7 +505,8 @@
       btn.textContent = on ? 'Pause motion' : 'Play motion';
       stage.classList.toggle('fp-moving', on);
       note.textContent = on ? (o.moving || 'Packets move along each link; the list below says the same in words.')
-        : (FA.reduced() && chosen == null ? 'Motion is off because your system asks for reduced motion. Play motion starts it.' : 'Motion paused.');
+        : (FA.reduced() && chosen == null ? 'Motion is off because your system asks for reduced motion. Play motion starts it.'
+          : o.optIn && chosen == null ? (o.still || 'The picture is still: its widths say it all. Play motion starts it.') : 'Motion paused.');
       if (on && !stopJob) { last = 0; warm(); stopJob = clock.add(tick); }
       if (!on && stopJob) { stopJob(); stopJob = null; dots.forEach(b => b.c.remove()); dots = []; }
     }

@@ -73,22 +73,26 @@ def _tenants(cl) -> Tuple[List[Dict[str, Any]], int]:
     return _fetch(cl, "/zia/casbTenant/lite", {"activeOnly": "true"})
 
 
-def _email_tenants(cl) -> Tuple[List[Dict[str, Any]], int]:
-    """Exchange, Gmail and secure email gateway tenants: ZIA's own
-    app_type=EMAIL list, plus any tenant whose application says email."""
+def _email_tenants(cl, with_rules: bool = False) -> Tuple[List[Dict[str, Any]], int]:
+    """Onboarded email tenants (Exchange, Gmail, secure email gateway), decided
+    by email_tenants.onboarded_email_tenants, the same function the pack deploy
+    uses: ZIA's own appType=EMAIL list, any active tenant whose application says
+    email and, with `with_rules`, the tenants existing Email DLP rules use. Each
+    row has id, name, app and found_by. Reads only; a failed read of any
+    source leaves the others to answer."""
+    import email_tenants as et
     rows, code = _fetch(cl, "/zia/casbTenant/lite", {"activeOnly": "true", "appType": "EMAIL"})
-    ids = {str(_f(t, "tenant_id", "tenantId", "id")) for t in rows}
     try:
-        import pack_channels as pc
-        more, _ = _tenants(cl)
-        for t in more:
-            app = str(_f(t, "saas_application", "saasApplication", default="") or "").upper()
-            tid = str(_f(t, "tenant_id", "tenantId", "id"))
-            if tid not in ids and pc._is_email_tenant({"app": app}):
-                rows.append(t); ids.add(tid)
+        active, _ = _tenants(cl)
     except Exception:  # noqa: BLE001 — the typed list alone still answers
-        pass
-    return rows, code
+        active = []
+    rules: List[Dict[str, Any]] = []
+    if with_rules:
+        try:
+            rules, _ = _email_rules(cl)
+        except Exception:  # noqa: BLE001 — a 404 here must not break the check
+            rules = []
+    return et.onboarded_email_tenants(active, rows, rules), code
 
 
 def _on(rules: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -106,7 +110,7 @@ def _unavailable(code: int, what: str):
 
 
 def _tenant_names(rows: Sequence[Dict[str, Any]], limit: int = 4) -> str:
-    names = [f"{_f(t, 'tenant_name', 'tenantName', 'name', default='?')} ({_f(t, 'saas_application', 'saasApplication', default='?')})" for t in rows]
+    names = [f"{_f(t, 'tenant_name', 'tenantName', 'name', default='?')} ({_f(t, 'saas_application', 'saasApplication', 'app', default='?')})" for t in rows]
     return ", ".join(names[:limit]) + (f" and {len(names) - limit} more" if len(names) > limit else "")
 
 
@@ -260,14 +264,15 @@ def c_c8(cl):
 def c_d1(cl):
     """Check D.1 (Ch.D — Email DLP): Email tenant onboarded."""
     R = _R()
-    rows, code = _email_tenants(cl)
+    rows, code = _email_tenants(cl, with_rules=True)
     if code not in (200, 204) and not rows:
         return _unavailable(code, "the email tenant list")
     if not rows:
         return R(R.FAIL, "No Exchange, Gmail or secure email gateway tenant is onboarded (Data Security > Email DLP > Email Tenants). "
                          "Adding an email tenant is the first step of Outbound Email DLP: it makes Zscaler the smart host your mail server sends outbound mail to. "
                          "ZIA requires one for every Email DLP rule, so no Email DLP rule can exist until it is onboarded. Ref: https://help.zscaler.com/zia/adding-email-tenants")
-    return R(R.PASS, f"Email tenant(s): {_tenant_names(rows)}.")
+    how = "; ".join(f"{t['name']}: {t['found_by']}" for t in rows[:4]) + (f"; and {len(rows) - 4} more" if len(rows) > 4 else "")
+    return R(R.PASS, f"Email tenant(s): {_tenant_names(rows)}. Found by: {how}.")
 
 
 def c_d2(cl):

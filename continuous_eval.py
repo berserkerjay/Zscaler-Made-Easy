@@ -621,7 +621,7 @@ def _pack_channels(pack: Dict[str, Any]) -> set:
     files (no tenant read)."""
     import pack_channels as pc
     import pack_deploy
-    src = pack_deploy.load_sources([pack])[0]
+    src = pack_deploy.load_sources([pack], name_prefix="")[0]   # channels only: names (and the managed-name prefix) do not matter
     return {pc.channel_of(p) for p in src.get("policies") or []} & set(pc.DLP_CHANNELS)
 
 

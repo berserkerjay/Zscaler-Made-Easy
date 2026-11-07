@@ -200,6 +200,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         "permissions_write": [],
         "endpoints_used": [
             "/zpa/server", "/zpa/inspectionProfile", "/zpa/inspectionControls/custom", "/zpa/businessContinuitySettings",
+            "/zpa/lssConfig",   # Log Streaming Service configurations (ZPA.14, the SOC review's logging part)
             "/zpa/privateCloud", "/zpa/privateCloudControllerGroup", "/zpa/privateCloudController",
             "/zpa/branchConnectorGroup", "/zpa/branchConnector", "/zpa/cloudConnectorGroup", "/zpa/cloudConnector",
             "/zpa/application", "/zpa/appConnectorGroup",
@@ -407,6 +408,8 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zpa/microtenants", "/zpa/associationType/CONNECTOR_GRP/provisioningKey",
             "/zpa/associationType/SERVICE_EDGE_GRP/provisioningKey", "/zpa/credential", "/zpa/credential-pool", "/zpa/approval",
             "/zid/users",
+            # The SOC review's admin access part (soc_review.py), with ZIdentity ticked too.
+            "/zid/users/{id}/admin-entitlements", "/ziam/admin/api/v1/api-clients",
         ],
         "license_required": "Standard ZIA license; the ZCC, ZPA and ZIdentity checks need those products. Microtenants and Privileged Remote Access need those ZPA features; without them those checks say N/A.",
         "customer_id_needed": True,

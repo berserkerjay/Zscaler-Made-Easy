@@ -23,6 +23,7 @@ import io
 import json
 
 import pytest
+from conftest import read_store_text
 from fastapi.testclient import TestClient
 
 import admin_ops as ao
@@ -245,7 +246,7 @@ def test_score_analysis_is_rate_limited_and_audited_with_the_actor(sample, tmp_p
     later = zi.start_analysis(client, "3002", tenant_key="t", actor="writer@example.com", assessor=ASSESSOR, now=1_000_000 + zi.RCA_MIN_INTERVAL + 1)
     zi.stop_analysis(client, later["analysis_id"], actor="writer@example.com", assessor=ASSESSOR)
     # Assert
-    lines = [json.loads(x) for x in (tmp_path / "audit.log").read_text().splitlines()]
+    lines = [json.loads(x) for x in read_store_text(tmp_path / "audit.log").splitlines()]
     events = [x["event"] for x in lines]
     assert first["analysis_id"] and events == ["zdx_analysis_start", "zdx_analysis_refused", "zdx_analysis_start", "zdx_analysis_stop"]
     assert all(x["actor"] == "writer@example.com" and x["assessor"] == ASSESSOR for x in lines)

@@ -688,6 +688,17 @@ def require_tenant_profile(profile_id: Any) -> None:
                          "Ask a team server administrator for access.")
 
 
+def adopt_profile(profile_id: Any) -> None:
+    """A request that named no tenant profile uses the person's signed-in
+    tenant (tenant_session), whose profile require_tenant_profile has just
+    checked: it becomes the request's profile, so the reports and jobs it
+    makes are bound to that profile like any other. Never replaces one."""
+    c = _CTX.get()
+    pid = str(profile_id or "").strip()
+    if c is not None and pid and not c.get("profile"):
+        c["profile"] = pid
+
+
 # ── resources a request made (reports, jobs, plans) ─────────────────────
 _RESOURCES: Dict[str, Tuple[str, str, float]] = {}   # id -> (user id, profile id, at)
 _RES_LOCK = threading.Lock()

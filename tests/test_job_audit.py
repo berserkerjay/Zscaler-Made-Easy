@@ -19,6 +19,7 @@ import threading
 import time
 
 import pytest
+from conftest import read_store_text
 
 import audit
 import pack_channels as pc
@@ -240,7 +241,7 @@ def test_job_start_endpoints_carry_the_actor_and_no_secret(monkeypatch, tmp_path
     fin = _one_finished(job)
     assert fin["actor"] == "alice@example.com" and fin["status"] == "done" and fin["counts"]["created"] > 10
     assert all(w["actor"] == "alice@example.com" for w in _entries("object_write") if w.get("job_id") == job.id)
-    text = open(audit.path(), encoding="utf-8").read()
+    text = read_store_text(audit.path())
     assert "secret-secret-secret" not in text, "no secret reaches the audit log"
     assert all(set(w) <= {"at", "event", "job_id", "tenant", "action", "object_type", "channel", "id", "name", "result", "http_status",
                           "error", "run", "actor"} for w in _entries("object_write")), "no request body in an object entry"

@@ -14,6 +14,7 @@ import threading
 import types
 
 import pytest
+from conftest import read_any_text, read_store_json
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
@@ -199,6 +200,113 @@ def test_zpa_new_object_ids_are_unique_across_collections():
     assert int(b1["id"]) > 90000 and isinstance(b1["id"], str)      # a ZPA id is a string, past every existing id
 
 
+def test_cloud_app_control_rule_ids_are_one_space_across_rule_types():
+    """ASVS V1.4.1 · CWE-706: two Cloud App Control rules created in one run under different rule types never share an id, so a run that reads its rules back by id finds each one."""
+    # Arrange
+    st = ot.simulate(ot.sample_store(reset=True))
+    # Act
+    _, a = st.answer_write("POST", "/zia/api/v1/webApplicationRules/SOCIAL_NETWORKING", {"name": "A", "type": "SOCIAL_NETWORKING"})
+    _, b = st.answer_write("POST", "/zia/api/v1/webApplicationRules/AI_ML", {"name": "B", "type": "AI_ML"})
+    # Assert
+    assert a["id"] != b["id"] and b["id"] > a["id"] > 90000
+    assert st.answer_get(f"/zia/api/v1/webApplicationRules/AI_ML/{b['id']}")[1]["name"] == "B"
+
+
+def test_a_zpa_policy_set_is_answered_and_its_rules_are_written_through_the_sdk():
+    """ASVS V1.4.1 · CWE-706 · WSTG-BUSL-06: on a simulation the SDK's policy set read answers the type's set, a rule added through the SDK lands in that type's rule list with a fresh ZPA id, reads back by id, updates and deletes; another type's list is untouched."""
+    # Arrange
+    st = ot.simulate(ot.sample_store(reset=True))
+    sdk = ot.OfflineSdkClient(st, ot.creds_for(st))
+    lst = "/zpa/mgmtconfig/v1/admin/customers/1/policySet/rules/policyType/TIMEOUT_POLICY"
+    access_before = st.answer_get("/zpa/mgmtconfig/v1/admin/customers/1/policySet/rules/policyType/ACCESS_POLICY")[1]
+    # Act
+    pset, _r, err = sdk.zpa.policies.get_policy("timeout")
+    rule, _r2, err2 = sdk.zpa.policies.add_timeout_rule(name="LKF-timeout", action="RE_AUTH", reauth_timeout="172800")
+    got, _r3, err3 = sdk.zpa.policies.get_rule("timeout", rule.id)
+    _u, _r4, err4 = sdk.zpa.policies.update_timeout_rule(rule.id, name="LKF-timeout-2", reauth_timeout="86400")
+    renamed = sdk.zpa.policies.get_rule("timeout", rule.id)[0]
+    deleted = sdk.zpa.policies.delete_rule("timeout", rule.id)[2]
+    # Assert
+    assert err is None and pset["id"] == ot.POLICY_SET_IDS["TIMEOUT_POLICY"] and pset["policyType"] == "TIMEOUT_POLICY"
+    assert err2 is None and int(rule.id) > 90000 and err3 is None and got.name == "LKF-timeout"
+    assert err4 is None and renamed.name == "LKF-timeout-2" and deleted is None
+    assert "LKF-timeout-2" not in {x.get("name") for x in ot._items(st.answer_get(lst)[1])}
+    assert st.answer_get("/zpa/mgmtconfig/v1/admin/customers/1/policySet/rules/policyType/ACCESS_POLICY")[1] == access_before
+
+
+def test_a_snapshot_answers_a_policy_set_but_refuses_a_rule_write():
+    """ASVS V4.1.1 · CWE-284 · WSTG-ATHZ-02: a read-only snapshot answers the policy set read (so a rehearsal plans) and still refuses a rule written to it."""
+    # Arrange
+    rules = {"/zpa/mgmtconfig/v1/admin/customers/{customerId}/policySet/rules/policyType/ACCESS_POLICY": {"status": 200, "body": {"list": []}}}
+    st = ot.OfflineStore("file-" + "3" * 16, "snapshot", rules, {})
+    # Act
+    s1, pset = st.answer_get("/zpa/mgmtconfig/v1/admin/customers/1/policySet/policyType/ACCESS_POLICY")
+    s2, body = st.answer_write("POST", f"/zpa/mgmtconfig/v1/admin/customers/1/policySet/{pset['id']}/rule", {"name": "x"})
+    # Assert
+    assert s1 == 200 and pset["rules"] == [] and s2 == 403 and body["code"] == "READ_ONLY"
+    assert rules[next(iter(rules))]["body"] == {"list": []}
+
+
+def test_client_connector_profiles_are_created_updated_and_deleted_on_a_simulation():
+    """ASVS V1.4.1 · CWE-706: an edit with id -1 creates a forwarding profile with a new id; an edit with its id updates it; delete removes it; an unknown id is not found."""
+    # Arrange
+    st = ot.simulate(ot.sample_store(reset=True))
+    base = "/zcc/papi/public/v1/webForwardingProfile"
+    # Act
+    s1, made = st.answer_write("POST", base + "/edit", {"id": "-1", "name": "LKF POV forwarding"})
+    s2, upd = st.answer_write("POST", base + "/edit", {"id": made["id"], "name": "LKF POV forwarding 2"})
+    s3, _ = st.answer_write("DELETE", f"{base}/{made['id']}/delete")
+    s4, _ = st.answer_write("DELETE", f"{base}/{made['id']}/delete")
+    # Assert
+    assert s1 == 200 and made["id"] > 90000 and s2 == 200 and upd["name"] == "LKF POV forwarding 2" and upd["id"] == made["id"]
+    assert s3 == 200 and s4 == 404
+    assert made["id"] not in {x.get("id") for x in ot._items(st.answer_get(base + "/listByCompany")[1])}
+
+
+def test_a_predefined_zdx_app_set_up_on_a_simulation_gets_its_probes_off_then_turned_on():
+    """ASVS V1.4.1 · CWE-706: a predefined ZDX app set up offline gets the Web and CloudPath probes ZDX adds for it (off); turning a probe and the app on reads back on; the app answers by its provider."""
+    # Arrange
+    st = ot.simulate(ot.sample_store(reset=True))
+    cfg = "/zdx/v1/config"
+    # Act
+    s1, app = st.answer_write("POST", cfg + "/applications", {"type": "PREDEFINED", "provider": "MICROSOFT_LOGIN", "name": "Microsoft Login",
+                                                             "active": False, "collection": {"id": 1}})
+    _, probes = st.answer_get(cfg + "/applications/MICROSOFT_LOGIN/monitors")
+    s2, _ = st.answer_write("PUT", f"{cfg}/applications/MICROSOFT_LOGIN/monitors/{probes[0]['id']}/activate")
+    s3, on = st.answer_write("PUT", cfg + "/applications/MICROSOFT_LOGIN/activate")
+    # Assert
+    assert s1 == 200 and [p["type"] for p in probes] == ["WEB", "TRACERT"] and not any(p["active"] for p in probes)
+    assert s2 == 200 and s3 == 200 and on["active"] is True and st.answer_get(cfg + "/applications/MICROSOFT_LOGIN")[1]["id"] == app["id"]
+    assert next(m for m in st.answer_get(cfg + "/monitors")[1] if m["id"] == probes[0]["id"])["active"] is True
+
+
+def test_a_zia_settings_put_on_a_simulation_changes_only_the_fields_sent():
+    """ASVS V1.4.1 · CWE-915: a PUT of ZIA's advanced URL filter and cloud app settings on a simulation sets the fields sent and keeps the rest; the base sample is unchanged."""
+    # Arrange
+    base = ot.sample_store(reset=True)
+    st = ot.simulate(base)
+    path = "/zia/api/v1/advancedUrlFilterAndCloudAppSettings"
+    before = base.answer_get(path)[1]
+    # Act
+    code, after = st.answer_write("PUT", path, {"enableChatGptPrompt": True})
+    # Assert
+    assert code == 200 and after["enableChatGptPrompt"] is True
+    assert {k: v for k, v in after.items() if k != "enableChatGptPrompt"} == {k: v for k, v in before.items() if k != "enableChatGptPrompt"}
+    assert base.answer_get(path)[1] == before
+
+
+def test_a_simulation_of_a_snapshot_has_no_url_lookup_as_its_snapshot():
+    """ASVS V1.14.1 · CWE-441: a simulation answers a URL lookup as the tenant it copies did: from the sample's table for the sample, not at all for a snapshot, so a rehearsed plan reads the same on its simulation."""
+    # Arrange
+    snap = ot.OfflineStore("file-" + "4" * 16, "snapshot", {"/zia/api/v1/urlCategories": {"status": 200, "body": []}}, {})
+    # Act
+    from_snap = ot.simulate(snap).answer_write("POST", "/zia/api/v1/urlLookup", ["chatgpt.com"])
+    from_sample = ot.simulate(ot.sample_store(reset=True)).answer_write("POST", "/zia/api/v1/urlLookup", ["chatgpt.com"])
+    # Assert
+    assert from_snap[0] == 404 and from_snap[1]["code"] == "NOT_OFFLINE"
+    assert from_sample[0] == 200
+
+
 def test_a_sample_change_it_does_not_model_is_refused_in_words():
     """ASVS V4.1.1 · CWE-754: a write the sample cannot represent is refused (400) and says nothing reached a tenant."""
     # Arrange
@@ -350,10 +458,9 @@ def test_a_saved_snapshot_is_owner_only_and_carries_no_secret(app, live, tmp_pat
     path = tenant_profiles.snapshot_path(snaps[0]["id"])
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
     assert stat.S_IMODE(os.stat(os.path.dirname(path)).st_mode) == 0o700
-    every_file = "".join(open(os.path.join(d, f), encoding="utf-8", errors="replace").read()
-                         for d, _, fs in os.walk(tmp_path) for f in fs)
+    every_file = "".join(read_any_text(os.path.join(d, f)) for d, _, fs in os.walk(tmp_path) for f in fs)
     assert CANARY_SECRET not in every_file and CANARY_FIELD not in every_file
-    doc = json.load(open(path, encoding="utf-8"))
+    doc = read_store_json(path)
     assert '"exitPass":"(set)"' in json.dumps(doc, separators=(",", ":"))
     assert "client_secret" not in json.dumps(doc) and set(doc) == {"format", "version", "meta", "responses"}
     assert [s["id"] for s in app.get("/api/tenant-profiles").json()["profiles"][0]["snapshots"]] == [snaps[0]["id"]]

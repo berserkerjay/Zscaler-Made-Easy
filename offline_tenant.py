@@ -91,6 +91,32 @@ ZCELL_CUSTOMER_ID = "zc-72000001"          # the ZCell customer id the offline r
 # is answered from /zms/graphql/<operationName> (other_products.ZMS_OPERATIONS).
 _ZMS_GRAPHQL = "/zms/graphql"
 _ZMS_OP = re.compile(r"\A[A-Za-z]{1,60}\Z")
+# A ZPA policy set (zscaler/zpa/policies.py): get_policy(type) reads GET
+# /policySet/policyType/{TYPE} and every rule write goes to
+# /policySet/{policySetId}/rule[/{ruleId}]. The offline tenant keeps each
+# type's rules as the list read at /policySet/rules/policyType/{TYPE}
+# (list_rules), so a policy set is answered from that list and a rule path is
+# routed to it. A snapshot or the sample may carry the set itself; otherwise
+# its id comes from this table (made up, offline only: a real tenant's
+# policy set ids are its own).
+_ZPA_BASE_RE = r"/zpa/mgmtconfig/v[12]/admin/customers/\{customerId\}"
+_POLICY_SET_GET = re.compile(r"\A(" + _ZPA_BASE_RE + r")/policySet/policyType/([A-Z_]{3,60})\Z")
+_POLICY_RULE = re.compile(r"\A(" + _ZPA_BASE_RE + r")/policySet/([0-9A-Za-z_-]{1,40})/rule(/[0-9A-Za-z_-]{1,40})?(/reorder/[0-9]{1,6})?\Z")
+# Client Connector profile writes (ops_zcc.API_CALLS): POST
+# /webForwardingProfile/edit and PUT /web/policy/edit create (no id, or id
+# -1) or update a profile; DELETE /{id}/delete removes one.
+_ZCC_EDIT = re.compile(r"\A(/zcc/papi/public/v1)/(webForwardingProfile|web/policy)/(?:edit|([0-9]{1,12})/delete)\Z")
+# The ZDX configuration (ops_zdx: the /config part is assumed there): apps
+# at /applications ({"items": [...]}, a predefined app keyed by its
+# provider), every probe at /monitors, an app's probes and state changes
+# under /applications/{key}. A predefined app set up offline gets the Web and
+# CloudPath probes ZDX adds for it (off), as ops_zdx expects (assumed there).
+_ZDX_CFG = "/zdx/v1/config"
+_ZDX_APP = re.compile(r"\A/zdx/v1/config/applications/([0-9A-Za-z_-]{1,64})(/monitors(?:/([0-9A-Za-z_-]{1,64}))?)?(?:/(activate|deactivate))?\Z")
+POLICY_SET_IDS = {"ACCESS_POLICY": "1001", "TIMEOUT_POLICY": "1002", "CLIENT_FORWARDING_POLICY": "1003", "INSPECTION_POLICY": "1004",
+                  "ISOLATION_POLICY": "1005", "REDIRECTION_POLICY": "1006", "CREDENTIAL_POLICY": "1007", "CAPABILITIES_POLICY": "1008",
+                  "CLIENTLESS_SESSION_PROTECTION_POLICY": "1009", "SIEM_POLICY": "1010", "PRIVILEGED_PORTAL_POLICY": "1011",
+                  "VPN_TUNNEL_POLICY": "1012", "USER_PORTAL": "1013"}
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 # Names of fields that hold a secret (a ZCC exit/uninstall password, a VPN
@@ -314,11 +340,65 @@ class OfflineStore:
                 return x, items, i
         return None, items, -1
 
+    def _policy_rules_key(self, base: str, ptype: str) -> Optional[str]:
+        """The table key of one ZPA policy type's rule list, or None."""
+        v1 = re.sub(r"/mgmtconfig/v2/", "/mgmtconfig/v1/", base)
+        for key in (f"{v1}/policySet/rules/policyType/{ptype}", f"{v1}/policySet/rules/{ptype}"):
+            if key in self.responses:
+                return key
+        return None
+
+    def _policy_set(self, base: str, ptype: str) -> Optional[Dict[str, Any]]:
+        """GET /policySet/policyType/{TYPE}: the set kept with the tenant, or
+        one made from that type's rule list (its rules in rule order)."""
+        v1 = re.sub(r"/mgmtconfig/v2/", "/mgmtconfig/v1/", base)
+        kept = self.responses.get(f"{v1}/policySet/policyType/{ptype}")
+        key = self._policy_rules_key(base, ptype)
+        rules = _items((self.responses.get(key) or {}).get("body")) if key else None
+        if kept is not None and isinstance(kept.get("body"), dict) and kept["body"].get("id"):
+            out = copy.deepcopy(kept["body"])
+            if rules is not None:
+                out["rules"] = copy.deepcopy(rules)
+            return out
+        if rules is None or ptype not in POLICY_SET_IDS:
+            return None
+        return {"id": POLICY_SET_IDS[ptype], "name": ptype.replace("_", " ").title(), "policyType": ptype, "enabled": True,
+                "rules": copy.deepcopy(rules)}
+
+    def _policy_type_of(self, base: str, set_id: str) -> Optional[str]:
+        """The policy type whose set has this id, or None."""
+        v1 = re.sub(r"/mgmtconfig/v2/", "/mgmtconfig/v1/", base)
+        for key, entry in self.responses.items():
+            m = _POLICY_SET_GET.match(key)
+            if m and m.group(1) == v1 and isinstance(entry.get("body"), dict) and str(entry["body"].get("id")) == set_id:
+                return m.group(2)
+        hit = next((t for t, i in POLICY_SET_IDS.items() if i == set_id), None)
+        return hit if hit and self._policy_rules_key(base, hit) else None
+
+    def _policy_route(self, path: str) -> Tuple[str, Optional[str]]:
+        """A rule path of a policy set (/policySet/{id}/rule[/{ruleId}]) as the
+        key of that type's rule list (plus the rule id); (path, None) for any
+        other path. The second value is the policy set id."""
+        m = _POLICY_RULE.match(path)
+        if not m:
+            return path, None
+        ptype = self._policy_type_of(m.group(1), m.group(2))
+        key = self._policy_rules_key(m.group(1), ptype) if ptype else None
+        if key is None:
+            return path, None
+        return key + (m.group(3) or "") + (m.group(4) or ""), m.group(2)
+
     def answer_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Tuple[int, Any]:
         """(status, body) of a GET, as the API would answer it."""
         path = normalize_path(url)
         params = params or {}
         with self._lock:
+            pm = _POLICY_SET_GET.match(path)
+            if pm:
+                pset = self._policy_set(pm.group(1), pm.group(2))
+                if pset is not None:
+                    return 200, pset
+            path = self._policy_route(path)[0]
             entry = self._lookup(path)
             if entry is not None:
                 status, body = int(entry.get("status") or 200), copy.deepcopy(entry.get("body"))
@@ -359,7 +439,96 @@ class OfflineStore:
             item, _, _ = self._item(path)
             if item is not None:
                 return 200, copy.deepcopy(item)
+            zm = _ZDX_APP.match(path)
+            if zm and not zm.group(4) and not zm.group(3):
+                app = self._zdx_app(zm.group(1))
+                if app is not None:
+                    if zm.group(2):
+                        return 200, copy.deepcopy(self._zdx_app_monitors(app))
+                    return 200, copy.deepcopy(app)
         return 404, {"code": "NOT_FOUND", "message": self._missing(path)}
+
+    def _zdx_apps(self) -> Optional[List[Any]]:
+        return _items((self._lookup(f"{_ZDX_CFG}/applications") or {}).get("body"))
+
+    def _zdx_monitors(self) -> Optional[List[Any]]:
+        return _items((self._lookup(f"{_ZDX_CFG}/monitors") or {}).get("body"))
+
+    def _zdx_app(self, key: str) -> Optional[Dict[str, Any]]:
+        """A ZDX app by its id, or a predefined app by its provider."""
+        return next((a for a in self._zdx_apps() or [] if isinstance(a, dict) and (str(a.get("id")) == key or (
+            str(a.get("type") or "").upper() == "PREDEFINED" and str(a.get("provider") or "").upper() == key.upper()))), None)
+
+    def _zdx_app_monitors(self, app: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return [m for m in self._zdx_monitors() or [] if isinstance(m, dict) and isinstance(m.get("application"), dict)
+                and str(m["application"].get("id")) == str(app.get("id"))]
+
+    def _zdx_next_id(self) -> int:
+        ids = [int(x.get("id")) for x in (self._zdx_apps() or []) + (self._zdx_monitors() or [])
+               if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
+        return max(ids + [90000]) + 1
+
+    def _zdx_write(self, method: str, path: str, body: Any) -> Optional[Tuple[int, Any]]:
+        """A ZDX configuration write on the sample or a simulation, or None
+        when the path is not one (see _ZDX_APP)."""
+        apps, mons = self._zdx_apps(), self._zdx_monitors()
+        if apps is None or mons is None:
+            return None
+        if method == "POST" and path == f"{_ZDX_CFG}/applications":
+            obj = copy.deepcopy(body) if isinstance(body, dict) else {}
+            obj["id"] = self._zdx_next_id()
+            apps.append(obj)
+            if str(obj.get("type") or "").upper() == "PREDEFINED":
+                host = next((str(x.get("host") or "") for x in _items((self._lookup(f"{_ZDX_CFG}/applications/supported") or {}).get("body")) or []
+                             if isinstance(x, dict) and str(x.get("provider") or "").upper() == str(obj.get("provider") or "").upper()), "")
+                host = host.replace("<prefix>", str(obj.get("prefix") or "tenant"))
+                ref = {"id": obj["id"], "name": obj.get("name")}
+                web = {"id": self._zdx_next_id(), "name": f"{obj.get('name')} Web", "type": "WEB", "active": False, "class": "PREDEFINED",
+                       "url": f"https://{host}/" if host else "", "application": ref, "frequencyInSeconds": 300}
+                mons.append(web)
+                mons.append({"id": self._zdx_next_id(), "name": f"{obj.get('name')} CloudPath", "type": "TRACERT", "active": False,
+                             "class": "PREDEFINED", "host": host, "application": dict(ref), "followWebMonitor": {"id": web["id"]},
+                             "frequencyInSeconds": 300})
+            self.writes += 1
+            return 200, copy.deepcopy(obj)
+        m = _ZDX_APP.match(path)
+        if not m:
+            return None
+        app = self._zdx_app(m.group(1))
+        if app is None:
+            return 404, {"code": "NOT_FOUND", "message": self._missing(path)}
+        state = m.group(4)
+        if m.group(2):
+            if method == "POST" and not m.group(3) and not state:
+                obj = copy.deepcopy(body) if isinstance(body, dict) else {}
+                obj["id"] = self._zdx_next_id()
+                obj["application"] = {"id": app.get("id"), "name": app.get("name")}
+                mons.append(obj)
+                self.writes += 1
+                return 200, copy.deepcopy(obj)
+            mon = next((x for x in self._zdx_app_monitors(app) if str(x.get("id")) == str(m.group(3))), None)
+            if mon is None:
+                return 404, {"code": "NOT_FOUND", "message": self._missing(path)}
+            if method == "PUT" and state:
+                mon["active"] = state == "activate"
+                self.writes += 1
+                return 200, copy.deepcopy(mon)
+            if method == "DELETE" and not state:
+                mons.remove(mon)
+                self.writes += 1
+                return 204, {}
+            return None
+        if method == "PUT" and state:
+            app["active"] = state == "activate"
+            self.writes += 1
+            return 200, copy.deepcopy(app)
+        if method == "DELETE" and not state:
+            for x in self._zdx_app_monitors(app):
+                mons.remove(x)
+            apps.remove(app)
+            self.writes += 1
+            return 204, {}
+        return None
 
     def _answer_graphql(self, body: Any) -> Tuple[int, Any]:
         """A Microsegmentation GraphQL read (a query, never a mutation),
@@ -456,14 +625,20 @@ class OfflineStore:
         if method == "POST" and path in READ_POSTS:
             return self.answer_read_post(path, params)
         lookup = path.endswith(("/urlLookup", "/auditlogEntryReport")) or path.startswith("/zins/")
-        if lookup and not (self.writable and path.endswith("/urlLookup")):
+        # The sample answers a URL lookup from its own table; a simulation answers it as the tenant it copies
+        # did (a snapshot's copy has no lookup either), so a rehearsed plan reads the same on its simulation.
+        from_sample = self.kind == SAMPLE or (self.kind == SIMULATION and self.meta.get("base_kind") == SAMPLE)
+        if lookup and not (self.writable and from_sample and path.endswith("/urlLookup")):
             # A read the API asks for with a POST (URL lookup, Insights, audit log report): offline it has no answer.
-            what = "the sample tenant has no such data" if self.kind == SAMPLE else "a snapshot holds only the lists it saved"
+            what = "the sample tenant has no such data" if from_sample else "a snapshot holds only the lists it saved"
             return 404, {"code": "NOT_OFFLINE", "message": f"This lookup needs the live tenant ({path}): {what}. Nothing was sent to a tenant."}
         if not self.writable:
             return 403, {"code": "READ_ONLY", "message": READ_ONLY}
         import sample_tenant
         with self._lock:
+            path, policy_set_id = self._policy_route(path)
+            if policy_set_id is not None:
+                return self._policy_write(method, path, body, policy_set_id)
             if method == "POST" and path.endswith("/urlLookup"):
                 return 200, sample_tenant.url_lookup(body if isinstance(body, list) else [])
             if method == "POST" and path.endswith("/status/activate"):
@@ -513,6 +688,14 @@ class OfflineStore:
                 hit["active"] = (0 if on else 1) if isinstance(hit.get("active"), int) else ("0" if on else "1")
                 self.writes += 1
                 return 200, {"success": "true"}
+            if path.startswith(_ZDX_CFG + "/applications"):
+                done = self._zdx_write(method, path, body)
+                if done is not None:
+                    return done
+            zcc = _ZCC_EDIT.match(path)
+            if zcc and ((method == "POST" and zcc.group(2) == "webForwardingProfile") or (method == "PUT" and zcc.group(2) == "web/policy")
+                        or (method == "DELETE" and zcc.group(3))):
+                return self._zcc_profile_write(method, zcc, body)
             if method == "PATCH" and "/application-profiles/" in path and isinstance(body, dict):
                 # update_application_profile: the allowlisted fields live in policyExtension (zscaler/zcc/models/application_profiles.py).
                 item, _coll, _idx = self._item(path)
@@ -536,7 +719,14 @@ class OfflineStore:
                     # can resolve the distinct ids its earlier parts created.
                     obj["id"] = str(self._zpa_max_id() + 1)
                 else:
-                    ids = [int(x.get("id")) for x in items if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
+                    pool = [items]
+                    if "/webApplicationRules/" in path:
+                        # Cloud App Control keeps one list per rule type, but a rule id is one space
+                        # across the types (assumed: ZIA answers a rule by type and id, and its ids
+                        # do not repeat across types); a POV build's baseline creates rules of several
+                        # types in one run and reads each back by id, so the copy must not repeat one.
+                        pool = [_items(e.get("body")) or [] for k, e in self.responses.items() if "/webApplicationRules/" in k]
+                    ids = [int(x.get("id")) for lst in pool for x in lst if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
                     new_id = max(ids + [90000]) + 1
                     obj["id"] = new_id
                     if path.endswith("/cloudApplicationInstances"):
@@ -554,6 +744,14 @@ class OfflineStore:
                     count["body"] = {"blockedFileHashesCount": used, "remainingFileHashes": max(0, total - used)}
                 self.writes += 1
                 return 200, copy.deepcopy(body)
+            if method == "PUT" and entry is not None and isinstance(entry.get("body"), dict) and _items(entry["body"]) is None \
+                    and isinstance(body, dict) and path.startswith("/zia/"):
+                # A ZIA settings object (one object, not a list: the advanced URL filter and cloud app
+                # settings AI Guard routing turns prompt capture on in, the ATP and UCaaS settings the
+                # baseline changes): the fields sent take their new values, the rest stay.
+                entry["body"].update(copy.deepcopy(body))
+                self.writes += 1
+                return 200, copy.deepcopy(entry["body"])
             item, coll, idx = self._item(path)
             if method == "POST" and item is None and coll is not None and path.startswith("/ziam/") and "/groups/" in path:
                 # ZIdentity adds a member by POST /groups/{id}/users/{userId} (zscaler/zid/groups.py add_user_to_group).
@@ -575,13 +773,87 @@ class OfflineStore:
                      "message": f"The sample tenant does not model this change ({method} {path}); nothing was sent to a tenant."}
 
 
+    def _zcc_profile_write(self, method: str, m: "re.Match", body: Any) -> Tuple[int, Any]:
+        """A Client Connector forwarding or app profile written to the sample
+        or a simulation (ops_zcc: an edit with no id or id -1 creates and
+        answers the new id, assumed there too)."""
+        entry = self._lookup(f"{m.group(1)}/{m.group(2)}/listByCompany")
+        items = _items(entry["body"]) if entry else None
+        if items is None:
+            return 404, {"code": "NOT_FOUND", "message": self._missing(f"{m.group(1)}/{m.group(2)}/listByCompany")}
+        want = m.group(3) or (str(body.get("id")) if isinstance(body, dict) and body.get("id") not in (None, "", "-1", -1, 0, "0") else "")
+        idx = next((i for i, x in enumerate(items) if isinstance(x, dict) and want and str(x.get("id")) == want), -1)
+        if method == "DELETE":
+            if idx < 0:
+                return 404, {"code": "NOT_FOUND", "message": self._missing(f"{m.group(1)}/{m.group(2)}/{want}")}
+            items.pop(idx)
+            self.writes += 1
+            return 200, {"success": "true"}
+        obj = copy.deepcopy(body) if isinstance(body, dict) else {}
+        if want and idx < 0:
+            return 404, {"code": "NOT_FOUND", "message": self._missing(f"{m.group(1)}/{m.group(2)}/{want}")}
+        if idx >= 0:
+            items[idx] = dict(items[idx], **{k: v for k, v in obj.items() if k != "id"})
+            self.writes += 1
+            return 200, copy.deepcopy(items[idx])
+        ids = [int(x.get("id")) for x in items if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
+        obj["id"] = max(ids + [90000]) + 1
+        if "deviceType" in obj and "device_type" not in obj and any(isinstance(x, dict) and "device_type" in x for x in items):
+            obj["device_type"] = obj["deviceType"]
+        items.append(obj)
+        self.writes += 1
+        return 200, copy.deepcopy(obj)
+
+    def _policy_write(self, method: str, path: str, body: Any, policy_set_id: str) -> Tuple[int, Any]:
+        """A rule write of a ZPA policy set, on the sample or a simulation
+        (path: the routed key of the type's rule list, see _policy_route):
+        a create takes the next ZPA id and the next rule order; an update
+        merges; a delete removes; a reorder moves the rule's ruleOrder."""
+        reorder = re.search(r"/reorder/([0-9]{1,6})\Z", path)
+        if reorder:
+            path = path[: reorder.start()]
+        entry = self._lookup(path)
+        items = _items(entry["body"]) if entry else None
+        if method == "POST" and items is not None:
+            obj = copy.deepcopy(body) if isinstance(body, dict) else {}
+            obj["id"] = str(self._zpa_max_id() + 1)
+            obj["policySetId"] = policy_set_id
+            orders = [int(x.get("ruleOrder")) for x in items if isinstance(x, dict) and str(x.get("ruleOrder", "")).isdigit()]
+            obj.setdefault("ruleOrder", str(max(orders + [0]) + 1))
+            items.append(obj)
+            self.writes += 1
+            return 200, copy.deepcopy(obj)
+        item, coll, idx = self._item(path)
+        if item is None:
+            return 404, {"code": "NOT_FOUND", "message": self._missing(path)}
+        if method == "PUT" and reorder:
+            item["ruleOrder"] = reorder.group(1)
+            self.writes += 1
+            return 204, {}
+        if method in ("PUT", "PATCH"):
+            new = dict(item)
+            new.update(copy.deepcopy(body) if isinstance(body, dict) else {})
+            new["id"], new["policySetId"] = item.get("id"), policy_set_id
+            coll[idx] = new
+            self.writes += 1
+            return 204, {}
+        if method == "DELETE":
+            coll.pop(idx)
+            self.writes += 1
+            return 204, {}
+        return 400, {"code": "NOT_MODELLED", "message": f"The sample tenant does not model this change ({method} {path}); nothing was sent to a tenant."}
+
     def _zins_answer(self, body: Any) -> Optional[Tuple[int, Any]]:
         """(status, body) kept for a Z-Insights operation, or None. Shadow IT
         apps honour the application name filter (`in` / `eq`) as Insights does."""
         op = body.get("operationName") if isinstance(body, dict) else None
         if not isinstance(op, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,63}", op):
             return None
-        entry = self.responses.get(f"/zins/graphql/{op}")
+        # An operation asked in transactions or in bytes (WEB_TRAFFIC trafficUnit)
+        # may keep one answer per unit under /zins/graphql/<operation>/<unit>.
+        unit = (body.get("variables") or {}).get("trafficUnit") if isinstance(body.get("variables"), dict) else None
+        entry = self.responses.get(f"/zins/graphql/{op}/{unit}") if isinstance(unit, str) and re.fullmatch(r"[A-Z]{1,20}", unit) else None
+        entry = entry if entry is not None else self.responses.get(f"/zins/graphql/{op}")
         if entry is None:
             return None
         out = copy.deepcopy(entry.get("body"))
@@ -1409,6 +1681,9 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     + [(_ZIA, f"/zia/{x}") for x in ("dnsApplicationGroups", "httpHeaderProfile", "httpHeaderActionProfile")]
     + [(("zpa",), f"/zpa/{x}") for x in ("ipRanges", "cbiconfig/certificates")]
     + [(("ztw",), "/ztw/api/v1/ipGroups")]
+    # The SOC review (soc_review.py, 2026-11-04): ZPA Log Streaming Service configurations, the
+    # Client Connector portal roles and ZIdentity's API clients (names, status, scopes; never a secret).
+    + [(("zpa",), "/zpa/lssConfig"), (("rbac",), "/zcc/adminRoles"), (("zidentity",), "/zid/api-clients")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}

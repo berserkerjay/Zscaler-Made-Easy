@@ -285,8 +285,11 @@ function renderControlFishbones(report, container, network) {
 // stream for its count; its paths link to their rows in "Every
 // destination, every network". Built with DOM calls (textContent only):
 // destination names are tenant data. Returns the picture (play, pause,
-// running, destroy) or null without the motion module.
-function renderDataFlowMotion(report, container, onRow) {
+// running, destroy) or null without the motion module. opts.autoplay
+// false starts it still (the stream widths count paths, so the motion is
+// an opt-in extra there; Play motion starts it).
+function renderDataFlowMotion(report, container, onRow, opts) {
+  const still = opts && opts.autoplay === false;
   const FA = window.FA;
   container.textContent = '';
   if (!FA || !FA.dataFlowModel) return null;
@@ -294,7 +297,7 @@ function renderDataFlowMotion(report, container, onRow) {
   if (!m || !m.total) { const p = document.createElement('p'); p.className = 'df-hop-d'; p.textContent = 'No path was traced, so there is no traffic to draw.'; container.appendChild(p); return null; }
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const wrap = el('div', 'fa-motion');
-  wrap.appendChild(el('p', 'fa-lead', `Each stream is one route through the hops, as wide as its share of the ${m.total} traced paths (every traffic class on every network); packets move along it, coloured by where their path ends (green: decrypted with a DLP rule that can block, amber: monitor only or unverified, red: bypassed, left encrypted or blocked; a cross marks where a bypass leaves the flow). Hover or focus a stream for its count, and press Enter to list its paths.`));
+  wrap.appendChild(el('p', 'fa-lead', `Each stream is one route through the hops, as wide as its share of the ${m.total} traced paths (every traffic class on every network); packets move along it, coloured by where their path ends (green: decrypted with a DLP rule that can block, amber: monitor only or unverified, red: bypassed, left encrypted or blocked; a cross marks where a bypass leaves the flow). Hover or focus a stream for its count, and press Enter to list its paths.${still ? ' The widths count paths, not traffic, so nothing moves until you press Play motion.' : ''}`));
   const bar = el('div', 'fa-motion-bar');
   const btn = el('button', 'rp-btn'); btn.type = 'button'; btn.id = 'dfMotionPlay';
   bar.appendChild(btn); wrap.appendChild(bar);
@@ -329,7 +332,7 @@ function renderDataFlowMotion(report, container, onRow) {
     pick.appendChild(ul);
   };
   const pic = FA.river(stage, m, {
-    height: 220,
+    height: 220, autoplay: !still,
     onFocus: l => show(l, false),
     onPick: l => { held = l; show(l, true); const a = pick.querySelector('a'); if (a) a.focus(); },
   });

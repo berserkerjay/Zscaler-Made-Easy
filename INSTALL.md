@@ -1191,9 +1191,9 @@ account is matched by a verified email. To have your identity provider
 create and remove accounts and groups, make a SCIM token on the same page
 and give the provider the SCIM address it shows (`/api/scim/v2`).
 
-**4. Optional hardening.** `DLP_CHECK_STORE_ENCRYPTION=1` encrypts the app's
-stores on disk (`python store_crypto.py seal-all` seals what is already
-there; `python store_crypto.py rotate` changes the key). `DLP_CHECK_FIPS_MODE=1`
+**4. Optional hardening.** The app's stores on disk are encrypted by default
+(see "Encrypted stores" below; `python store_crypto.py rotate`, or **Rotate
+the store encryption key** on the Team server page, changes the key). `DLP_CHECK_FIPS_MODE=1`
 keeps the app to FIPS-approved algorithms (passwords made before must then be
 set again: `python team_server.py reset-password <name>`); it does not make
 Python itself a validated module, see SECURITY.md.
@@ -1310,6 +1310,81 @@ arrow on the extension's card in `chrome://extensions`.
 
 A managed work browser may block unpacked extensions; IT can allow it by policy
 (`ExtensionInstallAllowlist`).
+
+## Encrypted stores (on by default)
+
+Everything the app keeps on disk about your tenants (tenant profiles,
+snapshots, configuration backups with their templates and caches, scheduled
+sync jobs, saved traffic log reports, the change queue, deployment records,
+notes, the audit log, team accounts) is encrypted with AES-256-GCM. It is
+on by default: you do nothing.
+
+**Upgrading from a version that wrote them in plain text.** The first start
+after the update encrypts the existing files once, before the app serves
+anything. It first takes a backup of every plain file and checks the backup
+reads back, then encrypts each file in place (a crash never leaves half a
+file), reads it back and compares it with the backup. Only when every file
+reads back is the backup removed, so no plain copy is left behind. The
+terminal (Windows: `server.log`; container: `docker logs zscaler-made-easy`)
+says how many files were encrypted and where the key is kept. If the start
+is interrupted, the next start carries on where it stopped; if a file does
+not read back, it is put back from the backup, nothing is lost, and the
+message says so. While it has not finished, `store-encryption-backup/`
+beside the data holds an **unencrypted** copy of the files not yet
+encrypted (owner-only); the message, `python store_crypto.py status` and
+the Team server page say so, and it is removed when the migration finishes. This is the same for every way of running the app:
+
+- **Container** (`update_container.sh` / `.ps1`, or `docker compose up
+  --build`): the data volume is kept and the key file is made on it
+  (`/data/store_keys.json`, owner-only), as the container keeps its other
+  files. To keep the key off the data volume (so a copy of the volume is
+  useless without it), mount a second volume and set
+  `DLP_CHECK_STORE_KEY_FILE=/keys/store_keys.json` in `.env`.
+- **Windows and Mac installs** (Update app, the update script, a new ZIP):
+  the key goes into Windows Credential Manager or the macOS Keychain,
+  tied to your user account. After an update on a Mac, the Keychain may
+  ask once whether the new Python (or the no-install app) may read the
+  "dlp-check" entry: choose **Always Allow**. If you deny it, encrypted
+  stores cannot be opened (the app says so and never overwrites them);
+  start again and allow it. (Assumed from how the Keychain treats a changed
+  program; not tested on a real Mac.)
+- **Linux installs and headless servers**, where there is no credential
+  store: the key goes into `store_keys.json` beside the data, owner-only
+  (0600). `DLP_CHECK_STORE_KEY_FILE` moves it elsewhere; a key file named
+  that way is always used, and never moved or deleted. Note that by default
+  the key sits beside the data, so a copy of the whole folder can be read:
+  name a key file on another disk if that matters. `store_keys.json`, the
+  migration journal and `store-encryption-backup/` are git-ignored and never
+  copied into the container image.
+- **No-install edition**: the key goes into the credential store, else into
+  `store_keys.json` in the per-user data folder, beside the data.
+
+**Keep the key with the data.** Without its key an encrypted file cannot be
+opened (the app says so; it never reads it as empty or overwrites it). When
+you copy or move the app's data files (a ZIP update on Linux, a new
+computer, a restore), copy `store_keys.json` with them; on Windows and Mac
+the key stays in your user account's credential store, so to move the data
+to another computer opt out and run `unseal-all` first (below), then turn it
+back on there. A key file or credential store entry that exists but cannot be
+read is never replaced by a new key: fix it (restore the file, unlock the
+keychain) and start again; until then new data is written unencrypted and
+the start-up message says why.
+
+**Opting out.** Set `DLP_CHECK_STORE_ENCRYPTION=0` (in `local_settings.env`,
+`local_settings.bat`, or the container's `.env`) before you start the app.
+New writes are then plain owner-only files, and files already encrypted
+still read while their key is there. To turn those back into plain files,
+stop the app and run `python store_crypto.py unseal-all` (container:
+`docker compose run --rm zscaler-made-easy python store_crypto.py unseal-all`).
+Set the opt-out before updating and nothing is encrypted at all. Going back
+to an older version that predates encrypted stores also needs `unseal-all`
+first.
+
+Other commands (stop the app first): `python store_crypto.py status` (on or
+off, key id, where the key is kept), `migrate` (run the one-time encryption
+now), `rotate` (a new key; every store is encrypted again with it, then the
+old key is forgotten unless a file still needs it). FIPS mode (`DLP_CHECK_FIPS_MODE=1`) uses the same
+AES-256-GCM encryption.
 
 ## Starting, stopping, updating and removing it later
 

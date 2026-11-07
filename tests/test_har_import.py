@@ -13,6 +13,7 @@ import subprocess
 import time
 
 import pytest
+from conftest import read_store_text
 
 import path_analyzer as pa
 from test_data_flow import ROUTES
@@ -320,7 +321,7 @@ def test_the_batch_endpoint_runs_as_a_job_reuses_the_read_and_exports(monkeypatc
     assert snap2["status"] == "done" and c.reads == reads and len(c.lookups) == lookups + 1 and not snap2["result"]["fresh_read"]
     assert snap2["result"]["report_id"] == res["report_id"]
     # The audit log records that hosts were sent, never which.
-    log = audit_log.read_text(encoding="utf-8")
+    log = read_store_text(audit_log)
     assert "/api/path-analyzer/batch/start" in log and '"har_hosts":"[omitted: 5 items]"' in log
     for h in ("casino.example", "mail.example.com", "COOKIE-VALUE-123", "secret-secret-secret"):
         assert h not in log, h

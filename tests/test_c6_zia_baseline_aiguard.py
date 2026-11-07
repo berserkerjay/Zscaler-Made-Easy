@@ -284,6 +284,21 @@ def test_a_captured_rule_that_matched_only_people_does_not_become_a_block_all():
     assert [r["name"] for r in rows_of(dst, "url")] == ["Default URL Filtering Rule"] and res["status"] == "nothing_to_do"
 
 
+def test_a_captured_ssl_rule_that_matched_only_cloud_applications_does_not_become_a_catch_all():
+    """ASVS V1.4.1 · CWE-1188 · CWE-284: "Do not decrypt Zoom" (cloud applications only) is not captured, with the reason, rather than coming back as do not decrypt all remaining traffic."""
+    # Arrange
+    zoom = {"id": 9, "name": "Do not decrypt Zoom", "order": 1, "state": "ENABLED", "cloud_applications": ["ZOOM"],
+            "action": {"type": "DO_NOT_DECRYPT"}}
+    src = zt.Tenant(ssl=[zt.SSL_DEFAULT, zoom])
+    # Act
+    cap = zb.capture(src, ["ssl"], tenant_label="src")
+    # Assert
+    fw = cap["framework"]
+    assert "Do not decrypt Zoom" not in [r["name"] for r in fw["areas"].get("ssl", [])]
+    why = [x for x in fw["not_exported"] if x["name"] == "Do not decrypt Zoom"]
+    assert why and "cloud applications" in why[0]["reason"] and "all remaining traffic" in why[0]["reason"]
+
+
 @pytest.mark.parametrize("fields,why", [
     ([1], "fields (must be|an) object"), ("url_categories", "fields (must be|an) object"),
     ({"url_categories": True}, "list of Zscaler names"), ({"url_categories": "GAMBLING"}, "list of Zscaler names"),

@@ -44,6 +44,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List
 
 import pytest
+from conftest import read_any_text, read_store_text
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1036,8 +1037,7 @@ def test_the_provisioning_key_reaches_no_sink_on_the_job_route_and_is_shown_once
     for root in {os.path.dirname(os.environ["DLP_CHECK_AUDIT"]), str(tmp_path)}:
         for dirpath, _dirs, names in os.walk(root):
             for n in names:
-                with open(os.path.join(dirpath, n), "rb") as f:
-                    files += f.read().decode("utf-8", "replace")
+                files += read_any_text(os.path.join(dirpath, n))   # sealed stores opened
     sinks = {"start": start.text, "job": snap.text, "list": listing.text, "record": record.text, "undo preview": undo.text,
              "refused reveal": other.text, "files (audit log, stores)": files, "server log": caplog.text}
     leaked = [k for k, v in sinks.items() if CANARY_KEY in v or "CANARY-PROVISIONING" in v]
@@ -1304,8 +1304,7 @@ def test_every_write_and_every_refusal_is_on_the_audit_log_with_its_actor_and_no
     assert entries, f"{url}: no audit entry"
     e = entries[-1]
     assert e["status"] == r.status_code and e["actor"] == gates.WRITER["email"] and e["write_mode"] is (gate != "write-mode-off")
-    with open(audit.path(), encoding="utf-8") as f:
-        assert "not-a-real-secret" not in f.read()
+    assert "not-a-real-secret" not in read_store_text(audit.path())
 
 
 # ---------------------------------------------------------------------------

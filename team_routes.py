@@ -88,6 +88,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /report/plugin": PUBLIC,
     "GET /report/traffic-logs": PUBLIC,
     "GET /report/ztw": PUBLIC,
+    "GET /report/soc-review": PUBLIC,
     "GET /report/other-products": PUBLIC,
     "GET /report/aiguard": PUBLIC,
     "GET /report/dataflow": PUBLIC,
@@ -151,6 +152,8 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/saas-apps": SESSION,
     "POST /api/dlp-packs/jobs/stop-before-start": SESSION,
     "GET /api/write-mode": SESSION,
+    "GET /api/tenant/session": SESSION,       # the person's own signed-in tenant (tenant_session): bound to them and their browser, never a credential
+    "DELETE /api/tenant/session": SESSION,    # forgets the person's own signed-in tenant; reaches no tenant
     "GET /api/tenant-profiles": SESSION,     # the list is filtered to the profiles the person may read
     "GET /api/vertical-scope": SESSION,
     "GET /api/offline/status": SESSION,
@@ -376,6 +379,9 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/traffic-logs/saved": READ,
     "POST /api/traffic-logs/saved/{saved_name}/open": READ,
     "POST /api/ztw/start": READ,
+    "POST /api/soc-review/rbac/start": READ,
+    "POST /api/soc-review/telemetry/start": READ,
+    "GET /api/soc-review/report/{report_id}": READ,
     "GET /api/ztw/report/{report_id}": READ,
     "GET /api/ztw/report/{report_id}/export": READ,
     "POST /api/other-products/start": READ,
