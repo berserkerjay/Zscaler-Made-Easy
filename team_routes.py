@@ -94,6 +94,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /report/dataflow": PUBLIC,
     "GET /report/live": PUBLIC,
     "GET /report/audit": PUBLIC,
+    "GET /report/capacity": PUBLIC,
     "GET /report/motion": PUBLIC,
     "GET /report/shadow": PUBLIC,
     "GET /report/posture": PUBLIC,
@@ -325,7 +326,10 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/bulk-test/fix/{fix_id}": READ,
     "POST /api/audit-timeline/start": READ,   # this app's own audit entries filtered to the person's profiles
     "GET /api/audit-timeline/{job_id}/export": READ,
-    "POST /api/postmortem": READ,   # own audit entries and deployments, filtered to the person's profiles
+    "POST /api/postmortem": READ,
+    "POST /api/cite": READ,   # local catalogue; no tenant
+    "POST /api/capacity-review": READ,
+    "GET /api/journal": "read:profile",   # own audit entries and deployments, filtered to the person's profiles
     "POST /api/shadow-rules/start": READ,
     "POST /api/shadow-rules": READ,
     "GET /api/shadow-rules/jobs/{job_id}/export": READ,
@@ -412,6 +416,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/operations/{op_id}/undo/preview/start": PLAN,
     "POST /api/operations/{op_id}/undo/preview": PLAN,
     "POST /api/workspace/notes": "plan:profile",
+    "POST /api/journal": "plan:profile",
     "DELETE /api/workspace/notes": "plan:profile",
     "POST /api/bulk-test/{job_id}/fix": PLAN,
     "POST /api/pov/create": "plan:profile",

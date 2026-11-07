@@ -17,7 +17,8 @@ from __future__ import annotations
 import io
 import json
 import os
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import csv_safe
 import md_safe
@@ -66,15 +67,94 @@ def status(used: Optional[int], licensed: Optional[int]) -> Dict[str, Any]:
     return {"status": s, "headroom_pct": pct}
 
 
-def review(used: Dict[str, Any], licensed: Dict[str, Any]) -> Dict[str, Any]:
+def review(used: Dict[str, Any], licensed: Dict[str, Any], seats: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """`seats` are licensed counts read from the tenant's subscription list;
+    they win over the local file's `licensed`, which is the fallback."""
     rows: List[Dict[str, Any]] = []
+    seats = seats or {}
     for key, label in METRICS:
-        u, l = _count(used.get(key)), _count(licensed.get(key))
-        rows.append({"metric": key, "label": label, "used": u, "licensed": l, **status(u, l)})
+        u = _count(used.get(key))
+        l, src = (_count(seats.get(key)), "subscriptions") if _count(seats.get(key)) else (_count(licensed.get(key)), "local file")
+        rows.append({"metric": key, "label": label, "used": u, "licensed": l, "licensed_from": src if l else None, **status(u, l)})
     flagged = [r["label"] for r in rows if r["status"] in ("low", "over")]
     return {"rows": rows, "flagged": flagged,
-            "notes": ["Licensed counts are the ones you recorded locally; the tenant's subscription list names products, not seat counts.",
+            "notes": ["Licensed counts come from the tenant's subscription list when it states a seat count (assumed row shape: licenses, quantity or seats), else from the local file you recorded.",
                       "Read-only: nothing was changed in the tenant."]}
+
+
+_SEAT_KEYS = ("licenses", "quantity", "seats", "licensecount", "usercount")
+
+
+def subscription_seats(body: Any) -> Dict[str, int]:
+    """Licensed user seats from GET /subscriptions: the largest seat count on
+    an active row (a row's count repeats per product, so rows are not added
+    up). The row shape is assumed (readiness.parse_subscriptions); a list
+    with no seat field gives {} and the local file is used."""
+    rows = body if isinstance(body, list) else (body.get("list") if isinstance(body, dict) and isinstance(body.get("list"), list) else [])
+    best = 0
+    for r in rows[:500]:
+        if not isinstance(r, dict) or r.get("subscribed") is False or re.search(r"EXPIRED|CANCEL", str(r.get("status") or ""), re.I):
+            continue
+        for k, v in r.items():
+            if str(k).lower() in _SEAT_KEYS and (n := _count(v)):
+                best = max(best, n)
+    return {"users": best} if best else {}
+
+
+def count_users(sdk: Any, cancel: Any = None) -> Optional[int]:
+    """How many ZIA users exist: paged reads (1000 a page) of which only the
+    number is kept. None when the read failed."""
+    import ops_zia_directory as od
+    rows, err, cut = od._paged(od._svc(sdk).list_users, {}, 100000, cancel)
+    return None if err else len(rows)
+
+
+def read_used(sdk: Any, creds: Dict[str, Any], scopes: Iterable[str], cancel: Any = None) -> Dict[str, Any]:
+    """Every read the review makes, GET only, for the products in scope:
+    {used, seats, notes}. A failed read becomes a note, never an error."""
+    import readiness
+    import tenant_auth
+    import zpa_reader
+    import ztw_overview as zo
+    from security import validate_customer_id
+    sc = set(scopes)
+    used: Dict[str, int] = {}
+    seats: Dict[str, int] = {}
+    notes: List[str] = []
+    oneapi = creds.get("auth_method") != tenant_auth.LEGACY
+
+    def attempt(name: str, fn: Callable[[], Any]) -> Any:
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001 - one product failing does not stop the others
+            notes.append(f"{name} could not be read ({type(e).__name__}).")
+            return None
+    ztw = zpa = None
+    if "ztw" in sc:
+        if oneapi:
+            ztw = attempt("Cloud & Branch Connector", lambda: zo.read(sdk))
+        else:
+            notes.append("Cloud & Branch Connector counts need the OneAPI sign-in; locations and tunnels were not read.")
+    if "zpa" in sc:
+        if oneapi and validate_customer_id(creds.get("customer_id") or ""):
+            zpa = attempt("ZPA", lambda: zpa_reader.read(sdk, log=None, cancel=cancel))
+        else:
+            notes.append("ZPA counts need the OneAPI sign-in and a customer ID; segments and App Connectors were not read.")
+    used.update(used_counts(ztw, zpa))
+    if "zia_extras" in sc:
+        n = attempt("ZIA users", lambda: count_users(sdk, cancel))
+        if n is not None:
+            used["users"] = n
+        elif not any("ZIA users" in x for x in notes):
+            notes.append("ZIA users could not be counted (the read failed or this sign-in has no user management).")
+        sub = attempt("Subscriptions", lambda: readiness._raw_get(sdk, readiness.SUBSCRIPTIONS_PATH))
+        if sub and sub.get("state") == "ok":
+            seats = subscription_seats(sub.get("body"))
+        elif sub is not None:
+            notes.append("The subscription list could not be read; licensed counts come from the local file.")
+    else:
+        notes.append("Users are counted only with ZIA platform (extras) in scope; not read.")
+    return {"used": used, "seats": seats, "notes": notes}
 
 
 def used_counts(ztw_snap: Optional[Dict[str, Any]], zpa_snap: Optional[Dict[str, Any]]) -> Dict[str, int]:
@@ -94,14 +174,14 @@ def to_markdown(rep: Dict[str, Any], title: str = "Capacity review") -> str:
     lines = [f"# {md_safe.text(title)}", "", "| Metric | Used | Licensed | Headroom | Status |", "|---|---|---|---|---|"]
     for r in rep["rows"]:
         hp = "" if r["headroom_pct"] is None else f"{r['headroom_pct']}%"
-        lines.append(f"| {md_safe.text(r['label'])} | {'' if r['used'] is None else r['used']} | {'' if r['licensed'] is None else r['licensed']} | {hp} | {r['status']} |")
+        lines.append(f"| {md_safe.text(r['label'])} | {'' if r['used'] is None else r['used']} | {'' if r['licensed'] is None else r['licensed']}{'' if not r.get('licensed_from') else ' (' + r['licensed_from'] + ')'} | {hp} | {r['status']} |")
     lines += [""] + [f"- {md_safe.text(n)}" for n in rep.get("notes") or []]
     return "\n".join(lines) + "\n"
 
 
 def to_csv(rep: Dict[str, Any]) -> str:
     buf = io.StringIO()
-    w = csv_safe.dict_writer(buf, ["metric", "label", "used", "licensed", "headroom_pct", "status"])
+    w = csv_safe.dict_writer(buf, ["metric", "label", "used", "licensed", "licensed_from", "headroom_pct", "status"])
     w.writeheader()
     w.writerows(rep["rows"])
     return buf.getvalue()

@@ -786,6 +786,7 @@ EXEMPT: Dict[str, str] = {
     "POST /api/pov/build/apply/start": "a write: writer, confirm, plan_hash, the assessor and write mode first, then each part's scope rule as in the preview",
     "POST /api/pov/build/undo/apply/start": "a write: as /api/pov/build/apply/start, over the build's recorded Undos",
     "POST /api/pov/build/undo/preview/start": "plans a recorded build's Undos: each part's scope rule (_pov_build_scope) runs before a client is built (tests/test_pov_build.py)",
+    "POST /api/capacity-review": ("reads Cloud & Branch Connector, ZPA and user counts only for the products ticked (capacity_review.read_used); with none of the three ticked it is a 400 before sign-in: tests/test_w12_skill.py"),
     "ON_EVENT startup": "the continuous evaluation timer: the same run as POST /api/digests/run (in ROUTES)",
 }
 

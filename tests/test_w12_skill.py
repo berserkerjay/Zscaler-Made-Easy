@@ -137,3 +137,210 @@ def test_postmortem_route_exports_md_csv_and_rejects_bad_windows():
     assert md.status_code == 200 and md.text.startswith("# T") and "attachment" in md.headers["content-disposition"]
     assert csv_r.status_code == 200 and csv_r.text.startswith("time,")
     assert bad.status_code == 400 and fmt.status_code == 400
+
+
+# ── citations, lookup, journal, capacity reads (round 2) ──────────────
+
+@pytest.fixture
+def corpus(tmp_path, monkeypatch):
+    monkeypatch.setenv("DLP_CHECK_CITATIONS", str(tmp_path / "ex.json"))
+    return tmp_path
+
+
+def test_cite_returns_cached_excerpt_with_source_tier_and_date(corpus):
+    """ASVS V8.3.4 · CWE-1059 · WSTG-INFO-08: a topic gives best-practice entries with URL, title, tier, retrieved date and the cached excerpt; no fetch is made."""
+    import reference_corpus as rc
+    url = "https://help.zscaler.com/zpa/idp-configuration-best-practices"
+    (corpus / "ex.json").write_text(json.dumps({url: {"excerpt": "Use SCIM groups, not individuals.", "retrieved": "2026-11-01"}}))
+    def boom(*a, **k):
+        raise AssertionError("fetched")
+    # Act
+    out = rc.cite("zpa idp", getter=boom)
+    # Assert
+    hit = next(c for c in out["citations"] if c["source_url"] == url)
+    assert (hit["excerpt"], hit["retrieved"], hit["tier"], hit["excerpt_basis"]) == ("Use SCIM groups, not individuals.", "2026-11-01", "official", "page excerpt (cached)")
+    assert out["fetched"] is False and any("Fetching is off" in n for n in out["notes"])
+
+
+def test_cite_fetch_only_through_allowlisted_zscaler_hosts(corpus):
+    """CWE-918 · ASVS V12.6.1 · WSTG-INPV-19: a fetch of a non-Zscaler or non-https host is refused before any request; an allowed host is fetched, the excerpt cached and quoted."""
+    import reference_corpus as rc
+    calls = []
+    def getter(url):
+        calls.append(url)
+        return b"<html><body><p>Bind access policy rules to SCIM groups and use the smallest app segment scope per application.</p></body></html>", 200, ""
+    # Act / Assert: refused hosts
+    for bad in ("https://evil.example.com/x", "http://help.zscaler.com/x", "https://learn.microsoft.com/a", "https://help.zscaler.com.evil.example/x"):
+        with pytest.raises(rc.CiteError) as e:
+            rc.fetch_excerpt(bad, getter)
+        assert e.value.status == 403
+    assert calls == []
+    out = rc.cite("zpa idp", fetch=True, getter=getter)
+    official = [c for c in out["citations"] if c["source_url"].startswith("https://help.zscaler.com/")]
+    assert official and official[0]["excerpt_basis"] == "page excerpt (cached)" and "SCIM" in official[0]["excerpt"] and official[0]["retrieved"]
+    assert all(u.startswith("https://help.zscaler.com/") for u in calls)
+    assert any("not a Zscaler help or docs host" in n for n in out["notes"])   # the non-Zscaler entry was refused, not fetched
+
+
+def test_cite_tool_refuses_fetch_unless_the_operator_allows_it(local, corpus, monkeypatch):
+    """CWE-441 · ASVS V4.1.3 · A01:2021: the assistant cannot turn fetching on; without the operator's variable a fetch=true call is refused, and the cached call works."""
+    monkeypatch.delenv("ZSCALER_MCP_ALLOW_FETCH", raising=False)
+    # Act
+    refused = call("cite", topic="zpa idp", fetch=True)
+    ok = call("cite", topic="ssl inspection")
+    # Assert
+    assert refused["code"] == "not_permitted"
+    assert ok["data"]["citations"] and ok["grade"]["source_tier"] == "local_records"
+
+
+def test_cite_by_finding_id_and_route(corpus):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: a finding id with no topic cites by the id's words; an empty request is a 400 on the route; the route returns the same citations."""
+    from fastapi.testclient import TestClient
+    import dlp_api_server as api
+    t = TestClient(api.app)
+    # Act
+    ok = t.post("/api/cite", json={"finding_id": "ssl_inspection"})
+    empty = t.post("/api/cite", json={})
+    # Assert
+    assert ok.status_code == 200 and ok.json()["citations"] and empty.status_code == 400
+
+
+def test_lookup_answers_from_the_corpus_with_sources_and_says_when_nothing_matches(local):
+    """ASVS V8.3.4 · CWE-1059: an SSL question is answered from benchmark guidance and the catalogue, each passage with its source; a question the corpus lacks is answered=false."""
+    # Act
+    hit = call("lookup", question="how should ssl inspection be set up")
+    miss = call("lookup", question="zzzqqq xylophone")
+    # Assert
+    d = hit["data"]
+    assert d["answered"] and all(p["source"] for p in d["passages"]) and any(p["source_url"] for p in d["passages"])
+    assert any(p["kind"] == "benchmark guidance" for p in d["passages"])
+    assert miss["data"]["answered"] is False
+
+
+def test_journal_enforces_hypothesis_evidence_conclusion_and_resumes(local, monkeypatch):
+    """ASVS V4.1.3 · V8.3.4 · CWE-841 · WSTG-BUSL-01: a conclusion needs evidence, evidence needs a step, `next` says where the case left off, and a new session resumes the same case from the sealed store."""
+    # Act
+    opened = call("journal_open", title="Why is billing blocked?", source="sample")["data"]["case"]
+    cid = opened["id"]
+    h = call("journal_add", case_id=cid, kind="hypothesis", content="SSL bypass is missing", source="sample")["data"]["case"]
+    sid = h["steps"][0]["id"]
+    early = call("journal_add", case_id=cid, kind="conclusion", step_id=sid, content="done", outcome="supported", source="sample")
+    orphan = call("journal_add", case_id=cid, kind="evidence", step_id="deadbeef", tool="path_check", content="x", source="sample")
+    ev = call("journal_add", case_id=cid, kind="evidence", step_id=sid, tool="path_check", ref="read_at 2026-11-07", content="no bypass rule", source="sample")["data"]["case"]
+    mid = ev["next"]
+    done = call("journal_add", case_id=cid, kind="conclusion", step_id=sid, outcome="supported", content="add the bypass", source="sample")["data"]["case"]
+    call("journal_add", case_id=cid, kind="question", content="Who owns the rule?", source="sample")
+    shown = call("journal_show", case_id=cid, source="sample")["data"]["case"]
+    listing = call("journal_show", source="sample")["data"]["cases"]
+    # Assert
+    assert early["code"] == "bad_input" or "evidence" in early["error"]
+    assert "no such step" in orphan["error"]
+    assert "conclude" in mid and done["steps"][0]["outcome"] == "supported"
+    assert shown["open_questions"] == 1 and shown["next"].startswith("Answer question")
+    assert [c["id"] for c in listing] == [cid]
+    assert offline_tenant.sample_store().writes == 0
+
+
+def test_journal_store_is_sealed_when_encryption_is_on_and_listed_for_sealing(local, monkeypatch):
+    """ASVS V6.1.1 · CWE-311 · CWE-312: the journal file is a store_crypto store (listed for seal_all) and round-trips through store_crypto.load_json."""
+    import investigation_journal as ij
+    import store_crypto
+    monkeypatch.setenv("DLP_CHECK_JOURNAL", str(local / "journal.json"))
+    ij.open_case("acme (production)", "Case A", by="jane@example.com")
+    # Act
+    paths = [e["path"] for e in store_crypto._store_paths()]
+    with open(ij.store_path(), encoding="utf-8") as f:
+        data = store_crypto.load_json(f)
+    # Assert
+    assert ij.store_path() in paths and list(data["tenants"]["acme (production)"].values())[0]["title"] == "Case A"
+
+
+def test_journal_route_opens_adds_and_lists_for_a_named_tenant(local, monkeypatch):
+    """ASVS V4.1.3 · V5.1.3 · CWE-20: the route opens a case, adds a hypothesis, lists it, and refuses an unknown action and a bad case id with a 400/404."""
+    from fastapi.testclient import TestClient
+    import dlp_api_server as api
+    monkeypatch.setenv("DLP_CHECK_JOURNAL", str(local / "journal2.json"))
+    t = TestClient(api.app)
+    # Act
+    o = t.post("/api/journal", json={"tenant": "acme (production)", "action": "open", "title": "Outage"})
+    cid = o.json()["case"]["id"]
+    a = t.post("/api/journal", json={"tenant": "acme (production)", "action": "add", "case_id": cid, "kind": "hypothesis", "content": "H1"})
+    g = t.get("/api/journal", params={"tenant": "acme (production)"})
+    bad = t.post("/api/journal", json={"tenant": "acme (production)", "action": "drop"})
+    missing = t.post("/api/journal", json={"tenant": "acme (production)", "action": "add", "case_id": "abcdef12", "kind": "hypothesis", "content": "x"})
+    # Assert
+    assert o.status_code == 200 and a.json()["case"]["steps"][0]["hypothesis"] == "H1" and g.json()["cases"][0]["id"] == cid
+    assert bad.status_code == 400 and missing.status_code == 404
+
+
+class _FakeUsers:
+    def __init__(self, n):
+        self.n = n
+
+    def list_users(self, query_params=None):
+        page, size = query_params["page"], query_params["page_size"]
+        rows = [{"id": i, "name": f"u{i}"} for i in range(self.n)][(page - 1) * size: page * size]
+        return rows, None, None
+
+
+class _FakeSdk:
+    def __init__(self, n):
+        class Z:
+            user_management = _FakeUsers(n)
+        self.zia = Z()
+
+
+def test_users_are_counted_by_paging_and_never_listed():
+    """ASVS V8.3.4 · CWE-359 · WSTG-INPV-01: user counts come from paged reads (1000 a page) and only the number is returned."""
+    import capacity_review as cr
+    # Act
+    n = cr.count_users(_FakeSdk(2500))
+    # Assert
+    assert n == 2500
+
+
+def test_subscription_seats_win_over_the_local_file():
+    """ASVS V5.1.3 · CWE-1284 · WSTG-BUSL-01: a seat count on an active subscription row is the licensed users; expired rows and bad values are ignored; without one the local file is used and the source is named."""
+    import capacity_review as cr
+    body = [{"id": "ZIA_BUS", "status": "ACTIVE", "subscribed": True, "licenses": 4000},
+            {"id": "ZIA_OLD", "status": "EXPIRED", "licenses": 99999}, {"id": "X", "status": "ACTIVE", "licenses": -5}, "junk"]
+    # Act
+    seats = cr.subscription_seats(body)
+    rep = cr.review({"users": 3900}, {"users": 100000}, seats)
+    fallback = cr.review({"users": 3900}, {"users": 4000}, {})
+    # Assert
+    row = rep["rows"][0]
+    assert seats == {"users": 4000} and (row["licensed"], row["licensed_from"], row["status"]) == (4000, "subscriptions", "low")
+    assert fallback["rows"][0]["licensed_from"] == "local file"
+
+
+def test_read_used_reads_only_the_products_in_scope():
+    """ASVS V4.1.3 · CWE-272 · WSTG-ATHZ-02: with only zia_extras ticked, ZPA and Cloud & Branch Connector are never read; users and subscriptions are, GET only."""
+    import capacity_review as cr
+    import readiness
+    class Sdk(_FakeSdk):
+        pass
+    sdk = Sdk(3)
+    seen = []
+    orig = readiness._raw_get
+    readiness._raw_get = lambda c, p: seen.append(p) or {"state": "ok", "code": 200, "body": [{"id": "ZIA_BUS", "status": "ACTIVE", "licenses": 10}]}
+    try:
+        # Act
+        got = cr.read_used(sdk, {"auth_method": "oneapi", "customer_id": "123456789012345678"}, ["zia_extras"])
+    finally:
+        readiness._raw_get = orig
+    # Assert
+    assert got["used"] == {"users": 3} and got["seats"] == {"users": 10} and seen == [readiness.SUBSCRIPTIONS_PATH]
+
+
+def test_capacity_route_is_refused_before_sign_in_with_nothing_in_scope_and_page_is_served():
+    """ASVS V4.1.3 · CWE-862 · WSTG-ATHZ-02: with none of Cloud & Branch Connector, ZPA or ZIA platform ticked the route is a 400 before any sign-in; the review page is served and builds its table with textContent."""
+    from fastapi.testclient import TestClient
+    import dlp_api_server as api
+    t = TestClient(api.app)
+    # Act
+    r = t.post("/api/capacity-review", json={"scopes": ["dlp"], "channels": {}, "from_page": True})
+    page = t.get("/report/capacity")
+    # Assert
+    assert r.status_code == 400 and "not in scope" in r.json()["detail"]
+    assert page.status_code == 200 and "/api/capacity-review" in page.text and "innerHTML" not in page.text

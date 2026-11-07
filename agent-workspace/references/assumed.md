@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-552 markers.
+554 markers.
 
 | File:line | Note |
 |---|---|
@@ -39,6 +39,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `audit_timeline.py:167` | CORRELATE_SECONDS match with Zscaler Made Easy's own writes. Assumed: CST |
 | `bulk_test.py:124` | SUSPICIOUS_DESTINATION; the others are assumed from ZIA's category list. |
 | `bulk_test.py:128` | category costs little. Names this app already uses (ssl_flow) or assumed. |
+| `capacity_review.py:81` | "notes": ["Licensed counts come from the tenant's subscription list when it states a seat count (assumed row shape: licenses, quantity or… |
+| `capacity_review.py:91` | up). The row shape is assumed (readiness.parse_subscriptions); a list |
 | `compliance_pack.py:7` | the control catalogue with sources and the assumed flag |
 | `compliance_pack.py:148` | return "; ".join(f"{c['id']}{' (assumed)' if c.get('assumed') else ''}" for c in m.get("controls") or []) |
 | `compliance_pack.py:198` | MAP_COLUMNS = ["Source", "Area", "Rule", "Rule key", "Created", "Action", "Objective", "Controls", "Assumed", "Reason code", "Reason", |
@@ -410,8 +412,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/flow_anim.js:51` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
 | `static/flow_anim.js:59` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
 | `static/flow_anim.js:210` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:4862` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:4942` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4884` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:4964` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |

@@ -13096,6 +13096,16 @@ async def category_lookup_start(req: CategoryLookupRequest, request: Request):
     return {"job_id": job.id, "status": job.status, "kind": job.kind, "entries": n, "skipped": len(parsed["skipped"])}
 
 
+@app.get("/report/capacity")
+async def report_capacity_page():
+    """Capacity review (static/report_capacity.html): used against licensed counts, with headroom."""
+    page = os.path.join(STATIC_DIR, "report_capacity.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
 # ── Audit timeline ────────────────────────────────────────────────────
 @app.get("/report/audit")
 async def report_audit_page():
@@ -13226,6 +13236,107 @@ async def postmortem_report(req: PostmortemRequest):
         return Response(content=pm.to_csv(rep), media_type="text/csv; charset=utf-8",
                         headers={**hdr, "Content-Disposition": f"attachment; filename=postmortem_{ts}.csv"})
     return Response(content=json.dumps(rep, default=str), media_type="application/json", headers=hdr)
+
+
+class CiteRequest(BaseModel):
+    """Body of the citation tool: a topic or a finding id, and whether to fetch fresh excerpts (off unless asked)."""
+    topic: str = Field("", max_length=300)
+    finding_id: str = Field("", max_length=60)
+    fetch: bool = False
+
+
+@app.post("/api/cite")
+async def cite_route(req: CiteRequest):
+    """Best-practice citations (source URL, title, tier, retrieved date, quoted
+    excerpt) from the local catalogue and excerpt cache. `fetch` is off by
+    default; when on, only Zscaler help and docs hosts are fetched, through
+    the update checker's allowlisted fetcher. Reads no tenant."""
+    import reference_corpus as rc
+    try:
+        return await asyncio.to_thread(rc.cite, req.topic, req.finding_id, req.fetch)
+    except rc.CiteError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+class CapacityRequest(MigrateRequest):
+    """Body of the capacity review: tenant credentials and the Scope page selection."""
+
+
+def _run_capacity_review(creds: Dict[str, Any], scopes: List[str], label: str, log, cancel) -> Dict[str, Any]:
+    import capacity_review as cr
+    sdk = _build_sdk_client(creds)
+    try:
+        log("Reading counts for the products in scope (GET only)...")
+        got = cr.read_used(sdk, creds, scopes, cancel)
+    finally:
+        with contextlib.suppress(Exception):
+            sdk.close()
+    rep = cr.review(got["used"], cr.load_entitlements(), got["seats"])
+    rep["notes"] = got["notes"] + rep["notes"]
+    rep.update(tenant_label=label, markdown=cr.to_markdown(rep, f"Capacity review: {label}"), csv=cr.to_csv(rep))
+    return rep
+
+
+@app.post("/api/capacity-review")
+async def capacity_review_start(req: CapacityRequest, request: Request):
+    """Start the capacity review as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}): users, locations, tunnels, App Connectors
+    and ZPA segments in use against the licence seat counts read from
+    /subscriptions, else the local file. Needs Cloud & Branch Connector, ZPA
+    or ZIA platform (extras) ticked on the Scope page; otherwise a 400 before
+    any sign-in. Read-only."""
+    import pack_jobs
+    sc, _ch, _src = _scope_selection(req)
+    if not {"ztw", "zpa", "zia_extras"} & set(sc):
+        raise HTTPException(status_code=400, detail="The capacity review is not in scope: on the Scope page tick Cloud & Branch Connector, ZPA or ZIA platform, then run it again. Nothing was read.")
+    creds = _tenant_creds(req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("capacity-review", lambda log, cancel: _run_capacity_review(creds, list(sc), label, log, cancel),
+                          label=f"capacity review {label}"[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+class JournalRequest(BaseModel):
+    """One journal step: action open (title), add (case_id, kind, content, ...). The tenant is its label or profile."""
+    tenant: str = ""
+    profile_id: str = ""
+    vanity_domain: str = ""
+    cloud: str = ""
+    auth_method: str = ""
+    action: str = "add"
+    title: str = Field("", max_length=200)
+    case_id: str = Field("", max_length=8)
+    kind: str = Field("", max_length=20)
+    content: str = Field("", max_length=1000)
+    step_id: str = Field("", max_length=8)
+    tool: str = Field("", max_length=40)
+    ref: str = Field("", max_length=200)
+    outcome: str = Field("", max_length=20)
+
+
+@app.get("/api/journal")
+async def journal_get(tenant: str = "", profile_id: str = "", vanity_domain: str = "", cloud: str = "", auth_method: str = "", case_id: str = ""):
+    """The tenant's investigation cases, or one case with where it left off. Local, read-only."""
+    import investigation_journal as ij
+    label = _notes_call(_notes_tenant, tenant, profile_id, vanity_domain, cloud, auth_method)
+    return {"tenant": label, **_notes_call(ij.show, label, case_id)}
+
+
+@app.post("/api/journal")
+async def journal_post(req: JournalRequest, request: Request):
+    """Open a case or add a hypothesis, evidence, conclusion, question or
+    answer to it. A local write to the app's sealed journal store (never the
+    tenant), recorded with who made it."""
+    import investigation_journal as ij
+    label = _notes_call(_notes_tenant, req.tenant, req.profile_id, req.vanity_domain, req.cloud, req.auth_method)
+    by = _cq_by(request)
+    if req.action == "open":
+        case = _notes_call(ij.open_case, label, req.title, by=by)
+    elif req.action == "add":
+        case = _notes_call(ij.add, label, req.case_id, req.kind, req.content, by=by, step_id=req.step_id, tool=req.tool, ref=req.ref, outcome=req.outcome)
+    else:
+        raise HTTPException(status_code=400, detail="action is open or add.")
+    return {"tenant": label, "case": case}
 
 
 # ── Flow animator ─────────────────────────────────────────────────────

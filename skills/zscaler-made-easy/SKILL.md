@@ -94,6 +94,9 @@ answer leaves the question open.
 | What did the app change recently? What happened since Monday? | `timeline` (`since`) | `snapshot_diff` for what the configuration now differs by |
 | Are we near our licensed limits (locations, tunnels, connectors, segments)? How much headroom? | `capacity_review` | `ztw_summary`; the licensed counts come from the admin's local file |
 | Write the postmortem for last week's incident | `postmortem` (`start`, `end`) | `timeline` for counts; `snapshot_diff` for what differs now |
+| What does Zscaler recommend for X? (answer from the app's reference corpus) | `lookup` | `cite` for the source URL and a quoted excerpt |
+| Give me the source for this recommendation or finding id | `cite` (`topic` or `finding_id`; fetching only if the operator allows it) | `lookup` |
+| Start or resume an investigation; keep hypotheses and evidence | `journal_open`, `journal_add`, `journal_show` (the case's next step says where it left off) | `case_notes` for the admin's own notes |
 | What did we note about this rule or finding? Note this for later | `case_notes` (`tag` or `kind`) | Ask the admin to add the note on the app's pages (you cannot add one) |
 
 ## Answer shape

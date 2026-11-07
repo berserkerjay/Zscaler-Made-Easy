@@ -26,6 +26,7 @@ window.WHATS_NEW = {
     "2026-11-01": "Team server SAML 2.0 sign-in, passkeys and a password of your own, security gates, day-to-day admin, rehearse then simulate, Fix selected that changes the answer (URL filtering and ZPA), manual what-if inputs, other providers' endpoint lists, outside-tool gaps closed, and more of the tenant read and scored"
   },
   "skipped": {
+    "2026-11-07": "Assistant tools (capacity review, postmortem, lookup, cite, investigation journal) and the Capacity review page: the assistant tools have no control on a page, and the page is listed here until the next release batch marks it.",
     "2026-11-06": "Fixes with no new control: a read-only container answers health and says why its stores are not encrypted, the glass costs less while scrolling, and the browser acceptance run follows Chrome 157's error-page frames; a * on them would push 2026-11-01 out, so this release is not marked",
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },

@@ -57,6 +57,7 @@ Find the files a change touches here, then read only those.
 | `engine_explain.py` | DLP engine explainability: an engine expression as people read it. |
 | `guidance.py` | Continuous evaluation, phase 4: guidance that keeps itself current. |
 | `insights.py` | ZIA Insights traffic data: read-only, paced, Stop-able wrappers over the |
+| `investigation_journal.py` | Guided investigation journal: hypothesis -> evidence -> conclusion, resumable. |
 | `local_plugins.py` | Local plugins: an opt-in way to add Bulk changes operations and read-only |
 | `log_analyzer.py` | Log Analyzer: Client Connector log bundles and PAC files, explained. |
 | `m365_endpoints.py` | Microsoft's published Microsoft 365 endpoint list: kept on disk, checked |
@@ -125,6 +126,7 @@ Find the files a change touches here, then read only those.
 | `proposals.py` | Continuous evaluation, phase 2: proposals and the approval queue. |
 | `rank_inherit.py` | The admin rank a rule the app creates or moves needs. |
 | `readiness.py` | Readiness: what this API client can do in this app, before anything runs. |
+| `reference_corpus.py` | Reference corpus: grounded lookups and on-demand citations. |
 | `remediation.py` | Guided Auto-Remediation Framework |
 | `report_docx.py` | Zscaler Made Easy — Word Document Report Generator |
 | `report_exports.py` | Excel and PDF exports built on the in-house writers (xlsx_writer, |
@@ -311,6 +313,7 @@ Find the files a change touches here, then read only those.
 | `static/report_beacon.html` | Beacon — Zscaler Made Easy |
 | `static/report_browser.html` | Browser security — Zscaler Made Easy |
 | `static/report_bypass.html` | Bypass &amp; non-inspected traffic — Zscaler Made Easy |
+| `static/report_capacity.html` | Capacity review — Zscaler Made Easy |
 | `static/report_compliance.html` | Regulatory &amp; compliance alignment — Zscaler Made Easy |
 | `static/report_dataflow.html` | Data flow map — Zscaler Made Easy |
 | `static/report_device_posture.html` | Device posture — Zscaler Made Easy |

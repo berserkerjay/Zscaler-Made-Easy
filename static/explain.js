@@ -369,6 +369,14 @@
     get: 'A "Changed since last run" list (versions that moved, drift that is new or cleared, pages that changed, tenant endpoints whose answer changed), the SDK, API and Terraform detail, and the last 30 runs.',
     next: 'Act on new drift: read the SDK or provider changelog before upgrading, grant the permission a 403 names, or report an endpoint that moved.',
   };
+  X.capacity = {
+    group: 'Troubleshoot', name: 'Capacity review', href: '/report/capacity',
+    what: 'What the tenant uses against what it is licensed for: users, locations, tunnels, App Connectors and ZPA application segments, with the headroom left and a status for each. Read-only; exports Markdown and CSV.',
+    why: 'Running out of seats, locations or connectors shows up as a failed rollout. Seeing the headroom first lets you ask for more licences before the project needs them.',
+    when: 'Before adding a site, a business unit or a batch of applications, and before a renewal conversation.',
+    get: 'A table of used, licensed and headroom per metric, where each licensed count came from (the subscription list or your local file), and notes for anything that could not be read.',
+    next: 'Ask the account team for more of any metric marked low or over, or record the licensed counts in capacity_entitlements.json so the review can compare them.',
+  };
   X.audit = {
     group: 'Troubleshoot', name: 'Audit timeline', href: '/report/audit',
     what: 'One timeline, newest first, of who changed what in the tenant: ZIA\'s admin audit log for the window you choose, merged with Zscaler Made Easy\'s own deployment records and audit log, with filters, field-by-field diffs and CSV or JSON export.',
@@ -506,7 +514,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/aiguard': 'aiguard', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate', '/report/plugin': 'plugin', '/report/team': 'team',
-      '/report/logs': 'logs', '/report/ztw': 'ztw', '/report/soc-review': 'socreview', '/report/other-products': 'otherproducts', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
+      '/report/logs': 'logs', '/report/ztw': 'ztw', '/report/soc-review': 'socreview', '/report/other-products': 'otherproducts', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/capacity': 'capacity', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
   }
 
