@@ -155,7 +155,7 @@
   };
   X.apimap = {
     group: 'Find the gaps', name: 'Tenant API map', href: '/report/api-map',
-    what: 'Finds out which Zscaler features this tenant has, and which reads its API client may make, by asking. It shows you every endpoint it will read, you confirm, and it reads them one at a time (GET only, one a second by default) through the tenant you are signed in to. A separate tool from the licence and editions check, and a separate action from the Scope page.',
+    what: 'Finds out which Zscaler features this tenant has, and which reads its API client may make, by asking. It shows you every endpoint it will read, you confirm, and it reads them one at a time (GET only, one a second by default) through the tenant you are signed in to. A separate tool from the licence and editions check. It reads only the products ticked on the Scope page; the others are listed as skipped.',
     why: 'A feature missing from a report is either not bought, not switched on, or not readable by this API client, and each needs a different fix. Asking every readable endpoint once tells them apart, and shows which products the assessment can see at all.',
     when: 'Before the first assessment of a tenant, after changing the API client\'s role, and when a page says "not licensed" and you want to know whether that is the licence or the role.',
     get: 'A feature table (present, not licensed or not enabled, no permission, error, with the deciding endpoint) and a table of every endpoint read: status, number of items and the names of the top-level fields. Never a value, id, name or secret. Saved on this computer per tenant with the time, sealed like the app\'s other stores; export as JSON or CSV.',

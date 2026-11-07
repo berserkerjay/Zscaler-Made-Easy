@@ -1319,9 +1319,14 @@ def tenant_api_map(ctx: Ctx) -> Dict[str, Any]:
         return out
     a = _api()
     req = ctx.request(a.TenantApiMapRequest)
+    the_plan = a._api_map_plan(req)
+    try:
+        a._api_map_in_scope(the_plan)
+    except Exception as e:  # noqa: BLE001 - HTTPException: the app's own scope refusal, in words
+        raise Refused(str(getattr(e, "detail", e)), "not_in_scope") from None
     cl = a._signed_in_raw(a._tenant_creds(req))
     try:
-        rep = tam.run(cl, tam.plan(), label=ctx.label)
+        rep = tam.run(cl, the_plan, label=ctx.label)
     finally:
         _close(cl)
     out = tam.for_assistant(rep)

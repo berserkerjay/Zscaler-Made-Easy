@@ -67,12 +67,31 @@
     return d;
   }
 
-  // ── what to map ────────────────────────────────────────────────────
+  // ── what to map: only what the Scope page has ticked ───────────────
+  function readJson(key, fallback) {
+    try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+  }
+  function scopeSelection() {
+    let scopes = null;
+    const op = window.opener && !window.opener.closed ? window.opener : null;
+    try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+    if (!Array.isArray(scopes)) { const lv = readJson('zassess_scopes_live_v1', null); scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null; }
+    if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+    return { scopes: scopes.map(String), channels: {}, from_page: true };
+  }
+  const scopeLink = (plan, text) => el('a', { href: (plan && plan.scope_link) || '/#scopeField', text: text || 'the Scope page' });
+  function notInScope(plan) {
+    const list = (plan && plan.not_in_scope) || [];
+    if (!list.length) return null;
+    return el('p', { cls: 'df-hint' }, ['Skipped: not in scope: ' + list.map(n => `${n.name} (tick ${n.tick})`).join('; ') + '. On ', scopeLink(plan), ' tick a product there to include it.']);
+  }
   async function productChoices() {
     const box = $('amProducts');
     let plan = null;
-    try { plan = await post('/api/tenant-api-map/plan', {}); } catch (e) { box.textContent = 'The list of products could not be loaded.'; return; }
+    try { plan = await post('/api/tenant-api-map/plan', scopeSelection()); } catch (e) { box.textContent = 'The list of products could not be loaded.'; return; }
     clear(box);
+    const skipNote = notInScope(plan);
+    if (skipNote) { skipNote.id = 'amScopeNote'; $('amProducts').parentNode.insertBefore(skipNote, $('amProducts').nextSibling); }
     Object.keys(plan.by_product).sort().forEach(p => {
       const id = `amP_${p}`;
       box.appendChild(el('label', { for: id }, [el('input', { type: 'checkbox', id, value: p, checked: true, 'data-product': p }), `${pname(p)} (${plan.by_product[p]})`]));
@@ -84,7 +103,7 @@
     return on.length === boxes.length ? [] : on;   // none ticked below means all: the server's blank
   }
   function planBody() {
-    return { products: chosenProducts(), features_only: $('amFeaturesOnly').checked, rps: Number($('amSpeed').value) || 1 };
+    return Object.assign({ products: chosenProducts(), features_only: $('amFeaturesOnly').checked, rps: Number($('amSpeed').value) || 1 }, scopeSelection());
   }
 
   // ── the confirmation: exactly what will be read ────────────────────
@@ -112,14 +131,15 @@
       el('h2', { cls: 'df-h', id: 'amConfirmH', tabindex: '-1', text: `Read these ${plan.count} endpoints?` }),
       el('p', { text: `The map will send ${plan.count} GET requests, one at a time, up to ${plan.rps} a second (about ${plan.seconds < 90 ? `${plan.seconds} seconds` : `${mins} minutes`}), through the tenant you are signed in to. ` +
         'Nothing is created, changed, activated or deleted. For each answer it keeps only the status, the number of items and the names of the top-level fields: no value, id, name or secret. ' +
-        'This is its own action; it does not use the Scope page\'s ticks.' }),
+        'It reads only the products ticked on the Scope page; the others are listed below as skipped.' }),
+      notInScope(plan),
       el('div', { cls: 'am-stats' }, Object.entries(plan.by_product).map(([p, n]) => el('div', { cls: 'am-stat' }, [el('div', { cls: 'n', text: n }), el('div', { cls: 'k', text: pname(p) })]))),
       el('details', { cls: 'pa-details', open: true }, [el('summary', { text: `The ${plan.count} endpoints it will read` }),
         table('Endpoints the map will read', ['Product', 'Endpoint (GET)', 'Used for'], plan.reads.map(r => [pname(r.product), pathCell(r.path + (r.params.length ? '?' + r.params.map(p => p[0] + '=…').join('&') : '')),
           r.purpose === 'decider' ? 'Decides a feature' : r.purpose === 'info' ? 'Detail for a feature' : 'Catalogue']), 'Nothing would be read.', 'df-tablewrap am-scroll')]),
-      el('details', { cls: 'pa-details' }, [el('summary', { text: `Skipped (${plan.skipped_count}): ${reasons.join('; ')}` }),
+      el('details', { cls: 'pa-details', open: !plan.count }, [el('summary', { text: `Skipped (${plan.skipped_count}): ${reasons.join('; ')}` }),
         table('Endpoints the map skips', ['Product', 'Endpoint', 'Why not read'], plan.skipped.map(s => [pname(s.product), pathCell(s.path), s.reason]), '', 'df-tablewrap am-scroll')]),
-      el('div', { cls: 'rp-bar' }, [el('button', { type: 'button', cls: 'rp-btn primary', id: 'amConfirm', text: `Read these ${plan.count} endpoints` }),
+      el('div', { cls: 'rp-bar' }, [el('button', { type: 'button', cls: 'rp-btn primary', id: 'amConfirm', disabled: !plan.count, text: `Read these ${plan.count} endpoints` }),
         el('button', { type: 'button', cls: 'rp-btn', id: 'amCancel', text: 'Cancel' })])]));
     $('amConfirm').addEventListener('click', () => start(plan));
     $('amCancel').addEventListener('click', () => { closeConfirm(); $('amRun').focus(); say('Cancelled. Nothing was read.'); });
@@ -226,7 +246,7 @@
     body.appendChild(el('div', { cls: 'am-stats' }, tiles.map(([k, n]) => el('div', { cls: 'am-stat' }, [el('div', { cls: 'n', text: n == null ? 0 : n }), el('div', { cls: 'k', text: k })]))));
     body.appendChild(el('div', { cls: 'am-note' }, [el('strong', { text: 'In short' }), el('ul', {}, [
       el('li', { text: `${c.present || 0} of ${c.read || 0} endpoints answered; ${c.not_licensed || 0} said the feature is not licensed or not enabled; ${c.no_permission || 0} refused this API client; ${c.error || 0} failed.` }),
-      el('li', { text: `Read with GET only, one at a time, at most ${res.rps} a second, in ${mmss(res.duration_seconds)}. ${res.skipped_count || 0} endpoints were skipped (they need an object id, or return credentials or exports).` }),
+      el('li', { text: `Read with GET only, one at a time, at most ${res.rps} a second, in ${mmss(res.duration_seconds)}. ${res.skipped_count || 0} endpoints were skipped (not in scope on the Scope page, they need an object id, or they return credentials or exports).` }),
       el('li', { text: 'Only the status, the number of items and the names of the top-level fields were kept: never a value, id, name or secret.' }),
       res.history_error ? el('li', { text: res.history_error }) : null])]));
     body.appendChild(section('amFeaturesH', 'Features', [el('div', { id: 'amFeatures' }, [table('Features and whether the tenant has them', ['Feature', 'Result', 'Deciding endpoint', 'HTTP status', 'Items', 'Detail'],

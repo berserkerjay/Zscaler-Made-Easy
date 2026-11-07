@@ -81,18 +81,55 @@ _PREFIXES = (("/zia/", "zia"), ("/zpa/", "zpa"), ("/zcc/", "zcc"), ("/zdx/", "zd
 # credential, provisioning URL and key, download, export, logs): material that
 # is a key, a certificate request, an audit export or a tunnel's pre-shared key.
 EXTRA_SKIP = re.compile(r"auditlogEntryReport|ipGreTunnelInfo|enrollmentCert|businessContinuitySettings/certificate|"
-                        r"intermediateCaCertificate(?!/lite|/readyToUse)|private[_-]?key|/token|psk|ssh", re.I)
+                        r"intermediateCaCertificate(?!/lite|/readyToUse)|private[_-]?key|/token|psk|ssh|"
+                        # GETs the SDK lists whose names read as an action (a refresh, a sync, a scan): never sent, in case they do something
+                        r"azure/refreshConnectionStatus|azure/virtualHubSync|azure/unConfigureTunnelStatus|casbTenant/scanInfo", re.I)
+# A path that names an action is never read either, whatever its method in the SDK: any word of it (camelCase split) is one of these.
+ACTION_WORDS = frozenset({"sync", "refresh", "configure", "unconfigure", "enable", "disable", "reset", "run", "start", "stop", "trigger",
+                          "rotate", "generate", "activate", "deactivate", "scan"})
+
+
+def action_words(path: str) -> List[str]:
+    """The action verbs a path names (camelCase and separators split, case ignored): [] for a plain read."""
+    words: List[str] = []
+    for seg in re.split(r"[^A-Za-z0-9]+", path):
+        words += [w.lower() for w in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+", seg)]
+    return sorted(set(words) & ACTION_WORDS)
+
 SKIP_CREDENTIALS = ("otp", "password", "secret", "api-?key", "credential", "provurl", "provisioningkey", "download", "export",
                     "cloudformationtemplate", r"/logs\b", "/search$", "getAppsByType")
 SKIP_RE = re.compile("|".join(SKIP_CREDENTIALS), re.I)
 _PATH_OK = re.compile(r"\A/[A-Za-z0-9_./{}-]{1,300}\Z")
 
 REASON_ID = "needs an object id in its address"
-REASON_SENSITIVE = "returns credentials, one-time passwords, keys or an export, or needs a query: never read"
+REASON_SENSITIVE = "returns credentials, one-time passwords, keys or an export, needs a query, or its name is an action: never read"
 REASON_UNRESOLVED = "its address cannot be worked out from the SDK"
 REASON_CUSTOMER = "needs the ZPA customer ID, which is not set for this sign-in"
 REASON_CLASSIC = "the classic ZIA sign-in reaches ZIA only"
 REASON_PRODUCT = "its product is not selected"
+REASON_SCOPE = "skipped: not in scope"
+SCOPE_LINK = "/#scopeField"   # the Scope page (the assessment page's scope field)
+
+# The Scope page keys that put a product's reads in scope: any one of them ticked is enough.
+SCOPE_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "zid": ("zidentity",), "ztw": ("ztw",),
+              "zwa": ("dlp",), "zeasm": ("easm",), "ztb": ("ztb",), "zbi": ("zbi",), "aiguard": ("aiguard",), "zcell": ("zcell",)}
+SCOPE_LABELS = {"dlp": "DLP", "zia_extras": "ZIA platform", "zpa": "ZPA", "zcc": "ZCC", "zdx": "ZDX", "zidentity": "ZIdentity", "ztw": "Cloud & Branch Connector",
+                "easm": "External attack surface (EASM)", "ztb": "Zero Trust Branch", "zbi": "Business Insights", "aiguard": "AI Guard",
+                "zcell": "Zero Trust Cellular"}
+
+
+def in_scope(product: str, scopes: Optional[Iterable[Any]]) -> bool:
+    """True when the Scope page's ticked keys put `product` in scope. `scopes` None means no Scope page selection applies
+    (library use, tests); an empty list means nothing is ticked: nothing is in scope (fail closed)."""
+    if scopes is None:
+        return True
+    ticked = {str(x).strip() for x in scopes}   # exact keys, as the Scope page sends them: "DLP" is not "dlp"
+    return any(k in ticked for k in SCOPE_KEYS.get(product, ("?",)))
+
+
+def scope_hint(product: str) -> str:
+    keys = SCOPE_KEYS.get(product, ())
+    return " or ".join(SCOPE_LABELS.get(k, k) for k in keys)
 
 
 # ── the catalogue ────────────────────────────────────────────────────
@@ -130,7 +167,7 @@ def skip_reason(entry: Mapping[str, Any]) -> Optional[str]:
         return REASON_ID
     if "{?}" in path:
         return REASON_UNRESOLVED
-    if SKIP_RE.search(path) or EXTRA_SKIP.search(path):
+    if SKIP_RE.search(path) or EXTRA_SKIP.search(path) or action_words(path):
         return REASON_SENSITIVE
     if not entry.get("probeable"):
         return str(entry.get("skip_reason") or REASON_SENSITIVE)[:120]
@@ -224,12 +261,15 @@ def clamp_rps(rps: Any) -> float:
     return round(min(MAX_RPS, max(MIN_RPS, v)), 2)
 
 
-def plan(products: Optional[Iterable[Any]] = None, features_only: bool = False, rps: Any = DEFAULT_RPS) -> Dict[str, Any]:
+def plan(products: Optional[Iterable[Any]] = None, features_only: bool = False, rps: Any = DEFAULT_RPS, scopes: Optional[Iterable[Any]] = None) -> Dict[str, Any]:
     """Everything the map would read and everything it would skip, without
     touching a tenant: `reads` (feature deciders first, then the rest of the
     catalogue), `skipped` (each with its reason) and a `plan_hash` the start
-    request must repeat, so what was confirmed is what runs."""
+    request must repeat, so what was confirmed is what runs. `scopes` is the Scope page's ticked keys: an endpoint whose
+    product is not ticked there is never read and is listed as "skipped: not in scope" (None: no Scope page selection)."""
     chosen = normalise_products(products)
+    scopes = None if scopes is None else [str(x) for x in scopes]
+    out_of_scope = sorted(p for p in PRODUCT_NAMES if not in_scope(p, scopes))
     idx = _entry_index()
     reads: Dict[str, Dict[str, Any]] = {}
 
@@ -239,6 +279,8 @@ def plan(products: Optional[Iterable[Any]] = None, features_only: bool = False, 
             return
         prod = e["product"]
         if chosen is not None and prod not in chosen:
+            return
+        if not in_scope(prod, scopes):
             return
         k = key_of(path, params)
         if k in reads:
@@ -260,7 +302,7 @@ def plan(products: Optional[Iterable[Any]] = None, features_only: bool = False, 
     skipped: List[Dict[str, Any]] = []
     for path in sorted(idx, key=lambda p: (idx[p]["product"], p)):
         e = idx[path]
-        why = skip_reason(e)
+        why = REASON_SCOPE if not in_scope(e["product"], scopes) else skip_reason(e)
         if why is None and chosen is not None and e["product"] not in chosen:
             why = REASON_PRODUCT
         if why is not None:
@@ -275,27 +317,49 @@ def plan(products: Optional[Iterable[Any]] = None, features_only: bool = False, 
     digest = hashlib.sha256(json.dumps([[r["path"], r["params"]] for r in rows] + [speed], sort_keys=True).encode()).hexdigest()[:24]
     return {"reads": rows, "count": len(rows), "by_product": by_product, "skipped": skipped, "skipped_count": len(skipped),
             "skipped_by_reason": by_reason, "rps": speed, "seconds": int(math.ceil(len(rows) / speed)) if rows else 0,
-            "features_only": bool(features_only), "selected": chosen, "products": chosen if chosen is not None else sorted(by_product),
+            "features_only": bool(features_only), "selected": chosen, "scope_applied": scopes is not None,
+            "not_in_scope": [{"product": p, "name": PRODUCT_NAMES[p], "tick": scope_hint(p)} for p in out_of_scope
+                             if chosen is None or p in chosen] if scopes is not None else [],
+            "scope_link": SCOPE_LINK, "products": chosen if chosen is not None else sorted(by_product),
             "sdk": catalogue()["sdk"], "plan_hash": digest, "method": "GET",
             "note": ("Only GET requests, one at a time, at the speed shown. Each answer is reduced to its status, how many items it holds and the "
                      "names of its top-level fields; no value, id, name or secret is kept.")}
 
 
 # ── turning an answer into counts and field names ────────────────────
-_NAME_OK = re.compile(r"\A[a-z][A-Za-z0-9_]{0,47}\Z")
+_NAME_OK = re.compile(r"\A[a-z][A-Za-z0-9_]{0,39}\Z")          # a field name as an identifier: lower-case first, no dot, @, dash or space
 _LIST_KEYS = ("list", "items", "results", "data", "content", "records", "resources", "entries")
-_HINT_RE = re.compile(r"\A[A-Z][A-Z_]{2,40}\Z")
-_HINT_FIND = re.compile(r'(?:"(?:code|errorCode|error_code|id|error)"\s*:\s*"|\b)(NOT_SUBSCRIBED|NOT_ENABLED|NOT_LICENSED|FEATURE_NOT_[A-Z_]{1,30}|'
-                        r'[A-Z]{2,12}_NOT_(?:ENABLED|SUBSCRIBED|LICENSED|AVAILABLE))\b')
+
+# Error words: the only text an error answer can contribute. Each is a fixed word of this list, never the API's own text.
+KNOWN_ERROR_CODES = ("NOT_SUBSCRIBED", "NOT_ENABLED", "NOT_LICENSED", "FEATURE_NOT_ENABLED", "FEATURE_NOT_LICENSED",
+                     "FEATURE_NOT_SUBSCRIBED", "FEATURE_NOT_AVAILABLE", "SUBSCRIPTION_REQUIRED", "RATE_LIMIT_EXCEEDED", "UNAUTHORIZED",
+                     "NOT_AUTHORIZED", "INVALID_INPUT_ARGUMENT", "RESOURCE_NOT_FOUND", "INVALID_REQUEST")
+KNOWN_PHRASES = (("not subscribed", "NOT_SUBSCRIBED"), ("not licensed", "NOT_LICENSED"), ("feature is not enabled", "FEATURE_NOT_ENABLED"),
+                 ("not enabled", "NOT_ENABLED"), ("subscription required", "SUBSCRIPTION_REQUIRED"),
+                 ("rate limit", "RATE_LIMIT_EXCEEDED"), ("not authorized", "NOT_AUTHORIZED"), ("unauthorized", "UNAUTHORIZED"))
+GENERIC_HINT = "no known Zscaler error code"
+_CODE_FIND = re.compile(r"\b(" + "|".join(sorted(KNOWN_ERROR_CODES, key=len, reverse=True)) + r")\b")
+_HEXY = re.compile(r"[0-9a-fA-F]{8,}")
 
 
 def safe_name(name: Any) -> Optional[str]:
-    """A top-level field name as the API spells it, or None when it could be data: a name that does
-    not look like a field (a tenant's own text used as a key), carries a long number or is a long hex string."""
+    """A top-level field name as the API spells it, or None when it could be data: it must be an identifier (lower-case first, then
+    letters, digits and underscores, 40 at most), with no UPPER_SNAKE code, no hex or other long run, no run of four digits or more
+    (an id, a port, a year) and no email, domain, UUID or space (their characters do not pass the identifier pattern)."""
     n = str(name)
-    if not _NAME_OK.match(n) or re.search(r"\d{4,}", n) or re.fullmatch(r"[0-9a-fA-F]{16,}", n):
+    if not _NAME_OK.match(n) or re.search(r"\d{4,}", n) or _HEXY.fullmatch(n) or re.fullmatch(r"[A-Z0-9_]+", n):
         return None
     return n
+
+
+def _keys_are_data(d: Mapping[str, Any]) -> bool:
+    """True for an object that is a map from a name to a record ({"jsmith": {...}, "acme": {...}}): its keys are data, not fields.
+    Two or more record-valued keys whose records share a key are such a map."""
+    recs = [v for v in d.values() if isinstance(v, dict) and v]
+    if len(recs) < 2:
+        return False
+    first = set(recs[0])
+    return all(first & set(r) for r in recs[1:])
 
 
 def summarise(data: Any) -> Dict[str, Any]:
@@ -335,7 +399,9 @@ def summarise(data: Any) -> Dict[str, Any]:
                     if k not in names:
                         names.append(k)
     elif top is not None:
-        names = list(top.keys())
+        names = [] if _keys_are_data(top) else list(top.keys())
+        if not names:
+            out["other_names"] = len(top)
     fields: List[str] = []
     other = 0
     for n in names:
@@ -347,23 +413,31 @@ def summarise(data: Any) -> Dict[str, Any]:
     if len(fields) > MAX_FIELDS:
         other += len(fields) - MAX_FIELDS
         fields = fields[:MAX_FIELDS]
-    out["fields"], out["other_names"] = fields, other
+    out["fields"], out["other_names"] = fields, other + (out["other_names"] if top is not None and not names else 0)
     return out
 
 
-def error_hint(body: Any) -> Optional[str]:
-    """An UPPER_SNAKE error code such as NOT_SUBSCRIBED out of an error answer: a fixed word, nothing else."""
+def error_hint(body: Any) -> str:
+    """A known Zscaler error word for an error answer: always a member of KNOWN_ERROR_CODES, or GENERIC_HINT. The answer's own
+    text (a code it invents, an id, a name) is looked up in the list and never copied."""
     text = ""
     if isinstance(body, dict):
-        for k in ("code", "errorCode", "error_code", "id"):
+        for k in ("code", "errorCode", "error_code"):
             v = body.get(k)
-            if isinstance(v, str) and _HINT_RE.match(v):
-                return v
+            if isinstance(v, str) and v.strip().upper() in KNOWN_ERROR_CODES:
+                return v.strip().upper()
         text = str(body.get("error") or body.get("message") or "")
     elif isinstance(body, str):
         text = body
-    m = _HINT_FIND.search(text[:400])
-    return m.group(1) if m else None
+    text = text[:400]
+    m = _CODE_FIND.search(text)
+    if m:
+        return m.group(1)
+    low = text.lower()
+    for phrase, code in KNOWN_PHRASES:
+        if phrase in low:
+            return code
+    return GENERIC_HINT
 
 
 def verdict_for(status: Optional[int], hint: Optional[str] = None) -> str:
@@ -372,7 +446,7 @@ def verdict_for(status: Optional[int], hint: Optional[str] = None) -> str:
         return ERROR
     if 200 <= status < 300:
         return PRESENT
-    if hint and re.search(r"NOT_SUBSCRIBED|NOT_ENABLED|NOT_LICENSED|FEATURE_NOT|_NOT_AVAILABLE", hint):
+    if hint and re.search(r"NOT_SUBSCRIBED|NOT_ENABLED|NOT_LICENSED|FEATURE_NOT|SUBSCRIPTION_REQUIRED", hint):
         return NOT_LICENSED
     if status == 404:
         return NOT_LICENSED
@@ -423,7 +497,14 @@ class Throttle:
                 time.sleep(delay)
             now = max(now, self._next)
         self._next = now + self.interval
+        self._started = now
         return not (cancel is not None and cancel.is_set())
+
+    def account(self, sent: int) -> None:
+        """Charge a read for every request it really sent: the client retries a 429, a 5xx or a timeout by itself, and each
+        of those counts, so the next read waits `sent` intervals from this read's start. The rate never exceeds the setting."""
+        if sent > 1:
+            self._next = max(self._next, getattr(self, "_started", self._next) + sent * self.interval)
 
 
 class Stopped(Exception):
@@ -445,6 +526,22 @@ class ReadOnlyClient:
         self._client = client
         self._allowed = set(allowed)
         self.reads = 0
+        self._stopped = False
+
+    def sent(self) -> Optional[int]:
+        """How many requests the client has really sent (a retry is one more), when it counts them."""
+        n = getattr(self._client, "requests_made", None)
+        return n if isinstance(n, int) and not isinstance(n, bool) else None
+
+    def stop(self) -> None:
+        """End every wait and retry of the client at once; any later read here is refused."""
+        self._stopped = True
+        fn = getattr(self._client, "stop", None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:  # noqa: BLE001 - a client that cannot stop is abandoned by the caller anyway
+                pass
 
     def __getattr__(self, name: str) -> Any:
         if name in ReadOnlyClient.PASS_THROUGH:
@@ -454,6 +551,8 @@ class ReadOnlyClient:
     def get(self, path: str, params: Optional[Mapping[str, Any]] = None) -> Tuple[Any, int]:
         if path not in self._allowed:
             raise PermissionError("the API map reads only the endpoints it showed you")
+        if self._stopped:
+            return None, 0
         self.reads += 1
         res = self._client.get(path, dict(params) if params else None)
         try:
@@ -523,7 +622,35 @@ def read_one(ro: ReadOnlyClient, client: Any, r: Mapping[str, Any]) -> Dict[str,
     return row
 
 
-def feature_rows(results: Mapping[str, Dict[str, Any]], chosen: Optional[List[str]]) -> List[Dict[str, Any]]:
+IN_FLIGHT_POLL = 0.1   # seconds between looks at Stop while a request is in flight
+
+
+def _read_interruptible(ro: ReadOnlyClient, client: Any, r: Mapping[str, Any], cancel: Optional[threading.Event]) -> Dict[str, Any]:
+    """read_one, but Stop does not wait for the request in flight: the client is told to stop (no retry, no back-off, no new
+    request), the run ends at once and the late answer, if one comes, is dropped with its thread. Without a cancel it is a plain call."""
+    if cancel is None:
+        return read_one(ro, client, r)
+    box: Dict[str, Any] = {}
+
+    def work() -> None:
+        try:
+            box["row"] = read_one(ro, client, r)
+        except BaseException as e:  # noqa: BLE001 - re-raised in the caller
+            box["err"] = e
+
+    t = threading.Thread(target=work, name="api-map-read", daemon=True)
+    t.start()
+    while t.is_alive():
+        t.join(IN_FLIGHT_POLL)
+        if cancel.is_set() and t.is_alive():
+            ro.stop()
+            raise Stopped(STOPPED_REASON)
+    if "err" in box:
+        raise box["err"]
+    return box["row"]
+
+
+def feature_rows(results: Mapping[str, Dict[str, Any]], chosen: Optional[List[str]], out_of_scope: Iterable[str] = ()) -> List[Dict[str, Any]]:
     """The feature table: each feature's verdict is the best answer among its deciding endpoints."""
     rank = {PRESENT: 0, NO_PERMISSION: 1, NOT_LICENSED: 2, ERROR: 3, NOT_PROBED: 4}
     rows = []
@@ -531,6 +658,10 @@ def feature_rows(results: Mapping[str, Dict[str, Any]], chosen: Optional[List[st
         name, prod, deciders, _info, note = f
         row: Dict[str, Any] = {"feature": name, "product": prod, "deciding_endpoint": None, "status": None, "verdict": NOT_PROBED,
                                "item_count": None, "detail": note, "info": []}
+        if prod in set(out_of_scope):
+            row["detail"] = REASON_SCOPE
+            rows.append(row)
+            continue
         if chosen is not None and prod not in chosen and prod != "risk360":
             row["detail"] = "its product was not selected"
             rows.append(row)
@@ -588,7 +719,10 @@ def run(client: Any, the_plan: Dict[str, Any], *, label: str = "", sign_in: str 
         for n, r in enumerate(reads, 1):
             if not throttle.wait(cancel):
                 raise Stopped(STOPPED_REASON)
-            row = read_one(ro, client, r)
+            before = ro.sent()
+            row = _read_interruptible(ro, client, r, cancel)
+            after = ro.sent()
+            throttle.account(max(1, after - before) if before is not None and after is not None else 1)
             if row["error"] == "rate limited":
                 streak += 1
                 if streak >= ABORT_AFTER_429:
@@ -604,7 +738,7 @@ def run(client: Any, the_plan: Dict[str, Any], *, label: str = "", sign_in: str 
                 + (f" ({row['item_count']} items)" if row["item_count"] is not None else ""))
             if progress:
                 progress({"done": n, "total": len(reads), "present": sum(1 for x in rows if x["verdict"] == PRESENT)})
-        feats = feature_rows(results, the_plan.get("selected"))
+        feats = feature_rows(results, the_plan.get("selected"), [x["product"] for x in the_plan.get("not_in_scope") or []])
         counts = counts_of(rows, feats, len(reads))
         mode = "sample or snapshot" if offline else ("classic ZIA" if getattr(client, "legacy", False) else "OneAPI")
         out = {"status": "done", "tenant_label": label, "sign_in": sign_in or mode, "started_at": _now(), "rps": the_plan["rps"], "sdk": the_plan["sdk"],
@@ -707,7 +841,7 @@ def _clean_row(e: Any) -> Optional[Dict[str, Any]]:
             if isinstance(e.get("params"), list) else [], "sdk_method": _word(e.get("sdk_method"), 160), "purpose": _word(e.get("purpose"), 12),
             "status": status, "verdict": verdict, "item_count": _count(e.get("item_count")), "total_reported": _count(e.get("total_reported")),
             "shape": _word(e.get("shape"), 16), "field_names": fields, "other_names": _count(e.get("other_names"), 100000) or 0,
-            "error_code_hint": e.get("error_code_hint") if isinstance(e.get("error_code_hint"), str) and _HINT_RE.match(e["error_code_hint"]) else None,
+            "error_code_hint": e.get("error_code_hint") if e.get("error_code_hint") in KNOWN_ERROR_CODES + (GENERIC_HINT,) else None,
             "error": _word(e.get("error"), 120) or None}
 
 

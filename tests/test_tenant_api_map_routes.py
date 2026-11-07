@@ -20,6 +20,7 @@ from conftest import audit_events, read_store_text
 
 CREDS = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "customer_id": "7210000000000"}
 CANARY = "route-canary-VALUE-55e1"
+ALL_TICKED = {"scopes": sorted({k for ks in tam.SCOPE_KEYS.values() for k in ks}), "channels": {}, "from_page": True}   # the Scope page, every box ticked
 ROUTES = ["POST /api/tenant-api-map/plan", "POST /api/tenant-api-map/start", "GET /api/tenant-api-map/saved", "GET /api/tenant-api-map/export/{report_id}",
           "GET /api/tenant-api-map/{report_id}", "POST /api/tenant-api-map/forget", "GET /report/api-map"]
 
@@ -80,14 +81,14 @@ def client(monkeypatch):
 
 def _start_body(**kw):
     plan = tam.plan(["zia"], True)
-    body = dict(CREDS, products=["zia"], features_only=True, confirm=True, plan_hash=plan["plan_hash"])
+    body = dict(CREDS, **ALL_TICKED, products=["zia"], features_only=True, confirm=True, plan_hash=plan["plan_hash"])
     body.update(kw)
     return body
 
 
 def test_the_plan_needs_no_sign_in_and_lists_the_reads(client):
     """ASVS V4.1.1: POST plan answers the list, the skips and the hash with no credentials and no client."""
-    r = client.post("/api/tenant-api-map/plan", json={"products": ["zia"], "features_only": True})
+    r = client.post("/api/tenant-api-map/plan", json=dict(ALL_TICKED, products=["zia"], features_only=True))
     assert r.status_code == 200 and client.calls["signed_in"] == 0
     d = r.json()
     assert d["method"] == "GET" and d["count"] == len(d["reads"]) > 10 and d["plan_hash"] and d["skipped"]
@@ -149,7 +150,7 @@ def test_the_signed_in_tenant_is_used_without_new_credentials(monkeypatch, tmp_p
     monkeypatch.setattr(srv, "_raw_client", lambda creds: (made.append(dict(creds)), _Raw(creds))[1])
     monkeypatch.setattr(pack_jobs, "start", lambda kind, fn, **kw: (fn(lambda l: None, __import__("threading").Event()), _Job())[1])
     c = TestClient(srv.app)
-    body = {"products": ["zia"], "features_only": True, "confirm": True, "plan_hash": tam.plan(["zia"], True)["plan_hash"]}
+    body = dict(ALL_TICKED, products=["zia"], features_only=True, confirm=True, plan_hash=tam.plan(["zia"], True)["plan_hash"])
     assert c.post("/api/tenant-api-map/start", json=body).status_code in (400, 401) and made == []
     assert c.post("/api/tenant/check", json=ACME).json()["signed_in"] is True
     made.clear()
@@ -166,7 +167,7 @@ def test_the_sample_tenant_maps_offline_and_never_signs_in(monkeypatch):
     c = TestClient(srv.app)
     c.cookies.set(offline_tenant.COOKIE, offline_tenant.SAMPLE)
     plan = tam.plan(None, False)
-    r = c.post("/api/tenant-api-map/start", json={"products": [], "features_only": False, "confirm": True, "plan_hash": plan["plan_hash"]})
+    r = c.post("/api/tenant-api-map/start", json=dict(ALL_TICKED, products=[], features_only=False, confirm=True, plan_hash=plan["plan_hash"]))
     assert r.status_code == 200, r.text
     res = out[0]
     assert res["status"] == "done" and res["tenant_label"].startswith("Sample tenant") and res["counts"]["present"] > 150 and res["counts"]["no_permission"] == 1
@@ -257,3 +258,55 @@ def test_the_mcp_server_lists_the_tool_as_read_only():
     import dlp_mcp_server
     tool = {t.name: t for t in asyncio.run(dlp_mcp_server.mcp.list_tools())}["tenant_api_map"]
     assert tool.annotations.read_only_hint is True and set((getattr(tool, "input_schema", None) or getattr(tool, "inputSchema", None) or {})["properties"]) == {"source", "snapshot_id"}
+
+
+# ── the Scope page binds the map ─────────────────────────────────────
+def _scoped(*keys, **kw):
+    return dict(CREDS, scopes=list(keys), channels={}, from_page=True, **kw)
+
+
+def test_the_plan_lists_an_unticked_product_as_skipped_not_in_scope_with_the_scope_link(client):
+    """ASVS V4.1.3 · CWE-272: POST plan with only ZPA ticked reads no ZIA endpoint; each is 'skipped: not in scope' and the answer links to the Scope page."""
+    d = client.post("/api/tenant-api-map/plan", json={"scopes": ["zpa"], "from_page": True}).json()
+    assert {r["product"] for r in d["reads"]} == {"zpa"} and d["skipped_by_reason"]["skipped: not in scope"] > 100
+    assert any(n["product"] == "zia" and "tick" in n for n in d["not_in_scope"]) and d["scope_link"] == "/#scopeField"
+    assert d["count"] < client.post("/api/tenant-api-map/plan", json=ALL_TICKED).json()["count"]
+    assert client.calls["signed_in"] == 0
+
+
+@pytest.mark.parametrize("sel", [{}, {"scopes": [], "from_page": True}, {"scopes": ["rbac", "insights"], "from_page": True}])
+def test_nothing_in_scope_is_refused_before_sign_in(client, sel):
+    """ASVS V4.1.3 · CWE-272 · WSTG-ATHZ-02: no ticked product the map reads (or no selection at all) is a 400 naming the Scope page, before any sign-in or read."""
+    plan = tam.plan(None, False, scopes=[])
+    r = client.post("/api/tenant-api-map/start", json=dict(CREDS, **sel, confirm=True, plan_hash=plan["plan_hash"]))
+    assert r.status_code == 400 and "scope" in r.json()["detail"].lower() and "tick" in r.json()["detail"]
+    assert client.calls["signed_in"] == 0 and client.calls["gets"] == []
+
+
+def test_unticked_products_are_never_read(client):
+    """ASVS V4.1.3 · CWE-272: with only Client Connector ticked and the hash of that plan, the run reads /zcc/ only; a ZIA pick is not widened by the request."""
+    plan = tam.plan(None, False, scopes=["zcc"])
+    r = client.post("/api/tenant-api-map/start", json=_scoped("zcc", confirm=True, plan_hash=plan["plan_hash"]))
+    assert r.status_code == 200, r.text
+    assert client.calls["gets"] and all(g.startswith("raw:/zcc/") for g in client.calls["gets"])
+    # An explicit pick of an unticked product reads nothing and is refused as out of scope.
+    p2 = tam.plan(["zia"], False, scopes=["zcc"])
+    r2 = client.post("/api/tenant-api-map/start", json=_scoped("zcc", products=["zia"], confirm=True, plan_hash=p2["plan_hash"]))
+    assert r2.status_code == 400 and "scope" in r2.json()["detail"].lower()
+    assert not any("/zia/" in g for g in client.calls["gets"])
+
+
+def test_a_hash_confirmed_for_a_wider_scope_is_refused_when_the_scope_narrowed(client):
+    """CWE-367: what was confirmed is what runs: untick a product after confirming and the old hash no longer matches (400, nothing read)."""
+    wide = tam.plan(None, False, scopes=["zcc", "zpa"])
+    r = client.post("/api/tenant-api-map/start", json=_scoped("zcc", confirm=True, plan_hash=wide["plan_hash"]))
+    assert r.status_code == 400 and "changed" in r.json()["detail"] and client.calls["gets"] == []
+
+
+def test_the_map_page_sends_the_scope_page_selection_and_links_to_it():
+    """WCAG 2.2 SC 2.4.4 · CWE-272: the page sends the Scope page's ticks with plan and start and links to the Scope page for what is skipped."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    js = open(os.path.join(root, "static", "tenant_api_map.js"), encoding="utf-8").read()
+    assert "scopeSelection()" in js and "getSelectedScopes" in js and "zassess_scopes_live_v1" in js and "not in scope" in js and "scope_link" in js
+    assert "does not use the Scope page" not in js

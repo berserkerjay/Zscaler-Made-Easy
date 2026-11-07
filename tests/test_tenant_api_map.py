@@ -55,16 +55,34 @@ def _fast(rps=5):
 
 
 # ── the catalogue ────────────────────────────────────────────────────
-def test_the_committed_catalogue_matches_the_installed_sdk():
-    """SSDF PW.4.4 · CWE-1104: tenant_api_catalogue.json is exactly what tools/build_tenant_api_catalogue.py makes from the installed SDK."""
+def _pinned_sdk_version():
+    """The zscaler-sdk-python version requirements.lock pins."""
+    import re
+    with open(os.path.join(ROOT, "requirements.lock"), encoding="utf-8") as f:
+        hit = re.search(r"^zscaler-sdk-python==([0-9][^\s\\]*)", f.read(), re.M)
+    assert hit, "requirements.lock does not pin zscaler-sdk-python"
+    return hit.group(1)
+
+
+def test_the_committed_catalogue_matches_the_sdk_pinned_in_requirements_lock():
+    """SSDF PW.4.4 · CWE-1104: the catalogue names the SDK version requirements.lock pins, and, with that version installed, is exactly what tools/build_tenant_api_catalogue.py makes from it."""
     # Arrange
+    import importlib.metadata
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import build_tenant_api_catalogue as b
+    pinned, installed = _pinned_sdk_version(), importlib.metadata.version("zscaler-sdk-python")
+    # Assert: the committed file is for the pinned version
+    assert m.catalogue()["sdk"] == f"zscaler-sdk-python {pinned}", (
+        f"tenant_api_catalogue.json was made from {m.catalogue()['sdk']} but requirements.lock pins {pinned}: "
+        "run python tools/build_tenant_api_catalogue.py with the pinned SDK installed, then review the endpoints it added")
+    assert installed == pinned, (f"the installed zscaler-sdk-python is {installed} but requirements.lock pins {pinned}: install the pinned version "
+                                 "(pip install -r requirements.lock), or, after an SDK upgrade, regenerate the catalogue with "
+                                 "python tools/build_tenant_api_catalogue.py and review the endpoints it added")
     # Act
     fresh = b.render(b.catalogue())
     # Assert
     with open(m.CATALOGUE_FILE, encoding="utf-8") as f:
-        assert f.read() == fresh, "run: python tools/build_tenant_api_catalogue.py, then review the endpoints the new SDK added"
+        assert f.read() == fresh, "regenerate the catalogue: python tools/build_tenant_api_catalogue.py, then review the endpoints the SDK added"
 
 
 def test_the_catalogue_holds_only_get_endpoints_and_the_expected_scale():
@@ -169,7 +187,7 @@ def test_an_error_code_is_read_from_a_wire_answer_as_a_fixed_word_only():
     """CWE-209: only an UPPER_SNAKE code leaves an error answer; the rest of its text is never kept."""
     assert m.error_hint({"code": "NOT_SUBSCRIBED", "message": CANARY}) == "NOT_SUBSCRIBED"
     assert m.error_hint({"error": '{"code":"FEATURE_NOT_ENABLED","message":"%s"}' % CANARY}) == "FEATURE_NOT_ENABLED"
-    assert m.error_hint({"error": "boom " + CANARY}) is None
+    assert m.error_hint({"error": "boom " + CANARY}) == m.GENERIC_HINT
 
 
 def test_the_run_turns_each_answer_into_a_verdict_and_a_feature_row():
@@ -377,3 +395,145 @@ def test_the_assistant_view_is_counts_and_verdicts():
     out = m.for_assistant(_tiny_map())
     assert out["counts"]["present"] == 1 and out["features"][0]["verdict"] == m.PRESENT and out["present_by_product"] == {"zia": 1}
     assert "field_names" not in json.dumps(out)
+
+
+# ── the Scope page binds the map ─────────────────────────────────────
+def test_an_unticked_product_is_never_planned_and_is_listed_as_skipped_not_in_scope():
+    """ASVS V4.1.3 · CWE-272 · WSTG-ATHZ-02: with only ZPA ticked, no other product's endpoint is planned; each is skipped as 'not in scope' with the link."""
+    p = m.plan(scopes=["zpa"])
+    assert p["reads"] and {r["product"] for r in p["reads"]} == {"zpa"}
+    gone = [s for s in p["skipped"] if s["product"] == "zia"]
+    assert gone and {s["reason"] for s in gone} == {m.REASON_SCOPE} == {"skipped: not in scope"}
+    assert {n["product"] for n in p["not_in_scope"]} >= {"zia", "zcc", "zdx"} and p["scope_link"].startswith("/#") and p["scope_applied"] is True
+    assert m.plan(scopes=[])["reads"] == [] and m.plan(scopes=[])["count"] == 0
+    assert m.plan(scopes=["DLP", "ZPA"])["reads"] == []                            # keys are exact, as the Scope page sends them (fail closed)
+    assert m.plan()["count"] > p["count"] and m.plan()["scope_applied"] is False   # no selection: the library default
+
+
+def test_a_run_never_sends_a_read_for_a_product_that_is_not_ticked():
+    """ASVS V4.1.3 · CWE-272: the client sees no path of an unticked product, and the feature table says why it was not checked."""
+    fc = FakeClient(default=([], 200))
+    rep = m.run(fc, m.plan(scopes=["zia_extras"]), label="t", throttle=_fast())
+    assert fc.calls and all(c[0].startswith("raw:/zia/") for c in fc.calls)
+    rows = {f["feature"]: f for f in rep["features"]}
+    assert rows["ZDX"]["detail"] == m.REASON_SCOPE and rows["ZDX"]["verdict"] == m.NOT_PROBED and rows["Cloud Firewall"]["verdict"] == m.PRESENT
+
+
+# ── error words and field names: nothing a tenant wrote ──────────────
+@pytest.mark.parametrize("body", [
+    {"id": "ALICE_SMITH_X"}, {"code": "ALICE_SMITH_X"}, {"errorCode": "FEATURE_NOT_ALICE"}, {"error": "user alice@example.com ACME_CORP_ADMIN"},
+    {"error": '{"id":"JSMITH_PAYROLL","message":"x"}'}, {"message": "FEATURE_NOT_ACME_PAYROLL_TENANT"}, "ACME_PAYROLL_ADMIN", None, 5, [],
+])
+def test_an_error_hint_is_only_ever_a_known_word_or_the_generic_one(body):
+    """CWE-209 · CWE-200: the verifier's reproductions ({"id":"ALICE_SMITH_X"} and other tenant text shaped like a code) give the generic hint, never the text."""
+    assert m.error_hint(body) == m.GENERIC_HINT
+
+
+@pytest.mark.parametrize("body,word", [
+    ({"code": "NOT_SUBSCRIBED"}, "NOT_SUBSCRIBED"), ({"errorCode": "feature_not_enabled"}, "FEATURE_NOT_ENABLED"),
+    ({"error": "This feature is not enabled for your org (acme)"}, "FEATURE_NOT_ENABLED"), ({"message": "You are not licensed for X"}, "NOT_LICENSED"),
+    ({"error": "NOT_ENABLED"}, "NOT_ENABLED"),
+])
+def test_known_error_words_and_phrases_are_recognised_and_always_from_the_list(body, word):
+    """ASVS V7.4.1: the allow-list still tells a licensing answer from other errors; what comes out is a list member."""
+    assert m.error_hint(body) == word and word in m.KNOWN_ERROR_CODES
+
+
+@pytest.mark.parametrize("name", ["jsmith@acme.com", "acme.example.com", "123e4567-e89b-12d3-a456-426614174000", "9988776655", "ALICE_SMITH", "ID", "USER_42",
+                                  "deadbeef00", "Tenant Name", "a" * 41, "key123456", "_x", "7up", "x-y"])
+def test_a_field_name_that_looks_like_data_is_not_kept(name):
+    """CWE-200: an email, domain, UUID, number, UPPER_SNAKE code, hex run, spaced or long word is counted, never shown."""
+    assert m.safe_name(name) is None
+    assert m.summarise([{name: 1, "id": 2}])["fields"] == ["id"] and m.summarise([{name: 1}])["other_names"] == 1
+
+
+@pytest.mark.parametrize("name", ["id", "name", "enabled", "deviceGroupType", "client_secret", "ipv6", "sha256", "x509Cert"])
+def test_ordinary_field_names_are_kept(name):
+    """Boundary: camelCase, snake_case and short digits are the API's own spelling."""
+    assert m.safe_name(name) == name
+
+
+def test_an_object_keyed_by_tenant_text_keeps_no_key():
+    """CWE-200: the verifier's reproduction: {"jsmith": {...}, "acme": {...}} is a map from names to records: its keys are data and only counted."""
+    s = m.summarise({"jsmith": {"role": "a", "mail": "x"}, "acme": {"role": "b"}, "alice": {"role": "c"}})
+    assert s["fields"] == [] and s["other_names"] == 3 and "jsmith" not in json.dumps(s)
+    assert m.summarise({"jsmith": {"role": "a"}, "totalCount": 3})["fields"] == ["jsmith", "totalCount"]   # one record is a field, as an object's own
+
+
+# ── action-named reads are never sent ────────────────────────────────
+@pytest.mark.parametrize("path", ["/zia/api/v1/azure/refreshConnectionStatus", "/zia/api/v1/azure/virtualHubSync", "/zia/api/v1/azure/unConfigureTunnelStatus",
+                                  "/zia/api/v1/casbTenant/scanInfo", "/zia/api/v1/x/triggerRun", "/zia/api/v1/ipv6/enable", "/zia/api/v1/a/rotateKey"])
+def test_a_get_that_names_an_action_is_skipped(path):
+    """CWE-441 · ASVS V4.1.5: a GET named like an action (refresh, sync, unconfigure, scan, rotate...) is never read, even if the SDK lists it as a GET."""
+    entry = {"path": path, "path_params": [], "probeable": True}
+    assert m.skip_reason(entry) == m.REASON_SENSITIVE
+
+
+def test_no_endpoint_of_the_catalogue_that_names_an_action_is_planned():
+    """CWE-441: scan every catalogue path: any with an action verb in its words is skipped, and none is in the full plan."""
+    idx = m._entry_index()
+    named = [p for p in idx if m.action_words(p)]
+    assert {"/zia/api/v1/azure/refreshConnectionStatus", "/zia/api/v1/azure/virtualHubSync", "/zia/api/v1/azure/unConfigureTunnelStatus",
+            "/zia/api/v1/casbTenant/scanInfo"} <= set(named)
+    assert all(m.skip_reason(idx[p]) for p in named)
+    planned = {r["path"] for r in m.plan()["reads"]}
+    assert not planned & set(named) and not any(m.action_words(p) for p in planned)
+
+
+def test_plain_words_that_contain_a_verb_are_not_mistaken_for_one():
+    """Boundary: 'enabled', 'startup' or 'running' are not the verbs; only whole camelCase words count."""
+    assert m.action_words("/zia/api/v1/enabledRules/startupConfig") == [] and m.action_words("/zia/api/v1/x/syncInfo") == ["sync"]
+
+
+# ── Stop reaches the request in flight; retries count against the speed ──
+def test_stop_does_not_wait_for_the_request_in_flight():
+    """CWE-400 · ASVS V11.1.4: Stop ends the run while a request is still waiting for the tenant: the client is told to stop and the late answer is dropped."""
+    release, started, stopped_called = threading.Event(), threading.Event(), threading.Event()
+
+    class Slow(FakeClient):
+        def get(self, ep, p=None):
+            started.set()
+            release.wait(10)
+            return ([{"id": 1}], 200)
+
+        def stop(self):
+            stopped_called.set()
+
+    ev = threading.Event()
+    fc = Slow()
+    threading.Thread(target=lambda: (started.wait(5), ev.set()), daemon=True).start()
+    try:
+        with pytest.raises(m.Stopped):
+            m.run(fc, _plan(features_only=True), label="t", cancel=ev, throttle=_fast())
+        assert stopped_called.is_set() and not release.is_set()      # it returned while the request was still open
+    finally:
+        release.set()
+    m._RUN_LOCK.acquire(); m._RUN_LOCK.release()                    # the lock was released by the run
+
+
+def test_a_read_after_stop_sends_nothing():
+    """CWE-400: once stopped, the read-only client refuses every further read without touching the client."""
+    fc = FakeClient(default=([], 200))
+    ro = m.ReadOnlyClient(fc, ["raw:/zia/api/v1/a"])
+    ro.stop()
+    assert ro.get("raw:/zia/api/v1/a") == (None, 0) and fc.calls == []
+
+
+def test_the_clients_own_retries_count_against_the_speed():
+    """CWE-770: a read that really sent 3 requests (two retries) makes the next read wait 3 intervals, so the rate never exceeds the setting."""
+    now, slept = [0.0], []
+    th = m.Throttle(1, clock=lambda: now[0], sleeper=lambda s: (slept.append(round(s, 3)), now.__setitem__(0, now[0] + s)))
+
+    class Retrying(FakeClient):
+        requests_made = 0
+
+        def get(self, ep, p=None):
+            self.requests_made += 3 if not self.calls else 1
+            return super().get(ep, p)
+
+    fc = Retrying(default=([], 200))
+    m.run(fc, _plan(features_only=True, scopes=["zia_extras"]) | {"reads": _plan(features_only=True, scopes=["zia_extras"])["reads"][:3]}, label="t", throttle=th)
+    assert slept[0] == 3.0 and slept[1] == 1.0       # after the 3-request read: 3 s; after a single request: 1 s
+    th2 = m.Throttle(1, clock=lambda: 0.0, sleeper=lambda s: None)
+    th2.wait(); th2.account(1)
+    assert th2._next == 1.0

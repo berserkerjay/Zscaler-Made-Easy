@@ -3425,6 +3425,12 @@ class TenantApiMapPlanRequest(BaseModel):
     products: List[str] = []
     features_only: bool = False
     rps: float = 1.0
+    # The Scope page's selection (user rule 1): only the products it ticks are read; the rest are listed as
+    # "skipped: not in scope". As on every tenant read: the page's ticks, else (nothing sent) the chosen profile's.
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+    profile_id: str = ""
 
 
 class TenantApiMapRequest(TenantApiMapPlanRequest, MigrateRequest):
@@ -3460,7 +3466,21 @@ def _api_map_plan(req: TenantApiMapPlanRequest) -> Dict[str, Any]:
     chosen = tenant_api_map.normalise_products(req.products) if req.products else None
     if req.products and not chosen:
         raise HTTPException(status_code=400, detail="None of those products is one the map knows. Pick products from the list.")
-    return tenant_api_map.plan(chosen, req.features_only, req.rps)
+    sc, _ch, _source = _scope_selection(req)
+    return tenant_api_map.plan(chosen, req.features_only, req.rps, scopes=sc)
+
+
+API_MAP_NOTHING_IN_SCOPE = ("Nothing the Tenant API map reads is in scope: on the Scope page tick a product (ZIA platform or DLP, ZPA, ZCC, ZDX, "
+                            "ZIdentity, Cloud & Branch Connector ...) to include it, then run it again. Nothing was read.")
+
+
+def _api_map_in_scope(the_plan: Dict[str, Any]) -> None:
+    """400 before sign-in when no chosen product is ticked on the Scope page (fail closed)."""
+    import tenant_api_map
+    left = {n["product"] for n in the_plan.get("not_in_scope") or []}
+    wanted = set(the_plan.get("selected") or tenant_api_map.PRODUCT_NAMES)
+    if not (wanted - left):
+        raise HTTPException(status_code=400, detail=API_MAP_NOTHING_IN_SCOPE)
 
 
 @app.post("/api/tenant-api-map/plan")
@@ -3518,6 +3538,7 @@ async def tenant_api_map_start(req: TenantApiMapRequest, request: Request):
     import pack_jobs
     import tenant_api_map as tam
     the_plan = _api_map_plan(req)
+    _api_map_in_scope(the_plan)
     if req.confirm is not True:
         raise HTTPException(status_code=400, detail="Confirm the list of endpoints first. Nothing was read.")
     if req.plan_hash != the_plan["plan_hash"]:
