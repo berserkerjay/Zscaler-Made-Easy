@@ -1,0 +1,39 @@
+# systemd unit for Red Hat Enterprise Linux (and compatible). Installed by
+# deploy/rhel/install_service.sh, never by the app. @APP_DIR@ is replaced with
+# the folder install.sh was run in. Runs as an unprivileged user and listens on
+# localhost only; tenant writes stay refused (no write switch is set here).
+[Unit]
+Description=Zscaler Made Easy (local web app)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zscaler-made-easy
+Group=zscaler-made-easy
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=-@APP_DIR@/local_settings.env
+Environment=ZSCALER_BIND_HOST=127.0.0.1
+Environment=ZSCALER_PORT=8000
+Environment=ZSCALER_OPEN_BROWSER=0
+Environment=XDG_CACHE_HOME=/var/lib/zscaler-made-easy
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@APP_DIR@/.venv/bin/zscaler-made-easy
+Restart=on-failure
+RestartSec=5
+StateDirectory=zscaler-made-easy
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

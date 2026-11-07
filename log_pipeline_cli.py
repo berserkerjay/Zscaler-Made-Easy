@@ -2,6 +2,7 @@
 
   python log_pipeline_cli.py health          watcher and listener state, as JSON
   python log_pipeline_cli.py reports         the saved reports
+  python log_pipeline_cli.py reindex         rebuild the saved-report catalogue (index.json) from the files on disk
   python log_pipeline_cli.py regen           make the watched folder's report now
   python log_pipeline_cli.py export NAME     print a saved report as CSV
   python log_pipeline_cli.py deliver NAME TARGET   send it through an enabled delivery target
@@ -21,10 +22,25 @@ def _out(obj: Any) -> None:
     print(json.dumps(obj, indent=1, default=str))
 
 
+def reindex() -> dict:
+    """Rebuild <reports folder>/index.json from the saved reports on disk (local and read-only toward every report:
+    a report is opened, never changed). Unreadable files are counted and named by file name only."""
+    import os
+    import safe_files
+    import traffic_logs as tl
+    rows = tl.list_saved()
+    good = [r for r in rows if r.get("records") is not None]
+    cat = {"reports": [{k: r.get(k) for k in ("name", "title", "at", "names", "records", "period")} for r in good],
+           "unreadable": [r["name"] for r in rows if r.get("records") is None]}
+    safe_files.private_makedirs(tl.saved_dir())
+    safe_files.write_private_atomic(os.path.join(tl.saved_dir(), "index.json"), json.dumps(cat, indent=1, default=str))
+    return {"indexed": len(good), "unreadable": len(cat["unreadable"])}
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="log_pipeline_cli", description="Traffic-log pipeline (read-only).")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for n in ("health", "reports", "regen", "selftest"):
+    for n in ("health", "reports", "reindex", "regen", "selftest"):
         sub.add_parser(n)
     sub.add_parser("export").add_argument("name")
     d = sub.add_parser("deliver")
@@ -44,6 +60,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif a.cmd == "reports":
             import traffic_logs as tl
             _out(tl.list_saved())
+        elif a.cmd == "reindex":
+            _out(reindex())
         elif a.cmd == "regen":
             import traffic_log_watch as tw
             _out(tw.run(trigger="cli"))

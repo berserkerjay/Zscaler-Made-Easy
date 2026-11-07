@@ -100,7 +100,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
                    "test_export_injection.py", "test_csv_injection.py", "test_har_import.py", "test_log_analyzer.py",
                    "test_pack_library.py", "test_quality_score.py", "test_sbd_untrusted_input.py", "test_sbd_canary_renderers.py",
                    "test_c6_exports.py", "test_c6_reports.py", "test_c6_traffic_reports.py", "test_c6_misc.py", "test_url_analyzer_resume.py",
-                   "test_traffic_logs.py", "test_traffic_log_sources.py", "test_report_delivery.py", "test_zcc_lists_w9.py", "test_dns_windows.py"),
+                   "test_traffic_logs.py", "test_traffic_log_sources.py", "test_report_delivery.py", "test_w12_ops.py", "test_zcc_lists_w9.py", "test_dns_windows.py"),
          "controls": ("ASVS V5.1.3", "ASVS V5.1.4", "ASVS V5.2.4", "ASVS V5.3.3", "ASVS V12.1.1", "ASVS V12.3.1",
                       "CWE-20", "CWE-22", "CWE-79", "CWE-400", "CWE-611", "CWE-918", "CWE-1333")},
         {"key": "auth_scope_secrets", "name": "Auth, scope and secrets", "slugs": ("sbd-auth", "c6-auth", "c6-api-server", "c6-scope-offline", "w7-mcp-skill", "w7-zcc-plus", "w7-profile-cloud", "w7-team-server", "w8-other-products", "w9-security-gates", "w9-team-auth", "w10-shared-signin"),

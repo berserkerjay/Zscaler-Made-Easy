@@ -331,6 +331,42 @@ def deliver(target_id: str, name: str, data: bytes, *, trigger: str = "manual") 
     return {"target": target_id, "host": t["host"], "name": rn, "bytes": len(data), "status": "sent"}
 
 
+def deliver_many(target_ids: List[str], name: str, data: bytes, *, trigger: str = "manual") -> List[Dict[str, Any]]:
+    """Send one file to several targets (resolvers in a high-availability pair, say). Each host is tried on its
+    own: a failure on one is reported for that host and never stops the others."""
+    out: List[Dict[str, Any]] = []
+    for tid in dict.fromkeys(target_ids):
+        try:
+            out.append(deliver(tid, name, data, trigger=trigger))
+        except DeliveryError as e:
+            host = ((get_settings().get("targets") or {}).get(tid) or {}).get("host", "")
+            out.append({"target": tid, "host": host, "status": "failed", "error": str(e)})
+    return out
+
+
+def test_connection(target_id: str) -> Dict[str, Any]:
+    """Open and close a connection to an allowlisted target; nothing is written."""
+    s = get_settings()
+    t = _gate(s, target_id)
+    secret = _credential(target_id)
+    try:
+        if t["transport"] == "smb":
+            sc = _smb()
+            if sc is None:
+                raise DeliveryError("SMB delivery needs the optional 'smbprotocol' package, which is not installed.")
+            sc.register_session(t["host"], username=t["user"], password=secret, port=t["port"])
+        else:
+            pm = _paramiko()
+            if pm is None:
+                raise DeliveryError("SSH delivery needs the optional 'paramiko' package, which is not installed.")
+            _ssh_client(pm, t, secret, s.get("known_hosts") or "").close()
+    except DeliveryError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise DeliveryError(f"The connection failed ({type(e).__name__}).")
+    return {"target": target_id, "host": t["host"], "status": "reachable"}
+
+
 def saved_report_csv(name: str) -> Tuple[str, bytes]:
     """The CSV export of a saved traffic-log report (read-only), as (file name, bytes)."""
     import traffic_logs as tl
@@ -383,6 +419,24 @@ def _parse_cron(expr: str) -> List[set]:
 def cron_matches(expr: str, when: datetime) -> bool:
     mi, h, dom, mo, dow = _parse_cron(expr)
     return (when.minute in mi and when.hour in h and when.day in dom and when.month in mo and (when.isoweekday() % 7) in dow)
+
+
+def cron_gate(key: str, expr: str, now: Optional[datetime] = None) -> bool:
+    """True once per matching minute for the named schedule (the minute is recorded under `key`)."""
+    at = (now or datetime.now(timezone.utc)).replace(second=0, microsecond=0)
+    try:
+        if not cron_matches(expr, at):
+            return False
+    except ValueError:
+        return False
+    stamp = at.isoformat()
+    with _LOCK:
+        d = _read()
+        if d.get(key) == stamp:
+            return False
+        d[key] = stamp
+        _write(d)
+    return True
 
 
 def tick(now: Optional[datetime] = None, *, newest: Optional[Callable[[], Optional[str]]] = None) -> Optional[Dict[str, Any]]:

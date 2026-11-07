@@ -8999,6 +8999,56 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "#rdBox > summary": {
+    "what": "Opens the settings for sending reports and DNS files to a share or host. Off until you turn it on.",
+    "input": "Nothing to type. Click to open or close.",
+    "effect": "local"
+   },
+   "#rdHosts": {
+    "what": "Lists the hosts reports and DNS files may be sent to.",
+    "input": "One host name or address per line. Nothing else is ever contacted.",
+    "effect": "local"
+   },
+   "#rdTargets": {
+    "what": "Defines where to send: an id, the way (sftp, scp, ssh or smb), the host, the user and the remote folder.",
+    "input": "One target per line, like: dns1 sftp dns1.example.com svc /etc/unbound. SMB adds the share name at the end.",
+    "effect": "local"
+   },
+   "#rdOn": {
+    "what": "Turns sending on or off.",
+    "input": "Tick it to allow sending. It is off until you do.",
+    "effect": "local"
+   },
+   "#rdPick": {
+    "what": "Names the target the password or test below is for.",
+    "input": "Required. The id of a target you defined above.",
+    "effect": "local"
+   },
+   "#rdPw": {
+    "what": "The password for the target.",
+    "input": "Required to store one. It goes to this computer's credential store and is not shown again.",
+    "effect": "local"
+   },
+   "#rdSave": {
+    "what": "Saves the delivery settings (not passwords).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#rdStorePw": {
+    "what": "Stores the password in this computer's credential store.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#rdTest": {
+    "what": "Opens and closes a connection to the target. Nothing is sent.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#rdDnsRun": {
+    "what": "Sends the staged DNS forwarder file to every chosen resolver.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#tlsHost": {
     "what": "Picks the network address the syslog listener listens on.",
     "input": "Required. This computer's address, like 127.0.0.1.",

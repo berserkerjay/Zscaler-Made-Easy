@@ -49,6 +49,7 @@ Find the files a change touches here, then read only those.
 | `dlp_importer.py` | DLP Policy Pack Importer — general-purpose library |
 | `dlp_mcp_server.py` | DLP Assessment MCP Tool Server |
 | `dns_forward_zones.py` | DNS records for Client Connector hostnames: download-only text, never applied. |
+| `dns_push.py` | Opt-in push of the generated DNS forwarder file to several resolvers. |
 | `docker_healthcheck.py` | Container healthcheck: is the app answering on its own port? |
 | `editions.py` | Licensed editions: Cloud Firewall (standard or advanced), Cloud Sandbox |
 | `email_tenants.py` | One answer to "which email tenants are onboarded?". |

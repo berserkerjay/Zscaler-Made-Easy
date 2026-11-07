@@ -480,6 +480,13 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/traffic-logs/watch": ADMIN,
     "POST /api/traffic-logs/watch": ADMIN,
     "POST /api/traffic-logs/watch/run": ADMIN,
+    "GET /api/delivery": ADMIN,                           # delivery + DNS push settings (never a password)
+    "POST /api/delivery/settings": ADMIN,
+    "PUT /api/delivery/credential/{target_id}": ADMIN,    # straight to the OS credential store
+    "POST /api/delivery/test/{target_id}": ADMIN,
+    "POST /api/delivery/send": ADMIN,
+    "POST /api/dns-push/settings": ADMIN,
+    "POST /api/dns-push/run": ADMIN,
     "GET /api/traffic-logs/syslog": ADMIN,
     "POST /api/traffic-logs/syslog/start": ADMIN,
     "POST /api/traffic-logs/syslog/stop": ADMIN,
