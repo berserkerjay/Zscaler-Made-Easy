@@ -9,8 +9,16 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same PR or branch cancels the run it replaces.
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    # A promotion PR (dev -> qa, qa -> main) carries code that already passed this job on its own PR into dev,
+    # so it is not run again; every other PR and every push to main runs it.
+    if: ${{ !(github.event_name == 'pull_request' && ((github.base_ref == 'qa' && github.head_ref == 'dev') || (github.base_ref == 'main' && github.head_ref == 'qa'))) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
@@ -93,6 +101,9 @@ jobs:
         run: sha1sum $(git ls-files '*.py' 'static/*' 'tests/*' 'POLICY_PACKS.md')
 
   terraform:
+    # A promotion PR (dev -> qa, qa -> main) carries code that already passed this job on its own PR into dev,
+    # so it is not run again; every other PR and every push to main runs it.
+    if: ${{ !(github.event_name == 'pull_request' && ((github.base_ref == 'qa' && github.head_ref == 'dev') || (github.base_ref == 'main' && github.head_ref == 'qa'))) }}
     # Generated Terraform: committed workspaces current, fmt-clean, and valid against each
     # provider. Its own job, so a validation failure shows in minutes, not after the unit run.
     runs-on: ubuntu-latest
@@ -160,6 +171,9 @@ jobs:
           exit $rc
 
   browser-acceptance:
+    # A promotion PR (dev -> qa, qa -> main) carries code that already passed this job on its own PR into dev,
+    # so it is not run again; every other PR and every push to main runs it.
+    if: ${{ !(github.event_name == 'pull_request' && ((github.base_ref == 'qa' && github.head_ref == 'dev') || (github.base_ref == 'main' && github.head_ref == 'qa'))) }}
     # Real production-page checks. A green unit run or DOM shim is not this gate.
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -199,6 +213,9 @@ jobs:
           if-no-files-found: error
 
   supply-chain:
+    # A promotion PR (dev -> qa, qa -> main) carries code that already passed this job on its own PR into dev,
+    # so it is not run again; every other PR and every push to main runs it.
+    if: ${{ !(github.event_name == 'pull_request' && ((github.base_ref == 'qa' && github.head_ref == 'dev') || (github.base_ref == 'main' && github.head_ref == 'qa'))) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
@@ -275,6 +292,9 @@ jobs:
           path: sbom.cdx.json
 
   windows-lock:
+    # A promotion PR (dev -> qa, qa -> main) carries code that already passed this job on its own PR into dev,
+    # so it is not run again; every other PR and every push to main runs it.
+    if: ${{ !(github.event_name == 'pull_request' && ((github.base_ref == 'qa' && github.head_ref == 'dev') || (github.base_ref == 'main' && github.head_ref == 'qa'))) }}
     # The Windows installer (INSTALL_Zscaler_Made_Easy.bat) installs the lock
     # with --no-deps, so every Windows-only dependency must be pinned in it.
     runs-on: windows-latest
@@ -313,6 +333,9 @@ jobs:
           done
 
   container:
+    # A promotion PR (dev -> qa, qa -> main) carries code that already passed this job on its own PR into dev,
+    # so it is not run again; every other PR and every push to main runs it.
+    if: ${{ !(github.event_name == 'pull_request' && ((github.base_ref == 'qa' && github.head_ref == 'dev') || (github.base_ref == 'main' && github.head_ref == 'qa'))) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
