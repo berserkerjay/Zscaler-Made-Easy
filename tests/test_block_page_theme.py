@@ -269,3 +269,94 @@ def test_ui_script_shows_the_page_only_in_a_sandboxed_frame_and_escapes():
     js = open(os.path.join(ROOT, "static", "ops_zia_eun.js"), encoding="utf-8").read()
     assert "register({ type: 'zia_eun_theme'" in js and 'sandbox=""' in js and "srcdoc" in js and "H.E" in js
     assert js.count("aria-label") >= 5
+
+
+# ── "Use my hosted block page": notificationType CUSTOM + redirectUrl ───────
+HOSTED = "https://blocked.acme.example/page.html"
+HOSTED_SPEC = {"type": oe.TYPE, "theme": "acme", "hosted_url": HOSTED}
+
+
+def test_every_field_the_app_writes_is_a_field_of_the_sdk_model():
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-20: reads the installed SDK's EndUserNotification model at test time and asserts every field this app writes is one of its fields, so the field names are evidence, not an assumption."""
+    import re
+    import upstream_check as uc
+    from zscaler.zia.models.endusernotification import EndUserNotification
+    sdk = uc.installed_sdk_dir()
+    assert sdk, "the Zscaler SDK is not installed"
+    model = set(EndUserNotification({}).request_format()) | uc.model_wire_fields("endusernotification", sdk)   # the model's own wire names
+    assert {"notificationType", "redirectUrl", "displayCompLogo"} <= model
+    theme_fields = set(bpt.settings_for(bpt.clean_theme({"message": "x", "support_email": "a@b.co", "support_phone": "123", "policy_link": "https://x.example"}), {"mime": "image/png"}))
+    assert set(oe.WRITTEN_FIELDS) <= model and set(bpt.EUN_FIELDS) <= model and theme_fields <= model
+    src = open(os.path.join(sdk, "zia", "end_user_notification.py"), encoding="utf-8").read()
+    assert re.search(r"notification_type \(str\): EUN type\. Values: DEFAULT, CUSTOM", src)
+    assert set(oe.NOTIFICATION_TYPES) == {"DEFAULT", "CUSTOM"} and oe.HOSTED_TYPE == "CUSTOM"
+
+
+def test_hosted_page_plan_sets_custom_type_and_redirect_with_the_same_gates(monkeypatch):
+    """ASVS V4.1.3 · V11.1.1 · CWE-841 · WSTG-BUSL-01: choosing a hosted page adds notificationType CUSTOM and redirectUrl to the preview, still asks APPLY EUN and warns users are sent to that address; nothing is written."""
+    bpt.save("acme", {"message": "Hi"})
+    t, e = tenant(monkeypatch)
+    p = preview(t, HOSTED_SPEC)
+    f = {u["field"]: (u["before"], u["after"]) for u in p["items"]}
+    assert f["notificationType"] == ("DEFAULT", "CUSTOM") and f["redirectUrl"] == (None, HOSTED)
+    assert p["confirm_phrase"] == oe.PHRASE and oe.HOSTED_NOTE in p["warnings"] and e.sent == []
+    plain = {u["field"] for u in preview(t, SPEC)["items"]}
+    assert "notificationType" not in plain and "redirectUrl" not in plain
+    with pytest.raises(PermissionError):
+        apply(t, HOSTED_SPEC, writes=False)
+    _p, r = apply(t, HOSTED_SPEC, phrase="apply")
+    assert r["status"] == "refused" and e.sent == []
+
+
+@pytest.mark.parametrize("url", ["http://blocked.acme.example/p.html", "https://user:pw@blocked.acme.example/p.html", "https://user@blocked.acme.example/",
+                                 "javascript:alert(1)", "ftp://x.example/p", "https:///nohost", "//blocked.acme.example/p", "https://blocked.acme.example/a b",
+                                 "https://blocked.acme.example\\@evil.example/", "https://blocked.acme.example/\"onload=x", "https://x.example/" + "a" * 1100, "", "   "])
+def test_redirect_url_must_be_https_without_credentials(monkeypatch, url):
+    """ASVS V5.1.5 · CWE-601 · WSTG-CLNT-04: a hosted block page address that is not https, carries credentials or odd characters is refused before anything is read or sent."""
+    bpt.save("acme", {"message": "Hi"})
+    t, e = tenant(monkeypatch)
+    with pytest.raises(ao.OperationError):
+        oe.check_redirect_url(url)
+    spec = {"type": oe.TYPE, "theme": "acme", "hosted_url": url}
+    if url.strip():
+        with pytest.raises(ao.OperationError):
+            ao.plan(t, spec, scope=FULL_SCOPE, tenant_label="acme")
+    with pytest.raises(ao.OperationError):
+        ao.plan(t, {"type": oe.TYPE, "settings": {"redirectUrl": url or "http://x"}}, scope=FULL_SCOPE, tenant_label="acme")
+    assert e.sent == []
+
+
+def test_hosted_page_apply_reads_back_and_undo_restores_type_and_redirect(monkeypatch, isolated):
+    """ASVS V11.1.1 · V7.1.3 · CWE-754 · WSTG-BUSL-01: applying a hosted page sends one PUT with CUSTOM and the address, reads it back, audits, and Undo puts the old notification type back."""
+    bpt.save("acme", {"message": "Hi"})
+    t, e = tenant(monkeypatch, current={"notificationType": "DEFAULT", "redirectUrl": "https://old.example/p", "displayReason": False, "displayCompName": True,
+                                        "displayCompLogo": False, "aupFrequency": "NEVER"})
+    import pack_ops as ops
+    with ops.audit_scope(actor="alice"):
+        _p, r = apply(t, HOSTED_SPEC)
+    assert ao.record(r, by=ASSESSOR, actor="alice")
+    assert r["status"] == "applied" and len(e.sent) == 1
+    assert e.sent[0]["notificationType"] == "CUSTOM" and e.sent[0]["redirectUrl"] == HOSTED and e.sent[0]["aupFrequency"] == "NEVER"
+    assert r["verification"]["mismatched"] == [] and r["verification"]["confirmed"] == r["verification"]["checked"] >= 2
+    inv = r["inverse"]
+    assert inv["settings"]["notificationType"] == "DEFAULT" and inv["settings"]["redirectUrl"] == "https://old.example/p"
+    undo = ao.plan(t, inv, scope=FULL_SCOPE, tenant_label="acme")
+    ao.execute(t, inv, plan_hash=undo["plan_hash"], scope=FULL_SCOPE, writes_enabled=True, assessor=ASSESSOR, tenant_label="acme", confirm_text=undo["confirm_phrase"])
+    assert e.cur["notificationType"] == "DEFAULT" and e.cur["redirectUrl"] == "https://old.example/p"
+    import audit
+    assert any(x.get("event") == "admin_operation" and x.get("type") == oe.TYPE for x in audit.tail(50))
+
+
+def test_hosted_url_needs_a_theme_and_a_known_type(monkeypatch):
+    """ASVS V5.1.3 · CWE-20: a hosted address without a theme, or an Undo spec with an unknown notification type, is refused."""
+    t, _e = tenant(monkeypatch)
+    with pytest.raises(ao.OperationError):
+        oe.normalize({"type": oe.TYPE, "settings": {"displayReason": True}, "hosted_url": HOSTED})
+    with pytest.raises(ao.OperationError, match="notificationType"):
+        oe.normalize({"type": oe.TYPE, "settings": {"notificationType": "FANCY"}})
+
+
+def test_ui_offers_the_hosted_option_and_sends_it_in_the_spec():
+    """ASVS V5.3.3 · CWE-79: the form has the 'Use my hosted block page' option and puts the address in the operation spec; values are escaped."""
+    js = open(os.path.join(ROOT, "static", "ops_zia_eun.js"), encoding="utf-8").read()
+    assert "Use my hosted block page" in js and "hosted_url" in js and "E(z.hostedUrl)" in js

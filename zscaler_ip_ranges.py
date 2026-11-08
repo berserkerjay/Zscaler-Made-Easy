@@ -69,6 +69,7 @@ import ipaddress
 import json
 import os
 import re
+import socket
 import threading
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -737,6 +738,85 @@ def certificate_validation_endpoints() -> Dict[str, Any]:
     return {"hosts": hosts, "ranges": ranges, "source": str(doc.get("source") or "")[:600], "as_of": str(doc.get("as_of") or "")[:20]}
 
 
+# ── DigiCert addresses, resolved on demand ───────────────────────────
+DIGICERT_RESOLVED_FILE = "digicert_resolved.json"
+DIGICERT_LABEL = ("Resolved by DNS now; DigiCert uses a CDN, so re-resolve before each change.")
+MAX_RESOLVED_PER_HOST = 64
+
+
+def digicert_resolved_path() -> str:
+    return os.path.join(folder(), DIGICERT_RESOLVED_FILE)
+
+
+def resolve_digicert(getaddrinfo: Optional[Callable[..., Any]] = None, operator_ranges: Any = "",
+                     now: Optional[_dt.datetime] = None) -> Dict[str, Any]:
+    """Resolve each listed DigiCert validation host by DNS (`getaddrinfo`, injectable for tests) to its current IPv4 and IPv6
+    addresses and keep them, with the operator's own ranges (validated CIDRs only: FeedError for a line that is not one),
+    as a /32 or /128 each. An address that is not public unicast is dropped and said. A host that does not resolve is
+    reported, never guessed. Only DNS is asked; nothing is sent to DigiCert. Returns the kept record."""
+    gai = getaddrinfo or socket.getaddrinfo
+    ops, op_warn = parse_typed(operator_ranges, "Operator ranges")
+    now = now or _now()
+    hosts: Dict[str, List[str]] = {}
+    ranges: List[str] = []
+    warnings: List[str] = list(op_warn)
+    for h in certificate_validation_endpoints()["hosts"]:
+        found: List[str] = []
+        try:
+            infos = gai(h, 443, type=socket.SOCK_STREAM)
+        except (OSError, UnicodeError) as e:
+            warnings.append(f"{h} did not resolve ({type(e).__name__}).")
+            hosts[h] = []
+            continue
+        for info in infos:
+            try:
+                addr = str(info[4][0]).split("%", 1)[0]
+                c, _why = check_cidr(addr)
+            except (IndexError, TypeError, ValueError):
+                continue
+            if c is None:
+                warnings.append(f"{h}: {addr[:45]} is not a public address and was dropped.")
+                continue
+            if c not in found and len(found) < MAX_RESOLVED_PER_HOST:
+                found.append(c)
+        hosts[h] = sorted(found)
+        ranges.extend(found)
+    if not ranges and not ops:
+        warnings.append("No address was resolved and none was supplied: nothing is kept.")
+    doc = {"format": 1, "resolved_at": _iso(now), "label": DIGICERT_LABEL, "hosts": hosts,
+           "ranges": sorted(set(ranges)), "operator_ranges": sorted(set(ops)), "warnings": warnings[:40]}
+    if doc["ranges"] or doc["operator_ranges"]:
+        with _LOCK:
+            safe_files.private_makedirs(folder())
+            safe_files.write_private_atomic(digicert_resolved_path(), json.dumps(doc, separators=(",", ":")))
+    return digicert_resolved(doc, allow_empty=True)
+
+
+def digicert_resolved(doc: Optional[Dict[str, Any]] = None, allow_empty: bool = False) -> Optional[Dict[str, Any]]:
+    """The kept DigiCert resolution (checked again), or None."""
+    doc = doc if doc is not None else _read_json(digicert_resolved_path(), 1024 * 1024)
+    if not doc or doc.get("format") != 1 or _parse_time(doc.get("resolved_at")) is None:
+        return None
+    rng = [c for c in (check_cidr(x)[0] for x in (doc.get("ranges") or [])[:MAX_ENTRIES]) if c]
+    ops = [c for c in (check_cidr(x, from_feed=False)[0] for x in (doc.get("operator_ranges") or [])[:MAX_EXTRA]) if c]
+    hosts = {}
+    for h, ips in (doc.get("hosts") or {}).items() if isinstance(doc.get("hosts"), dict) else []:
+        if isinstance(h, str) and _HOST.match(h):
+            hosts[h] = [c for c in (check_cidr(x)[0] for x in (ips or [])[:MAX_RESOLVED_PER_HOST]) if c]
+    if not (rng or ops) and not allow_empty:
+        return None
+    return {"resolved_at": doc["resolved_at"], "label": DIGICERT_LABEL, "hosts": hosts, "ranges": rng, "operator_ranges": ops,
+            "warnings": [str(w)[:200] for w in (doc.get("warnings") or [])[:40]]}
+
+
+def forget_digicert_resolved() -> None:
+    with _LOCK:
+        try:
+            os.remove(digicert_resolved_path())
+        except OSError:
+            pass
+
+
 def host_form(cidrs: Iterable[str]) -> List[str]:
     """Single-address entries (/32 and /128) as the bare address; every other range unchanged."""
     out = []
@@ -794,6 +874,7 @@ def build(cloud: str, feeds: Sequence[str], *, zpa_cloud: Optional[str] = None, 
                 e["regions"].add(h["region"])
         sources.append(src)
     cert = certificate_validation_endpoints() if digicert else None
+    res = None
     if cert:
         for c in cert["ranges"]:
             records.append((CERT_REGION, c, "digicert"))
@@ -801,7 +882,12 @@ def build(cloud: str, feeds: Sequence[str], *, zpa_cloud: Optional[str] = None, 
             e = hosts.setdefault(h, {"host": h, "feeds": set(), "regions": set()})
             e["feeds"].add("digicert")
             e["regions"].add(CERT_REGION)
-        if not cert["ranges"]:
+        res = digicert_resolved()
+        if res:
+            for c in res["ranges"] + res["operator_ranges"]:
+                records.append((CERT_REGION, c, "digicert"))
+            warnings.append(f"DigiCert addresses: {res['label']} Resolved {res['resolved_at']}.")
+        if not cert["ranges"] and not res:
             warnings.append("DigiCert is served from a content delivery network, so it is allowlisted by host name; no address range "
                             "is shipped. Add ranges from DigiCert's current guidance in 'Ranges to add' if your firewall needs them.")
     for c in add:
@@ -829,7 +915,10 @@ def build(cloud: str, feeds: Sequence[str], *, zpa_cloud: Optional[str] = None, 
         "all": {"ipv4": total[4] if 4 in fams else [], "ipv6": total[6] if 6 in fams else []},
         "counts": {"in": len(records), "ipv4": len(total[4]) if 4 in fams else 0, "ipv6": len(total[6]) if 6 in fams else 0,
                    "hosts": len(hosts), "excluded": len(ex), "added": len(add)},
-        "excluded": ex, "added": add, "digicert": ({"source": cert["source"], "as_of": cert["as_of"]} if cert else None),
+        "excluded": ex, "added": add, "digicert": ({"source": cert["source"], "as_of": cert["as_of"],
+                                                                                     "resolved": ({"at": res["resolved_at"], "label": res["label"],
+                                                                                                   "ranges": len(res["ranges"]), "operator_ranges": len(res["operator_ranges"])}
+                                                                                                  if res else None)} if cert else None),
         "hosts": [{"host": h["host"], "feeds": sorted(h["feeds"]), "regions": sorted(h["regions"])} for h in sorted(hosts.values(), key=lambda x: x["host"])],
         "warnings": warnings + ex_warn + add_warn,
     }
@@ -886,6 +975,7 @@ def render(result: Dict[str, Any], fmt: str) -> Tuple[str, str, str]:
             "ipv4": result["all"]["ipv4"], "ipv6": result["all"]["ipv6"],
             "regions": {r["region"]: {"ipv4": r["ipv4"], "ipv6": r["ipv6"]} for r in result["regions"]},
             "hostnames": [h["host"] for h in result["hosts"]], "excluded": result["excluded"],
+            "digicert": result.get("digicert"),
         }, indent=1)
     else:   # m365: Microsoft's endpoint-set shape, one set per region (ports are not published by Zscaler, so left out)
         sets = []

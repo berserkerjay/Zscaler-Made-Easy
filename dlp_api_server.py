@@ -12244,6 +12244,18 @@ class ZsRangesImport(BaseModel):
         return v
 
 
+class ZsDigicertResolve(BaseModel):
+    """Resolve the listed DigiCert validation hosts by DNS now; `operator_ranges` are the operator's own CIDRs (pasted or from a file)."""
+    operator_ranges: str = ""
+
+    @field_validator("operator_ranges")
+    @classmethod
+    def _typed(cls, v: str) -> str:
+        if len(v or "") > 100_000:
+            raise ValueError("too long")
+        return v
+
+
 class ZsRangesBuild(ZsRangesPick):
     """The allowlist options: regions to keep (none: every region), ranges to
     leave out, ranges to add (certificate validation, for example), the
@@ -12320,6 +12332,28 @@ async def zscaler_ranges_import(req: ZsRangesImport, request: Request):
     _audit.record("zscaler_ranges_import", actor=_actor(request) or _security.current_actor(), feed=out["feed"], cloud=out["cloud"],
                   ranges=out.get("ranges"), rejected=out.get("rejected"))
     return out
+
+
+@app.post("/api/zscaler-ranges/digicert-resolve")
+async def zscaler_ranges_digicert_resolve(req: ZsDigicertResolve, request: Request):
+    """Resolve the DigiCert validation host names by DNS now (DNS only; nothing is sent to DigiCert) and keep the addresses,
+    with any operator ranges (validated CIDRs only: 400 otherwise). Included in the allowlist when 'DigiCert' is ticked."""
+    import zscaler_ip_ranges as zr
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(zr.resolve_digicert, None, req.operator_ranges)
+    except zr.FeedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("zscaler_ranges_digicert_resolve", actor=_actor(request) or _security.current_actor(),
+                  resolved=len(out["ranges"]), operator=len(out["operator_ranges"]))
+    return out
+
+
+@app.get("/api/zscaler-ranges/digicert")
+async def zscaler_ranges_digicert():
+    """The kept DigiCert resolution (time, label, addresses), or null. Reads nothing remote."""
+    import zscaler_ip_ranges as zr
+    return {"resolved": await asyncio.to_thread(zr.digicert_resolved)}
 
 
 @app.delete("/api/zscaler-ranges")
@@ -16127,6 +16161,88 @@ async def scim_overview(req: ScimViewRequest):
     out = await asyncio.to_thread(scim_view.overview, sdk)
     if out.get("error"):
         out["error"] = tenant_auth.mask_secrets(str(out["error"]), creds)
+    return dict(out, tenant_label=tenant_auth.record_label(creds))
+
+
+class ScimUsersRequest(ScimViewRequest):
+    """Body of the opt-in SCIM user list: the sign-in, the Scope selection and the IdP's id."""
+    idp_id: str = ""
+
+    @field_validator("idp_id")
+    @classmethod
+    def _idp(cls, v: str) -> str:
+        if len(v or "") > 64:
+            raise ValueError("too long")
+        return v
+
+
+class ScimTokenBody(BaseModel):
+    """An IdP's SCIM shared secret, entered once. It goes to the operating-system credential store and nowhere else."""
+    idp_id: str = ""
+    token: str = Field(default="", repr=False)
+
+    @field_validator("idp_id")
+    @classmethod
+    def _idp(cls, v: str) -> str:
+        if len(v or "") > 64:
+            raise ValueError("too long")
+        return v
+
+    @field_validator("token")
+    @classmethod
+    def _tok(cls, v: str) -> str:
+        if len(v or "") > 4096:
+            raise ValueError("too long")
+        return v
+
+
+@app.put("/api/scim/users/token")
+async def scim_users_token_set(req: ScimTokenBody, request: Request):
+    """Keep one IdP's SCIM shared secret in the OS credential store (never a file). The answer and the audit line never carry it."""
+    import scim_view
+    _security.require_writer()
+    try:
+        await asyncio.to_thread(scim_view.set_token, req.idp_id, req.token)
+    except scim_view.ScimUsersError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("scim_users_token_set", actor=_actor(request) or _security.current_actor(), idp_id=req.idp_id)
+    return {"stored": True, "idp_id": req.idp_id}
+
+
+@app.delete("/api/scim/users/token")
+async def scim_users_token_clear(request: Request, idp_id: str = ""):
+    """Remove one IdP's SCIM shared secret from the OS credential store: the user list is off again."""
+    import scim_view
+    _security.require_writer()
+    try:
+        await asyncio.to_thread(scim_view.clear_token, idp_id)
+    except scim_view.ScimUsersError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("scim_users_token_cleared", actor=_actor(request) or _security.current_actor(), idp_id=idp_id)
+    return {"stored": False, "idp_id": idp_id}
+
+
+@app.post("/api/scim/users")
+async def scim_users(req: ScimUsersRequest, request: Request):
+    """Opt-in, read-only list of one IdP's SCIM users (user name, active, display name, group count) read from the IdP's own
+    SCIM 2.0 service with the stored shared secret. 400 before sign-in when ZPA is not ticked on the Scope page; off (no request
+    sent) without a stored secret; refused for an address that is not a Zscaler SCIM host. Nothing is written."""
+    import scim_view
+    _require_in_scope(req, "zpa", "The SCIM user list")
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="ZPA cannot be read with the classic ZIA API sign-in: sign in with a OneAPI API client. Nothing was read.")
+    if not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail="ZPA cannot be read: the ZPA customer ID is missing (Connect to the tenant → Customer ID). Nothing was read.")
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    try:
+        out = await asyncio.to_thread(scim_view.users_for_idp, sdk, req.idp_id)
+    except scim_view.ScimUsersError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if out.get("error"):
+        out["error"] = tenant_auth.mask_secrets(str(out["error"]), creds)
+    _audit.record("scim_users_read", actor=_actor(request) or _security.current_actor(), idp_id=req.idp_id,
+                  users=out.get("shown", 0), error=bool(out.get("error")))
     return dict(out, tenant_label=tenant_auth.record_label(creds))
 
 

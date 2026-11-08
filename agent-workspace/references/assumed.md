@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-561 markers.
+557 markers.
 
 | File:line | Note |
 |---|---|
@@ -37,8 +37,6 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `app_services.py:70` | service areas they hold. Assumed: Zscaler's app service names are not in |
 | `app_update.py:196` | fork or a mirror is never assumed to be the upstream repository.""" |
 | `audit_timeline.py:167` | CORRELATE_SECONDS match with Zscaler Made Easy's own writes. Assumed: CST |
-| `block_page_theme.py:17` | settings have no logo field (assumed, the SDK lists none), so the logo |
-| `block_page_theme.py:389` | "The logo image is not part of the settings: ZIA's API lists no logo field (assumed), so upload it in the ZIA Admin Portal; " |
 | `bulk_test.py:124` | SUSPICIOUS_DESTINATION; the others are assumed from ZIA's category list. |
 | `bulk_test.py:128` | category costs little. Names this app already uses (ssl_flow) or assumed. |
 | `capacity_review.py:81` | "notes": ["Licensed counts come from the tenant's subscription list when it states a seat count (assumed row shape: licenses, quantity or… |
@@ -222,9 +220,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_zia_ai_prompt.py:24` | ASSUMED (the SDK model lists only six prompt fields; the others come from |
 | `ops_zia_baseline.py:65` | read them; the others are assumed and the tenant refuses what it lacks. |
 | `ops_zia_directory.py:42` | delete_department. ASSUMED (not checkable without a tenant): that ZIA |
-| `ops_zia_eun.py:16` | the settings (assumed, the SDK lists none). |
-| `ops_zia_eun.py:23` | snake_case list in its docstring, camelCased: assumed, not checked against a |
-| `ops_zia_eun.py:44` | LOGO_NOTE = ("The logo image is not sent: ZIA's API lists no logo field (assumed). Upload it in the ZIA Admin Portal; the display-logo " |
+| `ops_zia_eun.py:28` | snake_case list in its docstring, camelCased: assumed, not checked against a |
 | `ops_zia_objects.py:53` | NAME_MAX = 255           # assumed for these objects (the API refuses longer) |
 | `ops_zia_pac.py:40` | pacFiles/{id}/version/{v}/action/DEPLOY), delete_pac_file. ASSUMED: that |
 | `ops_zia_sandbox.py:21` | Assumed (not modelled by the SDK): the fileHashCount fields |
@@ -419,8 +415,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/flow_anim.js:51` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
 | `static/flow_anim.js:59` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
 | `static/flow_anim.js:210` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:5101` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:5181` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:5131` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:5211` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |
@@ -551,7 +547,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `zscaler_ip_ranges.py:52` | centres not yet live (ASSUMED); |
 | `zscaler_ip_ranges.py:54` | tunnel (Tunnel 2.0) addresses (ASSUMED); |
 | `zscaler_ip_ranges.py:57` | zpatwo.net or zpabeta.net (ASSUMED: also an optional |
-| `zscaler_ip_ranges.py:868` | Dynamic List": ASSUMED, not verifiable here). |
+| `zscaler_ip_ranges.py:957` | Dynamic List": ASSUMED, not verifiable here). |
 | `zscaler_rbac_checks.py:141` | "until" values are epoch times (seconds, or milliseconds; assumed).""" |
 | `zscaler_rbac_checks.py:374` | classes when listed; else from its name (assumed: Zscaler's built-in |
 | `zscaler_rbac_checks.py:395` | the API sends it (assumed: {"id", "name"}) and an API key's `roleId`.""" |

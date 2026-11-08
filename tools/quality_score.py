@@ -91,7 +91,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
          "tests": ("test_write_safety_gates.py", "test_pack_deploy.py", "test_name_prefix.py", "test_pack_removal.py", "test_remediation.py",
                    "test_admin_ops.py", "test_proposal_apply.py", "test_channel_targets_undo.py", "test_team_queue.py",
                    "test_sbd_writes.py", "test_c6_admin_ops.py", "test_c6_deploy.py", "test_c6_packs.py", "test_c6_migrate.py",
-                   "test_c6_update_heal.py", "test_rule_editor.py", "test_rule_csv.py", "test_sync_jobs.py", "test_w12_zsconfig.py", "test_w12_simulator.py", "test_sync_template_source.py",
+                   "test_c6_update_heal.py", "test_rule_editor.py", "test_rule_csv.py", "test_sync_jobs.py", "test_w12_zsconfig.py", "test_w12_last3.py", "test_w12_simulator.py", "test_sync_template_source.py",
                    "test_security_gates_ui.py", "test_restore_breadth.py"),
          "controls": ("ASVS V4.1.3", "ASVS V4.1.5", "ASVS V4.2.2", "ASVS V7.1.3", "ASVS V11.1.1",
                       "CWE-284", "CWE-352", "CWE-862", "CWE-863")},

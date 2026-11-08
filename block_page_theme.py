@@ -14,7 +14,7 @@ produces, without touching a tenant:
     through Bulk changes: plan, hash, the four gates, read-back, Undo, audit.
 
 The logo never travels to ZIA from here: the SDK's end-user notification
-settings have no logo field (assumed, the SDK lists none), so the logo
+settings have no logo image field (the SDK model lists only displayCompLogo), so the logo
 appears in the generated HTML (for a page the organisation hosts itself)
 and the display-logo switch is sent, but the image is uploaded in the ZIA
 Admin Portal.
@@ -384,7 +384,7 @@ def generate(name: Any = "default", settings: Any = None) -> Dict[str, Any]:
     logo = rec.get("logo") if isinstance(rec.get("logo"), dict) else None
     notes = ["Nothing was sent to the tenant. Applying the settings is a separate Bulk changes operation that asks for write mode, "
              "a named assessor and a typed phrase.",
-             "The logo image is not part of the settings: ZIA's API lists no logo field (assumed), so upload it in the ZIA Admin Portal; "
-             "the generated HTML below embeds it for a page you host yourself."]
+             "The logo image is not part of the settings: the SDK model has only the display-logo switch, so upload it in the ZIA Admin Portal, or host the "
+             "generated HTML (it embeds the logo) yourself and choose 'Use my hosted block page' when applying."]
     return {"name": n, "html": render_html(s, logo), "settings": s, "eun_settings": settings_for(s, logo), "warnings": review(s),
             "has_logo": bool(logo), "notes": notes, "csp": CSP}

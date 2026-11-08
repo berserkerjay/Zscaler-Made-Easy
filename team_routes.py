@@ -220,6 +220,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/compliance/profile-view": SESSION,       # the results the page sends, read against a profile
     "POST /api/vendor-migrate/panos/plan": SESSION,     # an uploaded PAN-OS export turned into a plan; no tenant
     "GET /api/zscaler-ranges": SESSION,                 # Zscaler's public IP ranges kept on this server
+    "GET /api/zscaler-ranges/digicert": SESSION,
     "POST /api/zscaler-ranges/build": SESSION,
     "POST /api/zscaler-ranges/download": SESSION,
     "GET /api/m365-endpoints": SESSION,                 # Microsoft's public endpoint list kept on this server
@@ -565,7 +566,11 @@ ROUTE_RULES: Dict[str, str] = {
     "PUT /api/zscaler-ranges/settings": ADMIN,          # outbound fetches of this server
     "POST /api/zscaler-ranges/fetch": ADMIN,
     "POST /api/zscaler-ranges/import": ADMIN,
+    "POST /api/zscaler-ranges/digicert-resolve": ADMIN,   # DNS lookups from this server, then kept
     "DELETE /api/zscaler-ranges": ADMIN,
+    "POST /api/scim/users": ADMIN,                      # the IdP's SCIM users (personal data): read with the IdP's own secret
+    "PUT /api/scim/users/token": ADMIN,                 # straight to the OS credential store
+    "DELETE /api/scim/users/token": ADMIN,
     "PUT /api/m365-endpoints/settings": ADMIN,
     "POST /api/m365-endpoints/refresh": ADMIN,
     "POST /api/m365-endpoints/import": ADMIN,

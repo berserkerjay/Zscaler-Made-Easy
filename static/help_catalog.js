@@ -3865,6 +3865,26 @@ window.HELP_CATALOG = {
     "input": "Optional. One CIDR or address per line, like 192.0.2.10/32.",
     "effect": "local"
    },
+   "#exRgDigi": {
+    "what": "Adds the DigiCert certificate-validation host names, and the addresses you resolved or typed below, to the allowlist.",
+    "input": "Tick to include. Resolve the addresses first if your firewall needs addresses, not names.",
+    "effect": "local"
+   },
+   "#exRgDigiResolve": {
+    "what": "Looks up each listed DigiCert validation host name by DNS now and keeps its current IPv4 and IPv6 addresses. DigiCert uses a CDN, so its addresses change: do it again before each change. Only DNS is asked; nothing is sent to DigiCert.",
+    "input": "Nothing to type. Your own ranges, if any, are checked and kept with the result.",
+    "effect": "read"
+   },
+   "#exRgDigiOps": {
+    "what": "Your own DigiCert address ranges, joined with the resolved ones in the allowlist.",
+    "input": "Optional. One CIDR or address per line; anything that is not a valid range is refused.",
+    "effect": "local"
+   },
+   "#exRgDigiFile": {
+    "what": "Fills the box above from a text file of ranges.",
+    "input": "Optional. A plain text file of up to 100 KB, one CIDR per line.",
+    "effect": "local"
+   },
    "#exRgBuild": {
     "what": "Builds the allowlist from the kept feeds, joined into the fewest ranges. It fetches nothing.",
     "input": "Nothing to type. Fetch or import the feeds first.",
@@ -4971,8 +4991,18 @@ window.HELP_CATALOG = {
     "input": "Ticked shows it. Unticked leaves it out.",
     "effect": "local"
    },
+   "input[data-k=\"hosted\"]": {
+    "what": "Sends blocked users to a block page you host yourself instead of ZIA's own. Applying it later needs write mode, as every change does.",
+    "input": "Tick to use it. Host the downloaded HTML at your https address first.",
+    "effect": "local"
+   },
+   "input[data-k=\"hostedUrl\"]": {
+    "what": "The https address where you host the downloaded block page (it carries your logo).",
+    "input": "Required when ticked. https:// only, no user name or password, up to 1024 characters.",
+    "effect": "local"
+   },
    "#eunLogo": {
-    "what": "Chooses a logo image for this theme. It is stored locally when you save the theme; the ZIA API has no logo field.",
+    "what": "Chooses a logo image for this theme. It is stored locally when you save the theme. ZIA has only a display-logo switch, so to show the image, host the downloaded page yourself.",
     "input": "Optional. A PNG, JPEG or GIF of up to 200 KB.",
     "effect": "local"
    },
@@ -7692,6 +7722,31 @@ window.HELP_CATALOG = {
     "what": "Sets the SCIM user name whose SCIM groups ZPA looks up during the analysis. They are kept only for that analysis.",
     "input": "Optional. Usually the email, like jane@acme.com. Up to 128 characters. Needs the IdP.",
     "effect": "local"
+   },
+   "#paScimUsers summary": {
+    "what": "Opens the optional SCIM user list for the picked IdP. It stays off until you keep that IdP's SCIM secret.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paScimTok": {
+    "what": "The SCIM shared secret of the picked IdP, entered once. It is kept in this computer's credential store only and is never shown, logged or sent anywhere except the IdP's Zscaler SCIM address.",
+    "input": "Optional. Copy it from the IdP's SCIM settings. Cleared from the box once kept.",
+    "effect": "local"
+   },
+   "#paScimSave": {
+    "what": "Keeps the secret in the credential store. This turns the SCIM user list on for the picked IdP.",
+    "input": "Load the IdPs and pick one first.",
+    "effect": "local"
+   },
+   "#paScimClear": {
+    "what": "Removes the secret from the credential store. The SCIM user list is off again for the picked IdP.",
+    "input": "Pick the IdP first.",
+    "effect": "local"
+   },
+   "#paScimList": {
+    "what": "Reads the picked IdP's SCIM users from its own SCIM service (read-only, at most 500): user name, active, display name and number of groups. Off until a secret is kept.",
+    "input": "Nothing to type. Needs ZPA ticked on the Scope page.",
+    "effect": "read"
    },
    "#paWiZ_find": {
     "what": "Shows the SCIM groups ZPA lists for this user in the IdP you picked, before you analyze. It only reads.",

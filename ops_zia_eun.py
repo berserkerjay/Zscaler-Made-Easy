@@ -12,8 +12,13 @@ The preview and the generated HTML are made locally and read-only
 the engine's apply step: write mode on (it is off by default), a named
 assessor, the plan hash matching a fresh re-plan, and the typed phrase
 APPLY EUN asked every time (end users see the page as soon as the change is
-activated). The logo image is not part of the call: no logo field exists in
-the settings (assumed, the SDK lists none).
+activated). The logo image is not part of the call: the SDK model lists only
+the displayCompLogo switch. To show the logo, the admin can choose "Use my
+hosted block page": they host the downloaded themed HTML (which carries the
+logo) at their own https address, and the apply sets notificationType to
+CUSTOM (the SDK documents DEFAULT and CUSTOM) and redirectUrl to that address
+(https only, no user name or password in it). It goes through the same plan,
+typed phrase, read-back and Undo.
 
 ZIA calls: GET /eun and PUT /eun, the SDK's end_user_notification service
 (zscaler-sdk-python 1.11.3: get_eun_settings, update_eun_settings). Its
@@ -25,7 +30,9 @@ live tenant).
 """
 from __future__ import annotations
 
+import re
 import threading
+from urllib.parse import urlparse
 from typing import Any, Callable, Dict, List, Optional
 
 import admin_ops as ao
@@ -40,11 +47,41 @@ PHRASE = "APPLY EUN"
 ZIA_AREAS = ("dlp", "zia_extras")
 BOOLS = ("displayReason", "displayCompName", "displayCompLogo")
 STRINGS = {"customText": 600, "supportEmail": 254, "supportPhone": 30, "orgPolicyLink": 300}
+NOTIFICATION_TYPES = ("DEFAULT", "CUSTOM")      # end_user_notification.py: "notification_type (str): EUN type. Values: DEFAULT, CUSTOM"
+HOSTED_TYPE = "CUSTOM"
+REDIRECT_MAX = 1024
+HOSTED_FIELDS = ("notificationType", "redirectUrl")
+# Every ZIA field this module can write (the test reads the SDK model and checks each is one of its fields).
+WRITTEN_FIELDS = tuple(BOOLS) + tuple(STRINGS) + HOSTED_FIELDS
 NOT_IN_SCOPE = "Not in scope: the block page settings need a ZIA area ticked on the Scope page (DLP or ZIA platform)."
-LOGO_NOTE = ("The logo image is not sent: ZIA's API lists no logo field (assumed). Upload it in the ZIA Admin Portal; the display-logo "
-             "switch is part of this change.")
+LOGO_NOTE = ("The logo image is not sent: the SDK's model has only the display-logo switch. Upload it in the ZIA Admin Portal, or choose "
+             "'Use my hosted block page' and host the downloaded HTML (it carries the logo) at your own https address.")
+HOSTED_NOTE = ("ZIA will send blocked users to your hosted page instead of its own: end users see whatever that address serves, and "
+               "if it is down they get no block page. Host the downloaded HTML there first.")
 VISIBLE = "End users see the new wording as soon as the change is activated."
 LogFn = Callable[[str], None]
+
+
+def check_redirect_url(v: Any) -> str:
+    """The address of the admin's hosted block page: https only, a host, no user name or password, no space, backslash or control
+    character, at most REDIRECT_MAX characters. OperationError otherwise."""
+    u = str(v if v is not None else "").strip()
+    if not u or len(u) > REDIRECT_MAX:
+        raise ao.OperationError(f"The hosted block page address must be an https:// address of at most {REDIRECT_MAX} characters.")
+    if re.search(r"[\\\s\x00-\x1f\x7f<>\"'`]", u):
+        raise ao.OperationError("The hosted block page address contains a space, backslash, quote or control character.")
+    try:
+        p = urlparse(u)
+        host, _port = p.hostname, p.port
+    except ValueError:
+        raise ao.OperationError("The hosted block page address cannot be read.")
+    if p.scheme != "https":
+        raise ao.OperationError("The hosted block page address must start with https:// (plain http is refused).")
+    if p.username is not None or p.password is not None or "@" in (p.netloc or ""):
+        raise ao.OperationError("The hosted block page address must not carry a user name or password.")
+    if not host:
+        raise ao.OperationError("The hosted block page address has no host name.")
+    return u
 
 
 def in_scope(scope: Dict[str, Any]) -> Optional[str]:
@@ -72,24 +109,30 @@ def read_objects(client: Any, scope: Dict[str, Any], say: LogFn, cancel: Optiona
     errors: Dict[str, str] = {}
     current: Dict[str, Any] = {}
     try:
-        current = {k: v for k, v in read_eun(client.zia).items() if k in bpt.EUN_FIELDS}
+        current = {k: v for k, v in read_eun(client.zia).items() if k in bpt.EUN_FIELDS + HOSTED_FIELDS}
     except ao.OperationError as e:
         errors["end_user_notification"] = str(e)
-    return {"themes": themes, "current": current, "errors": errors, "visible": VISIBLE, "logo_note": LOGO_NOTE}
+    return {"themes": themes, "current": current, "errors": errors, "visible": VISIBLE, "logo_note": LOGO_NOTE, "hosted_note": HOSTED_NOTE}
 
 
 def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
-    """{"theme": name} (the saved theme's settings) or {"settings": {...}} (an Undo's exact values)."""
-    extra = sorted(str(k)[:20] for k in spec if k not in ("type", "theme", "settings"))
+    """{"theme": name[, "hosted_url": https address]} (the saved theme's settings, and with hosted_url the custom notification type
+    and redirect) or {"settings": {...}} (an Undo's exact values)."""
+    extra = sorted(str(k)[:20] for k in spec if k not in ("type", "theme", "settings", "hosted_url"))
     if extra:
         raise ao.OperationError(f"Unknown setting(s): {', '.join(extra[:3])}.")
     if ("theme" in spec) == ("settings" in spec):
         raise ao.OperationError("Give either the name of a saved theme or the exact settings, not both and not neither.")
+    if "hosted_url" in spec and "theme" not in spec:
+        raise ao.OperationError("A hosted block page address goes with a saved theme.")
     if "theme" in spec:
         try:
-            return {"type": TYPE, "theme": bpt.clean_name(spec["theme"])}
+            out = {"type": TYPE, "theme": bpt.clean_name(spec["theme"])}
         except bpt.ThemeError as e:
             raise ao.OperationError(str(e))
+        if spec.get("hosted_url"):
+            out["hosted_url"] = check_redirect_url(spec["hosted_url"])
+        return out
     raw = spec["settings"]
     if not isinstance(raw, dict) or not raw:
         raise ao.OperationError("The settings must be a non-empty object.")
@@ -98,6 +141,14 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
         if k in BOOLS:
             if not isinstance(v, bool):
                 raise ao.OperationError(f"{k} must be true or false.")
+        elif k == "notificationType":
+            if v not in NOTIFICATION_TYPES:
+                raise ao.OperationError(f"notificationType must be one of {', '.join(NOTIFICATION_TYPES)}.")
+        elif k == "redirectUrl":
+            if not isinstance(v, str):
+                raise ao.OperationError("redirectUrl must be text.")
+            if v:
+                check_redirect_url(v)
         elif k in STRINGS:
             if not isinstance(v, str) or len(v) > STRINGS[k]:
                 raise ao.OperationError(f"{k} must be text of at most {STRINGS[k]} characters.")
@@ -115,7 +166,11 @@ def wanted(n: Dict[str, Any]) -> Dict[str, Any]:
     t = bpt.get(n["theme"])
     if not t:
         raise ao.OperationError(f"There is no saved theme called '{n['theme']}'. Save one first (nothing was read from the tenant).")
-    return bpt.settings_for(t["settings"], t["logo"])
+    out = bpt.settings_for(t["settings"], t["logo"])
+    if n.get("hosted_url"):
+        out["notificationType"] = HOSTED_TYPE
+        out["redirectUrl"] = n["hosted_url"]
+    return out
 
 
 def _obj() -> Dict[str, Any]:
@@ -129,7 +184,7 @@ def plan(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say: LogFn, c
     now = read_eun(client.zia)
     ao._check_stop(cancel)
     P: Dict[str, Any] = {"type": TYPE, "product": "zia", "title": "Apply the block page theme", "spec": n, "items": [], "groups": [],
-                         "warnings": [VISIBLE, LOGO_NOTE], "blockers": [], "confirm_always": PHRASE,
+                         "warnings": [VISIBLE, LOGO_NOTE] + ([HOSTED_NOTE] if n.get("hosted_url") else []), "blockers": [], "confirm_always": PHRASE,
                          "notes": ["Reads GET /eun, then sends one PUT /eun with the object as read and only the listed fields changed, "
                                    "then reads it back. Undo puts the old values back."]}
     for k in sorted(want):

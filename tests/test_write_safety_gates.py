@@ -538,6 +538,10 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/sync-jobs/{jid}/enabled"): "a sync job's schedule (local)",
     ("POST", "/api/sync-jobs/{jid}/run"): "reads source and targets, files plans in the change queue (local); never writes a tenant",
     ("POST", "/api/scim/overview"): "reads (ZPA IdPs and SCIM group names, scope-gated)",
+    ("POST", "/api/scim/users"): "reads (one IdP's SCIM users from its own SCIM service, opt-in with a keychain secret, scope-gated, administrator-only)",
+    ("PUT", "/api/scim/users/token"): "keeps an IdP's SCIM secret in the OS credential store (local, administrator-only)",
+    ("DELETE", "/api/scim/users/token"): "removes an IdP's SCIM secret from the OS credential store (local)",
+    ("POST", "/api/zscaler-ranges/digicert-resolve"): "DNS lookups of the DigiCert hosts, kept locally (no tenant, no firewall)",
     ("POST", "/api/path-analyzer/zpa-identity"): "reads (ZPA IdPs, SAML attributes, one SCIM user's groups)",
     ("POST", "/api/tenant-terraform/start"): "reads the tenant into Terraform files (tenant_terraform); writes nothing",
     ("POST", "/api/zcc/fleet/import"): "reads uploaded Client Connector Portal exports (no tenant call)",
@@ -832,6 +836,8 @@ def no_local_side_effects(monkeypatch):
     monkeypatch.setattr(app_update, "update", lambda *a, **k: {"status": "stubbed"})
     monkeypatch.setattr(app_update, "schedule_restart", lambda *a, **k: {"status": "stubbed"})
     monkeypatch.setattr("bp_crawler.last_summary", lambda: {})
+    import socket
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [])    # the DigiCert resolve route: DNS answers nothing
     for name in ("run", "run_once", "snapshot"):
         if hasattr(beacon, name):
             monkeypatch.setattr(beacon, name, lambda *a, **k: {"status": "stubbed"})

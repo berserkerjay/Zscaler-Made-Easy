@@ -91,6 +91,17 @@
           </div>
           <label class="op-block"><span class="lbl">Attribute values</span><textarea id="paWiZ_attrs" rows="2" maxlength="4000" spellcheck="false" autocomplete="off" placeholder="Department=Finance&#10;memberOf=VPN users" aria-describedby="paWiZAttrHint"></textarea></label>
           <p class="df-hint" id="paWiZAttrHint"></p>
+          <details id="paScimUsers">
+            <summary>SCIM users of the picked IdP (optional, off until you enter its SCIM secret)</summary>
+            <div class="df-hint">Reads the IdP's own SCIM service (<code>GET …/Users</code>, SCIM 2.0, read-only) and shows user name, active, display name and the number of groups: at most 500 users, no member lists. It needs the IdP's SCIM shared secret, which you enter once and which is kept in this computer's credential store only: never in a file, a log or the audit trail, and sent only to the IdP's Zscaler SCIM address. Needs ZPA ticked on the Scope page.</div>
+            <div class="pa-wi-grid">
+              <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">SCIM shared secret</span><input type="password" id="paScimTok" autocomplete="new-password" spellcheck="false" maxlength="2048" aria-label="SCIM shared secret of the picked IdP"></label>
+                <button type="button" class="rp-btn" id="paScimSave">Keep the secret</button> <button type="button" class="rp-btn" id="paScimClear">Remove the secret</button></div>
+              <div class="pa-wi-field"><button type="button" class="rp-btn" id="paScimList">List SCIM users</button></div>
+            </div>
+            <p class="df-hint" id="paScimMsg" role="status" aria-live="polite"></p>
+            <div class="df-tablewrap" id="paScimOut" hidden></div>
+          </details>
           <p class="df-hint" id="paWiZScope"></p>
         </fieldset>
         <div class="sr-only" id="paWiLive" role="status" aria-live="polite"></div>
