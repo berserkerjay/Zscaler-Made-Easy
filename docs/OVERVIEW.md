@@ -233,6 +233,8 @@ what you get, what to do next.
   profiles. Every access rule is shown as nested AND, OR and NOT groups
   with names instead of IDs, plus one plain sentence. Excel and JSON
   exports. Read-only; Stop ends the read at once.
+- **Capacity review** — licensed against used counts (users, locations, tunnels, ZPA App Connectors and
+  segments) with headroom and a status per metric; read-only, from the tenant's own counts and licence list.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, every step the traffic takes, the
   rule that decides each one, one verdict in plain words (definite or
@@ -408,7 +410,7 @@ what you get, what to do next.
   standalone Zscaler Enterprise Browser has no API. Read-only; Stop ends
   the read at once.
 - **Cloud & Branch Connector** (`/report/ztw`, `ztw_overview.py`) — the
-  Cloud and Branch Connector configuration read once (only when Cloud &
+  Cloud & Branch Connector configuration read once (only when Cloud &
   Branch Connector is ticked on the Scope page, with a OneAPI API client):
   connector groups and their connectors (deploy type, location, software
   versions, operational and upgrade status, upgrade window), the traffic

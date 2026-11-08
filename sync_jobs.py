@@ -607,6 +607,15 @@ def _supersede(job_id: str, target: str, policy: str, keep_hash: str, by: str) -
     return out
 
 
+def awaiting_approval() -> List[Dict[str, Any]]:
+    """The "Awaiting approval" queue of scheduled sync: the open (pending or
+    approved, not yet applied) change requests that a sync job filed, newest
+    first. Read-only; the callers filter it to what the person may see."""
+    import change_queue
+    return [r for r in change_queue.list_requests(statuses=list(change_queue.OPEN_STATUSES))
+            if r.get("kind") == "admin_operation" and (r.get("payload") or {}).get("source") == "sync"]
+
+
 class Deps:
     """What a run needs from the server: build_client(creds) -> SDK client,
     tenant_key(creds) -> (queue key, label), notify(subject, body) -> list."""

@@ -87,14 +87,14 @@ TENANT_BOUND_WORDS = ("Tenant-bound objects (static IP addresses, GRE tunnels, l
 # The Client Connector option (include_zcc_profiles): what the preview says, whatever else the plan does.
 ZCC_PROFILE_WORDS = ("Client Connector app profiles and entitlements are written because you included them. Their passwords "
                      "(uninstall, disable, logout, exit and the per-service disable passwords) and the policy token are never "
-                     "read back, copied or sent: a backup holds none, and every write leaves them out. A new app profile is "
+                     "read unless revealed on demand (off by default), and never copied or sent: a backup holds none, and every write leaves them out. A new app profile is "
                      "created inactive and without any password: set its passwords in the Client Connector portal before you "
                      "switch it on. A clone matches each app profile's user groups by name in the target and never widens who a "
                      "same-named target profile applies to (a profile naming the source's own users, device groups or apps, a group "
                      "the target cannot match, or a wider assignment is left out with the reason); an entitlement's user and device "
                      "group lists stay the target's own.")
 ZCC_PASSWORD_WORDS = ("App profile passwords (uninstall, disable, logout, exit and the per-service disable passwords) and the "
-                      "policy token are never read back, copied or sent: an update leaves them as they are in the tenant.")
+                      "policy token are never read unless revealed on demand (one user at a time, off by default, never kept), and never copied or sent: an update leaves them as they are in the tenant.")
 
 
 class _Unresolved(Exception):

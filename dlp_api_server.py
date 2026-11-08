@@ -38,7 +38,7 @@ from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTM
 
 import tenant_auth
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 # ── Security hardening (secure-by-design controls) ───────────────────
 from security import (
@@ -4304,7 +4304,11 @@ async def dlp_pack_removal_inventory(req: ScopedTenantCredsRequest):
     channels = _pack_channels_in_scope(req, "The rule picker")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
+    import deployments as _deps
+    label = tenant_auth.record_label(creds)
+    live = {p for d in _deps.list_all(label) if d.get("remaining") for p in (d.get("packs") or [])}
     out = await asyncio.to_thread(pack_removal.inventory, client, channels)
+    pack_removal.mark_leftovers(out, live)   # with this tenant's live deployments, a pack nothing holds is a leftover too
     out["channels_in_scope"] = channels
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
@@ -6114,6 +6118,8 @@ class TenantTerraformRequest(ScopedTenantCredsRequest):
     include_personal_data: bool = False
     mode: str = "adopt"
     keep_rule_state: bool = False
+    output_dir: str = ""
+    support_log: bool = False
 
 
 TENANT_TF_NEEDS_ONEAPI = ("ZPA and Cloud & Branch Connector need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
@@ -6166,7 +6172,8 @@ async def tenant_terraform_start(req: TenantTerraformRequest, request: Request):
     import tenant_terraform
     try:
         opts = tenant_terraform.normalize_options(req.products or None, req.types, req.exclude, req.prefix, req.provider_namespace,
-                                                  req.microtenant_id, req.mode, req.keep_rule_state)
+                                                  req.microtenant_id, req.mode, req.keep_rule_state, req.output_dir,
+                                                  req.support_log)
         sc, ch, _source = _scope_selection(req)
         plan = tenant_terraform.plan(sc, ch, opts, include_personal=bool(req.include_personal_data))
     except tenant_terraform.ExportRefused as e:
@@ -7369,6 +7376,95 @@ async def operations_apply(req: OperationRequest, request: Request):
     return result
 
 
+# ── One Client Connector device removal across several saved tenants ───
+# One plan per tenant profile (ops_zcc_admin.per_tenant): each tenant is
+# previewed on its own, has its own plan_hash and typed confirmation, and is
+# applied through the same gates, re-read, record and audit as a single
+# removal. A failure in one tenant is that tenant's row only.
+class ZccMultiRemoveRequest(BaseModel):
+    """profile_ids: the saved tenant profiles (no typed sign-in: every tenant
+    signs in with its own profile). operation: the removal (device list or
+    matched list). To apply, `tenants` holds each tenant's own plan_hash and
+    typed confirmation."""
+    profile_ids: List[str] = []
+    operation: Dict[str, Any] = {}
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+    assessor: str = ""
+    confirm: bool = False
+    tenants: List[Dict[str, str]] = []
+
+
+def _multi_sub(req: ZccMultiRemoveRequest, pid: str, **kw: Any) -> "OperationRequest":
+    return OperationRequest(profile_id=pid, scopes=req.scopes, channels=req.channels, from_page=req.from_page, assessor=req.assessor,
+                            operation=req.operation, **kw)
+
+
+def _multi_gate(req: ZccMultiRemoveRequest) -> List[str]:
+    import ops_zcc_admin as zca
+    if _offline_creds() is not None:
+        raise HTTPException(status_code=400, detail="Several tenants need saved tenant profiles: leave the sample tenant or the snapshot first. Nothing was read.")
+    try:
+        ids = zca.check_tenants(req.profile_ids)
+        zca.check_multi_operation(req.operation)
+    except Exception as e:  # noqa: BLE001 — admin_ops.OperationError: the caller's mistake
+        raise HTTPException(status_code=400, detail=str(e))
+    _ops_scope(_multi_sub(req, ids[0]), req.operation)
+    return ids
+
+
+@app.post("/api/operations/zcc/multi-remove/preview")
+async def operations_zcc_multi_preview(req: ZccMultiRemoveRequest, request: Request):
+    """Preview the same Client Connector device removal on each picked tenant,
+    one plan per tenant. Reads only; each tenant answers on its own."""
+    import ops_zcc_admin as zca
+    ids = _multi_gate(req)
+    actor = _actor(request)
+
+    def one(pid: str) -> Dict[str, Any]:
+        sub = _multi_sub(req, pid)
+        scope = _ops_scope(sub, sub.operation)
+        creds = _tenant_creds(sub)
+        client = _build_sdk_client(creds)
+        label = tenant_auth.record_label(creds)
+        out = _as_actor(actor, _keyed, client, _run_ops_preview, client, sub, scope, label, None, None)
+        return {"tenant_label": label, "status": out.get("status") or "refused", "message": out.get("message") or "", "plan": out}
+
+    rows = await asyncio.to_thread(zca.per_tenant, ids, one)
+    return {"tenants": rows, "writes_enabled": writes_enabled(), "max_tenants": zca.MAX_TENANTS}
+
+
+@app.post("/api/operations/zcc/multi-remove/apply")
+async def operations_zcc_multi_apply(req: ZccMultiRemoveRequest, request: Request):
+    """Apply the previewed removal tenant by tenant. Each entry of `tenants` is
+    {profile_id, plan_hash, confirm_text}: that tenant's own hash and typed
+    phrase. Each goes through the single-removal gates, a re-read, the record
+    and the audit log; one that is refused, changed or fails leaves the others."""
+    import ops_zcc_admin as zca
+    ids = _multi_gate(req)
+    _security.require_writer()
+    given = {str(t.get("profile_id") or ""): t for t in req.tenants if isinstance(t, dict)}
+    if not req.confirm or not given or any(not t.get("plan_hash") for t in given.values()) or not set(given) <= set(ids):
+        raise HTTPException(status_code=400, detail="Applying needs confirm=true and, for each tenant, its own plan_hash from the preview.")
+    ids = [i for i in ids if i in given]
+    _ops_apply_gate(_multi_sub(req, ids[0], plan_hash=str(given[ids[0]].get("plan_hash")), confirm=True))   # a refusal that holds for every tenant is the request's
+    actor = _actor(request)
+
+    def one(pid: str) -> Dict[str, Any]:
+        sub = _multi_sub(req, pid, plan_hash=str(given[pid].get("plan_hash") or ""), confirm=True, confirm_text=str(given[pid].get("confirm_text") or ""))
+        scope, by = _ops_apply_gate(sub)
+        creds = _tenant_creds(sub)
+        _refuse_offline_apply(creds)
+        client = _build_sdk_client(creds)
+        out = _as_actor(actor, _keyed, client, _run_ops_apply, client, creds, sub, scope, by, actor, None, None)
+        keep = {k: out.get(k) for k in ("counts", "counts_run", "operation_id", "verification", "stopped", "record_error", "message") if k in out}
+        return {"tenant_label": out.get("tenant_label") or tenant_auth.record_label(creds), "status": out.get("status") or "failed", **keep}
+
+    rows = await asyncio.to_thread(zca.per_tenant, ids, one)
+    return {"tenants": rows}
+
+
 @app.get("/api/operations")
 async def operations_list(tenant_label: Optional[str] = None):
     """Bulk changes applied from this app (newest first), with Undo where offered."""
@@ -7750,7 +7846,7 @@ async def rule_csv_export(req: RuleCsvExportRequest):
 # target and policy in the change queue (four-eyes). The timer only starts
 # due jobs; nothing here or in sync_jobs writes to a tenant.
 _SYNC_STATE: Dict[str, Any] = {"enabled": False, "tick_seconds": 60, "last_tick_at": None, "last_error": None,
-                               "setting": "DLP_CHECK_SYNC_TIMER (0 turns the timer off; each job's own schedule decides when it runs)"}
+                               "setting": "DLP_CHECK_SYNC_TIMER (off by default; 1 turns the timer on, then each job's own schedule decides when it runs)"}
 _SYNC_RUN_LOCK = threading.Lock()
 
 
@@ -7815,6 +7911,18 @@ async def sync_jobs_list(request: Request):
     return {"jobs": [_sync_view(j) for j in jobs], "sources": await asyncio.to_thread(sync_jobs.sources),
             "timer": dict(_SYNC_STATE), "notifications": continuous_eval.notification_settings(),
             "viewer": {"actor": _cq_by(request), "may_write": _security.may_write()}}
+
+
+@app.get("/api/sync-jobs/awaiting-approval")
+async def sync_jobs_awaiting_approval():
+    """The "Awaiting approval" queue of scheduled sync: plans a sync job filed
+    that nobody has applied yet (pending or approved), filtered to the tenant
+    profiles the person may read. Read-only; applying one goes through
+    /api/change-queue/{rid}/approve and /apply (four-eyes, write gates, plan
+    hash re-check, read-back, Undo)."""
+    import sync_jobs
+    items = _team.visible(await asyncio.to_thread(sync_jobs.awaiting_approval))
+    return {"items": items, "count": len(items), "timer": dict(_SYNC_STATE)}
 
 
 @app.get("/api/sync-jobs/{jid}")
@@ -7892,7 +8000,8 @@ async def sync_jobs_run(jid: str, request: Request):
 
 
 def _sync_timer_on() -> bool:
-    return os.environ.get("DLP_CHECK_SYNC_TIMER", "1").strip().lower() not in ("0", "false", "no", "off")
+    # Off by default (opt in with DLP_CHECK_SYNC_TIMER=1): a scheduled run only reads, compares and queues plans for approval.
+    return os.environ.get("DLP_CHECK_SYNC_TIMER", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _sync_tick() -> List[str]:
@@ -8206,6 +8315,71 @@ async def workspace_notes_delete(request: Request, kind: str, ref: str, tenant: 
     if not gone:
         raise HTTPException(status_code=404, detail="There is no note on this object.")
     return {"tenant": label, "deleted": True}
+
+
+# ── Block page theme: a local, read-only preview and generator ────────────
+# block_page_theme.py keeps themes in this app's own store and builds the HTML
+# and the end-user notification settings from them; nothing here reads or
+# writes a tenant. Applying a theme is the Bulk changes operation
+# zia_eun_theme (write mode, assessor, typed phrase). Every route needs the UI
+# token; who saved a theme is the server's view of the caller.
+class BlockPageThemeRequest(BaseModel):
+    name: str = "default"
+    settings: Optional[Dict[str, Any]] = None
+    logo: str = ""
+
+
+def _bpt_call(fn, *args, **kwargs):
+    import block_page_theme as bpt
+    try:
+        return fn(*args, **kwargs)
+    except bpt.ThemeError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+@app.get("/api/block-page/themes")
+async def block_page_themes():
+    """The saved themes (the logo's facts, never its bytes) and the limits. Read-only, local."""
+    import block_page_theme as bpt
+    return {"themes": [bpt.get(n) for n in bpt.names()], "defaults": bpt.DEFAULTS,
+            "limits": {"themes": bpt.MAX_THEMES, "logo_bytes": bpt.MAX_LOGO_BYTES, **bpt.LIMITS}}
+
+
+@app.put("/api/block-page/theme")
+async def block_page_theme_save(req: BlockPageThemeRequest, request: Request):
+    """Save a theme (and its logo, when sent) in this app's own store. A local write, audited; no tenant is touched."""
+    import block_page_theme as bpt
+    return _bpt_call(bpt.save, req.name, req.settings if req.settings is not None else {}, logo=req.logo or None, by=_cq_by(request))
+
+
+@app.delete("/api/block-page/theme")
+async def block_page_theme_delete(request: Request, name: str = "default", logo_only: bool = False):
+    """Delete a theme, or only its logo. Local; no tenant is touched."""
+    import block_page_theme as bpt
+    if logo_only:
+        return _bpt_call(bpt.remove_logo, name, by=_cq_by(request))
+    if not _bpt_call(bpt.delete, name, by=_cq_by(request)):
+        raise HTTPException(status_code=404, detail="There is no such theme.")
+    return {"deleted": True}
+
+
+@app.post("/api/block-page/preview")
+async def block_page_preview(req: BlockPageThemeRequest):
+    """The page and the settings a theme produces, with sample values; unsaved edits (settings) override the saved theme.
+    Reads and writes nothing, here or in a tenant. Show the html only in a sandboxed frame."""
+    import block_page_theme as bpt
+    return _bpt_call(bpt.generate, req.name, req.settings)
+
+
+@app.get("/api/block-page/export")
+async def block_page_export(name: str = "default"):
+    """The generated page as a downloadable HTML file (an authenticated route; never a public link)."""
+    import block_page_theme as bpt
+    out = _bpt_call(bpt.generate, name)
+    fname = "block-page-" + out["name"] + ".html"
+    return Response(out["html"], media_type="text/html; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"', "Cache-Control": "no-store",
+                             "X-Content-Type-Options": "nosniff", "Content-Security-Policy": bpt.CSP})
 
 
 @app.get("/report/todo")
@@ -9270,6 +9444,38 @@ async def favicon():
     """Return empty favicon to silence browser 404s."""
     from fastapi.responses import Response
     return Response(status_code=204)
+
+
+@app.get("/api/data-check")
+async def data_check_report():
+    """Self-check of the data folder (data_check): exists, writable, store
+    encryption, store files readable with a known schema, stale lock and
+    temporary files, with suggested steps. Changes nothing on this computer
+    except a probe file it removes at once; reads no tenant."""
+    import data_check
+    out = await asyncio.to_thread(data_check.check)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+class DataCheckRepairRequest(BaseModel):
+    confirm_text: str = ""
+
+
+DATA_REPAIR_PHRASE = "REPAIR DATA FOLDER"
+
+
+@app.post("/api/data-check/repair")
+async def data_check_repair(req: DataCheckRepairRequest, request: Request):
+    """The one repair action: remove the stale lock files and leftover
+    temporary copies the check lists. Never a store, key, backup or
+    snapshot. Needs a person allowed to change things and the typed phrase;
+    the audit entry names the files removed, never contents."""
+    import data_check
+    _security.require_writer()
+    if not _security.typed_phrase_matches(req.confirm_text, DATA_REPAIR_PHRASE):
+        raise HTTPException(status_code=400, detail=f"Type {DATA_REPAIR_PHRASE} to confirm. Nothing was removed.")
+    out = await asyncio.to_thread(data_check.repair)
+    return JSONResponse(dict(out, check=await asyncio.to_thread(data_check.check)), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/health")
@@ -10387,6 +10593,143 @@ def _tlw_tick() -> Optional[Dict[str, Any]]:
     return rec
 
 
+# ── Report delivery and DNS push (report_delivery, dns_push) ────────────────
+# Opt-in, off by default. Targets must be in the host allowlist; the password
+# goes straight to the operating system's credential store and is never kept,
+# echoed, audited or logged. Server-wide settings: the writer check and an
+# audit record that holds no secret.
+class DeliverySettings(BaseModel):
+    """Delivery switch, host allowlist, targets (no password), known_hosts path and the report schedule."""
+    model_config = ConfigDict(extra="forbid")
+    enabled: Optional[bool] = None
+    allowed_hosts: Optional[List[str]] = None
+    targets: Optional[Dict[str, Dict[str, Any]]] = None
+    known_hosts: Optional[str] = None
+    schedule: Optional[Dict[str, Any]] = None
+
+
+class DeliveryCredential(BaseModel):
+    """A target's password: stored in the credential store only (never logged; hidden from repr)."""
+    model_config = ConfigDict(extra="forbid")
+    password: SecretStr
+
+
+class DeliverySend(BaseModel):
+    """Send one saved traffic-log report (CSV) to a target now."""
+    model_config = ConfigDict(extra="forbid")
+    target: str
+    report: str
+
+
+class DnsPushSettings(BaseModel):
+    """DNS push: switch, resolver targets, which file, cron schedule."""
+    model_config = ConfigDict(extra="forbid")
+    enabled: Optional[bool] = None
+    targets: Optional[List[str]] = None
+    file: Optional[str] = None
+    cron: Optional[str] = None
+
+
+@app.get("/api/delivery")
+async def delivery_state():
+    """Delivery settings (no password), library availability and the DNS push state."""
+    import report_delivery as rd
+    import dns_push as dp
+    s = await asyncio.to_thread(rd.get_settings)
+    return {"delivery": s, "dns_push": await asyncio.to_thread(dp.get_state)}
+
+
+@app.post("/api/delivery/settings")
+async def delivery_save(req: DeliverySettings, request: Request):
+    """Change delivery settings (writer only; audited without any secret)."""
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(rd.save_settings, req.model_dump(exclude_none=True))
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("report_delivery_settings", actor=_actor(request) or _security.current_actor(), enabled=out["enabled"],
+                  hosts=len(out["allowed_hosts"]), targets=len(out["targets"]))
+    return out
+
+
+@app.put("/api/delivery/credential/{target_id}")
+async def delivery_credential(target_id: str, req: DeliveryCredential, request: Request):
+    """Store a target's password in the credential store (writer only). The answer never holds it."""
+    import report_delivery as rd
+    _security.require_writer()
+    if target_id not in (await asyncio.to_thread(rd.get_settings))["targets"]:
+        raise HTTPException(status_code=404, detail="No such delivery target.")
+    try:
+        await asyncio.to_thread(rd.set_credential, target_id, req.password.get_secret_value())
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("report_delivery_credential", actor=_actor(request) or _security.current_actor(), target=target_id)
+    return {"target": target_id, "stored": True}
+
+
+@app.post("/api/delivery/test/{target_id}")
+async def delivery_test(target_id: str, request: Request):
+    """Open and close a connection to an allowlisted target (writer only); nothing is sent."""
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(rd.test_connection, target_id)
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("report_delivery_test", actor=_actor(request) or _security.current_actor(), target=target_id)
+    return out
+
+
+@app.post("/api/delivery/send")
+async def delivery_send(req: DeliverySend, request: Request):
+    """Send a saved report's CSV to a target now (writer only)."""
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        return await asyncio.to_thread(rd.deliver_saved, req.target, req.report)
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/dns-push/settings")
+async def dns_push_save(req: DnsPushSettings, request: Request):
+    """Change DNS push settings (writer only)."""
+    import dns_push as dp
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(dp.save_settings, req.model_dump(exclude_none=True))
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("dns_push_settings", actor=_actor(request) or _security.current_actor(), enabled=out["settings"]["enabled"],
+                  targets=len(out["settings"]["targets"]))
+    return out
+
+
+@app.post("/api/dns-push/run")
+async def dns_push_run(request: Request):
+    """Push the staged forwarder file to every chosen resolver; one result per host (writer only)."""
+    import dns_push as dp
+    import report_delivery as rd
+    _security.require_writer()
+    try:
+        res = await asyncio.to_thread(dp.push)
+    except rd.DeliveryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("dns_push_run", actor=_actor(request) or _security.current_actor(), sent=sum(1 for r in res if r["status"] == "sent"),
+                  failed=sum(1 for r in res if r["status"] != "sent"))
+    return {"results": res}
+
+
+def _rd_tick() -> None:
+    """Opt-in report delivery on its cron schedule (off by default; sends the newest saved report only)."""
+    import report_delivery as rd
+    import dns_push as dp
+    rd.tick()
+    dp.tick()
+
+
 async def _tlw_loop() -> None:
     while _TLW_STATE.get("enabled"):
         try:
@@ -10395,6 +10738,7 @@ async def _tlw_loop() -> None:
             break
         try:
             await asyncio.to_thread(_tlw_tick)
+            await asyncio.to_thread(_rd_tick)
             _TLW_STATE["last_error"] = None
         except Exception as e:  # noqa: BLE001 — the timer never takes the server down
             _TLW_STATE["last_error"] = f"{type(e).__name__}: {str(e)[:200]}"
@@ -11884,6 +12228,7 @@ class ZccDnsRequest(BaseModel):
     ttl: int = 300
     unbound_local_zone: bool = True
     unbound_insecure: bool = True
+    stage_for_push: str = ""   # "unbound" or "bind_forward": keep that file for the opt-in DNS push (writer only)
 
     @field_validator("domain", "resolvers", "mappings")
     @classmethod
@@ -11920,6 +12265,15 @@ async def zcc_fleet_dns_records(job_id: str, req: ZccDnsRequest, request: Reques
                                       read_at=res.get("read_at"), truncated=bool(res.get("devices_truncated")))
     except dfz.DnsInputError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if req.stage_for_push:
+        import dns_push as dp
+        import report_delivery as rd
+        _security.require_writer()
+        try:
+            await asyncio.to_thread(dp.stage, out, req.stage_for_push)
+        except rd.DeliveryError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        out["staged_for_push"] = req.stage_for_push
     _audit.record("zcc_dns_records", actor=_actor(request) or _security.current_actor(), records=out["counts"]["records"],
                   collisions=out["counts"]["collisions"], resolvers=len(out["meta"]["resolvers"]))
     out["file_names"] = {k: v[0] for k, v in dfz.FILES.items()}
@@ -11979,6 +12333,18 @@ class ZsRangesImport(BaseModel):
         return v
 
 
+class ZsDigicertResolve(BaseModel):
+    """Resolve the listed DigiCert validation hosts by DNS now; `operator_ranges` are the operator's own CIDRs (pasted or from a file)."""
+    operator_ranges: str = ""
+
+    @field_validator("operator_ranges")
+    @classmethod
+    def _typed(cls, v: str) -> str:
+        if len(v or "") > 100_000:
+            raise ValueError("too long")
+        return v
+
+
 class ZsRangesBuild(ZsRangesPick):
     """The allowlist options: regions to keep (none: every region), ranges to
     leave out, ranges to add (certificate validation, for example), the
@@ -11989,6 +12355,8 @@ class ZsRangesBuild(ZsRangesPick):
     ipv4: bool = True
     ipv6: bool = True
     format: str = ""
+    digicert: bool = False        # add the shipped DigiCert certificate-validation hosts (source and date in the answer)
+    single_hosts: bool = False    # write a /32 (or /128) as the bare address
 
     @field_validator("regions")
     @classmethod
@@ -12055,6 +12423,32 @@ async def zscaler_ranges_import(req: ZsRangesImport, request: Request):
     return out
 
 
+@app.post("/api/zscaler-ranges/digicert-resolve")
+async def zscaler_ranges_digicert_resolve(req: ZsDigicertResolve, request: Request):
+    """Resolve the DigiCert validation host names by DNS now (DNS only; nothing is sent to DigiCert) and keep the addresses,
+    with any operator ranges (validated CIDRs only: 400 otherwise). Included in the allowlist when 'DigiCert' is ticked."""
+    import zscaler_ip_ranges as zr
+    _security.require_writer()
+    # DNS lookups are outbound, so they follow the page's fetch switch (off by default), like the feed fetch above.
+    lookup = bool(zr.settings()["enabled"])
+    if not lookup and not str(req.operator_ranges or "").strip():
+        raise HTTPException(status_code=409, detail="Looking up the DigiCert addresses is off while fetching is off. Turn fetching on here, or paste your own ranges.")
+    try:
+        out = await asyncio.to_thread(zr.resolve_digicert, None, req.operator_ranges, None, lookup)
+    except zr.FeedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("zscaler_ranges_digicert_resolve", actor=_actor(request) or _security.current_actor(),
+                  resolved=len(out["ranges"]), operator=len(out["operator_ranges"]))
+    return out
+
+
+@app.get("/api/zscaler-ranges/digicert")
+async def zscaler_ranges_digicert():
+    """The kept DigiCert resolution (time, label, addresses), or null. Reads nothing remote."""
+    import zscaler_ip_ranges as zr
+    return {"resolved": await asyncio.to_thread(zr.digicert_resolved)}
+
+
 @app.delete("/api/zscaler-ranges")
 async def zscaler_ranges_remove(request: Request, cloud: str = ""):
     """Forget the kept feeds (of one cloud, or all): they are unknown again."""
@@ -12072,7 +12466,8 @@ def _zs_ranges_build(req: ZsRangesBuild) -> Dict[str, Any]:
     import zscaler_ip_ranges as zr
     try:
         return zr.build(req.cloud, req.feeds, zpa_cloud=req.zpa_cloud, regions=req.regions or None, exclude=req.exclude,
-                        extra=req.extra, ipv4=req.ipv4, ipv6=req.ipv6)
+                        extra=req.extra, ipv4=req.ipv4, ipv6=req.ipv6, digicert=req.digicert,
+                        single_hosts=req.single_hosts)
     except zr.FeedError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -12215,6 +12610,71 @@ async def zcc_otp_show(req: ZccOtpRequest, request: Request):
         _close_quietly(sdk)
     zcc_otp.audit("shown", actor=actor, by=by, tenant=label, device=out["device"]["hostname"], ref=out["device"]["ref"],
                   kinds=[o["key"] for o in out["otps"]])
+    return JSONResponse(out, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
+class ZccPasswordsRequest(ScopedTenantCredsRequest):
+    """One user's Client Connector tamper-protection passwords for one
+    operating system (zcc_passwords): the enrolled user, the OS, the
+    assessor and the typed confirmation "SHOW PASSWORDS <user> <os>"."""
+    user: str = ""
+    os: str = ""
+    confirm_text: str = ""
+
+
+ZCC_PASSWORDS_WHAT = "Client Connector tamper-protection passwords"
+ZCC_PASSWORDS_ASSESSOR = ("Enter the assessor's name before revealing passwords: the audit log names the person who asked "
+                          "for them. Nothing was read.")
+
+
+@app.post("/api/zcc/passwords")
+async def zcc_passwords_reveal(req: ZccPasswordsRequest, request: Request):
+    """One user's uninstall, log-out, exit and turn-off passwords for one
+    operating system, revealed on demand. Off unless ZSCALER_ZCC_TAMPER_REVEAL=1.
+    Refused before sign-in unless ZCC is in scope, the caller may change the
+    tenant (an administrator on a team server), the assessor is named,
+    "SHOW PASSWORDS <user> <os>" is typed and the rate limit allows it. The
+    values are in this answer only (no-store): never logged, stored, cached,
+    exported or put in a backup; the audit entry names who, when, which user
+    and operating system, never a value (zcc_passwords)."""
+    import pack_deploy
+    import zcc_passwords
+    if not zcc_passwords.enabled():
+        raise HTTPException(status_code=403, detail=zcc_passwords.OFF_WORDS)
+    _require_in_scope(req, "zcc", ZCC_PASSWORDS_WHAT)
+    _security.require_writer()
+    if pack_deploy.is_tool_name(getattr(req, "assessor", "") or ""):
+        raise HTTPException(status_code=400, detail=ASSESSOR_NOT_TOOL)
+    by = _assessor(req)
+    if not by:
+        raise HTTPException(status_code=400, detail=ZCC_PASSWORDS_ASSESSOR)
+    try:
+        user = zcc_passwords.clean(req.user, "enrolled user name")
+        os_name = zcc_passwords.os_type(req.os)
+    except zcc_passwords.PasswordError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    want = zcc_passwords.phrase(user, os_name)
+    if not _security.typed_phrase_matches(req.confirm_text, want):
+        raise HTTPException(status_code=400, detail=f"Type {want} to confirm. Nothing was read.")
+    actor = _actor(request)
+    creds = _tenant_creds(req)
+    label = tenant_auth.record_label(creds)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="The classic ZIA API sign-in has no Client Connector API; sign in with a OneAPI API client.")
+    wait = zcc_passwords.LIMITER.take(actor or "local")
+    if wait:
+        zcc_passwords.audit("rate_limited", actor=actor, by=by, tenant=label, user=user, os_name=os_name, reason=f"retry after {wait}s")
+        raise HTTPException(status_code=429, detail=f"Too many password requests: try again in {wait} seconds. Nothing was read.",
+                            headers={"Retry-After": str(wait)})
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    try:
+        out = await asyncio.to_thread(zcc_passwords.retrieve, sdk, user, os_name)
+    except zcc_passwords.PasswordError as e:
+        zcc_passwords.audit("refused" if e.status < 500 else "failed", actor=actor, by=by, tenant=label, user=user, os_name=os_name, reason=str(e))
+        raise HTTPException(status_code=e.status, detail=str(e))
+    finally:
+        _close_quietly(sdk)
+    zcc_passwords.audit("shown", actor=actor, by=by, tenant=label, user=user, os_name=os_name, kinds=[p["key"] for p in out["passwords"]])
     return JSONResponse(out, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 
@@ -13295,6 +13755,16 @@ async def category_lookup_start(req: CategoryLookupRequest, request: Request):
     return {"job_id": job.id, "status": job.status, "kind": job.kind, "entries": n, "skipped": len(parsed["skipped"])}
 
 
+@app.get("/report/capacity")
+async def report_capacity_page():
+    """Capacity review (static/report_capacity.html): used against licensed counts, with headroom."""
+    page = os.path.join(STATIC_DIR, "report_capacity.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
 # ── Audit timeline ────────────────────────────────────────────────────
 @app.get("/report/audit")
 async def report_audit_page():
@@ -13305,6 +13775,20 @@ async def report_audit_page():
         raise HTTPException(status_code=404, detail="report page missing")
     with open(page, "r", encoding="utf-8") as f:
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/api/audit/search")
+async def audit_search(q: str = "", event: str = "", limit: int = 100):
+    """Full-text search of this app's own audit log (audit.search): every
+    word of `q` must appear in the entry, optionally one `event`. Local file
+    only, no tenant is contacted; the entries are the redacted ones the log
+    holds; on a team server only the entries of tenant profiles the person
+    may read. Newest first, at most audit.MAX_SEARCH_RESULTS. An empty
+    search matches nothing (an empty list, never the whole log)."""
+    if len(q) > 500 or len(event) > 64:
+        raise HTTPException(status_code=400, detail="The search text is too long.")
+    keep = lambda e: bool(_team.filter_audit_entries([e]))  # noqa: E731
+    return await asyncio.to_thread(_audit.search, q, limit, event=event, keep=keep)
 
 
 class AuditTimelineRequest(ScopedTenantCredsRequest):
@@ -13371,6 +13855,21 @@ async def audit_timeline_start(req: AuditTimelineRequest, request: Request):
     return {"job_id": job.id, "status": job.status, "kind": job.kind, "window": {k: win[k] for k in ("start", "end", "days")}}
 
 
+@app.get("/api/audit/export")
+async def audit_export(format: str = "jsonl", limit: int = 5000):
+    """This app's own audit log (the last `limit` entries, at most 50000) as JSON Lines or CSV, an authenticated download.
+    On a team server only the entries of tenant profiles the person may read. Secrets were redacted when each line was
+    written; CSV cells are spreadsheet-safe."""
+    if (format or "").lower() not in ("jsonl", "csv"):
+        raise HTTPException(status_code=400, detail="format must be jsonl or csv")
+    entries = _team.filter_audit_entries(_audit.tail(max(1, min(int(limit), 50000))))
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    ext = (format or "jsonl").lower()
+    return Response(content=_audit.export(entries, ext), media_type="text/csv; charset=utf-8" if ext == "csv" else "application/x-ndjson",
+                    headers={"Content-Disposition": (f"attachment; filename=audit_{ts}.csv" if ext == "csv" else f"attachment; filename=audit_{ts}.jsonl"), "Cache-Control": "no-store",
+                             "X-Content-Type-Options": "nosniff"})
+
+
 @app.get("/api/audit-timeline/{job_id}/export")
 async def audit_timeline_export(job_id: str, format: str = "csv"):
     """A finished timeline as CSV (spreadsheet-safe, csv_safe) or JSON
@@ -13387,6 +13886,145 @@ async def audit_timeline_export(job_id: str, format: str = "csv"):
                         headers={"Content-Disposition": f"attachment; filename=audit_timeline_{ts}.json"})
     return Response(content=at.to_csv(res["events"]), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename=audit_timeline_{ts}.csv"})
+
+
+class PostmortemRequest(BaseModel):
+    """Body of the incident postmortem: the window (`days` back, or `start` / `end`), a title and the format (json, md or csv)."""
+    days: int = 7
+    start: str = Field("", max_length=40)
+    end: str = Field("", max_length=40)
+    title: str = Field("Incident postmortem", max_length=120)
+    format: str = "json"
+
+
+@app.post("/api/postmortem")
+async def postmortem_report(req: PostmortemRequest):
+    """An incident postmortem template for a window, built from this app's
+    own audit log and deployment records (team mode: only the person's
+    tenant profiles). Reads no tenant and writes nothing; the Markdown and
+    CSV downloads are escaped (md_safe, csv_safe)."""
+    import audit_timeline as at
+    import deployments
+    import postmortem as pm
+    fmt = (req.format or "json").lower()
+    if fmt not in ("json", "md", "csv"):
+        raise HTTPException(status_code=400, detail="format must be json, md or csv.")
+    try:
+        win = at.window(req.days, req.start, req.end)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    rep = pm.generate(window_=win, deployments=_team.visible(deployments.list_all()),
+                      audit_entries=_team.filter_audit_entries(_audit.tail(50000)), title=req.title or "Incident postmortem")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    hdr = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+    if fmt == "md":
+        return Response(content=pm.to_markdown(rep), media_type="text/markdown; charset=utf-8",
+                        headers={**hdr, "Content-Disposition": f"attachment; filename=postmortem_{ts}.md"})
+    if fmt == "csv":
+        return Response(content=pm.to_csv(rep), media_type="text/csv; charset=utf-8",
+                        headers={**hdr, "Content-Disposition": f"attachment; filename=postmortem_{ts}.csv"})
+    return Response(content=json.dumps(rep, default=str), media_type="application/json", headers=hdr)
+
+
+class CiteRequest(BaseModel):
+    """Body of the citation tool: a topic or a finding id, and whether to fetch fresh excerpts (off unless asked)."""
+    topic: str = Field("", max_length=300)
+    finding_id: str = Field("", max_length=60)
+    fetch: bool = False
+
+
+@app.post("/api/cite")
+async def cite_route(req: CiteRequest):
+    """Best-practice citations (source URL, title, tier, retrieved date, quoted
+    excerpt) from the local catalogue and excerpt cache. `fetch` is off by
+    default; when on, only Zscaler help and docs hosts are fetched, through
+    the update checker's allowlisted fetcher. Reads no tenant."""
+    import reference_corpus as rc
+    try:
+        return await asyncio.to_thread(rc.cite, req.topic, req.finding_id, req.fetch)
+    except rc.CiteError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+class CapacityRequest(MigrateRequest):
+    """Body of the capacity review: tenant credentials and the Scope page selection."""
+
+
+def _run_capacity_review(creds: Dict[str, Any], scopes: List[str], label: str, log, cancel) -> Dict[str, Any]:
+    import capacity_review as cr
+    sdk = _build_sdk_client(creds)
+    try:
+        log("Reading counts for the products in scope (GET only)...")
+        got = cr.read_used(sdk, creds, scopes, cancel)
+    finally:
+        with contextlib.suppress(Exception):
+            sdk.close()
+    rep = cr.review(got["used"], cr.load_entitlements(), got["seats"])
+    rep["notes"] = got["notes"] + rep["notes"]
+    rep.update(tenant_label=label, markdown=cr.to_markdown(rep, f"Capacity review: {label}"), csv=cr.to_csv(rep))
+    return rep
+
+
+@app.post("/api/capacity-review")
+async def capacity_review_start(req: CapacityRequest, request: Request):
+    """Start the capacity review as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}): users, locations, tunnels, App Connectors
+    and ZPA segments in use against the licence seat counts read from
+    /subscriptions, else the local file. Needs Cloud & Branch Connector, ZPA
+    or ZIA platform (extras) ticked on the Scope page; otherwise a 400 before
+    any sign-in. Read-only."""
+    import pack_jobs
+    sc, _ch, _src = _scope_selection(req)
+    if not {"ztw", "zpa", "zia_extras"} & set(sc):
+        raise HTTPException(status_code=400, detail="The capacity review is not in scope: on the Scope page tick Cloud & Branch Connector, ZPA or ZIA platform, then run it again. Nothing was read.")
+    creds = _tenant_creds(req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("capacity-review", lambda log, cancel: _run_capacity_review(creds, list(sc), label, log, cancel),
+                          label=f"capacity review {label}"[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+class JournalRequest(BaseModel):
+    """One journal step: action open (title), add (case_id, kind, content, ...). The tenant is its label or profile."""
+    tenant: str = ""
+    profile_id: str = ""
+    vanity_domain: str = ""
+    cloud: str = ""
+    auth_method: str = ""
+    action: str = "add"
+    title: str = Field("", max_length=200)
+    case_id: str = Field("", max_length=8)
+    kind: str = Field("", max_length=20)
+    content: str = Field("", max_length=1000)
+    step_id: str = Field("", max_length=8)
+    tool: str = Field("", max_length=40)
+    ref: str = Field("", max_length=200)
+    outcome: str = Field("", max_length=20)
+
+
+@app.get("/api/journal")
+async def journal_get(tenant: str = "", profile_id: str = "", vanity_domain: str = "", cloud: str = "", auth_method: str = "", case_id: str = ""):
+    """The tenant's investigation cases, or one case with where it left off. Local, read-only."""
+    import investigation_journal as ij
+    label = _notes_call(_notes_tenant, tenant, profile_id, vanity_domain, cloud, auth_method)
+    return {"tenant": label, **_notes_call(ij.show, label, case_id)}
+
+
+@app.post("/api/journal")
+async def journal_post(req: JournalRequest, request: Request):
+    """Open a case or add a hypothesis, evidence, conclusion, question or
+    answer to it. A local write to the app's sealed journal store (never the
+    tenant), recorded with who made it."""
+    import investigation_journal as ij
+    label = _notes_call(_notes_tenant, req.tenant, req.profile_id, req.vanity_domain, req.cloud, req.auth_method)
+    by = _cq_by(request)
+    if req.action == "open":
+        case = _notes_call(ij.open_case, label, req.title, by=by)
+    elif req.action == "add":
+        case = _notes_call(ij.add, label, req.case_id, req.kind, req.content, by=by, step_id=req.step_id, tool=req.tool, ref=req.ref, outcome=req.outcome)
+    else:
+        raise HTTPException(status_code=400, detail="action is open or add.")
+    return {"tenant": label, "case": case}
 
 
 # ── Flow animator ─────────────────────────────────────────────────────
@@ -14571,7 +15209,7 @@ def _pov_typed(req: Any) -> Dict[str, str]:
 
 def _pov_view(b: Dict[str, str], p: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     import pov
-    return {"tenant_label": b["label"], "pov": p, "templates": _pov_templates()}
+    return {"tenant_label": b["label"], "pov": p, "progress": pov.progress(p) if p else None, "templates": _pov_templates()}
 
 
 @app.get("/report/pov")
@@ -14622,6 +15260,20 @@ async def pov_update(req: PovRequest, request: Request):
     """Save changes to parts of the POV made on revision `rev`."""
     import pov
     p = _pov_call(pov.update, req.profile_id, _pov_typed(req), req.rev, req.changes, by=_cq_by(request))
+    return _pov_view(p["tenant"], p)
+
+
+class PovPostureRequest(PovRequest):
+    """Record a posture score on the POV: the assessment results the page holds (the score is computed here)."""
+    checks: List[Dict[str, Any]] = []
+
+
+@app.post("/api/pov/posture")
+async def pov_posture(req: PovPostureRequest, request: Request):
+    """Record the posture score of the results sent. The first reading is the POV's start, the latest later one its end;
+    the pair and the change are in the view. Computed from the results sent: no tenant read, no tenant write."""
+    import pov
+    p = _pov_call(pov.add_posture, req.profile_id, _pov_typed(req), req.checks, by=_cq_by(request))
     return _pov_view(p["tenant"], p)
 
 
@@ -15578,6 +16230,115 @@ async def path_analyzer_zpa_identity(req: PathZpaIdentityRequest):
     return out
 
 
+class ScimViewRequest(MigrateRequest):
+    """Body of the SCIM view: the sign-in (with the ZPA customer ID) and the Scope page selection."""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+@app.post("/api/scim/overview")
+async def scim_overview(req: ScimViewRequest):
+    """Read-only SCIM visibility (scim_view): each IdP with its SCIM switches,
+    the SCIM groups ZPA holds for it and a sync status (groups, newest change).
+    400 before sign-in when ZPA is not ticked on the Scope page. Nothing is
+    written; no user's personal data is listed."""
+    import scim_view
+    _require_in_scope(req, "zpa", "The SCIM view")
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="ZPA cannot be read with the classic ZIA API sign-in: sign in with a OneAPI API client. Nothing was read.")
+    if not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail="ZPA cannot be read: the ZPA customer ID is missing (Connect to the tenant → Customer ID). Nothing was read.")
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    out = await asyncio.to_thread(scim_view.overview, sdk)
+    if out.get("error"):
+        out["error"] = tenant_auth.mask_secrets(str(out["error"]), creds)
+    return dict(out, tenant_label=tenant_auth.record_label(creds))
+
+
+class ScimUsersRequest(ScimViewRequest):
+    """Body of the opt-in SCIM user list: the sign-in, the Scope selection and the IdP's id."""
+    idp_id: str = ""
+
+    @field_validator("idp_id")
+    @classmethod
+    def _idp(cls, v: str) -> str:
+        if len(v or "") > 64:
+            raise ValueError("too long")
+        return v
+
+
+class ScimTokenBody(BaseModel):
+    """An IdP's SCIM shared secret, entered once. It goes to the operating-system credential store and nowhere else."""
+    idp_id: str = ""
+    token: str = Field(default="", repr=False)
+
+    @field_validator("idp_id")
+    @classmethod
+    def _idp(cls, v: str) -> str:
+        if len(v or "") > 64:
+            raise ValueError("too long")
+        return v
+
+    @field_validator("token")
+    @classmethod
+    def _tok(cls, v: str) -> str:
+        if len(v or "") > 4096:
+            raise ValueError("too long")
+        return v
+
+
+@app.put("/api/scim/users/token")
+async def scim_users_token_set(req: ScimTokenBody, request: Request):
+    """Keep one IdP's SCIM shared secret in the OS credential store (never a file). The answer and the audit line never carry it."""
+    import scim_view
+    _security.require_writer()
+    try:
+        await asyncio.to_thread(scim_view.set_token, req.idp_id, req.token)
+    except scim_view.ScimUsersError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("scim_users_token_set", actor=_actor(request) or _security.current_actor(), idp_id=req.idp_id)
+    return {"stored": True, "idp_id": req.idp_id}
+
+
+@app.delete("/api/scim/users/token")
+async def scim_users_token_clear(request: Request, idp_id: str = ""):
+    """Remove one IdP's SCIM shared secret from the OS credential store: the user list is off again."""
+    import scim_view
+    _security.require_writer()
+    try:
+        await asyncio.to_thread(scim_view.clear_token, idp_id)
+    except scim_view.ScimUsersError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("scim_users_token_cleared", actor=_actor(request) or _security.current_actor(), idp_id=idp_id)
+    return {"stored": False, "idp_id": idp_id}
+
+
+@app.post("/api/scim/users")
+async def scim_users(req: ScimUsersRequest, request: Request):
+    """Opt-in, read-only list of one IdP's SCIM users (user name, active, display name, group count) read from the IdP's own
+    SCIM 2.0 service with the stored shared secret. 400 before sign-in when ZPA is not ticked on the Scope page; off (no request
+    sent) without a stored secret; refused for an address that is not a Zscaler SCIM host. Nothing is written."""
+    import scim_view
+    _require_in_scope(req, "zpa", "The SCIM user list")
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="ZPA cannot be read with the classic ZIA API sign-in: sign in with a OneAPI API client. Nothing was read.")
+    if not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail="ZPA cannot be read: the ZPA customer ID is missing (Connect to the tenant → Customer ID). Nothing was read.")
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    try:
+        out = await asyncio.to_thread(scim_view.users_for_idp, sdk, req.idp_id)
+    except scim_view.ScimUsersError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if out.get("error"):
+        out["error"] = tenant_auth.mask_secrets(str(out["error"]), creds)
+    _audit.record("scim_users_read", actor=_actor(request) or _security.current_actor(), idp_id=req.idp_id,
+                  users=out.get("shown", 0), error=bool(out.get("error")))
+    return dict(out, tenant_label=tenant_auth.record_label(creds))
+
+
 def _path_device_record(ref: str, creds: Dict[str, Any]) -> Dict[str, Any]:
     """The kept device lookup `ref` names, only for the same tenant (else 400)."""
     import tenant_fingerprint
@@ -15785,6 +16546,27 @@ async def report_data_flow_trace(report_id: str, req: DataFlowTraceRequest):
     if not req.destination.strip():
         raise HTTPException(status_code=400, detail="Enter a cloud application, URL category or hostname.")
     return await asyncio.to_thread(trace_from_report, rep, req.destination.strip()[:200], req.network, req.platform)
+
+
+class PortCheckRequest(BaseModel):
+    protocol: str = "tcp"
+    port: Any = None
+
+
+@app.post("/api/report/data-flow/{report_id}/port-check")
+async def report_data_flow_port_check(report_id: str, req: PortCheckRequest):
+    """Is this protocol and port blocked for everyone? Answered from the
+    stored tenant snapshot's Cloud Firewall rules; no tenant call, nothing
+    is written (path_port_check)."""
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("dataflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    import path_port_check
+    zia = (rep.get("snapshot") or {}).get("zia") or {}
+    try:
+        return await asyncio.to_thread(path_port_check.check, zia, req.protocol[:8], req.port)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/report/data-flow/export/{report_id}")

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "EDU Record Markings",
+    "description": "Documents labelled as education records (FERPA citation or the words Education Record).",
+    "expression": "((D:EDU-Record-Markings > 0))"
+  },
+  {
+    "name": "EDU Student Record Data",
+    "description": "A student record term with a Social Security number within 500 characters.",
+    "expression": "((D:EDU-Student-Record-Terms > 0) AND (D:EDU-Social Security Numbers (US) - Prox 500 > 0))"
+  }
+]

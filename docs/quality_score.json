@@ -15754,7 +15754,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 142,
+    "asvs_requirements": 146,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -16025,7 +16025,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 68,
+    "wstg": 70,
     "slsa": [
       "SLSA Provenance",
       "SLSA v1.0",

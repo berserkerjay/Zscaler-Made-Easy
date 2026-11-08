@@ -75,6 +75,7 @@
     refresh();
     box.addEventListener('toggle', refresh);
     initZpa(box);
+    initScimUsers();
     box.addEventListener('click', e => {
       const b = e.target.closest('[data-wi-find]');
       if (b) { find(b.dataset.wiFind, b); return; }
@@ -135,6 +136,49 @@
       } catch (e) {
         list.hidden = false; list.innerHTML = `<li class="df-hint">${E(e.message)}</li>`; live.textContent = `The lookup could not run: ${e.message}`;
       } finally { findBtn.textContent = 'Look up SCIM groups'; findBtn.disabled = !zpaAllowed(); }
+    });
+  }
+
+  // ── Opt-in SCIM user list (the IdP's own SCIM service; the secret goes to the credential store only) ──
+  function initScimUsers() {
+    const $ = id => document.getElementById(id);
+    if (!$('paScimUsers')) return;
+    const msg = $('paScimMsg'), out = $('paScimOut'), tok = $('paScimTok');
+    const idp = () => $('paWiZ_idp').value;
+    const say = t => { msg.textContent = t; };
+    const refresh = () => { const ok = zpaAllowed(); ['paScimSave', 'paScimClear', 'paScimList'].forEach(id => { $(id).disabled = !ok; }); };
+    refresh();
+    $('paScimUsers').addEventListener('toggle', refresh);
+    async function send(method, url, body) {
+      const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(d, r.status));
+      return d;
+    }
+    $('paScimSave').addEventListener('click', async () => {
+      if (!idp()) { say('Load the IdPs and pick one first.'); return; }
+      if (!tok.value) { say('Type the IdP\'s SCIM shared secret first.'); tok.focus(); return; }
+      try { await send('PUT', '/api/scim/users/token', { idp_id: idp(), token: tok.value }); tok.value = ''; say('The secret is kept in the credential store. The user list is on for this IdP.'); }
+      catch (e) { say(`Not kept: ${e.message}`); }
+    });
+    $('paScimClear').addEventListener('click', async () => {
+      if (!idp()) { say('Pick the IdP first.'); return; }
+      try { await send('DELETE', `/api/scim/users/token?idp_id=${encodeURIComponent(idp())}`); tok.value = ''; out.hidden = true; say('The secret is removed. The user list is off for this IdP.'); }
+      catch (e) { say(`Not removed: ${e.message}`); }
+    });
+    $('paScimList').addEventListener('click', async () => {
+      if (!idp()) { say('Load the IdPs and pick one first.'); return; }
+      const b = $('paScimList'); b.disabled = true; b.textContent = 'Reading…';
+      try {
+        const d = await send('POST', '/api/scim/users', Object.assign({}, page.credBody(), page.scopeSelection(), { idp_id: idp() }));
+        if (d.error) { out.hidden = true; say(d.error); return; }
+        const rows = d.users || [];
+        out.hidden = false;
+        out.innerHTML = `<table class="df-table"><caption>${E(rows.length)} SCIM user(s)${d.total != null ? ` of ${E(d.total)}` : ''}${d.complete ? '' : ' (the first pages only)'}</caption><thead><tr><th scope="col">User name</th><th scope="col">Active</th><th scope="col">Display name</th><th scope="col">Groups</th></tr></thead><tbody>`
+          + rows.map(u => `<tr><td>${E(u.userName)}</td><td>${u.active === true ? 'Yes' : u.active === false ? 'No' : 'Unknown'}</td><td>${E(u.displayName)}</td><td>${E(u.group_count)}</td></tr>`).join('') + '</tbody></table>';
+        say(`${rows.length} SCIM user(s) read from ${d.endpoint_host || 'the IdP'}.`);
+      } catch (e) { out.hidden = true; say(`Not read: ${e.message}`); }
+      finally { b.textContent = 'List SCIM users'; b.disabled = !zpaAllowed(); }
     });
   }
 

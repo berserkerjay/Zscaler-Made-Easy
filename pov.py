@@ -86,6 +86,7 @@ MAX_FOLLOW_UPS = 100
 MAX_CHECKINS = 30
 MAX_EVIDENCE = 20        # per test
 MAX_INSIGHTS_RUNS = 5
+MAX_POSTURE_RUNS = 10     # score readings after the start one
 MAX_TEMPLATES = 50
 MAX_POV_BYTES = 1024 * 1024          # one POV, as stored JSON
 MAX_IMPORT_BYTES = 1024 * 1024       # an imported POV file
@@ -552,6 +553,21 @@ def _clean_insights(raw: Any) -> List[Dict[str, Any]]:
     return out[-MAX_INSIGHTS_RUNS:]
 
 
+def _clean_posture(raw: Any) -> List[Dict[str, Any]]:
+    """The POV's posture score readings: the first is the start, the rest are later readings (the latest is the end)."""
+    out: List[Dict[str, Any]] = []
+    for r in _list(raw, "posture scores", MAX_POSTURE_RUNS + 1):
+        r = _obj(r, "a posture score")
+        score = r.get("score")
+        if not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 100:
+            continue
+        c = _obj(r.get("counts"), "posture counts")
+        out.append({"at": _clean(r.get("at"), 40, what="a date") or _now(), "by": _clean(r.get("by"), MAX_LABEL, what="a name"), "score": score,
+                    "counts": {k: int(c[k]) for k in ("pass", "warn", "fail", "unknown") if isinstance(c.get(k), int) and not isinstance(c.get(k), bool)},
+                    **({"imported": True} if r.get("imported") is True else {})})
+    return out[:1] + out[1:][-MAX_POSTURE_RUNS:]
+
+
 # ── Tenant binding ──────────────────────────────────────────────────────
 def binding(creds: Dict[str, Any]) -> Dict[str, str]:
     """What a POV keeps to know its tenant: the label and, for the classic
@@ -731,7 +747,7 @@ def _new(b: Dict[str, str], intake: Dict[str, Any], by: str, template: Optional[
     return {"format": FORMAT, "version": VERSION, "tenant": dict(b), "rev": 1, "created_at": now, "updated_at": now, "created_by": by,
             "status": "planning", "intake": intake, "template": (template or {}).get("name") or "",
             "criteria": [{"id": _item_id(), "text": t, "status": "pending", "tests": [], "note": ""} for t in texts][:MAX_CRITERIA],
-            "tests": {}, "timeline": {"kickoff": None, "end": None, "checkins": []}, "notes": [], "follow_ups": [], "insights": []}
+            "tests": {}, "timeline": {"kickoff": None, "end": None, "checkins": []}, "notes": [], "follow_ups": [], "insights": [], "posture": []}
 
 
 def _bump(pov: Dict[str, Any]) -> None:
@@ -884,6 +900,78 @@ def add_insights(profile_id: Any, creds: Optional[Dict[str, Any]], counts: Dict[
     return pov
 
 
+def add_posture(profile_id: Any, creds: Optional[Dict[str, Any]], checks: Any, *, by: str) -> Dict[str, Any]:
+    """Record the posture score of the assessment results sent, paired inside the POV automatically: the first reading
+    is the start; every later one replaces nothing and the latest is the end. The score is computed here by the same
+    formula as the assessment (posture_plus.score_of), never taken from the page. Local; reads no tenant."""
+    import posture_plus
+    rows = [c for c in (checks if isinstance(checks, list) else []) if isinstance(c, dict)][:3000]
+    score = posture_plus.score_of(rows)
+    if score is None:
+        raise PovError("those results have no scored check, so there is no posture score to record: run the assessment first")
+    counts = {"pass": 0, "warn": 0, "fail": 0, "unknown": 0}
+    for c in posture_plus.visible(rows):
+        st = posture_plus._status(c)
+        counts["pass" if st == "PASS" else "warn" if st == "WARN" else "fail" if st == "FAIL" else "unknown"] += 1
+    path, b = _bind(profile_id, creds)
+    with _locked(path):
+        pov = _load(path, b)
+        if pov is None:
+            raise PovError("This tenant profile has no POV yet: start one first.", 404)
+        pov["posture"] = _clean_posture((pov.get("posture") or []) + [{"at": _now(), "by": by, "score": int(score), "counts": counts}])
+        _bump(pov)
+        _write_file(path, pov)
+    _audit("posture", b["label"], by, score=int(score))
+    return pov
+
+
+def posture_pair(pov: Dict[str, Any]) -> Dict[str, Any]:
+    """{start, end, delta, sentence}: the first reading and the latest later one (None until there are two)."""
+    runs = [r for r in pov.get("posture") or [] if isinstance(r, dict) and isinstance(r.get("score"), int)]
+    start, end = (runs[0] if runs else None), (runs[-1] if len(runs) > 1 else None)
+    delta = end["score"] - start["score"] if start and end else None
+    if not start:
+        said = "No posture score is recorded yet: record one at the start of the POV."
+    elif not end:
+        said = f"Start score {start['score']}. Record another when the POV ends to see the change."
+    else:
+        said = f"Posture score {start['score']} at the start, {end['score']} now ({'+' if delta >= 0 else ''}{delta})."
+    return {"start": start, "end": end, "delta": delta, "sentence": said}
+
+
+def progress(pov: Dict[str, Any]) -> Dict[str, Any]:
+    """Where the POV stands and what to pick up next (computed from what is saved; stored nowhere). Resuming a POV is
+    opening it: this is the summary the page leads with."""
+    crit = pov.get("criteria") or []
+    intake = pov.get("intake") or {}
+    tests = pov.get("tests") or {}
+    wanted = [t for t in RUNBOOK if t["product"] in (intake.get("products") or [])]
+    done = [t for t in wanted if (tests.get(t["id"]) or {}).get("status") in ("pass", "fail", "skipped")]
+    met = sum(1 for c in crit if c.get("status") == "met")
+    open_fu = [f for f in pov.get("follow_ups") or [] if not f.get("done")]
+    nxt = next((t for t in wanted if t not in done), None)
+    tl = pov.get("timeline") or {}
+    today = _now()[:10]
+    left = None
+    if tl.get("end"):
+        from datetime import date
+        try:
+            left = (date.fromisoformat(tl["end"]) - date.fromisoformat(today)).days
+        except ValueError:
+            left = None
+    if nxt:
+        step = f"Next test: {nxt['title']}"
+    elif crit and met < len(crit):
+        step = "All tests have a result: decide the remaining success criteria."
+    elif open_fu:
+        step = "Close the open follow-ups, then set the POV to closed."
+    else:
+        step = "Nothing outstanding."
+    return {"status": pov.get("status"), "tests": {"done": len(done), "total": len(wanted)}, "criteria": {"met": met, "total": len(crit)},
+            "builds": len(pov.get("builds") or []), "follow_ups_open": len(open_fu), "days_left": left,
+            "next_step": step, "last_saved": pov.get("updated_at"), "posture": posture_pair(pov)}
+
+
 # ── Builds applied from the POV (pov_build) ─────────────────────────────
 MAX_BUILDS = 20
 _BUILD_ID_RE = re.compile(r"^b-[a-f0-9]{12}$")
@@ -1002,7 +1090,8 @@ def parse_import(text: Any) -> Dict[str, Any]:
             "criteria": _clean_criteria(data.get("criteria")), "tests": _imported(_clean_tests(data.get("tests"), manual_only=False)),
             "timeline": _clean_timeline(data.get("timeline")), "notes": _clean_notes(data.get("notes")),
             "follow_ups": _clean_follow_ups(data.get("follow_ups")),
-            "insights": [dict(r, imported=True) for r in _clean_insights(data.get("insights"))]}
+            "insights": [dict(r, imported=True) for r in _clean_insights(data.get("insights"))],
+            "posture": [dict(r, imported=True) for r in _clean_posture(data.get("posture"))]}
 
 
 def _start_time(value: Any) -> str:
@@ -1362,7 +1451,7 @@ def report_model(pov: Dict[str, Any], changes: List[Dict[str, Any]]) -> Dict[str
             "timeline": pov.get("timeline") or {}, "criteria": crit, "ran": ran, "not_run": not_run, "counts": counts,
             "criteria_met": sum(1 for c in crit if c.get("status") == "met"),
             "follow_ups": [f for f in pov.get("follow_ups") or [] if not f.get("done")], "changes": changes,
-            "insights": (pov.get("insights") or [])[-1:] or [], "generated_at": _now()}
+            "insights": (pov.get("insights") or [])[-1:] or [], "posture": posture_pair(pov), "generated_at": _now()}
 
 
 def _evidence_lines(r: Dict[str, Any]) -> List[str]:
@@ -1440,6 +1529,8 @@ def report_document(m: Dict[str, Any]) -> Dict[str, Any]:
     if m["not_run"]:
         tests["note"] = "Not run: " + "; ".join(t["title"] for t in m["not_run"]) + "."
     secs.append(tests)
+    if (m.get("posture") or {}).get("start"):
+        secs.append({"heading": "Security posture score", "paragraphs": [m["posture"]["sentence"]]})
     counts = _counts_lines(m)
     if counts:
         secs.append({"heading": "Traffic counts", "bullets": counts})

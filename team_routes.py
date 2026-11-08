@@ -95,6 +95,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /report/dataflow": PUBLIC,
     "GET /report/live": PUBLIC,
     "GET /report/audit": PUBLIC,
+    "GET /report/capacity": PUBLIC,
     "GET /report/motion": PUBLIC,
     "GET /report/shadow": PUBLIC,
     "GET /report/posture": PUBLIC,
@@ -164,6 +165,12 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/offline/simulate/operation": SESSION,
     "POST /api/offline/simulate/pov-build": SESSION,
     "POST /api/offline/simulation/discard": SESSION,
+    "GET /api/block-page/themes": SESSION,         # local block page themes; no tenant
+    "GET /api/block-page/export": SESSION,
+    "POST /api/pov/posture": "plan:profile",       # records a score on the profile's own POV; no tenant read
+    "POST /api/block-page/preview": SESSION,
+    "PUT /api/block-page/theme": PLAN,             # edits the app's own saved themes; applying one is a Bulk changes operation
+    "DELETE /api/block-page/theme": PLAN,
     "POST /api/zia-baseline/selection": SESSION,   # saves or checks a baseline selection the page sends; reads and writes no tenant
     "POST /api/tenant-profiles/snapshots/open-file": SESSION,
     "GET /api/pack-library": SESSION,
@@ -213,6 +220,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/compliance/profile-view": SESSION,       # the results the page sends, read against a profile
     "POST /api/vendor-migrate/panos/plan": SESSION,     # an uploaded PAN-OS export turned into a plan; no tenant
     "GET /api/zscaler-ranges": SESSION,                 # Zscaler's public IP ranges kept on this server
+    "GET /api/zscaler-ranges/digicert": SESSION,
     "POST /api/zscaler-ranges/build": SESSION,
     "POST /api/zscaler-ranges/download": SESSION,
     "GET /api/m365-endpoints": SESSION,                 # Microsoft's public endpoint list kept on this server
@@ -316,6 +324,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/report/data-flow": READ,
     "GET /api/report/data-flow/{report_id}": READ,
     "POST /api/report/data-flow/{report_id}/trace": READ,
+    "POST /api/report/data-flow/{report_id}/port-check": READ,
     "GET /api/report/data-flow/export/{report_id}": READ,
     "POST /api/path-analyzer/batch/start": READ,
     "GET /api/path-analyzer/batch/{job_id}/host": READ,
@@ -326,6 +335,12 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/bulk-test/fix/{fix_id}": READ,
     "POST /api/audit-timeline/start": READ,   # this app's own audit entries filtered to the person's profiles
     "GET /api/audit-timeline/{job_id}/export": READ,
+    "GET /api/audit/search": READ,           # this app's own audit log, filtered to the person's profiles
+    "POST /api/postmortem": READ,
+    "POST /api/cite": READ,   # local catalogue; no tenant
+    "POST /api/capacity-review": READ,
+    "GET /api/journal": "read:profile",   # own audit entries and deployments, filtered to the person's profiles
+    "GET /api/audit/export": READ,            # the person's own view of the audit log (filtered to their profiles)
     "POST /api/shadow-rules/start": READ,
     "POST /api/shadow-rules": READ,
     "GET /api/shadow-rules/jobs/{job_id}/export": READ,
@@ -362,6 +377,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/bulk-test/fix/{fix_id}/prove/start": READ,
     "POST /api/category-lookup/start": READ,
     "POST /api/path-analyzer/zpa-identity": READ,
+    "POST /api/scim/overview": READ,
     "POST /api/path-analyzer/devices": READ,
     "POST /api/path-analyzer/devices/detail": READ,
     "POST /api/path-analyzer/compare/start": READ,
@@ -416,9 +432,11 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/tenant-profiles/snapshots/save/start": PLAN,
     "POST /api/operations/preview/start": PLAN,
     "POST /api/operations/preview": PLAN,
+    "POST /api/operations/zcc/multi-remove/preview": PLAN,
     "POST /api/operations/{op_id}/undo/preview/start": PLAN,
     "POST /api/operations/{op_id}/undo/preview": PLAN,
     "POST /api/workspace/notes": "plan:profile",
+    "POST /api/journal": "plan:profile",
     "DELETE /api/workspace/notes": "plan:profile",
     "POST /api/bulk-test/{job_id}/fix": PLAN,
     "POST /api/pov/create": "plan:profile",
@@ -463,6 +481,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/dlp-packs/{pack_id}/import": APPLY,
     "POST /api/operations/apply/start": APPLY,
     "POST /api/operations/apply": APPLY,
+    "POST /api/operations/zcc/multi-remove/apply": APPLY,
     "POST /api/operations/zpa/provisioning-key": APPLY,
     "POST /api/migrate/enable": APPLY,
     "POST /api/migrate/delete-all": APPLY,
@@ -476,6 +495,9 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/operations/zpa/ba-certificate": APPLY,
     "POST /api/operations/zidentity/secret": APPLY,
     "POST /api/zcc/otp": APPLY,                          # a device's one-time passwords: a sensitive read guarded like a write
+    "POST /api/zcc/passwords": ADMIN,                    # tamper passwords revealed on demand: administrators only (off by default)
+    "GET /api/data-check": ADMIN,                       # the data folder self-check: paths and store names, administrators only
+    "POST /api/data-check/repair": ADMIN,               # removes stale lock and temporary files only
 
     # ── decide on someone else's change ──
     "POST /api/change-queue/{rid}/approve": APPROVE,
@@ -489,6 +511,13 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/traffic-logs/watch": ADMIN,
     "POST /api/traffic-logs/watch": ADMIN,
     "POST /api/traffic-logs/watch/run": ADMIN,
+    "GET /api/delivery": ADMIN,                           # delivery + DNS push settings (never a password)
+    "POST /api/delivery/settings": ADMIN,
+    "PUT /api/delivery/credential/{target_id}": ADMIN,    # straight to the OS credential store
+    "POST /api/delivery/test/{target_id}": ADMIN,
+    "POST /api/delivery/send": ADMIN,
+    "POST /api/dns-push/settings": ADMIN,
+    "POST /api/dns-push/run": ADMIN,
     "GET /api/traffic-logs/syslog": ADMIN,
     "POST /api/traffic-logs/syslog/start": ADMIN,
     "POST /api/traffic-logs/syslog/stop": ADMIN,
@@ -524,6 +553,7 @@ ROUTE_RULES: Dict[str, str] = {
     # (wave 7) server settings, unattended schedules and jobs that span tenant profiles
     "POST /api/config-backups/schedule": ADMIN,         # unattended read-only backups on a timer
     "GET /api/sync-jobs": ADMIN,                        # a sync job names a source and several target profiles
+    "GET /api/sync-jobs/awaiting-approval": READ,       # filtered to the person's tenant profiles
     "GET /api/sync-jobs/{jid}": ADMIN,
     "POST /api/sync-jobs": ADMIN,
     "DELETE /api/sync-jobs/{jid}": ADMIN,
@@ -538,7 +568,11 @@ ROUTE_RULES: Dict[str, str] = {
     "PUT /api/zscaler-ranges/settings": ADMIN,          # outbound fetches of this server
     "POST /api/zscaler-ranges/fetch": ADMIN,
     "POST /api/zscaler-ranges/import": ADMIN,
+    "POST /api/zscaler-ranges/digicert-resolve": ADMIN,   # DNS lookups from this server, then kept
     "DELETE /api/zscaler-ranges": ADMIN,
+    "POST /api/scim/users": ADMIN,                      # the IdP's SCIM users (personal data): read with the IdP's own secret
+    "PUT /api/scim/users/token": ADMIN,                 # straight to the OS credential store
+    "DELETE /api/scim/users/token": ADMIN,
     "PUT /api/m365-endpoints/settings": ADMIN,
     "POST /api/m365-endpoints/refresh": ADMIN,
     "POST /api/m365-endpoints/import": ADMIN,

@@ -134,7 +134,7 @@
   function body() {
     return Object.assign(choice(), {
       regions: Array.from(document.querySelectorAll('input[name="exRgRegion"]:checked')).map(x => x.value),
-      exclude: $('exRgExclude').value, extra: $('exRgExtra').value, ipv4: $('exRgV4').checked, ipv6: $('exRgV6').checked,
+      exclude: $('exRgExclude').value, extra: $('exRgExtra').value, ipv4: $('exRgV4').checked, ipv6: $('exRgV6').checked, digicert: $('exRgDigi').checked,
     });
   }
   function clearResult() { lastBody = null; $('exRgOut').innerHTML = ''; DOWNLOADS.forEach(id => setEnabled(id, false)); }
@@ -177,5 +177,25 @@
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch (e) { $('exRgOut').insertAdjacentHTML('afterbegin', `<div class="bp-card risk" role="alert"><div>${E(e.message)}</div></div>`); }
   }));
+  function drawDigi(r) {
+    $('exRgDigiState').textContent = r
+      ? `${r.label} Resolved ${r.resolved_at}: ${r.ranges.length} address(es) from DNS, ${r.operator_ranges.length} of your own range(s).` + ((r.warnings || []).length ? ` ${r.warnings.slice(0, 3).join(' ')}` : '')
+      : 'Not resolved yet. DigiCert uses a CDN, so re-resolve before each change.';
+  }
+  $('exRgDigiFile').addEventListener('change', () => {
+    const f = ($('exRgDigiFile').files || [])[0];
+    if (!f) return;
+    if (f.size > 100000) { $('exRgDigiState').textContent = 'That file is larger than 100 KB, so it is not a list of ranges.'; return; }
+    const rd = new FileReader();
+    rd.onload = () => { $('exRgDigiOps').value = String(rd.result || '').slice(0, 60000); };
+    rd.readAsText(f);
+  });
+  $('exRgDigiResolve').addEventListener('click', async () => {
+    setEnabled('exRgDigiResolve', false);
+    try { const r = await call('POST', '/api/zscaler-ranges/digicert-resolve', { operator_ranges: $('exRgDigiOps').value }); $('exRgDigi').checked = true; drawDigi(r); }
+    catch (e) { $('exRgDigiState').textContent = `Not resolved: ${e.message}`; }
+    finally { setEnabled('exRgDigiResolve', true); }
+  });
+  call('GET', '/api/zscaler-ranges/digicert').then(d => drawDigi(d.resolved)).catch(() => {});
   load();
 }());

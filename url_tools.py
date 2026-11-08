@@ -787,6 +787,8 @@ def analyzer_workbook(res: Dict[str, Any], *, tenant_label: str = "") -> bytes:
                 ["Distinct URLs left for Continue", lk.get("remaining", 0)]]
              + [["Note", n] for n in res.get("notes") or []]
              + [["What the verdicts mean", "; ".join(f"{VERDICT_LABELS[k]}: {v}" for k, v in VERDICTS.items() if k != "not_looked_up")]])
+    first = 2 + 4   # header row, then Tenant, Analysed, Custom categories, URLs, then one row per verdict
+    s.add_bar_chart("URLs by verdict", label_col=0, value_col=1, first_row=first, last_row=first + len(VERDICTS) - 1)
     wb.add_sheet("Per category", columns=["Category", "ID", "Super category", "URLs"] + [VERDICT_LABELS[v] for v in VERDICTS] + ["Could not be read"],
                  rows=[[p["category"], p["id"], p.get("super_category") or "", p["urls"]] + [p.get(v, 0) for v in VERDICTS] + [p.get("error") or ""]
                        for p in res.get("per_category") or []])

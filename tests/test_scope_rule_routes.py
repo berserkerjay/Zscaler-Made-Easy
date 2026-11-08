@@ -172,6 +172,7 @@ def tenant(tmp_path, monkeypatch) -> Reads:
     for k in list(os.environ):
         if (k.startswith("ZSCALER_") and k != "ZSCALER_UI_AUTH") or k in ("DLP_CHECK_SMTP_HOST", "DLP_CHECK_DIGEST_TO", "DLP_CHECK_DIGEST_WEBHOOK", "DLP_CHECK_NOTIFY"):
             monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("ZSCALER_ZCC_TAMPER_REVEAL", "1")   # the reveal is off by default; the scope rule is checked with it on
     log = Reads()
 
     def sdk_factory(creds):
@@ -392,6 +393,8 @@ ROUTES: List[Route] = [
     Route("/api/bulk-test/fix/" + "f" * 24 + "/prove/start", setup=_kept_fix),
     Route("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}, partial=ZIA, out=ZIA_OUT),
     Route("/api/path-analyzer/zpa-identity", {"action": "idps"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/scim/overview", {}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/scim/users", {"idp_id": "11"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/path-analyzer/zpa-identity", {"action": "user", "idp": "216196257331281111", "user": "jo@example.com"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/path-analyzer/devices", {"device_user": "jane"}, partial=ZCC, out=ZCC_OUT),
     Route("/api/path-analyzer/devices/detail", setup=_device_lookup, partial=ZCC, out=ZCC_OUT),
@@ -487,6 +490,9 @@ ROUTES: List[Route] = [
     # One device's one-time passwords (zcc_otp): a sensitive read, ZCC only.
     Route("/api/zcc/otp", {"assessor": "QA tester", "user": "jdoe@acme.example", "device": "LT-1", "confirm_text": "SHOW OTP LT-1"},
           partial=ZCC, out=ZCC_OUT, ok=404, write_mode=True),
+    # One user's tamper-protection passwords (zcc_passwords): off by default, a sensitive read, ZCC only.
+    Route("/api/zcc/passwords", {"assessor": "QA tester", "user": "jdoe@acme.example", "os": "windows", "confirm_text": "SHOW PASSWORDS jdoe@acme.example windows"},
+          partial=ZCC, out=ZCC_OUT, ok=404),
     # ZDX cloud path and score analysis (zdx_insights); Client Connector device details and disable reasons (zcc_devices)
     Route("/api/zdx/cloudpath", {"app_id": "3002", "host": "billing.example.com"}, partial=ZDX, out=ZDX_OUT),
     Route("/api/zdx/analysis/status", {"analysis_id": "90001"}, partial=ZDX, out=ZDX_OUT),
@@ -764,6 +770,11 @@ FACTORIES = {"_build_sdk_client", "_build_client", "_raw_client"}
 # Routes that reach a client factory but are not the scope rule's to gate,
 # each with why (CISA Secure by Design: every exception is written down).
 EXEMPT: Dict[str, str] = {
+    "POST /api/operations/zcc/multi-remove/preview": ("signs in only through saved tenant profiles, one per tenant; _multi_gate runs _ops_scope first, so a "
+                                                      "selection without ZCC is refused 400 before any sign-in "
+                                                      "(test_zcc_multi_tenant_w12.py::test_not_ticked_zcc_is_refused_before_any_sign_in)"),
+    "POST /api/operations/zcc/multi-remove/apply": ("the same gate (_multi_gate, then _ops_apply_gate per tenant) "
+                                                    "(test_zcc_multi_tenant_w12.py::test_not_ticked_zcc_is_refused_before_any_sign_in)"),
     "POST /api/rule-csv/export": ("reads one policy the operator picked, refused before sign-in unless that policy is in scope "
                                   "(_ops_scope: test_rule_csv.py::test_export_needs_the_policy_in_scope_before_sign_in)"),
     "POST /api/sync-jobs/{jid}/run": ("reads each profile only for what its saved Scope page selection puts in scope (a target without the "
@@ -799,6 +810,7 @@ EXEMPT: Dict[str, str] = {
     "POST /api/pov/build/apply/start": "a write: writer, confirm, plan_hash, the assessor and write mode first, then each part's scope rule as in the preview",
     "POST /api/pov/build/undo/apply/start": "a write: as /api/pov/build/apply/start, over the build's recorded Undos",
     "POST /api/pov/build/undo/preview/start": "plans a recorded build's Undos: each part's scope rule (_pov_build_scope) runs before a client is built (tests/test_pov_build.py)",
+    "POST /api/capacity-review": ("reads Cloud & Branch Connector, ZPA and user counts only for the products ticked (capacity_review.read_used); with none of the three ticked it is a 400 before sign-in: tests/test_w12_skill.py"),
     "ON_EVENT startup": "the continuous evaluation timer: the same run as POST /api/digests/run (in ROUTES)",
 }
 

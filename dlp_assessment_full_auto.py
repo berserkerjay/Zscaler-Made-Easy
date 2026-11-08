@@ -2915,15 +2915,46 @@ def load_config_file(path: str) -> dict:
     return cfg
 
 
-def main():
-    """Command-line entry point: run the assessment against one tenant and
-    write the JSON (and Word) report. Exit code 0 on success, 1 when the
-    tenant refuses the credentials, 2 for a configuration or file error."""
-    ap=argparse.ArgumentParser(description="Zscaler Made Easy — Full Auto")
+def build_parser():
+    """The command line's parser (also the source of `completion`)."""
+    import cli_extras
+    ap=argparse.ArgumentParser(prog="dlp_assessment_full_auto", description="Zscaler Made Easy — Full Auto",
+                               epilog="Also: `completion bash|zsh|powershell` prints a shell completion script.")
+    cli_extras.add_version(ap)
     ap.add_argument("--config"); ap.add_argument("--output")
     ap.add_argument("--scope", default="dlp", choices=["dlp","full","zia","zpa","zcc","all"],
                     help="Assessment scope: dlp (default), full (dlp+platform), zia, zpa, zcc, or all")
-    args=ap.parse_args(); con=Console() if HAS_RICH else None
+    ap.add_argument("--check-data", action="store_true",
+                    help="Check the app's data folder (exists, writable, store encryption, stores readable, stale locks) and exit; reads no tenant")
+    ap.add_argument("--repair-data", action="store_true",
+                    help="Remove stale lock files and leftover temporary copies (nothing else), then run the data check")
+    ap.add_argument("--audit-docs", action="store_true",
+                    help="Audit the app's own documents (links, headings, names, dates, glossary) and print a report; read-only, reads no tenant")
+    return ap
+
+
+def main(argv=None):
+    """Command-line entry point: run the assessment against one tenant and
+    write the JSON (and Word) report. Exit code 0 on success, 1 when the
+    tenant refuses the credentials, 2 for a configuration or file error.
+    `--version` prints the app version, `completion SHELL` a completion
+    script, `--check-data` the data folder self-check (0 healthy, 1 warning, 2 failure),
+    `--audit-docs` the read-only audit of the documents (0 clean, 1 errors found)."""
+    import cli_extras
+    argv = sys.argv[1:] if argv is None else list(argv)
+    done = cli_extras.handle_completion(argv, "dlp_assessment_full_auto", build_parser)
+    if done is not None:
+        sys.exit(done)
+    ap=build_parser()
+    args=ap.parse_args(argv)
+    if args.audit_docs:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
+        import docs_audit
+        sys.exit(docs_audit.main([]))
+    if args.check_data or args.repair_data:
+        import data_check
+        sys.exit(data_check.run_cli(repair_too=args.repair_data))
+    con=Console() if HAS_RICH else None
     def prompt_config():
         print("\n"+"="*64+"\n  ZSCALER MADE EASY — FULL AUTO\n"+"="*64)
         c={}; c["org_name"]=input("  Org: ").strip(); c["assessor"]=input("  Assessor: ").strip()

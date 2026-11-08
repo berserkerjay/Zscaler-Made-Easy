@@ -296,6 +296,19 @@ def raw_request(zia, method: str, path: str, body: Optional[Dict[str, Any]] = No
         return None, _raw_error(e)
 
 
+EUN_PATH = "/eun"
+
+
+def get_eun(zia) -> Tuple[Any, Optional[str]]:
+    """(settings, error) for ZIA's end-user notification settings (the SDK's getter names an undefined model)."""
+    return raw_request(zia, "GET", EUN_PATH)
+
+
+def update_eun(zia, body: Dict[str, Any]) -> Tuple[Any, Optional[str]]:
+    """PUT the whole end-user notification object (ops_zia_eun sends the object as re-read, with only its planned fields changed)."""
+    return raw_request(zia, "PUT", EUN_PATH, body)
+
+
 def raw_get(zia, path: str, *, via: str = "proxies") -> Tuple[Any, Optional[str]]:
     """(payload, error) for a ZIA read the SDK has no method for (GET only),
     through the request executor of the SDK service `via`, so the read is

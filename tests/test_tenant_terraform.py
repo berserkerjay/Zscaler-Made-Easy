@@ -194,7 +194,7 @@ def test_every_type_is_read_through_the_sdk_and_written_as_its_resource(key):
 def test_the_catalogue_covers_the_three_providers_as_promised():
     """ASVS V1.14.1 · CWE-1059 · WSTG-INFO-02: ZIA, ZPA and Cloud & Branch Connector resource types are all covered."""
     cat = tt.catalogue()["products"]
-    assert len(cat["zia"]) >= 49 and len(cat["zpa"]) >= 30 and len(cat["ztc"]) >= 10
+    assert len(cat["zia"]) >= 49 and len(cat["zpa"]) >= 30 and len(cat["ztc"]) == 11
     assert len({t["resource"] for t in tt.TYPES}) == len(tt.TYPES), "one resource type per catalogue entry"
     assert set(tt.SCHEMAS) == {t["resource"] for t in tt.TYPES}
     for t in tt.TYPES:
@@ -330,7 +330,7 @@ def test_tenant_strings_cannot_inject_hcl():
     assert not re.search(r"^\s*provisioner", text, re.M) and "$${file(" in text and "%%{ if" in text
     for line in text.split("\n"):
         assert line.startswith(("#", "resource ", "  name ", "  description ", "}")) or line == "", line
-    assert all(re.fullmatch(r"tenant-terraform/(README\.md|export_report\.json|(zia|zpa|ztc)/[A-Za-z0-9_.]+)", p) for p in files)
+    assert all(re.fullmatch(r"tenant-terraform/(README\.md|validate\.sh|export_report\.json|(zia|zpa|ztc)/[A-Za-z0-9_.]+)", p) for p in files)
 
 
 def test_options_prefix_namespace_exclude_and_personal_data():

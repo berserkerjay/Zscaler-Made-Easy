@@ -20,14 +20,17 @@ Find the files a change touches here, then read only those.
 | `beacon.py` | Beacon: what changed upstream since the last run — the Zscaler SDK, the |
 | `beacon_scope.py` | Which tenant endpoints Beacon's tenant API watch may read: only the ones |
 | `benchmarks.py` | Benchmarks: how an assessment stacks up against Zscaler's best practices, |
+| `block_page_theme.py` | Block page (end-user notification) theme builder: a local, read-only |
 | `bp_crawler.py` | Zscaler Best-Practices Discovery Crawler |
 | `bp_sources.py` | Zscaler Best-Practices Source Registry |
 | `browser_security.py` | Browser security: Zscaler Zero Trust Browser (cloud browser isolation), |
 | `bulk_test.py` | Test a list: many destinations through the Path analyzer at once. |
 | `bypass_report.py` | Zscaler Bypass / Non-Inspected Traffic Inventory |
+| `capacity_review.py` | Capacity and scaling review: what the tenant uses against what it is licensed for. |
 | `category_lookup.py` | Category lookup: what ZIA calls a URL, host or IP address (or a URL |
 | `change_queue.py` | The team change queue: change requests and four-eyes approval. |
 | `channel_scope.py` | Channel ownership, declared on the Scope page, applied to the assessment. |
+| `cli_extras.py` | version and `completion bash\|zsh\|powershell` for the command lines. |
 | `compliance_mapping.py` | Zscaler Configuration → Compliance Framework Mapping |
 | `compliance_pack.py` | The compliance pack: local files made from one compliance profile |
 | `compliance_profiles.py` | Compliance profiles: one compliance choice that drives the ZIA security |
@@ -37,6 +40,7 @@ Find the files a change touches here, then read only those.
 | `continuous_eval.py` | Continuous evaluation, phase 5: run when asked, and it tells you. |
 | `corpus_engines.py` | Local corpus test, beyond the custom dictionaries. |
 | `csv_safe.py` | One CSV path for every export in the app. |
+| `data_check.py` | Self-check of the app's data folder, with a safe repair for leftovers. |
 | `data_flow.py` | Data Flow Map: the path the tenant's configuration gives web traffic. |
 | `deployments.py` | Deployment records: what Deploy Policy Packs created in which tenant, so |
 | `detection_health.py` | Detection Health: what the tenant's DLP rules actually do, measured from |
@@ -49,6 +53,7 @@ Find the files a change touches here, then read only those.
 | `dlp_importer.py` | DLP Policy Pack Importer — general-purpose library |
 | `dlp_mcp_server.py` | DLP Assessment MCP Tool Server |
 | `dns_forward_zones.py` | DNS records for Client Connector hostnames: download-only text, never applied. |
+| `dns_push.py` | Opt-in push of the generated DNS forwarder file to several resolvers. |
 | `docker_healthcheck.py` | Container healthcheck: is the app answering on its own port? |
 | `editions.py` | Licensed editions: Cloud Firewall (standard or advanced), Cloud Sandbox |
 | `email_tenants.py` | One answer to "which email tenants are onboarded?". |
@@ -56,8 +61,10 @@ Find the files a change touches here, then read only those.
 | `engine_explain.py` | DLP engine explainability: an engine expression as people read it. |
 | `guidance.py` | Continuous evaluation, phase 4: guidance that keeps itself current. |
 | `insights.py` | ZIA Insights traffic data: read-only, paced, Stop-able wrappers over the |
+| `investigation_journal.py` | Guided investigation journal: hypothesis -> evidence -> conclusion, resumable. |
 | `local_plugins.py` | Local plugins: an opt-in way to add Bulk changes operations and read-only |
 | `log_analyzer.py` | Log Analyzer: Client Connector log bundles and PAC files, explained. |
+| `log_pipeline_cli.py` | Command line for the traffic-log pipeline (read-only apart from saving a report). |
 | `m365_endpoints.py` | Microsoft's published Microsoft 365 endpoint list: kept on disk, checked |
 | `mcp_tools.py` | Read-only analysis tools for AI assistants (the MCP server's live analysis). |
 | `md_safe.py` | One way to put untrusted text into a Markdown export. |
@@ -81,8 +88,10 @@ Find the files a change touches here, then read only those.
 | `ops_zdx.py` | ZDX probe setup: Zscaler Digital Experience applications and probes as |
 | `ops_zdx_trace.py` | ZDX deep trace on the Bulk changes engine (admin_ops.register). |
 | `ops_zia_activation.py` | Activate pending ZIA changes, on the Bulk changes engine (admin_ops plugin). |
+| `ops_zia_ai_prompt.py` | AI prompt capture on the Bulk changes engine (admin_ops plugin): a dedicated |
 | `ops_zia_baseline.py` | ZIA security baseline builder and SSL certificate manager: two operation |
 | `ops_zia_directory.py` | ZIA users, groups and departments: day-to-day admin on the Bulk changes engine. |
+| `ops_zia_eun.py` | Apply a block page theme to ZIA's end-user notification settings, on the |
 | `ops_zia_objects.py` | The objects around the rule editor, on the Bulk changes engine |
 | `ops_zia_pac.py` | ZIA hosted PAC files on the Bulk changes engine: list, view, validate, |
 | `ops_zia_sandbox.py` | Bulk changes plugin: block known-bad files by their MD5 hash in Cloud Sandbox. |
@@ -109,12 +118,14 @@ Find the files a change touches here, then read only those.
 | `path_compare.py` | Path analyzer: the same destination for two identities, side by side. |
 | `path_device.py` | Path analyzer: trace for one user's enrolled device. |
 | `path_manual.py` | Manual bypass and PAC what-if for the Path analyzer. |
+| `path_port_check.py` | Port and service check: "is this protocol and port blocked for everyone?" |
 | `path_probe.py` | Path analyzer: "Test from here", an opt-in observation from the computer |
 | `path_whatif.py` | What-if for the Path analyzer: the same destination for one user, |
 | `pdf_writer.py` | A small PDF 1.4 writer for the app's printable exports (a deployment |
 | `permissions.py` | Permissions: run what the API client is allowed to run, and say exactly |
 | `plain_english.py` | One plain-English block for every finding, in every output. |
 | `policy_exports.py` | Policy exports: one formatted workbook (or PDF review copy) per ZIA |
+| `postmortem.py` | Incident postmortem generator: a template report for a chosen time window. |
 | `posture_cross.py` | Device posture across products: where each posture check is defined, |
 | `posture_plus.py` | Posture plus: the score explains itself and says what to do next. |
 | `pov.py` | POV planner: one proof of value per tenant, planned, run and reported. |
@@ -123,7 +134,9 @@ Find the files a change touches here, then read only those.
 | `proposals.py` | Continuous evaluation, phase 2: proposals and the approval queue. |
 | `rank_inherit.py` | The admin rank a rule the app creates or moves needs. |
 | `readiness.py` | Readiness: what this API client can do in this app, before anything runs. |
+| `reference_corpus.py` | Reference corpus: grounded lookups and on-demand citations. |
 | `remediation.py` | Guided Auto-Remediation Framework |
+| `report_delivery.py` | Opt-in delivery of saved reports to a network share or a remote host. |
 | `report_docx.py` | Zscaler Made Easy — Word Document Report Generator |
 | `report_exports.py` | Excel and PDF exports built on the in-house writers (xlsx_writer, |
 | `rule_csv.py` | Rules as a spreadsheet: the CSV round-trip format for ZIA Cloud Firewall |
@@ -135,6 +148,7 @@ Find the files a change touches here, then read only those.
 | `safe_files.py` | Owner-only files and bounded archive reads, shared by the app's local |
 | `sample_tenant.py` | The sample tenant: a made-up company's Zscaler configuration, to try the |
 | `scenario_flow.py` | Pure scenario/evidence model. No network, tenant writes, caching or traffic. |
+| `scim_view.py` | SCIM visibility: a read-only view of the identity providers (IdPs) ZPA |
 | `scope_permissions.py` | Minimum OneAPI permissions required per assessment scope |
 | `sdk_client.py` | SDK-backed Client Adapter for DLP Assessment Engine |
 | `sdk_read.py` | Plain reads over the Zscaler SDK's (result, response, error) tuples. |
@@ -188,6 +202,7 @@ Find the files a change touches here, then read only those.
 | `zcc_fleet_history.py` | Client Connector fleet history: counts-only snapshots and their trend. |
 | `zcc_fleet_import.py` | Client Connector fleet from the portal's CSV exports (offline source). |
 | `zcc_otp.py` | Client Connector one-time passwords for one device, for help-desk use. |
+| `zcc_passwords.py` | Client Connector uninstall, turn-off and log-out passwords, revealed on demand. |
 | `zcc_profiles.py` | Read complete Client Connector profile inventories without hiding failures. |
 | `zdx_insights.py` | ZDX on the Path analyzer page: the measured cloud path of an application, |
 | `zia_forwarding.py` | ZIA forwarding and traffic path: the pure analysis behind the FWD.* |
@@ -260,7 +275,9 @@ Find the files a change touches here, then read only those.
 | `static/ops_zcc_live.js` | Client Connector live changes on Bulk changes (/report/operations, ops_zcc_live.py). |
 | `static/ops_zdx.js` | ZDX probe setup: the forms of the three ZDX operation types (ops_zdx.py) |
 | `static/ops_zia_admin.js` | Day-to-day ZIA admin on Bulk changes (/report/operations, "Day-to-day admin"). |
+| `static/ops_zia_ai_prompt.js` | AI prompt capture on Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zia_baseline.js` | Bulk changes builders: the ZIA security baseline and the SSL certificate |
+| `static/ops_zia_eun.js` | Block page theme on Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zia_sandbox.js` | Cloud Sandbox file hashes on Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zid.js` | ZIdentity users and API clients on Bulk changes (/report/operations, |
 | `static/ops_zid_groups.js` | ZIdentity group members on Bulk changes (/report/operations, ops_zid_groups.py). |
@@ -294,6 +311,7 @@ Find the files a change touches here, then read only those.
 | `static/whats_new.js` | What's new: a * after the label of each new feature |
 | `static/zcc_device.js` | Client Connector fleet page: one device's details and the disable-reason |
 | `static/zcc_fleet.js` | Client Connector fleet (/report/fleet): starts the read-only fleet job, |
+| `static/zcc_multi_remove.js` | Remove Client Connector devices on several tenants (POST |
 | `static/zdx_cloudpath.js` | ZDX on the Path analyzer page (zdx_insights.py through /api/zdx/*). |
 | `static/zwa_drilldown.js` | Detection health: one Workflow Automation incident in depth, and the |
 
@@ -312,6 +330,7 @@ Find the files a change touches here, then read only those.
 | `static/report_beacon.html` | Beacon — Zscaler Made Easy |
 | `static/report_browser.html` | Browser security — Zscaler Made Easy |
 | `static/report_bypass.html` | Bypass &amp; non-inspected traffic — Zscaler Made Easy |
+| `static/report_capacity.html` | Capacity review — Zscaler Made Easy |
 | `static/report_compliance.html` | Regulatory &amp; compliance alignment — Zscaler Made Easy |
 | `static/report_dataflow.html` | Data flow map — Zscaler Made Easy |
 | `static/report_device_posture.html` | Device posture — Zscaler Made Easy |

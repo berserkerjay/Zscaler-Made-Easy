@@ -1023,6 +1023,8 @@ ZTW_ADMIN_USERS = [{"id": 4911, "loginName": "it-admin@larkspur-freight.example"
                     "role": {"id": 4901, "name": "Super Admin"}, "disabled": False, "isPasswordLoginAllowed": True}]
 ZTW_API_KEYS = [{"id": 4951, "keyValue": "sample-placeholder-not-a-key", "enabled": True, "partner": False, "permissions": ["PROVISIONING"],
                  "lastModifiedTime": 1690000000, "lastModifiedBy": {"id": 4911, "name": "IT Admin"}}]
+ZTW_ACCOUNT_GROUPS = [{"id": 4851, "name": "Production", "description": "Production AWS accounts.", "cloudType": "AWS",
+                       "publicCloudAccounts": [{"id": 4801, "name": "larkspur-prod"}], "cloudConnectorGroups": [{"id": 4101, "name": "Larkspur AWS us-west-2"}]}]
 ZTW_ACCOUNT_DETAILS = [{"id": 4801, "awsAccountId": "000000000000", "awsRoleName": "LarkspurCloudConnectorRole", "externalId": "sample-external-id"}]
 ZTW_PUBLIC_CLOUD_INFO = [{"id": 4801, "name": "larkspur-prod", "cloudType": "AWS", "permissionStatus": "VALID",
                           "regionStatus": [{"id": 1, "name": "us-west-2", "cloudType": "AWS", "status": True},
@@ -1572,7 +1574,7 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/httpHeaderActionProfile": HTTP_HEADER_ACTION_PROFILES,
         f"{ZPA1}/v2/ipRanges": ZPA_C2C_RANGES,
         "/zpa/cbiconfig/cbi/api/customers/{customerId}/certificates": CBI_CERTIFICATES,
-        f"{ZTW}/ipGroups": ZTW_IP_GROUPS,
+        f"{ZTW}/ipGroups": ZTW_IP_GROUPS, f"{ZTW}/accountGroups": ZTW_ACCOUNT_GROUPS,
         # ZIA DLP indexes (zia/dlp_resources.py: list_edm_schemas, list_dlp_idm_profiles)
         f"{ZIA}/dlpExactDataMatchSchemas": EDM_SCHEMAS,
         f"{ZIA}/idmprofile": IDM_PROFILES,

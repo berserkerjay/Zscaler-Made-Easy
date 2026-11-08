@@ -299,6 +299,20 @@ def _unlock(f) -> None:
     f.close()
 
 
+def _unlock_only(f) -> None:
+    """Release the OS lock on `f` and leave it open (the caller closes it)."""
+    try:
+        f.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+
+
 @contextmanager
 def _exclusive(what: str, wait: Optional[float] = None):
     """Hold the data folder's store lock for `what` (re-entrant in this
@@ -458,7 +472,7 @@ def _store_paths() -> List[Dict[str, Any]]:
                 if os.path.isfile(p):
                     out.append({"path": p, "lines": lines})
     for mod, fn in (("tenant_profiles", "store_path"), ("change_queue", "store_path"), ("proposals", "store_path"),
-                    ("deployments", "store_path"), ("workspace_notes", "store_path"), ("team_server", "store_path"),
+                    ("deployments", "store_path"), ("workspace_notes", "store_path"), ("investigation_journal", "store_path"), ("block_page_theme", "store_path"), ("team_server", "store_path"),
                     ("sync_jobs", "store_path"), ("zcc_fleet_history", "history_path"), ("ssl_coverage", "history_path"),
                     ("tenant_api_map", "history_path")):
         try:

@@ -131,6 +131,32 @@
           </div>
           <div class="tl-status" id="tlwStatus" aria-live="polite"></div>
         </details>
+        <details id="rdBox">
+          <summary>Send reports to a share or host</summary>
+          <p class="tl-dim">Off until you turn it on. Sends a saved report (as CSV), or the staged DNS forwarder file, to an SFTP, SCP, SSH or SMB target. A target is used only if its host is in the allowed hosts. Passwords are kept in this computer's credential store, never in a file, and are not shown again. Needs the optional paramiko (SSH) or smbprotocol (SMB) package. <span id="rdLibs"></span></p>
+          <div class="tl-row">
+            <label for="rdHosts">Allowed hosts (one per line)</label>
+            <textarea id="rdHosts" rows="3" maxlength="4000" spellcheck="false" style="min-width:min(22rem,100%);"></textarea>
+          </div>
+          <div class="tl-row">
+            <label for="rdTargets">Targets (one per line: id transport host user folder [share])</label>
+            <textarea id="rdTargets" rows="3" maxlength="6000" spellcheck="false" placeholder="dns1 sftp dns1.example.com svc /etc/unbound/conf.d" style="min-width:min(22rem,100%);"></textarea>
+          </div>
+          <div class="tl-row">
+            <label><input type="checkbox" id="rdOn"> Allow sending</label>
+            <label for="rdPick">Target id</label>
+            <input type="text" id="rdPick" maxlength="32" autocomplete="off" spellcheck="false" style="width:9rem;">
+            <label for="rdPw">Password</label>
+            <input type="password" id="rdPw" maxlength="1024" autocomplete="new-password" style="width:11rem;">
+          </div>
+          <div class="tl-row">
+            <button type="button" class="rp-btn" id="rdSave">Save these settings</button>
+            <button type="button" class="rp-btn" id="rdStorePw">Store the password</button>
+            <button type="button" class="rp-btn" id="rdTest">Test the connection</button>
+            <button type="button" class="rp-btn" id="rdDnsRun">Push the staged DNS file now</button>
+          </div>
+          <div class="tl-status" id="rdStatus" aria-live="polite"></div>
+        </details>
         <details id="tlSyslogBox">
           <summary>Syslog listener</summary>
           <p class="tl-dim">Off until you start it, and it stops when you stop it or close the app. Point an NSS feed or LSS stream at it for a while, then analyse what arrived. It listens on this computer only (127.0.0.1) unless you type another address of this computer and tick Allow other computers. The lines stay in memory, are never written to disk, and are read as untrusted text. <span id="tlsLimits"></span></p>
