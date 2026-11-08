@@ -7376,6 +7376,95 @@ async def operations_apply(req: OperationRequest, request: Request):
     return result
 
 
+# ── One Client Connector device removal across several saved tenants ───
+# One plan per tenant profile (ops_zcc_admin.per_tenant): each tenant is
+# previewed on its own, has its own plan_hash and typed confirmation, and is
+# applied through the same gates, re-read, record and audit as a single
+# removal. A failure in one tenant is that tenant's row only.
+class ZccMultiRemoveRequest(BaseModel):
+    """profile_ids: the saved tenant profiles (no typed sign-in: every tenant
+    signs in with its own profile). operation: the removal (device list or
+    matched list). To apply, `tenants` holds each tenant's own plan_hash and
+    typed confirmation."""
+    profile_ids: List[str] = []
+    operation: Dict[str, Any] = {}
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+    assessor: str = ""
+    confirm: bool = False
+    tenants: List[Dict[str, str]] = []
+
+
+def _multi_sub(req: ZccMultiRemoveRequest, pid: str, **kw: Any) -> "OperationRequest":
+    return OperationRequest(profile_id=pid, scopes=req.scopes, channels=req.channels, from_page=req.from_page, assessor=req.assessor,
+                            operation=req.operation, **kw)
+
+
+def _multi_gate(req: ZccMultiRemoveRequest) -> List[str]:
+    import ops_zcc_admin as zca
+    if _offline_creds() is not None:
+        raise HTTPException(status_code=400, detail="Several tenants need saved tenant profiles: leave the sample tenant or the snapshot first. Nothing was read.")
+    try:
+        ids = zca.check_tenants(req.profile_ids)
+        zca.check_multi_operation(req.operation)
+    except Exception as e:  # noqa: BLE001 — admin_ops.OperationError: the caller's mistake
+        raise HTTPException(status_code=400, detail=str(e))
+    _ops_scope(_multi_sub(req, ids[0]), req.operation)
+    return ids
+
+
+@app.post("/api/operations/zcc/multi-remove/preview")
+async def operations_zcc_multi_preview(req: ZccMultiRemoveRequest, request: Request):
+    """Preview the same Client Connector device removal on each picked tenant,
+    one plan per tenant. Reads only; each tenant answers on its own."""
+    import ops_zcc_admin as zca
+    ids = _multi_gate(req)
+    actor = _actor(request)
+
+    def one(pid: str) -> Dict[str, Any]:
+        sub = _multi_sub(req, pid)
+        scope = _ops_scope(sub, sub.operation)
+        creds = _tenant_creds(sub)
+        client = _build_sdk_client(creds)
+        label = tenant_auth.record_label(creds)
+        out = _as_actor(actor, _keyed, client, _run_ops_preview, client, sub, scope, label, None, None)
+        return {"tenant_label": label, "status": out.get("status") or "refused", "message": out.get("message") or "", "plan": out}
+
+    rows = await asyncio.to_thread(zca.per_tenant, ids, one)
+    return {"tenants": rows, "writes_enabled": writes_enabled(), "max_tenants": zca.MAX_TENANTS}
+
+
+@app.post("/api/operations/zcc/multi-remove/apply")
+async def operations_zcc_multi_apply(req: ZccMultiRemoveRequest, request: Request):
+    """Apply the previewed removal tenant by tenant. Each entry of `tenants` is
+    {profile_id, plan_hash, confirm_text}: that tenant's own hash and typed
+    phrase. Each goes through the single-removal gates, a re-read, the record
+    and the audit log; one that is refused, changed or fails leaves the others."""
+    import ops_zcc_admin as zca
+    ids = _multi_gate(req)
+    _security.require_writer()
+    given = {str(t.get("profile_id") or ""): t for t in req.tenants if isinstance(t, dict)}
+    if not req.confirm or not given or any(not t.get("plan_hash") for t in given.values()) or not set(given) <= set(ids):
+        raise HTTPException(status_code=400, detail="Applying needs confirm=true and, for each tenant, its own plan_hash from the preview.")
+    ids = [i for i in ids if i in given]
+    _ops_apply_gate(_multi_sub(req, ids[0], plan_hash=str(given[ids[0]].get("plan_hash")), confirm=True))   # a refusal that holds for every tenant is the request's
+    actor = _actor(request)
+
+    def one(pid: str) -> Dict[str, Any]:
+        sub = _multi_sub(req, pid, plan_hash=str(given[pid].get("plan_hash") or ""), confirm=True, confirm_text=str(given[pid].get("confirm_text") or ""))
+        scope, by = _ops_apply_gate(sub)
+        creds = _tenant_creds(sub)
+        _refuse_offline_apply(creds)
+        client = _build_sdk_client(creds)
+        out = _as_actor(actor, _keyed, client, _run_ops_apply, client, creds, sub, scope, by, actor, None, None)
+        keep = {k: out.get(k) for k in ("counts", "counts_run", "operation_id", "verification", "stopped", "record_error", "message") if k in out}
+        return {"tenant_label": out.get("tenant_label") or tenant_auth.record_label(creds), "status": out.get("status") or "failed", **keep}
+
+    rows = await asyncio.to_thread(zca.per_tenant, ids, one)
+    return {"tenants": rows}
+
+
 @app.get("/api/operations")
 async def operations_list(tenant_label: Optional[str] = None):
     """Bulk changes applied from this app (newest first), with Undo where offered."""

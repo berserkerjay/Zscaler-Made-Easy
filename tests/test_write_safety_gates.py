@@ -324,6 +324,7 @@ ZCC_SCOPE = {"scopes": ["zcc"], "channels": {}, "from_page": True}
 ZCC_BUILD = {"type": "zcc_profile_build", "platform": "windows", "forwarding": {"template": "best_practice", "name": "QA fwd"},
              "app": {"template": "best_practice", "name": "QA app"}}
 ZCC_DELETE = {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}
+ZCC_REMOVE = {"type": "zcc_device_remove", "mode": "remove", "devices": [{"udid": "VMW-1:AAA", "user": "jdoe@acme.com"}]}
 ZDX_SCOPE = {"scopes": ["zdx"], "channels": {}, "from_page": True}
 
 WRITE_CASES: List[WriteCase] = [
@@ -354,6 +355,9 @@ WRITE_CASES: List[WriteCase] = [
                 _b(confirm=PHRASE, scopes=["zia_extras"], channels={}, from_page=True)), PHRASE),
     ("bulk-apply", "POST", "/api/operations/apply",
      lambda w: ("/api/operations/apply", dict(_b(**SCOPE), operation=OPERATION, plan_hash=HASH, confirm=True)), BOOL),
+    ("bulk-apply-zcc-multi", "POST", "/api/operations/zcc/multi-remove/apply",
+     lambda w: ("/api/operations/zcc/multi-remove/apply", dict(_b(**ZCC_SCOPE), profile_ids=["acme"], operation=ZCC_REMOVE, confirm=True,
+                                                                tenants=[{"profile_id": "acme", "plan_hash": HASH, "confirm_text": "REMOVE 1 DEVICE"}])), BOOL),
     ("bulk-apply-job", "POST", "/api/operations/apply/start",
      lambda w: ("/api/operations/apply/start", dict(_b(**SCOPE), operation=OPERATION, plan_hash=HASH, confirm=True)), BOOL),
     ("bulk-apply-zcc-build", "POST", "/api/operations/apply",
@@ -515,6 +519,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/operations/objects"): "reads",
     ("POST", "/api/operations/preview/start"): "preview",
     ("POST", "/api/operations/preview"): "preview",
+    ("POST", "/api/operations/zcc/multi-remove/preview"): "preview (one plan per saved tenant, reads only)",
     ("POST", "/api/pov/build/defaults"): "local: the parts an intake suggests",
     ("POST", "/api/pov/build/preview/start"): "preview",
     ("POST", "/api/pov/build/preview"): "preview",

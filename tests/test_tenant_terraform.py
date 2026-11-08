@@ -194,7 +194,7 @@ def test_every_type_is_read_through_the_sdk_and_written_as_its_resource(key):
 def test_the_catalogue_covers_the_three_providers_as_promised():
     """ASVS V1.14.1 · CWE-1059 · WSTG-INFO-02: ZIA, ZPA and Cloud & Branch Connector resource types are all covered."""
     cat = tt.catalogue()["products"]
-    assert len(cat["zia"]) >= 49 and len(cat["zpa"]) >= 30 and len(cat["ztc"]) >= 10
+    assert len(cat["zia"]) >= 49 and len(cat["zpa"]) >= 30 and len(cat["ztc"]) == 11
     assert len({t["resource"] for t in tt.TYPES}) == len(tt.TYPES), "one resource type per catalogue entry"
     assert set(tt.SCHEMAS) == {t["resource"] for t in tt.TYPES}
     for t in tt.TYPES:

@@ -5416,6 +5416,21 @@ window.HELP_CATALOG = {
     "input": "Read from the tenant and pick the objects first. Then click it.",
     "effect": "read"
    },
+   "#opMulti summary": {
+    "what": "Opens the form that plans one Client Connector device removal on several saved tenants, one plan per tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opMultiPreview": {
+    "what": "Plans the Client Connector removal you built above on each ticked tenant, one plan per tenant. Nothing is written.",
+    "input": "Build a removal above, tick the saved tenants, then click it. Each tenant then asks for its own typed confirmation.",
+    "effect": "read"
+   },
+   "input[data-mtprof]": {
+    "what": "Includes this saved tenant in the removal. Each tenant is planned, confirmed and applied on its own.",
+    "input": "Tick or untick. Up to ten tenants at a time.",
+    "effect": "local"
+   },
    "#opApiCalls": {
     "what": "Opens the API calls this run made, in Advanced settings: each call's path, answer, time taken, retries and waits.",
     "input": "Nothing to type. Just click it.",
