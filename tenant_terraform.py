@@ -467,6 +467,14 @@ def _t(key: str, resource: str, label: str, area: str, svc: str, method: Optiona
 ZCC_RAW_PATHS = {"zcc.notification_templates": "/zcc/papi/public/v2/notification-templates",
                  "zcc.zia_posture": "/zcc/papi/public/v2/zia-posture-profiles"}
 
+# Cloud & Branch Connector reads the installed SDK cannot make: zscaler-sdk-python
+# 1.11.3's account group model builds its lists with a class the SDK does not have
+# (CommonIDNameExternalID is missing from the module it names), so every
+# account_groups.list_account_groups() call raises. The documented path is
+# read with the same GET helper instead (the SDK's own account_groups.py:
+# GET /ztw/api/v1/accountGroups).
+ZTC_RAW_PATHS = {"ztc.account_groups": "/ztw/api/v1/accountGroups"}
+
 # Lists the API is known to cut short without saying so. The zcc provider's
 # own docs (docs/data-sources/zcc_zia_posture.md, CLAUDE.md) say the
 # /zia-posture-profiles list endpoint "mishandles pagination and silently
@@ -688,6 +696,8 @@ TYPES: List[Dict[str, Any]] = [
        gate=_ZTC, keep=_keep_ztc_gateway, keep_why="a gateway type the provider's ztc_forwarding_gateway does not take (ZIA, ECSELF or PROXYCHAIN)"),
     _t("ztc.forwarding_rules", "ztc_traffic_forwarding_rule", "Traffic forwarding rules", "forwarding", "forwarding_rules", "list_rules",
        gate=_ZTC, keep=_keep_ztc_forwarding_rule, keep_why=_why_ztc_forwarding_rule),
+    _t("ztc.account_groups", "ztc_account_groups", "Account groups", "provisioning", "", None, gate=_ZTC, bound=True,
+       raw=ZTC_RAW_PATHS["ztc.account_groups"]),
     _t("ztc.location_templates", "ztc_location_template", "Location templates", "provisioning", "location_template",
        "list_location_templates", gate=_ZTC),
     _t("ztc.provisioning_urls", "ztc_provisioning_url", "Provisioning URLs", "provisioning", "provisioning_url", "list_provisioning_url",
@@ -729,10 +739,12 @@ NOT_COVERED: List[Tuple[str, str, str]] = [
      "made in the identity provider and the Client Connector Portal; policy conditions keep their ids"),
     ("zpa", "Browser Access certificates and enrollment certificates", "a certificate's private key never leaves ZPA"),
     ("zpa", "Policy rule order", "the v2 policy resources take no order; zpa_policy_access_rule_reorder sets it after import"),
-    ("ztc", "Account groups", "zscaler-sdk-python 1.11.3 cannot read them: its account group model names a class the SDK "
-     "does not have (CommonIDNameExternalID), so every read fails"),
-    ("ztc", "Cloud & Branch Connector groups, locations and DNS / log forwarding rules",
-     "zscaler-sdk-python 1.11.3 cannot read them as the provider writes them"),
+    ("ztc", "Cloud & Branch Connector groups (ecgroup)", "read-only in the Cloud & Branch Connector API: zscaler-sdk-python 1.11.3 "
+     "lists and gets them but has no create or update, so a provider resource cannot manage them; forwarding rules name them by id"),
+    ("ztc", "Locations", "read-only in the Cloud & Branch Connector API (the SDK's location_management only lists and gets); a location is made from a "
+     "location template, which is exported"),
+    ("ztc", "DNS forwarding rules and log (control) rules", "no read API: zscaler-sdk-python 1.11.3's ztw package has no module for "
+     "them and the app's API catalogue holds no path for them, so there is nothing to read them from"),
 ]
 
 
@@ -1064,22 +1076,23 @@ _RAW_ENVELOPES = ("list", "records", "items", "content", "data", "notificationTe
 
 
 def _raw_list(client: Any, path: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    """Every object at one fixed Client Connector path, GET only, through
+    """Every object at one fixed Client Connector (or, under /ztw/, Cloud & Branch Connector) path, GET only, through
     the signed-in client's own request executor (the SDK's signing and
     gateway routing; the offline client answers it from its store).
     (rows, error). Paced like every Client Connector read."""
     import zia_rate
+    root, label = ("ztw", "Cloud & Branch Connector") if path.startswith("/ztw/") else ("zcc", "Client Connector")
     svc = None
     try:
-        svc = getattr(client, "zcc", None)
-    except Exception:  # noqa: BLE001 - a client without Client Connector
+        svc = getattr(client, root, None)
+    except Exception:  # noqa: BLE001 - a client without this product
         svc = None
     ex = getattr(svc, "_request_executor", None) if svc is not None else None
     if ex is None:
         ex = getattr(client, "_request_executor", None)
     if ex is None:
-        return [], "this sign-in has no Client Connector API (it needs a OneAPI API client)"
-    zia_rate.wait("GET", "", what="Client Connector read")
+        return [], f"this sign-in has no {label} API (it needs a OneAPI API client)"
+    zia_rate.wait("GET", "", what=f"{label} read")
     try:
         made = ex.create_request("GET", path, {}, {}, params={})
         req, err = (made[0], made[1]) if isinstance(made, tuple) and len(made) >= 2 else (made, None)

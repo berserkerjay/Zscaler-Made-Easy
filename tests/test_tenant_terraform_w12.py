@@ -111,9 +111,9 @@ def test_read_tenant_keeps_a_bounded_progress_log():
 def test_cloud_connector_unsupported_items_are_listed_not_hidden():
     """ASVS V1.14.1 · CWE-1059: Cloud & Branch Connector objects the provider cannot take are named in the not-covered list, and the Client Connector workspace is a separate product."""
     cat = tt.catalogue()
-    assert len(cat["products"]["ztc"]) >= 10 and "zcc" in cat["products"]
+    assert len(cat["products"]["ztc"]) == 11 and "zcc" in cat["products"]
     nc = " ".join(x["what"] for x in cat["not_covered"] if x["product"] == "ztc")
-    assert "Account groups" in nc and "DNS / log forwarding rules" in nc
+    assert "Account groups" not in nc and "DNS forwarding rules and log (control) rules" in nc and "Locations" in nc and "Cloud & Branch Connector groups" in nc
     _f, rep = tt.generate({"types": {}, "unread": {}}, tt.normalize_options(["ztc"]), generated_at="2026-11-07T00:00:00Z")
     assert any(x["product"] == "ztc" for x in rep["not_covered"])
 
@@ -123,3 +123,84 @@ def test_route_model_carries_the_new_options():
     import dlp_api_server as s
     r = s.TenantTerraformRequest()
     assert r.output_dir == "" and r.support_log is False
+
+
+# ── Cloud & Branch Connector: account groups, and what the API / SDK cannot give ──
+
+ZTC_HOSTILE = 'Prod "AWS" ${var.x} %{ if true }'
+
+
+def _ztc_snapshot():
+    return {"types": {"ztc.account_groups": [{"id": 4851, "name": ZTC_HOSTILE, "description": HOSTILE, "cloud_type": "AWS",
+                                              "public_cloud_accounts": [{"id": 4801, "name": "a"}],
+                                              "cloud_connector_groups": [{"id": 4101, "name": "g"}]}]},
+            "unread": {}, "log": []}
+
+
+def test_ztc_account_groups_are_written_valid_escaped_and_imported():
+    """ASVS V5.3.3 · CWE-94 · WSTG-INPV-11: an account group (name and description hostile) is written as ztc_account_groups, passes the module's own static check, its values are escaped and its import block is present."""
+    files, rep = tt.generate(_ztc_snapshot(), tt.normalize_options(["ztc"]), tenant_label="T", generated_at="2026-11-07T00:00:00Z")
+    assert rep["products"]["ztc"]["resources"] == {"ztc_account_groups": 1}
+    text = "\n".join(ln for p, c in files.items() if p.endswith(".tf") for ln in c.split("\n") if not ln.lstrip().startswith("#"))
+    assert 'resource "ztc_account_groups"' in text and "cloud_type" in text and "public_cloud_accounts" in text
+    assert "${var.x}" not in text.replace("$${var.x}", "") and "%{ if true }" not in text.replace("%%{ if true }", "")
+    assert 'resource "evil"' not in text.replace('\\"evil\\"', "")
+    assert tt.validate_files(files)["ok"] is True
+    imports = files[f"{tt.ROOT_DIR}/ztc/imports.tf"]
+    assert "to = ztc_account_groups." in imports and 'id = "4851"' in imports
+
+
+class _Ex:
+    """A request executor that answers the documented account group path, and counts what it was asked."""
+
+    def __init__(self):
+        self.asked = []
+
+    def create_request(self, method, path, body, headers, params=None):
+        self.asked.append((method, path))
+        return {"m": method, "p": path}, None
+
+    def execute(self, req):
+        class R:
+            def get_body(self_inner):
+                return [{"id": 7, "name": "G", "cloudType": "AWS", "publicCloudAccounts": [{"id": 1}], "cloudConnectorGroups": []}]
+        return R(), None
+
+
+class _Ztw:
+    def __init__(self, ex):
+        self._request_executor = ex
+
+    @property
+    def account_groups(self):
+        raise AssertionError("the SDK's account group reader fails on the installed version and must not be called")
+
+
+class _Client:
+    def __init__(self):
+        self.ex = _Ex()
+        self.ztw = _Ztw(self.ex)
+
+
+def test_ztc_account_groups_are_read_with_the_raw_get_not_the_broken_sdk_reader():
+    """ASVS V13.2.1 · CWE-754 · WSTG-BUSL-01: the installed SDK's account group model cannot be built, so the type is read with GET /ztw/api/v1/accountGroups through the client's executor; only a GET is made."""
+    c = _Client()
+    snap = tt.read_tenant(c, ["ztc.account_groups"])
+    assert c.ex.asked == [("GET", "/ztw/api/v1/accountGroups")] and snap["unread"] == {}
+    row = snap["types"]["ztc.account_groups"][0]
+    assert row["cloud_type"] == "AWS" and row["public_cloud_accounts"] == [{"id": 1}]
+    from zscaler.ztw.models.account_groups import AccountGroups
+    with pytest.raises(AttributeError):
+        AccountGroups({"id": 1, "cloudConnectorGroups": [{"id": 2}]})
+
+
+def test_ztc_types_without_a_provider_resource_or_read_api_say_so_exactly():
+    """ASVS V1.14.1 · CWE-1059: Cloud & Branch Connector groups and locations (read-only API), DNS and log rules (no read API), multi-range IP pools and other forwarding methods (the provider's validator) are reported, never silently dropped."""
+    nc = {x["what"]: x["why"] for x in tt.catalogue()["not_covered"] if x["product"] == "ztc"}
+    assert "no read API" in nc["DNS forwarding rules and log (control) rules"] and "no module" in nc["DNS forwarding rules and log (control) rules"]
+    assert "read-only" in nc["Locations"] and "read-only" in nc["Cloud & Branch Connector groups (ecgroup)"]
+    snap = {"types": {"ztc.ip_pool_groups": [{"id": 3, "name": "Two", "ip_addresses": ["10.0.0.0/24", "10.0.1.0/24"]}],
+                      "ztc.forwarding_rules": [{"id": 1, "name": "P", "order": 1, "type": "EC_RDR", "forward_method": "PROXYCHAIN"}]}}
+    _f, rep = tt.generate(snap, tt.normalize_options(["ztc"]), tenant_label="T", generated_at="2026-11-07T00:00:00Z")
+    why = {s["what"]: s["why"] for s in rep["products"]["ztc"]["skipped"]}
+    assert "holds exactly one" in why["IP pool groups: Two"] and "PROXYCHAIN" in why["Traffic forwarding rules: P"]

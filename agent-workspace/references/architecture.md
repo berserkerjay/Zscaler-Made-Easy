@@ -273,6 +273,7 @@ Find the files a change touches here, then read only those.
 | `static/ops_url_category_admin.js` | Rename or delete one custom URL category on Bulk changes (/report/operations, |
 | `static/ops_zcc.js` | Client Connector profiles on Bulk changes (/report/operations, "Build new"). |
 | `static/ops_zcc_live.js` | Client Connector live changes on Bulk changes (/report/operations, ops_zcc_live.py). |
+| `static/ops_zcc_multi.js` | Remove Client Connector devices on several tenants (POST |
 | `static/ops_zdx.js` | ZDX probe setup: the forms of the three ZDX operation types (ops_zdx.py) |
 | `static/ops_zia_admin.js` | Day-to-day ZIA admin on Bulk changes (/report/operations, "Day-to-day admin"). |
 | `static/ops_zia_ai_prompt.js` | AI prompt capture on Bulk changes (/report/operations, "Build new"). |

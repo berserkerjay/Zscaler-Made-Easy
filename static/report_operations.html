@@ -45,6 +45,10 @@
         <div class="df-hint" id="opSanction">Cloud application sanction (Sanctioned / Unsanctioned) is the operation <strong>Sanction or unsanction cloud apps</strong> above; it needs ZIA platform and ZIA Insights ticked on the Scope page.</div>
         <div class="df-hint" id="opCloneNew">Backups: restore and clone now also write PAC files, Endpoint and SaaS Security API DLP rules, ZPA gateways, sub-locations with their location (when tenant-bound objects are included) and, when you include them, Client Connector app profiles and entitlements, never with a password.</div>
         <div class="df-hint" id="opAdminNew">New day-to-day edits: activate pending ZIA changes, rename or delete a URL category, IP groups, DLP dictionaries and engines, and one ZIdentity user (details, password or MFA). Each is listed above once the page has loaded.</div>
+        <details class="pa-details" id="opMulti">
+          <summary>Remove Client Connector devices on several tenants</summary>
+          <div id="opMultiBody"></div>
+        </details>
         <div class="df-hint" id="opSocReview">Before you change admins, roles or API clients, the <a href="/report/soc-review">SOC review</a> shows who can administer the tenant today and what it sends to your SIEM. It only reads.</div>
         <div class="df-hint" id="opApiMap">To see which features this tenant has and which reads its API client may make, the <a href="/report/api-map">Tenant API map</a> lists every endpoint first and reads only after you confirm. It only reads.</div>
       </section>
@@ -82,6 +86,7 @@
   <script src="/static/compliance_choice.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
+  <script src="/static/ops_zcc_multi.js" defer></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -278,6 +283,9 @@
       zpaSec: () => zpaSec(), zpaPicker: () => zpaPickerHtml(), wireZpaPicker: () => wireZpaPicker(),
       runJob: (u, p, w, t) => runJob(u, p, w, t), fail: (w, t, m, f) => fail(w, t, m, f), preview: (u, p) => preview(u, p, null), detailText,
       read: q => { S.query = String(q || '').slice(0, 100); $('opRead').click(); } };
+    // What the several-tenants removal (static/ops_zcc_multi.js) borrows from this page: the Scope page's selection, the assessor, the operation built above.
+    window.OPS_PLUGINS.multi = { E, $, say, detailText, scope: () => scopeSelection(), assessor: () => (($('opAssessor') || {}).value || S.assessor || openerAssessor() || '').trim(),
+      kind: () => S.kind, spec: () => { const d = window.OPS_PLUGINS.defs[S.kind]; return d && typeof d.spec === 'function' ? d.spec(S, H) : null; }, write: () => !!(S.write && S.write.enabled) };
     (async function loadBuilders() {
       let list = [];
       try { const r = await fetch('/api/operations/plugins', { cache: 'no-store' }); if (r.ok) list = (await r.json()).plugins || []; } catch (e) { list = []; }

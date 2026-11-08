@@ -481,6 +481,9 @@ SCHEMAS: Dict[str, str] = {
         "override_version_profile:b microtenant_id:s site_id:s upgrade_day:s upgrade_time_in_secs:s "
         "version_profile_id:s version_profile_name:s enrollment_cert_id:s user_codes:ls"
     ),
+    # ztc_account_groups: assumed from the SDK's AccountGroups model (zscaler/ztw/models/account_groups.py: id, name, description,
+    # cloudType, publicCloudAccounts, cloudConnectorGroups); `terraform validate` in validate.sh proves it against the installed provider.
+    "ztc_account_groups": "name:s! description:s cloud_type:s public_cloud_accounts:ids cloud_connector_groups:ids",
     "ztc_forwarding_gateway": (
         "name:s description:s type:s fail_closed:b manual_primary:s manual_secondary:s primary_type:s! "
         "secondary_type:s! subcloud_primary:idb subcloud_secondary:idb"

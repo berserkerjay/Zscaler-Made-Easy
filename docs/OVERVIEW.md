@@ -410,7 +410,7 @@ what you get, what to do next.
   standalone Zscaler Enterprise Browser has no API. Read-only; Stop ends
   the read at once.
 - **Cloud & Branch Connector** (`/report/ztw`, `ztw_overview.py`) — the
-  Cloud and Branch Connector configuration read once (only when Cloud &
+  Cloud & Branch Connector configuration read once (only when Cloud &
   Branch Connector is ticked on the Scope page, with a OneAPI API client):
   connector groups and their connectors (deploy type, location, software
   versions, operational and upgrade status, upgrade window), the traffic

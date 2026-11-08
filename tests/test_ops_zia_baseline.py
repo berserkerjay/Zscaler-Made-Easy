@@ -700,3 +700,26 @@ def test_preview_apply_and_undo_through_the_endpoints_with_every_gate(monkeypatc
                                                   confirm_text=u["confirm_phrase"], undo_of=op_id))
     assert r.status_code == 200 and r.json()["status"] == "applied"
     assert not [x for x in t.zia.file_type_control_rule.rows + t.zia.sandbox_rules.rows if x["name"].startswith("BL-")]
+
+
+def test_the_picked_isolation_profile_and_certificate_reach_the_written_rule_payloads():
+    """ASVS V5.1.3 · CWE-1188 · WSTG-BUSL-01: the isolation profile and the SSL certificate picked in the wizard are the ones sent in the Isolate rule's cbi_profile and the Inspect rule's ssl_interception_cert (the write is the fake's recorded payload)."""
+    t = Tenant()
+    t.zia.cloud_browser_isolation.rows = [{"id": "p1", "name": "Default Isolation", "url": "https://cbi.example/p1", "default_profile": True},
+                                          {"id": "p2", "name": "Finance Isolation", "url": "https://cbi.example/p2", "default_profile": False}]
+    spec = {"type": "zia_baseline", "tier": "strict", "enable_rules": False, "isolation_profile": "Finance Isolation", "certificate": "New CA 2026",
+            "rules": {"url.misc": {"on": True, "action": "ISOLATE"}}}
+    out = apply(t, spec)
+    assert out["status"] in ("applied", "partial"), out.get("status")
+    isolate = next(r for r in t.zia.url_filtering.rows if r.get("action") == "ISOLATE")
+    assert isolate["cbi_profile"] == {"id": "p2", "name": "Finance Isolation", "url": "https://cbi.example/p2"}
+    inspect = next(r for r in t.zia.ssl_inspection_rules.rows if r["name"].endswith("SSL-Catch-All"))
+    assert inspect["action"]["type"] == "DECRYPT" and inspect["action"]["override_default_certificate"] is True
+    assert inspect["action"]["ssl_interception_cert"] == {"id": 52, "name": "New CA 2026"}
+    assert "MIIB" not in str(isolate) + str(inspect)
+    # no pick: the tenant's default profile is used and the default certificate is left alone
+    t2 = Tenant()
+    t2.zia.cloud_browser_isolation.rows = list(t.zia.cloud_browser_isolation.rows)
+    apply(t2, {"type": "zia_baseline", "tier": "strict", "enable_rules": False, "rules": {"url.misc": {"on": True, "action": "ISOLATE"}}})
+    assert next(r for r in t2.zia.url_filtering.rows if r.get("action") == "ISOLATE")["cbi_profile"]["id"] == "p1"
+    assert not next(r for r in t2.zia.ssl_inspection_rules.rows if r["name"].endswith("SSL-Catch-All"))["action"]["override_default_certificate"]
