@@ -19,6 +19,8 @@ import open_source  # noqa: E402
 NOTE = open_source.NOTE_MD
 
 
+OLD_PRODUCT = "Zscaler " + "Assessment"   # built, so tests/test_product_name.py does not count this fixture as a use
+
 def make(tmp_path, files):
     for rel, text in files.items():
         p = tmp_path / rel
@@ -64,7 +66,7 @@ def test_the_open_source_note_is_required_near_the_top(tmp_path):
 
 def test_earlier_and_misspelled_product_names_are_found_but_history_and_compat_strings_are_not(tmp_path):
     """WCAG 2.2 SC 3.2.4: the earlier repo and app names and a misspelling are errors; the CHANGELOG (history), the kept command aliases and the file name ZscalerMadeEasy are not."""
-    body = (f"# T\n\n{NOTE}\n\n## A\n\nThe DLP-Check tool.\nZscaler Assessment here.\nZscaler Made-Easy and Zscaler made easy.\n"
+    body = (f"# T\n\n{NOTE}\n\n## A\n\nThe DLP-Check tool.\n{OLD_PRODUCT} here.\nZscaler Made-Easy and Zscaler made easy.\n"
             "The `dlp-check` command still works. ZscalerMadeEasy-1.0.zip\n")
     root = make(tmp_path, {"README.md": body, "CHANGELOG.md": body.replace("## A", "## 2026-11-07")})
     found = [(f["file"], f["line"]) for f in da.audit(root)["findings"] if f["rule"] == "product-name"]

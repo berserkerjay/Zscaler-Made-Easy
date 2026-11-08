@@ -12429,8 +12429,12 @@ async def zscaler_ranges_digicert_resolve(req: ZsDigicertResolve, request: Reque
     with any operator ranges (validated CIDRs only: 400 otherwise). Included in the allowlist when 'DigiCert' is ticked."""
     import zscaler_ip_ranges as zr
     _security.require_writer()
+    # DNS lookups are outbound, so they follow the page's fetch switch (off by default), like the feed fetch above.
+    lookup = bool(zr.settings()["enabled"])
+    if not lookup and not str(req.operator_ranges or "").strip():
+        raise HTTPException(status_code=409, detail="Looking up the DigiCert addresses is off while fetching is off. Turn fetching on here, or paste your own ranges.")
     try:
-        out = await asyncio.to_thread(zr.resolve_digicert, None, req.operator_ranges)
+        out = await asyncio.to_thread(zr.resolve_digicert, None, req.operator_ranges, None, lookup)
     except zr.FeedError as e:
         raise HTTPException(status_code=400, detail=str(e))
     _audit.record("zscaler_ranges_digicert_resolve", actor=_actor(request) or _security.current_actor(),

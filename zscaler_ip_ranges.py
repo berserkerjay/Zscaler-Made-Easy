@@ -749,7 +749,7 @@ def digicert_resolved_path() -> str:
 
 
 def resolve_digicert(getaddrinfo: Optional[Callable[..., Any]] = None, operator_ranges: Any = "",
-                     now: Optional[_dt.datetime] = None) -> Dict[str, Any]:
+                     now: Optional[_dt.datetime] = None, lookup: bool = True) -> Dict[str, Any]:
     """Resolve each listed DigiCert validation host by DNS (`getaddrinfo`, injectable for tests) to its current IPv4 and IPv6
     addresses and keep them, with the operator's own ranges (validated CIDRs only: FeedError for a line that is not one),
     as a /32 or /128 each. An address that is not public unicast is dropped and said. A host that does not resolve is
@@ -760,11 +760,13 @@ def resolve_digicert(getaddrinfo: Optional[Callable[..., Any]] = None, operator_
     hosts: Dict[str, List[str]] = {}
     ranges: List[str] = []
     warnings: List[str] = list(op_warn)
-    for h in certificate_validation_endpoints()["hosts"]:
+    if not lookup:
+        warnings.append("DNS lookups are off (fetching is off on this page): only the operator ranges are kept.")
+    for h in (certificate_validation_endpoints()["hosts"] if lookup else []):
         found: List[str] = []
         try:
             infos = gai(h, 443, type=socket.SOCK_STREAM)
-        except (OSError, UnicodeError) as e:
+        except (OSError, UnicodeError, RuntimeError) as e:   # RuntimeError: a resolver that refuses (e.g. an offline guard)
             warnings.append(f"{h} did not resolve ({type(e).__name__}).")
             hosts[h] = []
             continue

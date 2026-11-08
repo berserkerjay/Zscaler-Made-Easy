@@ -279,6 +279,8 @@ def test_digicert_routes_resolve_report_and_refuse_bad_ranges(kr, monkeypatch):
     """ASVS V4.1.1 · CWE-285 · WSTG-ATHZ-02: the resolve route is administrator-only in team mode, answers the labelled result, refuses an invalid range with 400 and audits counts only."""
     c = TestClient(srv.app)
     monkeypatch.setattr(socket, "getaddrinfo", _gai(TABLE))
+    real = zr.settings
+    monkeypatch.setattr(zr, "settings", lambda: {**real(), "enabled": True})   # fetching on: DNS lookups allowed
     assert team_routes.ROUTE_RULES["POST /api/zscaler-ranges/digicert-resolve"] == team_routes.ADMIN
     assert c.get("/api/zscaler-ranges/digicert").json() == {"resolved": None}
     bad = c.post("/api/zscaler-ranges/digicert-resolve", json={"operator_ranges": "nope"})
@@ -289,6 +291,19 @@ def test_digicert_routes_resolve_report_and_refuse_bad_ranges(kr, monkeypatch):
     built = c.post("/api/zscaler-ranges/build", json={"cloud": "zscaler.net", "feeds": ["cenr"], "digicert": True})
     assert built.status_code == 200 and "198.51.100.0/24" in built.json()["all"]["ipv4"]
     assert any(e.get("event") == "zscaler_ranges_digicert_resolve" for e in audit.tail(20))
+
+
+def test_digicert_lookups_follow_the_fetch_switch(kr, monkeypatch):
+    """ASVS V12.6.1 · CWE-1188 · WSTG-CONF-01: with fetching off (the default) no DNS lookup is made: nothing pasted is a 409, pasted ranges are kept alone."""
+    c = TestClient(srv.app)
+    calls = []
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: calls.append(a) or [])
+    real = zr.settings
+    monkeypatch.setattr(zr, "settings", lambda: {**real(), "enabled": False})
+    assert c.post("/api/zscaler-ranges/digicert-resolve", json={}).status_code == 409
+    ok = c.post("/api/zscaler-ranges/digicert-resolve", json={"operator_ranges": "198.51.100.0/24"})
+    assert ok.status_code == 200 and ok.json()["operator_ranges"] == ["198.51.100.0/24"] and ok.json()["ranges"] == []
+    assert calls == [] and any("lookups are off" in w for w in ok.json()["warnings"])
 
 
 def test_nothing_resolved_keeps_nothing_and_says_so(kr):

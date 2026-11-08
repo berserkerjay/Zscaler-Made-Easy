@@ -31,7 +31,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OLD = re.compile(r"DLP-Check|dlp-check|dlpcheck|Zscaler Assessment")
 
 NOT_SCANNED = re.compile(r"^(tests/|docs/qa/)|^(CHANGELOG\.md|docs/QUALITY_SCORE\.md|docs/quality_score\.json"
-                         r"|docs/SECURITY_TESTING\.md|docs/sbom\.cdx\.json)$|\.lock$")
+                         r"|docs/SECURITY_TESTING\.md|docs/sbom\.cdx\.json"
+                         r"|tools/docs_audit\.py)$|\.lock$")   # docs_audit must name the old names it reports, as the guards do
 
 # Allowed in any file: HTTP header names (clients and the extension send them)
 # and the provenance tag written on tenant objects ("[DLP-Check pack x v1]"),

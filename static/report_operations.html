@@ -86,7 +86,7 @@
   <script src="/static/compliance_choice.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
-  <script src="/static/ops_zcc_multi.js" defer></script>
+  <script src="/static/zcc_multi_remove.js" defer></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -283,7 +283,7 @@
       zpaSec: () => zpaSec(), zpaPicker: () => zpaPickerHtml(), wireZpaPicker: () => wireZpaPicker(),
       runJob: (u, p, w, t) => runJob(u, p, w, t), fail: (w, t, m, f) => fail(w, t, m, f), preview: (u, p) => preview(u, p, null), detailText,
       read: q => { S.query = String(q || '').slice(0, 100); $('opRead').click(); } };
-    // What the several-tenants removal (static/ops_zcc_multi.js) borrows from this page: the Scope page's selection, the assessor, the operation built above.
+    // What the several-tenants removal (static/zcc_multi_remove.js) borrows from this page: the Scope page's selection, the assessor, the operation built above.
     window.OPS_PLUGINS.multi = { E, $, say, detailText, scope: () => scopeSelection(), assessor: () => (($('opAssessor') || {}).value || S.assessor || openerAssessor() || '').trim(),
       kind: () => S.kind, spec: () => { const d = window.OPS_PLUGINS.defs[S.kind]; return d && typeof d.spec === 'function' ? d.spec(S, H) : null; }, write: () => !!(S.write && S.write.enabled) };
     (async function loadBuilders() {

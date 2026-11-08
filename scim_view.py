@@ -80,7 +80,7 @@ def overview(client: Any, cancel: Any = None) -> Dict[str, Any]:
 
 
 # ── opt-in: the SCIM users of one IdP (the IdP's own SCIM 2.0 service) ─────
-KEYRING_SERVICE = "dlp-check-scim"
+KEYRING_SERVICE = "Zscaler Made Easy SCIM"
 PAGE_SIZE = 100          # count= sent per page
 MAX_PAGES = 5            # pages read per request: at most 500 users
 MAX_USERS = PAGE_SIZE * MAX_PAGES
