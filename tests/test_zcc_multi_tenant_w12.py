@@ -29,6 +29,7 @@ def tenants(monkeypatch, tmp_path):
     monkeypatch.setenv("DLP_CHECK_DEPLOYMENTS", str(tmp_path / "deployments.json"))
     monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
     monkeypatch.setattr(security, "_write_override", True)
+    monkeypatch.setattr(zc, "_LEDGER", {})   # an empty hourly call budget: calls counted by earlier tests in the same hour do not leak in
     fakes = {}
     for pid in ("acme", "beta", "gamma"):
         c = ZccClient()
