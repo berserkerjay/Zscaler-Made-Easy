@@ -324,6 +324,7 @@ ZCC_SCOPE = {"scopes": ["zcc"], "channels": {}, "from_page": True}
 ZCC_BUILD = {"type": "zcc_profile_build", "platform": "windows", "forwarding": {"template": "best_practice", "name": "QA fwd"},
              "app": {"template": "best_practice", "name": "QA app"}}
 ZCC_DELETE = {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}
+ZCC_REMOVE = {"type": "zcc_device_remove", "mode": "remove", "devices": [{"udid": "VMW-1:AAA", "user": "jdoe@acme.com"}]}
 ZDX_SCOPE = {"scopes": ["zdx"], "channels": {}, "from_page": True}
 
 WRITE_CASES: List[WriteCase] = [
@@ -354,6 +355,9 @@ WRITE_CASES: List[WriteCase] = [
                 _b(confirm=PHRASE, scopes=["zia_extras"], channels={}, from_page=True)), PHRASE),
     ("bulk-apply", "POST", "/api/operations/apply",
      lambda w: ("/api/operations/apply", dict(_b(**SCOPE), operation=OPERATION, plan_hash=HASH, confirm=True)), BOOL),
+    ("bulk-apply-zcc-multi", "POST", "/api/operations/zcc/multi-remove/apply",
+     lambda w: ("/api/operations/zcc/multi-remove/apply", dict(_b(**ZCC_SCOPE), profile_ids=["acme"], operation=ZCC_REMOVE, confirm=True,
+                                                                tenants=[{"profile_id": "acme", "plan_hash": HASH, "confirm_text": "REMOVE 1 DEVICE"}])), BOOL),
     ("bulk-apply-job", "POST", "/api/operations/apply/start",
      lambda w: ("/api/operations/apply/start", dict(_b(**SCOPE), operation=OPERATION, plan_hash=HASH, confirm=True)), BOOL),
     ("bulk-apply-zcc-build", "POST", "/api/operations/apply",
@@ -430,6 +434,10 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/offline/simulate/operation"): "rehearses a Build new / Bulk changes plan into an in-memory simulation copy (offline_tenant.simulate), never a tenant, the sample or a snapshot file (only its audit entries, marked simulation=true); 409 on a live tenant",
     ("POST", "/api/offline/simulate/pov-build"): "rehearses a POV build into an in-memory simulation copy (offline_tenant.simulate), never a tenant, the sample or a snapshot file (only its audit entries, marked simulation=true); 409 on a live tenant",
     ("POST", "/api/offline/simulation/discard"): "drops the in-memory simulation copy and returns this browser to the sample or snapshot; no tenant is reached",
+    ("POST", "/api/pov/posture"): "records the posture score of results the page sends on the profile's own POV (pov); reads and writes no tenant",
+    ("PUT", "/api/block-page/theme"): "saves a block page theme in this app's own store (block_page_theme); reads and writes no tenant",
+    ("DELETE", "/api/block-page/theme"): "deletes a saved block page theme or its logo from this app's own store; reads and writes no tenant",
+    ("POST", "/api/block-page/preview"): "renders a block page preview and its end-user notification settings locally; reads and writes no tenant",
     ("POST", "/api/zia-baseline/selection"): "saves or checks a ZIA baseline rule-review selection locally (ops_zia_baseline); reads and writes no tenant",
     ("POST", "/api/tenant-profiles/snapshots/open-file"): "opens an uploaded snapshot offline and read-only",
     ("POST", "/api/tenant-profiles/snapshots/{snapshot_id}/open"): "opens a saved snapshot offline and read-only",
@@ -476,6 +484,9 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/ztw/start"): "reads the Cloud & Branch Connector configuration (list and get calls only); no write method is called",
     ("POST", "/api/soc-review/rbac/start"): "reads admins, roles, API keys and clients (soc_review.Guard: GET only, no write method exposed)",
     ("POST", "/api/soc-review/telemetry/start"): "reads log feeds, NSS servers, LSS configurations and log settings (soc_review.Guard: GET only)",
+    ("POST", "/api/tenant-api-map/plan"): "lists the endpoints the Tenant API map would read; no sign-in, no tenant call",
+    ("POST", "/api/tenant-api-map/start"): "GET-only reads of the confirmed endpoint list (tenant_api_map.ReadOnlyClient has no write method); keeps statuses, counts and field names",
+    ("POST", "/api/tenant-api-map/forget"): "removes the app's own saved maps of a tenant label from this computer; no tenant call",
     ("POST", "/api/other-products/start"): "reads",
     ("POST", "/api/device-posture/start"): "reads",
     ("POST", "/api/rate-check"): "local forecast",
@@ -508,6 +519,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/operations/objects"): "reads",
     ("POST", "/api/operations/preview/start"): "preview",
     ("POST", "/api/operations/preview"): "preview",
+    ("POST", "/api/operations/zcc/multi-remove/preview"): "preview (one plan per saved tenant, reads only)",
     ("POST", "/api/pov/build/defaults"): "local: the parts an intake suggests",
     ("POST", "/api/pov/build/preview/start"): "preview",
     ("POST", "/api/pov/build/preview"): "preview",
@@ -530,6 +542,11 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("DELETE", "/api/sync-jobs/{jid}"): "a sync job (local)",
     ("POST", "/api/sync-jobs/{jid}/enabled"): "a sync job's schedule (local)",
     ("POST", "/api/sync-jobs/{jid}/run"): "reads source and targets, files plans in the change queue (local); never writes a tenant",
+    ("POST", "/api/scim/overview"): "reads (ZPA IdPs and SCIM group names, scope-gated)",
+    ("POST", "/api/scim/users"): "reads (one IdP's SCIM users from its own SCIM service, opt-in with a keychain secret, scope-gated, administrator-only)",
+    ("PUT", "/api/scim/users/token"): "keeps an IdP's SCIM secret in the OS credential store (local, administrator-only)",
+    ("DELETE", "/api/scim/users/token"): "removes an IdP's SCIM secret from the OS credential store (local)",
+    ("POST", "/api/zscaler-ranges/digicert-resolve"): "DNS lookups of the DigiCert hosts, kept locally (no tenant, no firewall)",
     ("POST", "/api/path-analyzer/zpa-identity"): "reads (ZPA IdPs, SAML attributes, one SCIM user's groups)",
     ("POST", "/api/tenant-terraform/start"): "reads the tenant into Terraform files (tenant_terraform); writes nothing",
     ("POST", "/api/zcc/fleet/import"): "reads uploaded Client Connector Portal exports (no tenant call)",
@@ -538,6 +555,12 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/zcc/fleet/history/forget"): "forgets the local fleet history (no tenant)",
     ("POST", "/api/traffic-logs/analyze"): "reads uploaded traffic and session logs (no tenant call)",
     ("POST", "/api/traffic-logs/watch"): "local settings (the daily report's watched folder; writer, audited)",
+    ("POST", "/api/delivery/settings"): "local settings (opt-in report delivery: allowlist and targets, no password; writer, audited)",
+    ("PUT", "/api/delivery/credential/{target_id}"): "stores a password in the OS credential store (no tenant call; writer, audited, never echoed)",
+    ("POST", "/api/delivery/test/{target_id}"): "opens and closes a connection to an allowlisted host (no tenant call; writer, audited)",
+    ("POST", "/api/delivery/send"): "sends a saved report CSV to an allowlisted host (no tenant call; writer, audited)",
+    ("POST", "/api/dns-push/settings"): "local settings (opt-in DNS push; writer, audited)",
+    ("POST", "/api/dns-push/run"): "sends the staged forwarder file to allowlisted resolvers (no tenant call; writer, audited)",
     ("POST", "/api/traffic-logs/watch/run"): "reads local log files into a report (no tenant call; writer, audited)",
     ("POST", "/api/traffic-logs/syslog/start"): "starts the local syslog listener (no tenant call; writer, audited)",
     ("POST", "/api/traffic-logs/syslog/stop"): "stops the local syslog listener (no tenant call; writer, audited)",
@@ -600,6 +623,8 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/report/findings-csv"): "report",
     ("POST", "/api/zcc/fleet/start"): "reads",
     ("POST", "/api/zcc/install"): "builds an install command; with app_profile_id it reads that profile's policy token (scope-gated)",
+    ("POST", "/api/zcc/passwords"): "reveals one user's tamper-protection passwords (off unless ZSCALER_ZCC_TAMPER_REVEAL=1; scope-gated, writer, administrator on a team server, assessor, typed phrase, rate-limited; tests/test_zcc_reveal_passwords.py); writes nothing",
+    ("POST", "/api/data-check/repair"): "removes stale lock files and leftover temporary copies in the app's own data folder (writer, typed phrase REPAIR DATA FOLDER, audited by file name; tests/test_data_check.py); never a tenant, store, key or backup",
     ("POST", "/api/zcc/otp"): "reads one device's one-time passwords (scope-gated, writer, assessor, write mode, typed phrase, rate-limited; tests/test_zcc_otp.py); writes nothing",
     ("POST", "/api/zcc/device-details"): "reads one device's service state (scope-gated)",
     ("POST", "/api/zcc/disable-reasons"): "reads the disable-reason report and counts it (scope-gated)",
@@ -614,6 +639,10 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/category-lookup/start"): "reads (Category lookup)",
     ("POST", "/api/bulk-test/fix/{fix_id}/prove/start"): "reads (Prove it: the handed-off rows tested again)",
     ("POST", "/api/audit-timeline/start"): "reads",
+    ("POST", "/api/cite"): "local best-practice catalogue; an opt-in fetch of Zscaler help pages only, no tenant",
+    ("POST", "/api/capacity-review"): "reads counts (GET only)",
+    ("POST", "/api/journal"): "local investigation journal (sealed store), no tenant",
+    ("POST", "/api/postmortem"): "local read of the app's own records, writes nothing",
     ("POST", "/api/shadow-rules/start"): "reads",
     ("POST", "/api/shadow-rules"): "reads",
     ("POST", "/api/posture/analyze"): "reads",
@@ -653,6 +682,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/path-analyzer/compare/start"): "reads (two analyses on one read)",
     ("POST", "/api/path-analyzer/test-from-here"): "no tenant call: DNS, a TCP connect and a TLS handshake from this computer (path_probe)",
     ("POST", "/api/report/data-flow/{report_id}/trace"): "reads",
+    ("POST", "/api/report/data-flow/{report_id}/port-check"): "reads",
     ("POST", "/api/report/ssl-flow"): "reads",
     ("POST", "/api/ssl-coverage/start"): "reads",
     ("POST", "/api/report/bypass/export"): "report",
@@ -811,6 +841,8 @@ def no_local_side_effects(monkeypatch):
     monkeypatch.setattr(app_update, "update", lambda *a, **k: {"status": "stubbed"})
     monkeypatch.setattr(app_update, "schedule_restart", lambda *a, **k: {"status": "stubbed"})
     monkeypatch.setattr("bp_crawler.last_summary", lambda: {})
+    import socket
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [])    # the DigiCert resolve route: DNS answers nothing
     for name in ("run", "run_once", "snapshot"):
         if hasattr(beacon, name):
             monkeypatch.setattr(beacon, name, lambda *a, **k: {"status": "stubbed"})

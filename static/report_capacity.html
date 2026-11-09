@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capacity review — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .cr-table { min-width: 640px; }
+  .cr-table td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  .cr-st { display: inline-block; padding: 0.08rem 0.5rem; border-radius: var(--r-pill); font-size: 0.72rem; font-weight: 700; background: var(--well); color: var(--dim); }
+  .cr-st.ok { color: var(--pass); } .cr-st.watch { color: var(--warn); } .cr-st.low, .cr-st.over { color: var(--fail); }
+  .cr-notes { margin: 0.6rem 0; padding-left: 1.2rem; color: var(--dim); font-size: 0.84rem; line-height: 1.5; display: grid; gap: 0.2rem; }
+  @media (prefers-reduced-motion: reduce) { .pa-live .spin { animation: none; } }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page pa-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Capacity</span> review</h1>
+      <p>What the tenant uses against what it is licensed for: users, locations, tunnels, App Connectors and ZPA segments, with the headroom left. Read-only: nothing is changed in the tenant.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="crTenantWrap" hidden><span class="lbl">Tenant</span><select id="crTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="crRun">Run the review</button>
+      <button type="button" class="rp-btn" id="crMd" hidden>Markdown</button>
+      <button type="button" class="rp-btn" id="crCsv" hidden>CSV</button>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div id="crBody">
+        <div class="pa-intro">
+          <div class="pa-intro-t">How it works</div>
+          <p class="df-hint">Tick Cloud &amp; Branch Connector, ZPA or ZIA platform on the Scope page, then run the review. Used counts are read now (GET only). Licensed seat counts come from the tenant's subscription list when it states them, otherwise from the file <code>capacity_entitlements.json</code> you keep beside the app. A metric that cannot be read says so; it is never guessed.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script>
+  (function () {
+    const $ = id => document.getElementById(id);
+    const body = $('crBody'), live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    let running = false, res = null;
+    function el(tag, text, cls) { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; }
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+    async function tenantChoices() {
+      const wrap = $('crTenantWrap'), sel = $('crTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      opts.forEach(([v, l]) => { const o = el('option', l); o.value = v; sel.appendChild(o); });
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = $('crTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => { const c = v && typeof v === 'object' ? v.choice : v; if (c === 'zscaler' || c === 'alternative') out[id] = c; });
+      return out;
+    }
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) { const l = readJson('zassess_scopes_live_v1', null); scopes = l && Array.isArray(l.scopes) ? l.scopes : null; }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+    async function follow(jobId) {
+      let misses = 0;
+      for (;;) {
+        await new Promise(r => setTimeout(r, 1200));
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const snap = await r.json(); misses = 0;
+          if (snap.status !== 'running') return snap;
+        } catch (e) { if (++misses >= 20) throw new Error(`Lost contact with the app (${e.message}).`); }
+      }
+    }
+    function fail(title, msg) {
+      body.replaceChildren();
+      const c = el('div', null, 'bp-card risk'); c.appendChild(el('div', title, 't')); c.appendChild(el('div', msg)); body.appendChild(c);
+    }
+    function show() {
+      body.replaceChildren();
+      const wrap = el('div', null, 'df-tablewrap'), t = el('table', null, 'df-table cr-table');
+      t.appendChild(el('caption', 'Capacity: used against licensed, with headroom', 'sr-only'));
+      const hr = el('tr');
+      ['Metric', 'Used', 'Licensed', 'Headroom', 'Status'].forEach(h => { const th = el('th', h); th.scope = 'col'; hr.appendChild(th); });
+      const th = el('thead'); th.appendChild(hr); t.appendChild(th);
+      const tb = el('tbody');
+      res.rows.forEach(r => {
+        const tr = el('tr');
+        tr.appendChild(el('td', r.label));
+        tr.appendChild(el('td', r.used == null ? '—' : String(r.used), 'num'));
+        tr.appendChild(el('td', r.licensed == null ? '—' : `${r.licensed}${r.licensed_from ? ' (' + r.licensed_from + ')' : ''}`, 'num'));
+        tr.appendChild(el('td', r.headroom_pct == null ? '—' : `${r.headroom_pct}%`, 'num'));
+        const td = el('td'); td.appendChild(el('span', r.status.replace(/_/g, ' '), `cr-st ${r.status}`)); tr.appendChild(td);
+        tb.appendChild(tr);
+      });
+      t.appendChild(tb); wrap.appendChild(t); body.appendChild(wrap);
+      const ul = el('ul', null, 'cr-notes'); (res.notes || []).forEach(n => ul.appendChild(el('li', n))); body.appendChild(ul);
+      $('crMd').hidden = false; $('crCsv').hidden = false;
+      $('rpMeta').textContent = res.tenant_label || '';
+    }
+    function download(text, name, type) {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
+      document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    }
+    async function run() {
+      if (running) return;
+      running = true; const btn = $('crRun'); btn.disabled = true; btn.textContent = 'Reading…'; say('Running the capacity review.');
+      try {
+        const r = await fetch('/api/capacity-review', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': newStartToken() },
+          body: JSON.stringify(Object.assign({}, credBody(), scopeSelection())) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        const snap = await follow(d.job_id);
+        if (snap.status !== 'done' || !snap.result || !snap.result.rows) throw new Error(snap.error || 'The review did not finish.');
+        res = snap.result; show(); say(`Capacity review done. ${res.flagged.length} metric(s) low or over.`);
+      } catch (e) { fail('The review could not run', e.message); say(`The review could not run: ${e.message}`); }
+      finally { running = false; btn.disabled = false; btn.textContent = 'Run the review'; }
+    }
+    $('crRun').addEventListener('click', run);
+    $('crMd').addEventListener('click', () => res && download(res.markdown, 'capacity-review.md', 'text/markdown'));
+    $('crCsv').addEventListener('click', () => res && download(res.csv, 'capacity-review.csv', 'text/csv'));
+    tenantChoices();
+  })();
+  </script>
+</body>
+</html>

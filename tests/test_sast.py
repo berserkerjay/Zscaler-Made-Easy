@@ -34,6 +34,7 @@ EXCLUDED = ["./tests/", "./.venv/", "./venv/", "./build/", "./dist/", "./node_mo
 REVIEWED_SUPPRESSIONS = {
     # The container healthcheck opens a fixed http(s)://127.0.0.1 ping URL; no scheme comes from input.
     ("docker_healthcheck.py", "B310"): 1,
+    ("report_delivery.py", "B601"): 2,   # remote command built from a validated folder/name, shlex-quoted
     # An address compared to word a message, or a family probe: nothing binds.
     ("dlp_api_server.py", "B104"): 1,
     ("workload_path.py", "B104"): 1,

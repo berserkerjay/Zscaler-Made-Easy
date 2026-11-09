@@ -65,6 +65,9 @@ change_requests.json.lock
 workspace_notes.json
 workspace_notes.json.lock
 .workspace_notes.*.tmp
+# Block page themes (block_page_theme.py) and the investigation journal (investigation_journal.py): atomic-write temporaries
+.block_page_theme.*.tmp
+.investigation_journal.*.tmp
 # POVs (pov.py): one per tenant profile, in povs/ beside the profiles, with templates and the lock
 povs/
 # Continuous evaluation: digests, guidance state and the refreshed SaaS matrix (local)
@@ -93,6 +96,7 @@ self_heal.json
 # can hold a remembered secret, the UI token file the token, the fingerprint
 # key the install's key), so it is never committed.
 .profiles-*
+.datacheck-probe-*
 .ui_token_*
 .fingerprint-*
 .deployments-*

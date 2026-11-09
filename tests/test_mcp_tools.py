@@ -25,7 +25,8 @@ JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjYW5hcnkifQ.c2lnbmF0dXJlY2FuYXJ5"
 
 ANALYSIS_TOOLS = {"list_sources", "path_check", "test_list", "rule_precedence", "explain_dlp", "data_flow", "ssl_coverage",
                   "dlp_incidents", "traffic_summary", "zpa_path", "fleet_health", "snapshot_diff", "category_lookup",
-                  "readiness", "compliance_map", "traffic_logs_summary", "ztw_summary", "zdx_summary", "rbac_review", "telemetry_review", "timeline", "case_notes"}
+                  "readiness", "compliance_map", "traffic_logs_summary", "ztw_summary", "zdx_summary", "rbac_review", "telemetry_review", "timeline", "case_notes", "capacity_review", "postmortem", "lookup", "cite", "journal_open", "journal_add", "journal_show", "tenant_api_map"}
+JOURNAL_WRITERS = {"journal_open", "journal_add"}   # write only the app's own local, sealed journal
 ALL_TOOLS = ANALYSIS_TOOLS | {"run_assessment", "run_section", "list_checks", "get_health"}
 
 # One call per tenant-reading tool, with the smallest valid arguments.
@@ -120,7 +121,7 @@ def test_the_server_lists_the_read_only_analysis_tools_and_no_write_tool():
     assert set(ts) == ALL_TOOLS
     for name, t in ts.items():
         ann = t.annotations
-        assert ann is not None and ann.read_only_hint is True and ann.destructive_hint is False, name
+        assert ann is not None and ann.read_only_hint is (name not in JOURNAL_WRITERS) and ann.destructive_hint is False, name
         assert not re.search(r"(^|_)(set|create|update|delete|remove|apply|deploy|write|fix|push)(_|$)", name), name
         props = set(schema(t).get("properties") or {})
         assert not props & {"client_id", "client_secret", "password", "api_key", "token", "username", "confirm", "write", "apply",
@@ -131,7 +132,7 @@ def test_the_server_lists_the_read_only_analysis_tools_and_no_write_tool():
 def test_every_analysis_tool_schema_is_bounded_and_says_it_is_read_only(name):
     """ASVS V5.1.4 · CWE-20 · CWE-770: every analysis tool's schema caps each text (maxLength or a fixed list) and each list (maxItems), and its description says it is read-only."""
     t = tools()[name]
-    assert "read-only" in (t.description or "").lower(), name
+    assert name in JOURNAL_WRITERS or "read-only" in (t.description or "").lower(), name
 
     def bounded(p):
         if "anyOf" in p:

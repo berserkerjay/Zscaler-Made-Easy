@@ -185,6 +185,17 @@ def _email_domain(user: Any) -> str:
 
 
 # ── Building ─────────────────────────────────────────────────────────
+def dedupe_domains(domains: Iterable[str]) -> List[str]:
+    """The domains once each, in first-seen order (case-insensitive): two mappings to the same domain write one record."""
+    seen, out = set(), []
+    for x in domains:
+        k = str(x).lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(x)
+    return out
+
+
 def build(devices: Iterable[Dict[str, Any]], *, domain: Any, resolvers: Any, platforms: Optional[Iterable[str]] = None,
           registered_only: bool = True, seen_within_days: Optional[int] = None, mappings: Any = "",
           ttl: int = DEFAULT_TTL, unbound_local_zone: bool = True, unbound_insecure: bool = True,
@@ -240,7 +251,7 @@ def build(devices: Iterable[Dict[str, Any]], *, domain: Any, resolvers: Any, pla
         counts["considered"] += 1
         host = str(d.get("hostname") or "")[:MAX_INPUT_HOSTNAME]
         label, note = clean_label(host)
-        doms = [dom] + [dns for em, dns in maps if _email_domain(d.get("user")) in (em,) and dns != dom]
+        doms = dedupe_domains([dom] + [dns for em, dns in maps if _email_domain(d.get("user")) in (em,)])
         for target in doms:
             row = {"hostname": host, "label": label, "fqdn": "", "domain": target, "platform": plat, "status": "", "note": note}
             if not label:

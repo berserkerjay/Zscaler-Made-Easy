@@ -44,7 +44,7 @@
   function renderSettings(res, where, S, H) {
     const E = H.E, z = st(S), rows = res.profiles || [], settings = res.settings || [];
     where.innerHTML = `${errs(H, res)}
-      <p class="df-hint">Pick one app profile, then set only what should change; the preview shows each value now and after. Passwords are never read or changed here. Devices get the change at once: you type the profile's name to confirm.</p>
+      <p class="df-hint">Pick one app profile, then set only what should change; the preview shows each value now and after. Passwords are never read unless revealed on demand, and never changed here. Devices get the change at once: you type the profile's name to confirm.</p>
       <div class="op-row"><label class="df-ctl"><span class="lbl">App profile</span><select id="zlProfile" aria-label="App profile to change">
         <option value="">Pick one…</option>${rows.map(p => `<option value="${E(key(p))}"${key(p) === z.profile ? ' selected' : ''}>${E(p.name)} (${E(PLAT[p.platform] || p.platform)})</option>`).join('')}</select></label></div>
       <div class="df-tablewrap"><table class="df-table"><caption class="sr-only">Settings this page can change</caption>

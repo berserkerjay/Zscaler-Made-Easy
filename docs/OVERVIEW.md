@@ -233,6 +233,8 @@ what you get, what to do next.
   profiles. Every access rule is shown as nested AND, OR and NOT groups
   with names instead of IDs, plus one plain sentence. Excel and JSON
   exports. Read-only; Stop ends the read at once.
+- **Capacity review** — licensed against used counts (users, locations, tunnels, ZPA App Connectors and
+  segments) with headroom and a status per metric; read-only, from the tenant's own counts and licence list.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, every step the traffic takes, the
   rule that decides each one, one verdict in plain words (definite or
@@ -408,7 +410,7 @@ what you get, what to do next.
   standalone Zscaler Enterprise Browser has no API. Read-only; Stop ends
   the read at once.
 - **Cloud & Branch Connector** (`/report/ztw`, `ztw_overview.py`) — the
-  Cloud and Branch Connector configuration read once (only when Cloud &
+  Cloud & Branch Connector configuration read once (only when Cloud &
   Branch Connector is ticked on the Scope page, with a OneAPI API client):
   connector groups and their connectors (deploy type, location, software
   versions, operational and upgrade status, upgrade window), the traffic
@@ -622,6 +624,23 @@ what you get, what to do next.
   as false positives* in Bulk changes (four gates, typed phrase, the
   assessor named in each incident's note, read-back; Undo records the
   reversal because the API cannot reopen an incident).
+- **Tenant API map** (`/report/api-map`, toolbar *Tenant API map*) — its
+  own tool, separate from the licence and editions check, and its own
+  action, bound by the Scope page (a product that is not ticked there is
+  not read and is listed as "skipped: not in scope"): which Zscaler features the tenant has
+  and which reads its API client may make. *Map this tenant's APIs* shows
+  every endpoint it will read (the readable GET endpoints of the installed
+  SDK, `tenant_api_catalogue.json`) and each it skips, then reads nothing
+  until you confirm. GET only (the client it uses has no write method),
+  one at a time at 1 a second by default (5 at most), Stop-able, through the
+  signed-in tenant or the sample tenant; endpoints that need an id or return
+  credentials, one-time passwords, keys or exports, or whose name is an
+  action (sync, refresh, configure ...), are skipped. It keeps the
+  status, item count and top-level field names of each answer and never a
+  value, id, name or secret; the map is saved per tenant with its time
+  (sealed like the other stores), exports as JSON or CSV, writes one audit
+  entry of counts per run, and the assistant tool `tenant_api_map` returns
+  the newest saved map.
 - **AI Guard** (`/report/aiguard`, AI Guard ticked, OneAPI only) — the
   detection policies with their prompt and answer detectors, the policy
   match rules, the LLM providers, the LLM applications (whether they keep

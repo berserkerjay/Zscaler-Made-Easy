@@ -105,6 +105,9 @@ _POLICY_RULE = re.compile(r"\A(" + _ZPA_BASE_RE + r")/policySet/([0-9A-Za-z_-]{1
 # Client Connector profile writes (ops_zcc.API_CALLS): POST
 # /webForwardingProfile/edit and PUT /web/policy/edit create (no id, or id
 # -1) or update a profile; DELETE /{id}/delete removes one.
+# removeDevices / forceRemoveDevices (zscaler/zcc/devices.py): path -> (the device list it changes, dropped at once).
+_ZCC_REMOVE = {"/zcc/papi/public/v1/removeDevices": ("/zcc/papi/public/v1/getDevices", False),
+               "/zcc/papi/public/v1/forceRemoveDevices": ("/zcc/papi/public/v1/getDevices", True)}
 _ZCC_EDIT = re.compile(r"\A(/zcc/papi/public/v1)/(webForwardingProfile|web/policy)/(?:edit|([0-9]{1,12})/delete)\Z")
 # The ZDX configuration (ops_zdx: the /config part is assumed there): apps
 # at /applications ({"items": [...]}, a predefined app keyed by its
@@ -692,6 +695,8 @@ class OfflineStore:
                 done = self._zdx_write(method, path, body)
                 if done is not None:
                     return done
+            if method == "POST" and path in _ZCC_REMOVE:
+                return self._zcc_remove_devices(path, body)
             zcc = _ZCC_EDIT.match(path)
             if zcc and ((method == "POST" and zcc.group(2) == "webForwardingProfile") or (method == "PUT" and zcc.group(2) == "web/policy")
                         or (method == "DELETE" and zcc.group(3))):
@@ -772,6 +777,29 @@ class OfflineStore:
         return 400, {"code": "NOT_MODELLED",
                      "message": f"The sample tenant does not model this change ({method} {path}); nothing was sent to a tenant."}
 
+
+    def _zcc_remove_devices(self, path: str, body: Any) -> Tuple[int, Any]:
+        """removeDevices / forceRemoveDevices on the sample or a simulation
+        (zscaler/zcc/devices.py): Remove marks each device Removal Pending,
+        Force remove drops it. Never reaches a tenant."""
+        udids = body.get("udids") if isinstance(body, dict) else None
+        udids = [str(u) for u in udids] if isinstance(udids, list) else ([str(udids)] if isinstance(udids, str) else [])
+        entry = self._lookup(_ZCC_REMOVE[path][0])
+        items = _items(entry["body"]) if entry else None
+        if not udids or items is None:
+            return 400, {"code": "NOT_MODELLED", "message": "The sample tenant takes a list of device ids (udids) here."}
+        n = 0
+        for u in udids:
+            idx = next((i for i, x in enumerate(items) if isinstance(x, dict) and str(x.get("udid")) == u), -1)
+            if idx < 0:
+                continue
+            if _ZCC_REMOVE[path][1]:
+                items.pop(idx)
+            else:
+                items[idx]["registrationState"] = "Removal Pending"
+            n += 1
+        self.writes += n
+        return 200, {"devicesRemoved": n}
 
     def _zcc_profile_write(self, method: str, m: "re.Match", body: Any) -> Tuple[int, Any]:
         """A Client Connector forwarding or app profile written to the sample
@@ -1213,6 +1241,8 @@ def sample_store(reset: bool = False) -> OfflineStore:
         s = _OPEN.get(SAMPLE)
         if s is None or reset:
             responses = {normalize_path(p): {"status": 200, "body": b} for p, b in sample_tenant.responses().items()}
+            for p in getattr(sample_tenant, "DENIED_PATHS", ()):   # reads the sample's API client may not make (the Tenant API map shows them)
+                responses[normalize_path(p)] = {"status": 403, "body": {"code": "NOT_AUTHORIZED", "message": "The API client's role may not read this."}}
             s = OfflineStore(SAMPLE, SAMPLE, responses, sample_tenant.meta(), writable=True)
             _OPEN[SAMPLE] = s
         return s
@@ -2046,6 +2076,54 @@ _NAMES = {"webDlpRules": "Inline Web DLP rules", "endPointDlpRules": "Endpoint D
           "CONNECTOR_GRP/provisioningKey": "ZPA App Connector provisioning keys",
           "SERVICE_EDGE_GRP/provisioningKey": "ZPA Service Edge provisioning keys", "credential": "PRA credentials",
           "credential-pool": "PRA credential pools", "approval": "PRA approvals"}
+
+
+# ── Planning a Client Connector device removal against an offline tenant ──
+#
+# The plan is the live planner's (ops_zcc_admin.plan_remove / plan_bulk) run
+# over the saved snapshot: no tenant is contacted. Its hash is bound to the
+# snapshot it was planned on, so it can never be applied (the live apply
+# recomputes the plan from the tenant and compares); to apply, plan the same
+# removal live (replan_live) and apply that plan with its own hash.
+
+REMOVE_TYPES = ("zcc_device_remove", "zcc_device_bulk_remove")
+
+
+def plan_remove(st: "OfflineStore", spec: Dict[str, Any]) -> Dict[str, Any]:
+    """The removal `spec` planned against `st` (a snapshot, the sample or a
+    simulation). Reads only; never applied."""
+    import hashlib
+    import admin_ops
+    if not isinstance(st, OfflineStore):
+        raise OfflineError("Only the sample tenant or an opened snapshot can be planned offline.", 409)
+    if not isinstance(spec, dict) or spec.get("type") not in REMOVE_TYPES:
+        raise OfflineError("Only a Client Connector device removal can be planned offline.", 400)
+    admin_ops.load_plugins()
+    client = OfflineSdkClient(st, creds_for(st))
+    prepared = admin_ops.plan(client, spec, scope=admin_ops.scope_for(["zcc"], {}), tenant_label=st.label)
+    inner = prepared["plan_hash"]
+    prepared["offline"] = {"source": st.id, "kind": st.kind, "label": st.label, "saved_at": str(st.meta.get("saved_at") or st.meta.get("captured_at") or ""),
+                           "applies": False}
+    prepared["live_hash"] = inner
+    prepared["plan_hash"] = hashlib.sha256(f"offline:{st.id}:{inner}".encode("utf-8")).hexdigest()
+    prepared["notes"] = ["Planned from a saved copy: no tenant was contacted and this plan cannot be applied. Plan it live (Re-plan on the "
+                         "live tenant) to apply."] + list(prepared.get("notes") or [])
+    return prepared
+
+
+def replan_live(offline_plan: Dict[str, Any], live_plan: Dict[str, Any]) -> Dict[str, Any]:
+    """Compare an offline plan with the same removal planned live: which
+    devices differ and whether the live plan can be applied as previewed.
+    The live plan's own hash (never the offline one) is what is applied."""
+    def by_key(p: Dict[str, Any]) -> Dict[str, Tuple[str, str]]:
+        return {str(u.get("key")): (str(u.get("status")), str(u.get("before"))) for u in p.get("items") or []}
+    a, b = by_key(offline_plan), by_key(live_plan)
+    changed = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
+    return {"same": not changed and offline_plan.get("live_hash") == live_plan.get("plan_hash"), "changed": changed,
+            "offline_hash": offline_plan.get("plan_hash"), "live_hash": live_plan.get("plan_hash"),
+            "apply_hash": live_plan.get("plan_hash"),
+            "message": ("The live tenant matches the saved copy." if not changed else
+                        f"{len(changed)} device(s) differ on the live tenant from the saved copy; review the live plan before applying.")}
 
 
 def friendly(path: str) -> str:

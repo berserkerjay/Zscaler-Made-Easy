@@ -95,3 +95,6 @@ store-encryption-backup/
 Thumbs.db
 
 agent-workspace/output/
+.block_page_theme.*.tmp
+.investigation_journal.*.tmp
+.datacheck-probe-*

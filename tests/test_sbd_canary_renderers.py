@@ -277,6 +277,7 @@ URL_SINK_REVIEWED = {
     ("static/find_anything.js", "x.href"): "x is a static/explain.js catalogue entry (app paths only)",
     ("static/find_anything.js", "(window.DLP_EXPLAIN && window.DLP_EXPLAIN[pagesFor(o)[0]] || {"): "the explain.js catalogue's own path",
     ("static/find_anything.js", "n.href"): "a workspace note's link: workspace_notes.clean_href allows only paths in this app",
+    ("static/ops_zia_eun.js", "z.html"): "the generated block page from POST /api/block-page/preview (every value escaped, no script, a CSP); shown only in a frame with sandbox=\"\" (no script, no same origin)",
     ("static/find_anything.js", "target.href || ''"): "sent to /api/workspace/notes, which keeps only paths in this app (clean_href)",
     ("static/path_list.js", "open"): "/report/operations?fix= with the id through encodeURIComponent",
     ("static/posture_banner.js", "'/report/posture' + (hash || ''"): "a fixed page with the page's own fragment",

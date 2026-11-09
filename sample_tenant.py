@@ -1023,6 +1023,8 @@ ZTW_ADMIN_USERS = [{"id": 4911, "loginName": "it-admin@larkspur-freight.example"
                     "role": {"id": 4901, "name": "Super Admin"}, "disabled": False, "isPasswordLoginAllowed": True}]
 ZTW_API_KEYS = [{"id": 4951, "keyValue": "sample-placeholder-not-a-key", "enabled": True, "partner": False, "permissions": ["PROVISIONING"],
                  "lastModifiedTime": 1690000000, "lastModifiedBy": {"id": 4911, "name": "IT Admin"}}]
+ZTW_ACCOUNT_GROUPS = [{"id": 4851, "name": "Production", "description": "Production AWS accounts.", "cloudType": "AWS",
+                       "publicCloudAccounts": [{"id": 4801, "name": "larkspur-prod"}], "cloudConnectorGroups": [{"id": 4101, "name": "Larkspur AWS us-west-2"}]}]
 ZTW_ACCOUNT_DETAILS = [{"id": 4801, "awsAccountId": "000000000000", "awsRoleName": "LarkspurCloudConnectorRole", "externalId": "sample-external-id"}]
 ZTW_PUBLIC_CLOUD_INFO = [{"id": 4801, "name": "larkspur-prod", "cloudType": "AWS", "permissionStatus": "VALID",
                           "regionStatus": [{"id": 1, "name": "us-west-2", "cloudType": "AWS", "status": True},
@@ -1572,7 +1574,7 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/httpHeaderActionProfile": HTTP_HEADER_ACTION_PROFILES,
         f"{ZPA1}/v2/ipRanges": ZPA_C2C_RANGES,
         "/zpa/cbiconfig/cbi/api/customers/{customerId}/certificates": CBI_CERTIFICATES,
-        f"{ZTW}/ipGroups": ZTW_IP_GROUPS,
+        f"{ZTW}/ipGroups": ZTW_IP_GROUPS, f"{ZTW}/accountGroups": ZTW_ACCOUNT_GROUPS,
         # ZIA DLP indexes (zia/dlp_resources.py: list_edm_schemas, list_dlp_idm_profiles)
         f"{ZIA}/dlpExactDataMatchSchemas": EDM_SCHEMAS,
         f"{ZIA}/idmprofile": IDM_PROFILES,
@@ -1615,6 +1617,11 @@ def responses() -> Dict[str, Any]:
     for rule_type in CAC_RULE_TYPES:
         r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
     r.update(other_products())
+    # The Tenant API map (tenant_api_map.py) asks a few endpoints nothing else reads. Their shapes are assumed (only the
+    # status, the count and the field names are ever kept from them); DENIED_PATHS below answer 403 so the map's
+    # "no permission" state has an example.
+    r[f"{AIG}/llm-provider-types"] = [{"providerType": "OPENAI", "displayName": "OpenAI"}, {"providerType": "AZURE_OPENAI", "displayName": "Azure OpenAI"}]
+    r[f"{OP_ZTB3}/templates/names"] = {"result": {"count": 1, "names": ["Larkspur branch"]}}
     for path, body in builder_catalogues().items():
         r.setdefault(path, body)
     return copy.deepcopy(r)
@@ -1745,6 +1752,10 @@ def other_products() -> Dict[str, Any]:
             {"id": "rg1", "name": "Databases", "type": "MANAGED", "resourceMemberCount": 1},
             {"id": "rg2", "name": "Legacy file transfer", "type": "UNMANAGED", "resourceMemberCount": 1}]),
     }
+
+
+# Endpoints the sample tenant's API client may not read (HTTP 403): it is not a Super Admin, so the auditors list is refused.
+DENIED_PATHS = (f"{ZIA}/users/auditors",)
 
 
 def meta() -> Dict[str, Any]:

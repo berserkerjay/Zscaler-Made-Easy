@@ -91,7 +91,13 @@ answer leaves the question open.
 | Which apps have a poor ZDX score? What ZDX alerts fired? | `zdx_summary` | `fleet_health` for the devices' Client Connector |
 | Who can administer the tenant? Too many super admins? Stale admins, MFA, API client scopes? | `rbac_review` | `readiness` for this API client's own rights; `run_section` for the RBAC section |
 | What do we send to the SIEM? Which logs are not streamed? Are NSS feeds or LSS on? | `telemetry_review` | `traffic_logs_summary` for logs the admin saved |
+| Which Zscaler features does this tenant have? Is a feature missing because of the licence or this API client's role? | `tenant_api_map` (the newest map saved on the app's page) | `readiness` for this API client's own rights |
 | What did the app change recently? What happened since Monday? | `timeline` (`since`) | `snapshot_diff` for what the configuration now differs by |
+| Are we near our licensed limits (locations, tunnels, connectors, segments)? How much headroom? | `capacity_review` | `ztw_summary`; the licensed counts come from the admin's local file |
+| Write the postmortem for last week's incident | `postmortem` (`start`, `end`) | `timeline` for counts; `snapshot_diff` for what differs now |
+| What does Zscaler recommend for X? (answer from the app's reference corpus) | `lookup` | `cite` for the source URL and a quoted excerpt |
+| Give me the source for this recommendation or finding id | `cite` (`topic` or `finding_id`; fetching only if the operator allows it) | `lookup` |
+| Start or resume an investigation; keep hypotheses and evidence | `journal_open`, `journal_add`, `journal_show` (the case's next step says where it left off) | `case_notes` for the admin's own notes |
 | What did we note about this rule or finding? Note this for later | `case_notes` (`tag` or `kind`) | Ask the admin to add the note on the app's pages (you cannot add one) |
 
 ## Answer shape

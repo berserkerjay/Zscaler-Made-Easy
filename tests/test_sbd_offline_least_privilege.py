@@ -238,7 +238,11 @@ def test_no_authorization_decision_reads_the_unverified_token_claims():
     # editions reads the ZIA licence list through readiness' GET helper (_raw_get on SUBSCRIPTIONS_PATH)
     # and cleans it with parse_subscriptions: a tenant API answer, never the token or its claims. It
     # decides which rule sets the preview offers, not who may do what.
-    assert set(importers) <= {"mcp_tools.py", "tenant_health.py", "editions.py"}, importers
+    # capacity_review reads the licence list the same way as editions (_raw_get on SUBSCRIPTIONS_PATH): a tenant
+    # API answer used for seat counts, never the token or its claims.
+    assert set(importers) <= {"mcp_tools.py", "tenant_health.py", "editions.py", "capacity_review.py"}, importers
+    cr = open(os.path.join(root, "capacity_review.py"), encoding="utf-8").read()
+    assert set(re.findall(r"\breadiness\.(\w+)", cr)) <= {"_raw_get", "SUBSCRIPTIONS_PATH", "parse_subscriptions"}, "capacity_review reads only the licence list"
     th = open(os.path.join(root, "tenant_health.py"), encoding="utf-8").read()
     assert not re.search(r"readiness\.\w*(token|claim|jwt)", th, re.I), "tenant_health must not read the token"
     ed = open(os.path.join(root, "editions.py"), encoding="utf-8").read()

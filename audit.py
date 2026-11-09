@@ -273,6 +273,88 @@ def tail(n: int = 200) -> list:
     return out
 
 
+MAX_SEARCH_TERMS = 8
+MAX_SEARCH_TERM = 100
+MAX_SEARCH_RESULTS = 500
+MAX_SEARCH_LINES = 200000
+
+
+def search(query: str, limit: int = 100, *, event: str = "", keep: Any = None) -> dict:
+    """Full-text search of this app's own audit log (the current file and its
+    rotated copy). Every whitespace-separated term (at most MAX_SEARCH_TERMS
+    of MAX_SEARCH_TERM characters) must appear, case-insensitively, anywhere
+    in the entry's text (event, actor, path, fields). `event` narrows to one
+    event name; `keep(entry)` (the team server's per-person filter) drops
+    entries before they count. Newest first, at most MAX_SEARCH_RESULTS entries, at most
+    MAX_SEARCH_LINES lines read. Read-only. The entries are the redacted
+    ones the log holds. {entries, matched, scanned, truncated}."""
+    terms = [t.lower()[:MAX_SEARCH_TERM] for t in str(query or "").split()][:MAX_SEARCH_TERMS]
+    try:
+        limit = max(1, min(int(limit), MAX_SEARCH_RESULTS))
+    except (TypeError, ValueError):
+        limit = 100
+    want = str(event or "").strip().lower()
+    out: list = []
+    scanned = 0
+    truncated = False
+    if not terms and not want:
+        return {"entries": [], "matched": 0, "scanned": 0, "truncated": False}
+    lines: list = []
+    for p in (path() + ".1", path()):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                lines.extend(f.readlines())
+        except OSError:
+            continue
+    if len(lines) > MAX_SEARCH_LINES:
+        lines = lines[-MAX_SEARCH_LINES:]
+        truncated = True
+    for ln in reversed(lines):
+        try:
+            entry = json.loads(store_crypto.open_text(ln.rstrip("\n")))
+        except (ValueError, store_crypto.StoreLocked):
+            continue
+        if not isinstance(entry, dict):
+            continue
+        if keep is not None and not keep(entry):
+            continue
+        scanned += 1
+        if want and str(entry.get("event") or "").lower() != want:
+            continue
+        hay = json.dumps(entry, ensure_ascii=False, sort_keys=True).lower()
+        if all(t in hay for t in terms):
+            out.append(entry)
+            if len(out) >= limit:
+                truncated = True
+                break
+    return {"entries": out, "matched": len(out), "scanned": scanned, "truncated": truncated}
+
+
+EXPORT_COLUMNS = ("at", "event", "actor", "method", "path", "status", "profile", "write_mode", "detail")
+
+
+def export(entries: list, fmt: str = "jsonl") -> str:
+    """The entries as JSON Lines (one compact object per line, the log's own structure, already redacted when written) or
+    CSV (the columns above; everything else in `detail` as JSON; every cell spreadsheet-safe through csv_safe). Entries
+    are data the caller already holds: this reads nothing and sends nothing."""
+    fmt = (fmt or "jsonl").lower()
+    if fmt not in ("jsonl", "csv"):
+        raise ValueError("the audit export format is jsonl or csv")
+    rows = [e for e in entries if isinstance(e, dict)]
+    if fmt == "jsonl":
+        return "".join(json.dumps(e, default=str, separators=(",", ":")) + "\n" for e in rows)
+    import csv_safe
+    import io
+    buf = io.StringIO()
+    w = csv_safe.writer(buf)
+    w.writerow(EXPORT_COLUMNS)
+    for e in rows:
+        rest = {k: v for k, v in e.items() if k not in EXPORT_COLUMNS[:-1]}
+        w.writerow([e.get("at"), e.get("event"), e.get("actor"), e.get("method"), e.get("path"), e.get("status"), e.get("profile"),
+                    e.get("write_mode"), json.dumps(rest, default=str, separators=(",", ":")) if rest else ""])
+    return buf.getvalue()
+
+
 class AuditMiddleware:
     """ASGI middleware: log every non-GET /api/* call with its outcome.
     Reads the body once and replays it to the app."""

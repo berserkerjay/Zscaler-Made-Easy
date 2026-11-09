@@ -105,8 +105,10 @@
                     <label class="df-ctl"><span class="lbl">Resource-label prefix</span><input type="text" id="exTfPrefix" maxlength="20" placeholder="none" autocomplete="off" spellcheck="false"></label>
                     <label class="df-ctl"><span class="lbl">Provider namespace</span><input type="text" id="exTfNs" maxlength="200" placeholder="zscaler" autocomplete="off" spellcheck="false"></label>
                     <label class="df-ctl"><span class="lbl">ZPA microtenant ID</span><input type="text" id="exTfMt" maxlength="20" inputmode="numeric" placeholder="parent tenant" autocomplete="off"></label>
+                    <label class="df-ctl"><span class="lbl">Output folder name</span><input type="text" id="exTfDir" maxlength="40" placeholder="tenant-terraform" autocomplete="off"></label>
                   </div>
                   <fieldset class="ex-pick"><legend class="sr-only">Clone and personal data</legend>
+                    <label><input type="checkbox" id="exTfLog"> Add a masked support log (progress and counts only)</label>
                     <label><input type="checkbox" id="exTfKeep"> Clone: keep each rule's state (on or off) instead of disabling it</label>
                     <label><input type="checkbox" id="exTfPersonal"> Include objects that hold email addresses (alert subscriptions, PRA approvals)</label>
                   </fieldset>
@@ -204,6 +206,15 @@
           </fieldset>
           <div class="ex-rg-cell"><label class="ex-rg-text" for="exRgExclude"><span>Ranges to leave out <small>(optional, one per line)</small></span><textarea id="exRgExclude" rows="3" maxlength="60000" spellcheck="false" placeholder="165.225.240.0/23"></textarea></label></div>
           <div class="ex-rg-cell"><label class="ex-rg-text" for="exRgExtra"><span>Ranges to add <small>(optional, for example certificate validation)</small></span><textarea id="exRgExtra" rows="3" maxlength="60000" spellcheck="false" placeholder="192.0.2.10/32"></textarea></label></div>
+        </div>
+        <div class="ex-rg-opts" id="exRgDigicert">
+          <fieldset class="ex-pick"><legend>DigiCert certificate validation</legend>
+            <label><input type="checkbox" id="exRgDigi"> Include DigiCert (host names and the addresses resolved below)</label>
+            <button type="button" class="rp-btn" id="exRgDigiResolve">Resolve DigiCert addresses now</button>
+            <div class="df-by" id="exRgDigiState" role="status" aria-live="polite">Not resolved yet. DigiCert uses a CDN, so re-resolve before each change.</div>
+          </fieldset>
+          <div class="ex-rg-cell"><label class="ex-rg-text" for="exRgDigiOps"><span>Your own DigiCert ranges <small>(optional, CIDRs only; paste or choose a file)</small></span><textarea id="exRgDigiOps" rows="3" maxlength="60000" spellcheck="false" placeholder="192.0.2.0/24"></textarea></label></div>
+          <div class="ex-rg-cell"><input type="file" id="exRgDigiFile" accept=".txt,text/plain" aria-label="Text file of DigiCert ranges" style="max-width:calc(100% - 36px)"></div>
         </div>
         <div class="ex-row">
           <button type="button" class="rp-btn primary" id="exRgBuild">Build the allowlist</button>
@@ -579,7 +590,7 @@
       const mode = (document.querySelector('input[name="exTfMode"]:checked') || {}).value || 'adopt';
       const exclude = Array.from(document.querySelectorAll('#exTfTypes input[name="exTfType"]')).filter(x => !x.checked).map(x => x.value);
       const payload = { products, mode, exclude, prefix: $('exTfPrefix').value.trim(), provider_namespace: $('exTfNs').value.trim(),
-        microtenant_id: $('exTfMt').value.trim(), keep_rule_state: $('exTfKeep').checked, include_personal_data: $('exTfPersonal').checked };
+        microtenant_id: $('exTfMt').value.trim(), keep_rule_state: $('exTfKeep').checked, output_dir: $('exTfDir').value.trim(), support_log: $('exTfLog').checked, include_personal_data: $('exTfPersonal').checked };
       runJob(mode === 'clone' ? 'Whole tenant as Terraform (clone)' : 'Whole tenant as Terraform', '/api/tenant-terraform/start', payload, res => {
         const rows = Object.entries(res.products || {}).map(([p, v]) => `<tr><th scope="row">${E(TF_PRODUCTS[p] || p)}</th><td>${E(v.resources)}</td><td>${E(v.imports)}</td><td>${E(v.data_sources)}</td><td>${E((v.secret_variables || []).join(', ') || 'none')}</td></tr>`).join('');
         const nx = (res.not_exported || []).slice(0, 40).map(x => `<li><strong>${E(x.what)}</strong>: ${E(x.why)}</li>`).join('');

@@ -1,0 +1,158 @@
+[
+  {
+    "name": "EDU-Markings-Monitor",
+    "description": "Monitor outbound content labelled as education records (FERPA citation or the words Education Record).",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "EDU Record Markings"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "EDU-Student-Record-Data-Monitor",
+    "description": "Monitor outbound student record data: a transcript, grade or aid record name with an SSN nearby.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "EDU Student Record Data"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "EDU-Markings [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"EDU-Markings-Monitor\" (EDU Record Markings). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "EDU Record Markings"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "EDU-Markings [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"EDU-Markings-Monitor\" (EDU Record Markings). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "EDU Record Markings"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "EDU-Markings [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"EDU-Markings-Monitor\" (EDU Record Markings). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "EDU Record Markings"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "EDU-Student-Record-Data [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"EDU-Student-Record-Data-Monitor\" (EDU Student Record Data). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "EDU Student Record Data"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "EDU-Student-Record-Data [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"EDU-Student-Record-Data-Monitor\" (EDU Student Record Data). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "EDU Student Record Data"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "EDU-Student-Record-Data [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"EDU-Student-Record-Data-Monitor\" (EDU Student Record Data). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "EDU Student Record Data"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  }
+]

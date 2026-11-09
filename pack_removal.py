@@ -638,14 +638,51 @@ def _scoped_need(channels: Iterable[str]) -> Dict[str, Any]:
     return need
 
 
-def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any]:
+def leftover_reason(pack: Optional[str], known: Iterable[str], live: Optional[Iterable[str]] = None) -> str:
+    """Why a rule this app made is a leftover, or "" when it is not (not made by this app, or its pack is still in the
+    library and, when deployments are known, still deployed). Never guessed from a name: only the app's own pack tag counts."""
+    if not pack:
+        return ""
+    if pack not in set(known):
+        return "its policy pack is no longer in the library"
+    if live is not None and pack not in set(live):
+        return "no live deployment of its pack is recorded for this tenant"
+    return ""
+
+
+def mark_leftovers(inv: Dict[str, Any], live_packs: Iterable[str]) -> Dict[str, Any]:
+    """Add the live-deployment judgement to an inventory (in place): a rule of ours whose pack no not-undone deployment of this
+    tenant holds is a leftover. A reason already set (pack gone from the library) is kept."""
+    live = {str(x) for x in live_packs}
+    for r in inv.get("rules") or []:
+        if r.get("tagged") and not r.get("leftover"):
+            r["leftover"] = leftover_reason(r.get("pack"), {r.get("pack")}, live)
+    return inv
+
+
+def selection_without_kept(rules: Iterable[Dict[str, Any]], keep: Iterable[str]) -> List[Dict[str, Any]]:
+    """The removal selection ({channel, id} each) for the leftover rules whose Keep box is not ticked. `keep` holds
+    "channel:id" keys. A rule that is not a leftover is never selected here, whatever `keep` says, and a leftover missing
+    from `keep` is removed only because the operator sent a keep list at all (an absent list selects nothing)."""
+    kept = {str(k) for k in keep}
+    return [{"channel": r["channel"], "id": r["id"]} for r in rules
+            if r.get("leftover") and r.get("id") is not None and f"{r['channel']}:{r['id']}" not in kept]
+
+
+def inventory(client, channels: Optional[Iterable[str]] = None, live_packs: Optional[Iterable[str]] = None) -> Dict[str, Any]:
     """Every DLP rule the tenant has, on every channel, with its engines
     and provenance, so an operator can pick the leftovers to remove.
     `channels` (pack channels: web / endpoint / saas / email) limits the
     read to those channels' rules plus the shared dictionaries and
     engines, for a caller that may read only an in-scope part: an
     unlisted channel's rules, the SaaS tenants and the endpoint
-    application groups are not read. None reads every channel."""
+    application groups are not read. None reads every channel.
+    `live_packs` (pack ids a not-undone deployment record of this tenant
+    still holds) lets a rule this app made be marked a leftover when its
+    pack is gone from the library or has no live deployment; None judges by
+    the library alone. A leftover row has `leftover` (the reason in words)
+    and `keep` True: leftovers are kept unless the operator unticks Keep."""
+    live = None if live_packs is None else {str(x) for x in live_packs}
     if channels is None:
         snap = pd.fetch_tenant(client, _all_need())
     else:
@@ -664,7 +701,8 @@ def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any
                       "action": r.get("action"), "parent_id": r.get("parent_id"), "type": r.get("type"),
                       "engine_ids": [str(x) for x in (r.get("engine_ids") or [])],
                       "engines": [eng_name.get(str(x), str(x)) for x in (r.get("engine_ids") or [])],
-                      "tagged": pack is not None, "pack": pack})
+                      "tagged": pack is not None, "pack": pack,
+                      "leftover": leftover_reason(pack, known, live), "keep": True})
     order = {ch: i for i, ch in enumerate(pc.DLP_CHANNELS)}
     rules.sort(key=lambda r: (order.get(r["channel"], 9), str(r["name"]).lower()))
     # The dictionary definitions, for whoever needs to explain a match

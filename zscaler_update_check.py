@@ -262,14 +262,12 @@ def _save_cache(data: Dict[str, Any]) -> None:
 
 # ── Fetchers ─────────────────────────────────────────────────────────
 
-def _allowed_url(url: str) -> Tuple[str, str]:
-    """(host, "") when `url` may be fetched, else (host, why not): https
-    only, a host on ALLOWED_HOSTS, no user name or password, and no
-    character two URL parsers could read differently (a backslash,
-    whitespace or a control character). The host is checked as both
-    urllib.parse and urllib3 (the parser requests connects with) read it,
-    so 'https://127.0.0.1\\@help.zscaler.com/' cannot pass the check as
-    help.zscaler.com and then connect to 127.0.0.1."""
+def url_shape(url: str) -> Tuple[str, str]:
+    """(host, "") when `url` is a clean https URL, else (host, why not): https only, no user name or password, and no
+    character two URL parsers could read differently (a backslash, whitespace or a control character). The host is
+    checked as both urllib.parse and urllib3 (the parser requests connects with) read it, so
+    'https://127.0.0.1\\@help.zscaler.com/' cannot pass the check as help.zscaler.com and then connect to 127.0.0.1.
+    The shared first half of every outbound guard (this module's allowlist, scim_view's Zscaler SCIM host rule)."""
     url = str(url or "")
     if re.search(r"[\\\s\x00-\x1f\x7f]", url):
         return "", "URL refused: it contains a backslash, a space or a control character"
@@ -285,6 +283,14 @@ def _allowed_url(url: str) -> Tuple[str, str]:
         return host, "URL refused: it carries a user name or password"
     if host != (other.host or "").lower():
         return host, "URL refused: its host is ambiguous"
+    return host, ""
+
+
+def _allowed_url(url: str) -> Tuple[str, str]:
+    """(host, "") when `url` may be fetched, else (host, why not): url_shape's checks and a host on ALLOWED_HOSTS."""
+    host, why = url_shape(url)
+    if why:
+        return host, why
     if host not in ALLOWED_HOSTS:
         return host, f"host not in allowlist: {host}"
     return host, ""
