@@ -247,9 +247,7 @@ WRITE_GRANTS = {("apply-patch.yml", "apply", "contents"), ("upstream_check.yml",
                 # The standalone builds: a Sigstore certificate and the stored provenance per build,
                 # and the GitHub Release on a version tag (release-standalone.yml).
                 ("release-standalone.yml", "build", "id-token"), ("release-standalone.yml", "build", "attestations"),
-                ("release-standalone.yml", "release", "contents"),
-                # CodeQL uploads its results to code scanning (codeql.yml).
-                ("codeql.yml", "analyze", "security-events")}
+                ("release-standalone.yml", "release", "contents")}
 
 
 @pytest.mark.parametrize("path", WORKFLOWS, ids=os.path.basename)
