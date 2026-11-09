@@ -1,0 +1,17 @@
+{
+  "name": "Education FERPA Pack",
+  "version": "1.0",
+  "description": "DLP detection for student education records under FERPA (20 U.S.C. 1232g, 34 CFR Part 99): a record markings dictionary (the FERPA citation and the words Education Record) and student record data (transcript, grade report, financial aid and disciplinary record names near a Social Security number). All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
+  "deploy_note": "Install one channel at a time. Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify and avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).",
+  "references": [
+    "FERPA, 20 U.S.C. 1232g",
+    "34 CFR Part 99, Family Educational Rights and Privacy"
+  ],
+  "audience": "Schools, districts, colleges and universities, and the vendors that hold student records for them.",
+  "when_to_use": "The customer is an education institution (or its service provider) that must protect student education records, or the compliance profile is FERPA.",
+  "notes": [
+    "The markings dictionary looks for the FERPA citation and the words Education Record or Student Record. An institution labels its records in its own words, so add its wording to EDU-Record-Markings before enabling (assumed: the label carries one of these forms).",
+    "Student record data needs a record term (transcript, grade report, financial aid or disciplinary record) AND, within 500 characters, a Social Security number: a term alone (a public registrar page) does not fire. Student ID formats differ by institution, so no student id pattern ships; add the institution's own to EDU-Student-Record-Terms.",
+    "US PII outside student records is covered by the ZBP Enterprise baseline, which this pack is offered beside; it adds no dictionary that pack has."
+  ]
+}

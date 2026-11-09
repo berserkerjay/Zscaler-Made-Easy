@@ -464,7 +464,7 @@ window.HELP_CATALOG = {
     "input": "Needs write mode on, a named assessor and a typed confirmation.",
     "effect": "write"
    },
-   "#dlpDeployModal input[onchange^=\"_dzPickToggle(\"]": {
+   "#dlpDeployModal input[data-dz-pick]": {
     "what": "Ticks this rule, engine or dictionary for removal.",
     "input": "Ticked means it goes into the removal preview.",
     "effect": "local"
@@ -754,6 +754,11 @@ window.HELP_CATALOG = {
    ".tool-group button[onclick=\"openSocReviewTab()\"]": {
     "what": "Reads who can administer each Zscaler product and what is sent to your SIEM, and names each gap with a fix. Only what the Scope page ticks is read. Read-only. Opens in a new tab.",
     "input": "Nothing to type. Just click it. Nothing is read until you click a Read button in the new tab.",
+    "effect": "nav"
+   },
+   ".tool-group button[onclick=\"openApiMapTab()\"]": {
+    "what": "Opens the Tenant API map: which Zscaler features the tenant has and which reads its API client may make, found by asking. It lists every endpoint first and reads nothing until you confirm. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click Map this tenant's APIs and confirm the list in the new tab.",
     "effect": "nav"
    },
    ".tool-group button[onclick=\"openOtherProductsTab()\"]": {
@@ -2699,6 +2704,28 @@ window.HELP_CATALOG = {
     "effect": "nav"
    }
   },
+  "/report/capacity": {
+   "#crTenant": {
+    "what": "Chooses which tenant the review reads.",
+    "input": "Pick the tenant you are signed in to, a saved profile, or the one saved on this computer.",
+    "effect": "read"
+   },
+   "#crRun": {
+    "what": "Reads the counts for the products in scope and compares them with the licensed counts.",
+    "input": "Nothing to type. Tick Cloud & Branch Connector, ZPA or ZIA platform on the Scope page first.",
+    "effect": "read"
+   },
+   "#crMd": {
+    "what": "Saves the review as a Markdown file.",
+    "input": "Run the review first.",
+    "effect": "download"
+   },
+   "#crCsv": {
+    "what": "Saves the review as a CSV file.",
+    "input": "Run the review first.",
+    "effect": "download"
+   }
+  },
   "/report/audit": {
    "#atDays": {
     "what": "Sets how far back the timeline goes. ZIA keeps its audit log for up to 180 days.",
@@ -2943,6 +2970,108 @@ window.HELP_CATALOG = {
    },
    "#bwBody details.pa-details > summary": {
     "what": "Shows or hides this list: the assumptions, or the log of what was read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   }
+  },
+ "/report/api-map": {
+   "#amTenant": {
+    "what": "Picks which tenant sign-in the map uses.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or the tenant you are signed in to. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   ".am-scope-link": {
+    "what": "Opens the Scope page, where you tick the products the assessment and this map may read. A product that is not ticked is skipped.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#amRun": {
+    "what": "Shows the exact list of endpoints the map would read and asks you to confirm. Nothing is sent until you confirm.",
+    "input": "Nothing to type. Just click it. It uses the tenant you are signed in to (or the sample tenant) and never asks for new credentials.",
+    "effect": "read"
+   },
+   "#amProducts input[data-product]": {
+    "what": "Includes or leaves out this product's endpoints. The number is how many endpoints it would read.",
+    "input": "Ticked is included. At least one product must stay ticked.",
+    "effect": "local"
+   },
+   "#amFeaturesOnly": {
+    "what": "Reads only the endpoints that decide whether a feature is present (about 45) instead of every readable endpoint (about 380). Faster, and the feature table is complete.",
+    "input": "Ticked is features only. Unticked reads everything readable.",
+    "effect": "local"
+   },
+   "#amSpeed": {
+    "what": "How fast the map sends its requests. Slower is gentler on the tenant's API limits.",
+    "input": "Pick one: 1 every 2 seconds, 1 a second (the default) or 2 a second. The app never goes above 5 a second.",
+    "effect": "local"
+   },
+   "#amConfirm": {
+    "what": "Confirms the list above and starts the map: GET requests only, one at a time, through the tenant you are signed in to. It keeps statuses, counts and field names, never values.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#amCancel": {
+    "what": "Closes the list without reading anything.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#amStop": {
+    "what": "Stops the map at once. Nothing more is read and nothing is saved.",
+    "input": "Nothing to type. Just click it while the map is running.",
+    "effect": "local"
+   },
+   "#amExpJson": {
+    "what": "Downloads the whole map as a JSON file: features, every endpoint's status, item count and field names. No values.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#amExpFeat": {
+    "what": "Downloads the feature table as a CSV file for Excel or Sheets. Cells that start like a formula are made safe.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#amExpEps": {
+    "what": "Downloads the table of every endpoint read as a CSV file for Excel or Sheets. Cells that start like a formula are made safe.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#amBody .am-filter button[data-v]": {
+    "what": "Shows only the endpoints with this result. All shows every endpoint read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#amProdFilter": {
+    "what": "Shows the endpoints of one product, or all of them.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#amSaved": {
+    "what": "Picks one of the maps saved for this tenant on this computer, newest first.",
+    "input": "Pick one from the list, then click Open.",
+    "effect": "local"
+   },
+   "#amOpenSaved": {
+    "what": "Shows the saved map picked beside it. It reads no tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#amForget": {
+    "what": "Asks whether to remove this tenant's saved maps from this computer. Nothing in Zscaler changes.",
+    "input": "Nothing to type. Just click it, then confirm or keep them.",
+    "effect": "local"
+   },
+   "#amForgetYes": {
+    "what": "Removes this tenant's saved maps from this computer. It cannot be undone.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#amForgetNo": {
+    "what": "Keeps the saved maps.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "details.pa-details > summary": {
+    "what": "Shows or hides this list: the endpoints to be read, the endpoints skipped and why, or the log of what was read.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    }
@@ -3571,6 +3700,16 @@ window.HELP_CATALOG = {
     "input": "Optional. Unticked by default. Users are never exported.",
     "effect": "local"
    },
+   "#exTfDir": {
+    "what": "Names the folder the Terraform export is saved into, inside the zip file.",
+    "input": "Optional. Letters, digits and dashes, up to 40. Empty uses tenant-terraform.",
+    "effect": "local"
+   },
+   "#exTfLog": {
+    "what": "Adds a support log to the zip: progress and counts only, with names and secrets masked.",
+    "input": "Optional. Unticked by default. Tick it when support asks for a log.",
+    "effect": "local"
+   },
    "#exTfTypes input[type=\"checkbox\"]": {
     "what": "Keeps this object type in the whole-tenant Terraform export. Untick it to leave it out.",
     "input": "Tick to export it. Types that are not in scope on the Scope page are left out anyway.",
@@ -3724,6 +3863,26 @@ window.HELP_CATALOG = {
    "#exRgExtra": {
     "what": "Ranges to add to the allowlist, such as certificate checks your firewall must allow.",
     "input": "Optional. One CIDR or address per line, like 192.0.2.10/32.",
+    "effect": "local"
+   },
+   "#exRgDigi": {
+    "what": "Adds the DigiCert certificate-validation host names, and the addresses you resolved or typed below, to the allowlist.",
+    "input": "Tick to include. Resolve the addresses first if your firewall needs addresses, not names.",
+    "effect": "local"
+   },
+   "#exRgDigiResolve": {
+    "what": "Looks up each listed DigiCert validation host name by DNS now and keeps its current IPv4 and IPv6 addresses. DigiCert uses a CDN, so its addresses change: do it again before each change. Only DNS is asked; nothing is sent to DigiCert.",
+    "input": "Nothing to type. Your own ranges, if any, are checked and kept with the result.",
+    "effect": "read"
+   },
+   "#exRgDigiOps": {
+    "what": "Your own DigiCert address ranges, joined with the resolved ones in the allowlist.",
+    "input": "Optional. One CIDR or address per line; anything that is not a valid range is refused.",
+    "effect": "local"
+   },
+   "#exRgDigiFile": {
+    "what": "Fills the box above from a text file of ranges.",
+    "input": "Optional. A plain text file of up to 100 KB, one CIDR per line.",
     "effect": "local"
    },
    "#exRgBuild": {
@@ -4055,6 +4214,46 @@ window.HELP_CATALOG = {
    },
    "#zfOtpOut button[data-otp]": {
     "what": "Copies this one-time password to the clipboard, for the user who needs it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#zfPwUser": {
+    "what": "The user whose Client Connector uninstall, log-out and turn-off passwords you need.",
+    "input": "Required. The enrolled user name, like jdoe@acme.example.",
+    "effect": "local"
+   },
+   "#zfPwOs": {
+    "what": "The operating system the passwords are for. The tenant keeps one set per system.",
+    "input": "Choose one system.",
+    "effect": "local"
+   },
+   "#zfPwAssessor": {
+    "what": "Your name, for the audit log entry that records who asked for the passwords.",
+    "input": "Required. A person's name, like Jane Doe.",
+    "effect": "local"
+   },
+   "#zfPwPhrase": {
+    "what": "Confirms you mean to fetch this one user's passwords.",
+    "input": "Required. Type SHOW PASSWORDS, the user and the system exactly as above, like SHOW PASSWORDS jdoe@acme.example windows.",
+    "effect": "local"
+   },
+   "#zfPwShow": {
+    "what": "Reads the user's passwords from the tenant and shows them masked for 60 seconds. Nothing is changed in the tenant and the passwords are never kept, logged, exported or backed up. Off unless the operator set ZSCALER_ZCC_TAMPER_REVEAL=1; needs ZCC on the Scope page and, on a team server, the administrator role.",
+    "input": "Fill in the user, the system, your name and the confirmation first.",
+    "effect": "read"
+   },
+   "#zfPwHide": {
+    "what": "Hides the passwords now. They are not kept anywhere.",
+    "input": "Nothing to type. Just click it. They hide on their own after 60 seconds.",
+    "effect": "local"
+   },
+   "#zfPwOut button[data-pwreveal]": {
+    "what": "Shows or masks this password on the page.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#zfPwOut button[data-pwcopy]": {
+    "what": "Copies this password to the clipboard, for the user who needs it.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
@@ -4757,6 +4956,71 @@ window.HELP_CATALOG = {
    }
   },
   "/report/operations": {
+   "input[data-k=\"background\"]": {
+    "what": "Sets the page background colour of the block page in this theme.",
+    "input": "Pick a colour. Keep enough contrast with the text colour.",
+    "effect": "local"
+   },
+   "input[data-k=\"card\"]": {
+    "what": "Sets the colour of the card that holds the message on the block page.",
+    "input": "Pick a colour. Keep enough contrast with the text colour.",
+    "effect": "local"
+   },
+   "input[data-k=\"text\"]": {
+    "what": "Sets the text colour of the block page.",
+    "input": "Pick a colour. It needs enough contrast with the card colour; the preview warns if it does not.",
+    "effect": "local"
+   },
+   "input[data-k=\"accent\"]": {
+    "what": "Sets the accent colour used for the block page's button and highlights.",
+    "input": "Pick a colour.",
+    "effect": "local"
+   },
+   "input[data-k=\"show_reason\"]": {
+    "what": "Shows end users why the page was blocked.",
+    "input": "Ticked shows the reason. Unticked leaves it out.",
+    "effect": "local"
+   },
+   "input[data-k=\"show_company_name\"]": {
+    "what": "Shows the organization name on the block page.",
+    "input": "Ticked shows it. Unticked leaves it out.",
+    "effect": "local"
+   },
+   "input[data-k=\"show_logo\"]": {
+    "what": "Shows the stored logo on the block page.",
+    "input": "Ticked shows it. Unticked leaves it out.",
+    "effect": "local"
+   },
+   "input[data-k=\"hosted\"]": {
+    "what": "Sends blocked users to a block page you host yourself instead of ZIA's own. Applying it later needs write mode, as every change does.",
+    "input": "Tick to use it. Host the downloaded HTML at your https address first.",
+    "effect": "local"
+   },
+   "input[data-k=\"hostedUrl\"]": {
+    "what": "The https address where you host the downloaded block page (it carries your logo).",
+    "input": "Required when ticked. https:// only, no user name or password, up to 1024 characters.",
+    "effect": "local"
+   },
+   "#eunLogo": {
+    "what": "Chooses a logo image for this theme. It is stored locally when you save the theme. ZIA has only a display-logo switch, so to show the image, host the downloaded page yourself.",
+    "input": "Optional. A PNG, JPEG or GIF of up to 200 KB.",
+    "effect": "local"
+   },
+   "#eunPreview": {
+    "what": "Builds the block page from these settings and shows it below. Nothing is sent to a tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#eunSave": {
+    "what": "Saves this theme on this computer so it can be previewed and applied later.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#eunDownload": {
+    "what": "Downloads the saved theme as a single HTML file.",
+    "input": "Nothing to type. Just click it. Save the theme first.",
+    "effect": "download"
+   },
    "#opObjects a[href=\"/report/vendor#panos\"]": {
     "what": "Opens Migrate from another vendor, where you build the migration plan this operation loads.",
     "input": "Nothing to type. Just click it.",
@@ -4766,6 +5030,11 @@ window.HELP_CATALOG = {
     "what": "Opens SSL coverage in a new tab. It shows how much web traffic Zscaler really inspects. It names the rule or bypass that leaves the rest locked, with a link back here to fix it.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#opApiMap a[href=\"/report/api-map\"]": {
+    "what": "Opens the Tenant API map: which features this tenant has and which reads its API client may make. It lists every endpoint first and reads only after you confirm.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
    },
    "#opSocReview a[href=\"/report/soc-review\"]": {
     "what": "Opens the SOC review: who can administer each Zscaler product and what is sent to your SIEM. It only reads.",
@@ -5177,6 +5446,21 @@ window.HELP_CATALOG = {
     "input": "Read from the tenant and pick the objects first. Then click it.",
     "effect": "read"
    },
+   "#opMulti summary": {
+    "what": "Opens the form that plans one Client Connector device removal on several saved tenants, one plan per tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opMultiPreview": {
+    "what": "Plans the Client Connector removal you built above on each ticked tenant, one plan per tenant. Nothing is written.",
+    "input": "Build a removal above, tick the saved tenants, then click it. Each tenant then asks for its own typed confirmation.",
+    "effect": "read"
+   },
+   "input[data-mtprof]": {
+    "what": "Includes this saved tenant in the removal. Each tenant is planned, confirmed and applied on its own.",
+    "input": "Tick or untick. Up to ten tenants at a time.",
+    "effect": "local"
+   },
    "#opApiCalls": {
     "what": "Opens the API calls this run made, in Advanced settings: each call's path, answer, time taken, retries and waits.",
     "input": "Nothing to type. Just click it.",
@@ -5335,6 +5619,46 @@ window.HELP_CATALOG = {
    "#opZHand": {
     "what": "Picks which segment from Test a list to fix now. A row to block opens ZPA segment domains; a row to allow opens ZPA policy rules.",
     "input": "Pick one. Fix one segment, then pick the next here.",
+    "effect": "local"
+   },
+   "select[data-sw]": {
+    "what": "Sets GenAI prompt capture for this app: On, Off, or leave it as it is.",
+    "input": "Pick On or Off to change it. Leave as it is changes nothing for this app. Nothing is written until you preview and apply.",
+    "effect": "local"
+   },
+   "input[data-n=\"name\"]": {
+    "what": "Names this block page theme so it can be saved and downloaded again.",
+    "input": "Up to 40 characters. Saving a name that exists replaces that theme.",
+    "effect": "local"
+   },
+   "input[data-k=\"org_name\"]": {
+    "what": "The organization name shown on the block page.",
+    "input": "Up to 80 characters.",
+    "effect": "local"
+   },
+   "input[data-k=\"title\"]": {
+    "what": "The heading shown on the block page.",
+    "input": "Up to 80 characters.",
+    "effect": "local"
+   },
+   "input[data-k=\"support_email\"]": {
+    "what": "The email address blocked users are told to write to.",
+    "input": "Up to 254 characters. A normal email address.",
+    "effect": "local"
+   },
+   "input[data-k=\"support_phone\"]": {
+    "what": "The phone number blocked users are told to call.",
+    "input": "Up to 30 characters.",
+    "effect": "local"
+   },
+   "input[data-k=\"policy_link\"]": {
+    "what": "A link to your acceptable use policy, shown on the block page.",
+    "input": "Up to 300 characters. Must be a secure web link (https).",
+    "effect": "local"
+   },
+   "textarea[data-k=\"message\"]": {
+    "what": "The message shown to blocked users on the block page.",
+    "input": "Up to 600 characters. Plain text only.",
     "effect": "local"
    },
    "input[data-aig-app]": {
@@ -6263,7 +6587,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#crZccProfiles": {
-    "what": "Adds Client Connector app profiles and ZPA and ZDX entitlements to a clone, and lets a missing app profile be made. Passwords and the policy token are never read, copied or sent.",
+    "what": "Adds Client Connector app profiles and ZPA and ZDX entitlements to a clone, and lets a missing app profile be made. Passwords and the policy token are never read unless revealed on demand, and never copied or sent.",
     "input": "Tick it to include them. A new app profile is made turned off and without passwords: set them in the Client Connector portal. A clone asks you to type CLONE n CLIENT CONNECTOR OBJECTS.",
     "effect": "local"
    },
@@ -7413,6 +7737,31 @@ window.HELP_CATALOG = {
     "what": "Sets the SCIM user name whose SCIM groups ZPA looks up during the analysis. They are kept only for that analysis.",
     "input": "Optional. Usually the email, like jane@acme.com. Up to 128 characters. Needs the IdP.",
     "effect": "local"
+   },
+   "#paScimUsers summary": {
+    "what": "Opens the optional SCIM user list for the picked IdP. It stays off until you keep that IdP's SCIM secret.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paScimTok": {
+    "what": "The SCIM shared secret of the picked IdP, entered once. It is kept in this computer's credential store only and is never shown, logged or sent anywhere except the IdP's Zscaler SCIM address.",
+    "input": "Optional. Copy it from the IdP's SCIM settings. Cleared from the box once kept.",
+    "effect": "local"
+   },
+   "#paScimSave": {
+    "what": "Keeps the secret in the credential store. This turns the SCIM user list on for the picked IdP.",
+    "input": "Load the IdPs and pick one first.",
+    "effect": "local"
+   },
+   "#paScimClear": {
+    "what": "Removes the secret from the credential store. The SCIM user list is off again for the picked IdP.",
+    "input": "Pick the IdP first.",
+    "effect": "local"
+   },
+   "#paScimList": {
+    "what": "Reads the picked IdP's SCIM users from its own SCIM service (read-only, at most 500): user name, active, display name and number of groups. Off until a secret is kept.",
+    "input": "Nothing to type. Needs ZPA ticked on the Scope page.",
+    "effect": "read"
    },
    "#paWiZ_find": {
     "what": "Shows the SCIM groups ZPA lists for this user in the IdP you picked, before you analyze. It only reads.",
@@ -8996,6 +9345,56 @@ window.HELP_CATALOG = {
    },
    "#tlwRun": {
     "what": "Makes the report now from the files changed since the last run.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#rdBox > summary": {
+    "what": "Opens the settings for sending reports and DNS files to a share or host. Off until you turn it on.",
+    "input": "Nothing to type. Click to open or close.",
+    "effect": "local"
+   },
+   "#rdHosts": {
+    "what": "Lists the hosts reports and DNS files may be sent to.",
+    "input": "One host name or address per line. Nothing else is ever contacted.",
+    "effect": "local"
+   },
+   "#rdTargets": {
+    "what": "Defines where to send: an id, the way (sftp, scp, ssh or smb), the host, the user and the remote folder.",
+    "input": "One target per line, like: dns1 sftp dns1.example.com svc /etc/unbound. SMB adds the share name at the end.",
+    "effect": "local"
+   },
+   "#rdOn": {
+    "what": "Turns sending on or off.",
+    "input": "Tick it to allow sending. It is off until you do.",
+    "effect": "local"
+   },
+   "#rdPick": {
+    "what": "Names the target the password or test below is for.",
+    "input": "Required. The id of a target you defined above.",
+    "effect": "local"
+   },
+   "#rdPw": {
+    "what": "The password for the target.",
+    "input": "Required to store one. It goes to this computer's credential store and is not shown again.",
+    "effect": "local"
+   },
+   "#rdSave": {
+    "what": "Saves the delivery settings (not passwords).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#rdStorePw": {
+    "what": "Stores the password in this computer's credential store.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#rdTest": {
+    "what": "Opens and closes a connection to the target. Nothing is sent.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#rdDnsRun": {
+    "what": "Sends the staged DNS forwarder file to every chosen resolver.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },

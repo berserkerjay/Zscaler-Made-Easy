@@ -174,6 +174,7 @@ MICROTENANT_RE = re.compile(r"\A[0-9]{1,20}\Z")
 MAX_ROWS_PER_TYPE = 20000
 MAX_ZPA_PAGES = 200
 MAX_TYPES_ASKED = 200
+MAX_LOG_LINES = 2000
 ROOT_DIR = "tenant-terraform"
 
 NOTHING_IN_SCOPE = ("Nothing this export reads is in scope on the Scope page: tick DLP or ZIA platform (ZIA), ZPA, "
@@ -466,6 +467,14 @@ def _t(key: str, resource: str, label: str, area: str, svc: str, method: Optiona
 ZCC_RAW_PATHS = {"zcc.notification_templates": "/zcc/papi/public/v2/notification-templates",
                  "zcc.zia_posture": "/zcc/papi/public/v2/zia-posture-profiles"}
 
+# Cloud & Branch Connector reads the installed SDK cannot make: zscaler-sdk-python
+# 1.11.3's account group model builds its lists with a class the SDK does not have
+# (CommonIDNameExternalID is missing from the module it names), so every
+# account_groups.list_account_groups() call raises. The documented path is
+# read with the same GET helper instead (the SDK's own account_groups.py:
+# GET /ztw/api/v1/accountGroups).
+ZTC_RAW_PATHS = {"ztc.account_groups": "/ztw/api/v1/accountGroups"}
+
 # Lists the API is known to cut short without saying so. The zcc provider's
 # own docs (docs/data-sources/zcc_zia_posture.md, CLAUDE.md) say the
 # /zia-posture-profiles list endpoint "mishandles pagination and silently
@@ -687,6 +696,8 @@ TYPES: List[Dict[str, Any]] = [
        gate=_ZTC, keep=_keep_ztc_gateway, keep_why="a gateway type the provider's ztc_forwarding_gateway does not take (ZIA, ECSELF or PROXYCHAIN)"),
     _t("ztc.forwarding_rules", "ztc_traffic_forwarding_rule", "Traffic forwarding rules", "forwarding", "forwarding_rules", "list_rules",
        gate=_ZTC, keep=_keep_ztc_forwarding_rule, keep_why=_why_ztc_forwarding_rule),
+    _t("ztc.account_groups", "ztc_account_groups", "Account groups", "provisioning", "", None, gate=_ZTC, bound=True,
+       raw=ZTC_RAW_PATHS["ztc.account_groups"]),
     _t("ztc.location_templates", "ztc_location_template", "Location templates", "provisioning", "location_template",
        "list_location_templates", gate=_ZTC),
     _t("ztc.provisioning_urls", "ztc_provisioning_url", "Provisioning URLs", "provisioning", "provisioning_url", "list_provisioning_url",
@@ -728,10 +739,12 @@ NOT_COVERED: List[Tuple[str, str, str]] = [
      "made in the identity provider and the Client Connector Portal; policy conditions keep their ids"),
     ("zpa", "Browser Access certificates and enrollment certificates", "a certificate's private key never leaves ZPA"),
     ("zpa", "Policy rule order", "the v2 policy resources take no order; zpa_policy_access_rule_reorder sets it after import"),
-    ("ztc", "Account groups", "zscaler-sdk-python 1.11.3 cannot read them: its account group model names a class the SDK "
-     "does not have (CommonIDNameExternalID), so every read fails"),
-    ("ztc", "Cloud & Branch Connector groups, locations and DNS / log forwarding rules",
-     "zscaler-sdk-python 1.11.3 cannot read them as the provider writes them"),
+    ("ztc", "Cloud & Branch Connector groups (ecgroup)", "read-only in the Cloud & Branch Connector API: zscaler-sdk-python 1.11.3 "
+     "lists and gets them but has no create or update, so a provider resource cannot manage them; forwarding rules name them by id"),
+    ("ztc", "Locations", "read-only in the Cloud & Branch Connector API (the SDK's location_management only lists and gets); a location is made from a "
+     "location template, which is exported"),
+    ("ztc", "DNS forwarding rules and log (control) rules", "no read API: zscaler-sdk-python 1.11.3's ztw package has no module for "
+     "them and the app's API catalogue holds no path for them, so there is nothing to read them from"),
 ]
 
 
@@ -770,9 +783,40 @@ def in_scope(t: Dict[str, Any], g: Dict[str, Any]) -> Optional[str]:
     return "not in scope"
 
 
+OUTPUT_DIR_RE = re.compile(r"\A[a-z][a-z0-9_-]{0,39}\Z")
+_SELECTOR_RE = re.compile(r"\A[A-Za-z0-9_.*?-]{1,80}\Z")
+
+
+def resolve_selectors(items: Sequence[Any], what: str) -> List[str]:
+    """Object type keys for a selection. Each item is a type key
+    ("zia.locations"), a provider resource name ("zia_location_management")
+    or a shell-style pattern over either ("zia.*", "zpa_policy_*"). An item
+    that matches nothing is refused by name. Pure."""
+    import fnmatch
+    out: List[str] = []
+    bad: List[str] = []
+    for raw in items:
+        sel = str(raw).strip()
+        if not _SELECTOR_RE.match(sel):
+            bad.append(sel[:60])
+            continue
+        hit = [t["key"] for t in TYPES if fnmatch.fnmatchcase(t["key"], sel) or fnmatch.fnmatchcase(t["resource"], sel)]
+        if not hit:
+            bad.append(sel[:60])
+        out.extend(k for k in hit if k not in out)
+    if bad:
+        raise ExportRefused(f"Unknown object type in {what}: {', '.join(bad[:5])}.")
+    return out
+
+
 def normalize_options(products: Any = None, types: Any = None, exclude: Any = None, prefix: Any = "", namespace: Any = "",
-                      microtenant_id: Any = "", mode: Any = "adopt", keep_rule_state: Any = False) -> Dict[str, Any]:
-    """The export's options, checked (ExportRefused names what is wrong)."""
+                      microtenant_id: Any = "", mode: Any = "adopt", keep_rule_state: Any = False, output_dir: Any = "",
+                      support_log: Any = False) -> Dict[str, Any]:
+    """The export's options, checked (ExportRefused names what is wrong).
+    `types` and `exclude` take type keys, provider resource names or
+    patterns (resolve_selectors); `output_dir` names the folder the
+    workspaces are written under (default tenant-terraform); `support_log`
+    adds a masked log of the run to the zip."""
     prods = [str(p).strip().lower() for p in (products or PRODUCTS)] if isinstance(products, (list, tuple)) or products is None else None
     if prods is None or not prods or any(p not in PRODUCTS for p in prods):
         raise ExportRefused("Products must be a list of zia, zpa, ztc and zcc.")
@@ -783,10 +827,7 @@ def normalize_options(products: Any = None, types: Any = None, exclude: Any = No
             continue
         if not isinstance(v, (list, tuple)) or len(v) > MAX_TYPES_ASKED:
             raise ExportRefused(f"{what} must be a list of object type keys (at most {MAX_TYPES_ASKED}).")
-        bad = [str(x)[:60] for x in v if str(x) not in BY_KEY]
-        if bad:
-            raise ExportRefused(f"Unknown object type in {what}: {', '.join(bad[:5])}.")
-        lists.append([str(x) for x in v])
+        lists.append(resolve_selectors(v, what))
     pre = str(prefix or "").strip()
     if pre and not PREFIX_RE.match(pre):
         raise ExportRefused("The resource-label prefix must start with a lowercase letter and hold only lowercase letters, digits and _ "
@@ -797,11 +838,16 @@ def normalize_options(products: Any = None, types: Any = None, exclude: Any = No
     mt = str(microtenant_id or "").strip()
     if mt and not MICROTENANT_RE.match(mt):
         raise ExportRefused("The ZPA microtenant id is a number.")
+    od = str(output_dir or "").strip()
+    if od and not OUTPUT_DIR_RE.match(od):
+        raise ExportRefused("The output folder name must start with a lowercase letter and hold only lowercase letters, digits, - and _ "
+                            "(at most 40 characters).")
     md = str(mode or "adopt").strip().lower()
     if md not in MODES:
         raise ExportRefused("The mode is adopt (import this tenant's objects) or clone (new objects for another tenant).")
     return {"products": [p for p in PRODUCTS if p in prods], "types": lists[0], "exclude": lists[1], "prefix": pre,
-            "namespace": ns or DEFAULT_NAMESPACE, "microtenant_id": mt, "mode": md, "keep_rule_state": bool(keep_rule_state)}
+            "namespace": ns or DEFAULT_NAMESPACE, "microtenant_id": mt, "mode": md, "keep_rule_state": bool(keep_rule_state),
+            "output_dir": od or ROOT_DIR, "support_log": bool(support_log)}
 
 
 def plan(scopes: Any, channels: Any, opts: Dict[str, Any], *, include_personal: bool = False,
@@ -1030,22 +1076,23 @@ _RAW_ENVELOPES = ("list", "records", "items", "content", "data", "notificationTe
 
 
 def _raw_list(client: Any, path: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    """Every object at one fixed Client Connector path, GET only, through
+    """Every object at one fixed Client Connector (or, under /ztw/, Cloud & Branch Connector) path, GET only, through
     the signed-in client's own request executor (the SDK's signing and
     gateway routing; the offline client answers it from its store).
     (rows, error). Paced like every Client Connector read."""
     import zia_rate
+    root, label = ("ztw", "Cloud & Branch Connector") if path.startswith("/ztw/") else ("zcc", "Client Connector")
     svc = None
     try:
-        svc = getattr(client, "zcc", None)
-    except Exception:  # noqa: BLE001 - a client without Client Connector
+        svc = getattr(client, root, None)
+    except Exception:  # noqa: BLE001 - a client without this product
         svc = None
     ex = getattr(svc, "_request_executor", None) if svc is not None else None
     if ex is None:
         ex = getattr(client, "_request_executor", None)
     if ex is None:
-        return [], "this sign-in has no Client Connector API (it needs a OneAPI API client)"
-    zia_rate.wait("GET", "", what="Client Connector read")
+        return [], f"this sign-in has no {label} API (it needs a OneAPI API client)"
+    zia_rate.wait("GET", "", what=f"{label} read")
     try:
         made = ex.create_request("GET", path, {}, {}, params={})
         req, err = (made[0], made[1]) if isinstance(made, tuple) and len(made) >= 2 else (made, None)
@@ -1131,8 +1178,13 @@ def read_tenant(client: Any, keys: Sequence[str], *, log: Optional[Callable[[str
     secret-named field masked. A read ZIA refuses for its rate is waited out
     and retried (pack_export._read); still refused, nothing more is read."""
     import pack_export
-    say = log or (lambda m: None)
-    out: Dict[str, Any] = {"types": {}, "unread": {}, "stopped": False, "refused": None}
+    out: Dict[str, Any] = {"types": {}, "unread": {}, "stopped": False, "refused": None, "log": []}
+
+    def say(msg: str) -> None:   # progress goes to the caller and, bounded, to the snapshot (the support log)
+        if len(out["log"]) < MAX_LOG_LINES:
+            out["log"].append(one_line(msg)[:300])
+        if log:
+            log(msg)
     for key in keys:
         t = BY_KEY[key]
         if _stopped(cancel):
@@ -1804,11 +1856,89 @@ def _readme_product(product: str, counts: Dict[str, int], ctx: _Ctx, not_exporte
             "Commit `.terraform.lock.hcl` after the first `terraform init`.\n")
 
 
+# ---------------------------------------------------------------------------
+# Static check of the written files, the validate script and the support log
+# ---------------------------------------------------------------------------
+_STR_RE = re.compile(r'"(?:\\.|[^"\\\n])*"')
+_RES_RE = re.compile(r'^(resource|data) "([a-z0-9_]+)" "([A-Za-z0-9_-]+)" \{', re.M)
+_IMPORT_RE = re.compile(r'^import \{\n  to = ([a-z0-9_]+)\.([A-Za-z0-9_-]+)\n', re.M)
+
+
+def validate_files(files: Dict[str, str]) -> Dict[str, Any]:
+    """A local check of the generated workspaces, done without Terraform
+    (nothing is run): braces balance outside strings, no resource address is
+    written twice, and every import block names a resource written in the
+    same workspace. {ok, workspaces, problems}. The real `terraform
+    validate` is a step the operator runs (validate.sh in the zip)."""
+    problems: List[str] = []
+    work: Dict[str, Dict[str, str]] = {}
+    for path, text in files.items():
+        if path.endswith(".tf"):
+            work.setdefault(path.rsplit("/", 1)[0], {})[path] = text
+    for d, fs in sorted(work.items()):
+        defined: Dict[Tuple[str, str], str] = {}
+        for path, text in sorted(fs.items()):
+            bare = _STR_RE.sub('""', "\n".join(ln for ln in text.split("\n") if not ln.lstrip().startswith("#")))
+            if bare.count("{") != bare.count("}") or bare.count("[") != bare.count("]") or bare.count("(") != bare.count(")"):
+                problems.append(f"{path}: unbalanced braces or brackets")
+            if '"' in bare.replace('""', ""):
+                problems.append(f"{path}: an unterminated string")
+            for kind, typ, lab in _RES_RE.findall(text):
+                if kind == "resource":
+                    if (typ, lab) in defined:
+                        problems.append(f"{path}: {typ}.{lab} is written twice")
+                    defined[(typ, lab)] = path
+        for path, text in sorted(fs.items()):
+            for typ, lab in _IMPORT_RE.findall(text):
+                if (typ, lab) not in defined:
+                    problems.append(f"{path}: import of {typ}.{lab}, which this workspace does not write")
+    return {"ok": not problems, "workspaces": sorted(work), "problems": problems[:100]}
+
+
+def _validate_sh(products: Sequence[str]) -> str:
+    """A script the operator runs themselves (it is only written here)."""
+    dirs = " ".join(products)
+    return ("#!/usr/bin/env bash\n# Written by Zscaler Made Easy; the app never runs it. Checks every workspace without touching the tenant:\n"
+            "# terraform init -backend=false downloads the provider only; validate and fmt read the files only. Nothing is planned or applied.\n"
+            "set -euo pipefail\ncd \"$(dirname \"$0\")\"\n"
+            f"for d in {dirs}; do\n  echo \"== $d\"\n  (cd \"$d\" && terraform init -backend=false -input=false >/dev/null "
+            "&& terraform fmt -check && terraform validate)\ndone\n")
+
+
+_TOKENISH = re.compile(r"\b[A-Za-z0-9_\-+/=]{24,}\b")
+_KEYED = re.compile(r"(?i)\b(bearer|secret|token|password|passwd|passphrase|api[_-]?key|client[_-]?secret|authorization|psk)\b(\s*[=:]?\s*)\S+")
+
+
+def mask_text(text: str) -> str:
+    """A line of log with credentials and long token-like runs masked."""
+    return _TOKENISH.sub("<masked>", _KEYED.sub(lambda m: f"{m.group(1)}{m.group(2)}<masked>", text))
+
+
+def _support_log(snapshot: Dict[str, Any], report: Dict[str, Any], opts: Dict[str, Any]) -> str:
+    """What a helper needs to see why an export looks as it does: the
+    options, the progress lines, the counts per product and the types that
+    could not be read. No object value from the tenant, and every line is
+    masked."""
+    lines = [f"{GENERATED_MARK}. Support log: progress and counts only; no object values. Share this file, never the tfvars.",
+             f"generated_at: {report['generated_at']}", f"mode: {report['mode']}",
+             f"products: {', '.join(opts['products'])}", f"types asked: {', '.join(opts.get('types') or []) or 'all in scope'}",
+             f"types excluded: {', '.join(opts.get('exclude') or []) or 'none'}", f"prefix: {opts.get('prefix') or '(none)'}",
+             f"namespace: {opts.get('namespace')}", "", "== Progress"]
+    lines += [mask_text(str(m)) for m in (snapshot.get("log") or [])]
+    lines += ["", "== Resources per product"]
+    for p, info in sorted(report["products"].items()):
+        lines.append(f"{p}: " + ", ".join(f"{r}={n}" for r, n in sorted((info.get('resources') or {}).items())))
+    lines += ["", "== Not read"] + [mask_text(f"{k}: {v}") for k, v in sorted((snapshot.get("unread") or {}).items())]
+    lines += ["", "== Static check", "ok" if report["validation"]["ok"] else "; ".join(report["validation"]["problems"][:20])]
+    return "\n".join(lines) + "\n"
+
+
 def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: str = "", plan_info: Optional[Dict[str, Any]] = None,
              generated_at: Optional[str] = None) -> Tuple[Dict[str, str], Dict[str, Any]]:
     """The workspace files ({path: content}, paths under ROOT_DIR/) and the
     report (counts, references, not exported). Pure: reads nothing."""
     when = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    root = opts.get("output_dir") or ROOT_DIR
     types = snapshot.get("types") or {}
     unread = snapshot.get("unread") or {}
     plan_info = plan_info or {}
@@ -1883,7 +2013,7 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
         if not counts:
             report["products"][product] = {"resources": {}, "references": dict(ctx.refs), "skipped": skipped}
             continue
-        base = f"{ROOT_DIR}/{product}"
+        base = f"{root}/{product}"
         for fname, blocks in by_area.items():
             files[f"{base}/{fname}"] = hcl_fmt(f"{GENERATED_MARK}. Read from the tenant; do not edit by hand before the first import.\n\n"
                                                + "\n".join(blocks))
@@ -1905,8 +2035,12 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
                                        "references": dict(ctx.refs), "unresolved": dict(ctx.unresolved),
                                        "secret_variables": sorted(ctx.secret_vars), "skipped": skipped,
                                        "dropped_attributes": {r: dict(v) for r, v in ctx.dropped.items()}}
-    files[f"{ROOT_DIR}/README.md"] = _readme_root(report, opts)
-    files[f"{ROOT_DIR}/export_report.json"] = json.dumps(report, indent=1, sort_keys=True) + "\n"
+    report["validation"] = validate_files(files)
+    files[f"{root}/README.md"] = _readme_root(report, opts)
+    files[f"{root}/validate.sh"] = _validate_sh(sorted(report["products"]))
+    if opts.get("support_log"):
+        files[f"{root}/support/export_log.txt"] = _support_log(snapshot, report, opts)
+    files[f"{root}/export_report.json"] = json.dumps(report, indent=1, sort_keys=True) + "\n"
     return files, report
 
 

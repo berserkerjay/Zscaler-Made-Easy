@@ -33,7 +33,7 @@ INDUSTRY_PACKS: Dict[str, List[str]] = {
     "State & local government": ["fed_policy_pack", "cjis_policy_pack", "irs_fti_pack"],
     "Law enforcement (CJIS)": ["cjis_policy_pack"],
     "Financial services": ["global_banking_baseline", "zbp_enterprise_baseline"],
-    "Education": ["zbp_enterprise_baseline"],
+    "Education": ["education_ferpa_baseline", "zbp_enterprise_baseline"],
     "Manufacturing": ["zbp_enterprise_baseline", "zbp_source_code_baseline"],
     "Technology": ["zbp_enterprise_baseline", "zbp_source_code_baseline"],
 }

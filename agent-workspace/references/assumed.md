@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-552 markers.
+558 markers.
 
 | File:line | Note |
 |---|---|
@@ -39,6 +39,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `audit_timeline.py:167` | CORRELATE_SECONDS match with Zscaler Made Easy's own writes. Assumed: CST |
 | `bulk_test.py:124` | SUSPICIOUS_DESTINATION; the others are assumed from ZIA's category list. |
 | `bulk_test.py:128` | category costs little. Names this app already uses (ssl_flow) or assumed. |
+| `capacity_review.py:81` | "notes": ["Licensed counts come from the tenant's subscription list when it states a seat count (assumed row shape: licenses, quantity or… |
+| `capacity_review.py:91` | up). The row shape is assumed (readiness.parse_subscriptions); a list |
 | `compliance_pack.py:7` | the control catalogue with sources and the assumed flag |
 | `compliance_pack.py:148` | return "; ".join(f"{c['id']}{' (assumed)' if c.get('assumed') else ''}" for c in m.get("controls") or []) |
 | `compliance_pack.py:198` | MAP_COLUMNS = ["Source", "Area", "Rule", "Rule key", "Created", "Action", "Objective", "Controls", "Assumed", "Reason code", "Reason", |
@@ -89,7 +91,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `config_backup.py:548` | assumed: ZIA picks the target's own primary and secondary VIPs and an internal IP range when a create leaves them out. |
 | `config_backup.py:564` | assumed: a sub-location's name is unique within its parent, so it is matched by "<parent> / <name>". |
 | `config_backup.py:605` | "path /rootCertificates (assumed); never updated", uses=()), |
-| `config_backup.py:726` | why="its passwords and policy token are never read back or sent (an update leaves them as they are: assumed); a missing " |
+| `config_backup.py:726` | why="its passwords and policy token are never read unless revealed on demand, and never sent (an update leaves them as they are: assumed)… |
 | `config_backup.py:732` | why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)", |
 | `config_backup.py:737` | why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)", |
 | `config_backup.py:740` | assumed: GET /application-profiles answers {"policies": [...]}, the shape the SDK reads (zscaler/zcc/application_profiles.py). |
@@ -105,10 +107,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `detection_health.py:1017` | assumed from one: |
 | `device_posture.py:25` | Assumed, not verifiable from the SDK (stated on the page and in exports): |
 | `device_posture.py:175` | "Client Connector trusted networks are matched to ZPA trusted networks by the ZPA network ID, assumed to be the " |
-| `dlp_api_server.py:4038` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
-| `dlp_api_server.py:9662` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
-| `dlp_api_server.py:9664` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
-| `dlp_api_server.py:9797` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
+| `dlp_api_server.py:4237` | "assumed": list(ai_guard.DEPTH_ASSUMED)} |
+| `dlp_api_server.py:10067` | w.writerow(["Control", "Title", "Status", "Assumed", "Passing", "Failing", "Review", "Checks"]) |
+| `dlp_api_server.py:10069` | w.writerow([c["control"], c["title"], c["status"], "yes" if c["assumed"] else "", c["passing"], c["failing"], c["review"], |
+| `dlp_api_server.py:10202` | """One profile: what it does and its control catalogue (sources and the assumed flag).""" |
 | `dlp_assessment_full_auto.py:200` | times of a provider credential are assumed (not named by the SDK model). |
 | `dns_forward_zones.py:50` | * Assumed (not in the SDK or Zscaler's API reference): that the resolver |
 | `editions.py:12` | tenants, and are ASSUMED (not in the SDK). The ZDX edition is not exposed by |
@@ -119,13 +121,13 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `editions.py:143` | out.append(SKU_NOTE + " What each edition allows is this app's reading of Zscaler's edition descriptions (assumed).") |
 | `endpoint_snapshots.py:55` | published under. assumed: serviceArea is the web service's key for that |
 | `insights.py:670` | ASSUMED: Shadow IT's sanctioned_state spells the two states as |
-| `mcp_tools.py:1187` | ZDX_BANDS = (("poor", 0, 33), ("okay", 34, 65), ("good", 66, 100))   # assumed: the ZDX portal's score bands (not in the SDK) |
-| `offline_tenant.py:109` | The ZDX configuration (ops_zdx: the /config part is assumed there): apps |
-| `offline_tenant.py:113` | CloudPath probes ZDX adds for it (off), as ops_zdx expects (assumed there). |
-| `offline_tenant.py:681` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
-| `offline_tenant.py:725` | across the types (assumed: ZIA answers a rule by type and id, and its ids |
-| `offline_tenant.py:779` | answers the new id, assumed there too).""" |
-| `offline_tenant.py:1633` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
+| `mcp_tools.py:1205` | ZDX_BANDS = (("poor", 0, 33), ("okay", 34, 65), ("good", 66, 100))   # assumed: the ZDX portal's score bands (not in the SDK) |
+| `offline_tenant.py:112` | The ZDX configuration (ops_zdx: the /config part is assumed there): apps |
+| `offline_tenant.py:116` | CloudPath probes ZDX adds for it (off), as ops_zdx expects (assumed there). |
+| `offline_tenant.py:684` | Switches one app profile's state (zscaler/zcc/web_policy.py activate_web_policy; the toggle is assumed, see ops_zcc_live). |
+| `offline_tenant.py:730` | across the types (assumed: ZIA answers a rule by type and id, and its ids |
+| `offline_tenant.py:807` | answers the new id, assumed there too).""" |
+| `offline_tenant.py:1663` | inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists. |
 | `ops_aiguard.py:33` | readiness check; what is verified against the SDK and what is assumed is |
 | `ops_aiguard.py:622` | _SSL_STOPPERS = {"DO_NOT_DECRYPT", "BLOCK"}   # SSL inspection action types (BLOCK: assumed, not enumerated in the SDK model) |
 | `ops_config_restore.py:79` | assumed: a rule created without it is active at once (the API's default). |
@@ -180,14 +182,14 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_zcc_admin.py:259` | The portal's username filter is assumed to match exactly; anything else it answers is not this user's. |
 | `ops_zcc_admin.py:339` | "errors": errors, "assumed": list(ASSUMED), "limits": {"devices": MAX_DEVICES, "entries": MAX_ENTRIES}} |
 | `ops_zcc_admin.py:466` | notes=["You type the confirmation whatever the count: a removal always asks for it.", ASSUMED[3]]) |
-| `ops_zcc_admin.py:470` | """ZCC's answer to a removal: errorMsg, or devicesRemoved 0, is a refusal (assumed).""" |
-| `ops_zcc_admin.py:824` | notes=["You type the confirmation naming the count whatever the count.", ASSUMED[3]]) |
-| `ops_zcc_admin.py:1050` | reason="Creates it: POST /custom-ip-based-apps (assumed; not in the SDK).")) |
-| `ops_zcc_admin.py:1076` | reason="Deletes it: DELETE /custom-ip-based-apps/{id} (assumed; not in the SDK).")) |
-| `ops_zcc_admin.py:1092` | reason="Edits it: PUT /custom-ip-based-apps/{id} (assumed; not in the SDK).")) |
-| `ops_zcc_admin.py:1104` | notes=[ASSUMED[0]] + ([ASSUMED[2]] if action == "delete" else []), **extra) |
-| `ops_zcc_admin.py:1232` | reason="Updates it: PUT /" + SERVICES[service][4] + " (the entitlement as read, assumed body)." if want_all != cur["enable_for_all"] |
-| `ops_zcc_admin.py:1267` | undo="Undo: puts 'on for every user' and the exact group list back as read, previewed first.", notes=[ASSUMED[1]], **extra) |
+| `ops_zcc_admin.py:527` | """ZCC's answer to a removal: errorMsg, or devicesRemoved 0, is a refusal (assumed).""" |
+| `ops_zcc_admin.py:881` | notes=["You type the confirmation naming the count whatever the count.", ASSUMED[3]]) |
+| `ops_zcc_admin.py:1107` | reason="Creates it: POST /custom-ip-based-apps (assumed; not in the SDK).")) |
+| `ops_zcc_admin.py:1133` | reason="Deletes it: DELETE /custom-ip-based-apps/{id} (assumed; not in the SDK).")) |
+| `ops_zcc_admin.py:1149` | reason="Edits it: PUT /custom-ip-based-apps/{id} (assumed; not in the SDK).")) |
+| `ops_zcc_admin.py:1161` | notes=[ASSUMED[0]] + ([ASSUMED[2]] if action == "delete" else []), **extra) |
+| `ops_zcc_admin.py:1289` | reason="Updates it: PUT /" + SERVICES[service][4] + " (the entitlement as read, assumed body)." if want_all != cur["enable_for_all"] |
+| `ops_zcc_admin.py:1324` | undo="Undo: puts 'on for every user' and the exact group list back as read, previewed first.", notes=[ASSUMED[1]], **extra) |
 | `ops_zcc_live.py:36` | Assumed (ASSUMED): see the list below; every applied value is read back, |
 | `ops_zcc_live.py:57` | ASSUMED = [ |
 | `ops_zdx.py:49` | What is verified and what is assumed |
@@ -215,8 +217,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_zia_activation.py:30` | ASSUMED (the SDK has no enumeration and this was not checked against a live |
 | `ops_zia_activation.py:49` | assumed: ZIA's activation status values (the SDK's Activation model has no enumeration). |
 | `ops_zia_activation.py:59` | "tool or this app): check with the other admins first (assumed: the SDK does not say whose changes it activates).") |
+| `ops_zia_ai_prompt.py:24` | ASSUMED (the SDK model lists only six prompt fields; the others come from |
 | `ops_zia_baseline.py:65` | read them; the others are assumed and the tenant refuses what it lacks. |
 | `ops_zia_directory.py:42` | delete_department. ASSUMED (not checkable without a tenant): that ZIA |
+| `ops_zia_eun.py:28` | snake_case list in its docstring, camelCased: assumed, not checked against a |
 | `ops_zia_objects.py:53` | NAME_MAX = 255           # assumed for these objects (the API refuses longer) |
 | `ops_zia_pac.py:40` | pacFiles/{id}/version/{v}/action/DEPLOY), delete_pac_file. ASSUMED: that |
 | `ops_zia_sandbox.py:21` | Assumed (not modelled by the SDK): the fileHashCount fields |
@@ -298,7 +302,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `pac_eval.py:1120` | CLIENT_CONNECTOR_LISTENER = ("127.0.0.1", "9000")   # Client Connector's local proxy (assumed, see module notes) |
 | `pac_eval.py:1227` | "depends_on": depends, "assumptions": sorted(it.assumed), "trail": it.trail, "error": None, "steps": it.steps} |
 | `pac_eval.py:1448` | + (" Assumed: " + "; ".join(ev["assumptions"]) + "." if ev["assumptions"] else "")} |
-| `pack_channels.py:932` | READ_ONLY when the rule's rank is above the API client's (rank_inherit.caller, assumed). |
+| `pack_channels.py:945` | READ_ONLY when the rule's rank is above the API client's (rank_inherit.caller, assumed). |
 | `pack_deploy.py:769` | READ_ONLY when the rule's rank is above the API client's (rank_inherit.caller, assumed). |
 | `pack_deploy.py:1541` | pl = {"rank": 0, "send": None, "order": asked, "asked_order": asked, "state": ri.state_of(setting), "assumed": False, "warning": "", |
 | `pack_deploy.py:1743` | out["rank_plan"] = {k: rp.get(k) for k in ("rank", "order", "asked_order", "why", "warning", "assumed", "state")} |
@@ -378,8 +382,9 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `sample_tenant.py:505` | fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's |
 | `sample_tenant.py:769` | not in the SDK: its shapes are ops_zdx's (assumed there). |
 | `sample_tenant.py:854` | SANDBOX_HASH_COUNT = {"blockedFileHashesCount": 2, "remainingFileHashes": 9998}   # field names assumed (not modelled by the SDK) |
-| `sample_tenant.py:1112` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
-| `sample_tenant.py:1469` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
+| `sample_tenant.py:1114` | Each profile's App Connector version is in versionDetails (role ASSISTANT; assumed role name). |
+| `sample_tenant.py:1471` | assumed: the newer API answers {"policies": [...], "totalCount": n}, the shape |
+| `sample_tenant.py:1620` | The Tenant API map (tenant_api_map.py) asks a few endpoints nothing else reads. Their shapes are assumed (only the |
 | `scope_permissions.py:100` | "Reports (System Audit Report; assumed name)", |
 | `scope_permissions.py:101` | "Alerts (alert subscriptions; assumed name)", |
 | `scope_permissions.py:103` | "Organization (subscriptions; assumed name)", |
@@ -410,8 +415,8 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `static/flow_anim.js:51` | none: 'no rule', unknown: 'unknown', out_of_scope: 'not in scope', assumed: 'assumed', skipped: 'skipped', |
 | `static/flow_anim.js:59` | if (status === 'warn' \|\| status === 'blind' \|\| status === 'monitor' \|\| status === 'assumed' \|\| status === 'unknown') return 'warn'; |
 | `static/flow_anim.js:210` | note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') \|\| (vv === 'out_of_scope' ? 'Client Connector is not in scope on the S… |
-| `static/help_catalog.js:4862` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
-| `static/help_catalog.js:4942` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:5131` | "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).", |
+| `static/help_catalog.js:5211` | "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).", |
 | `static/ops_admin.js:38` | const assumed = res => (res.assumed \|\| []).length ? `<details class="pa-details"><summary>What is assumed</summary><ul>${res.assumed.map(… |
 | `static/ops_admin.js:79` | ${assumed(res)}`; |
 | `static/ops_aiguard.js:41` | return `<details class="pa-details"><summary>What the app assumes (${(cat.assumed \|\| []).length})</summary><ul>${(cat.assumed \|\| []).map(… |
@@ -431,9 +436,10 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `tenant_health.py:368` | object with a name, the SDK's service edge shape, or the name itself: assumed).""" |
 | `tenant_terraform.py:98` | Assumed, not verifiable without a tenant: |
 | `tenant_terraform.py:104` | posture profile's platform as 1..5). The posture list is NOT assumed |
-| `tenant_terraform.py:463` | descriptions). assumed: answered in one GET (no paging), as a JSON array or |
-| `tenant_terraform.py:464` | an envelope holding one. Not assumed complete for ZIA posture profiles: see |
-| `tenant_terraform.py:1199` | address), any other into `entry_values` {lhs, rhs} (assumed mapping, |
+| `tenant_terraform.py:464` | descriptions). assumed: answered in one GET (no paging), as a JSON array or |
+| `tenant_terraform.py:465` | an envelope holding one. Not assumed complete for ZIA posture profiles: see |
+| `tenant_terraform.py:1251` | address), any other into `entry_values` {lhs, rhs} (assumed mapping, |
+| `tenant_terraform_schema.py:484` | ztc_account_groups: assumed from the SDK's AccountGroups model (zscaler/ztw/models/account_groups.py: id, name, description, |
 | `traffic_logs.py:18` | in the default order (assumed, see DEFAULT_ORDERS). |
 | `traffic_logs.py:92` | Zscaler's LSS documentation; the ones marked are assumed from field |
 | `traffic_logs.py:99` | "zpn_client_type_browser_isolation": "Cloud Browser Isolation",   # assumed |
@@ -542,7 +548,7 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `zscaler_ip_ranges.py:52` | centres not yet live (ASSUMED); |
 | `zscaler_ip_ranges.py:54` | tunnel (Tunnel 2.0) addresses (ASSUMED); |
 | `zscaler_ip_ranges.py:57` | zpatwo.net or zpabeta.net (ASSUMED: also an optional |
-| `zscaler_ip_ranges.py:826` | Dynamic List": ASSUMED, not verifiable here). |
+| `zscaler_ip_ranges.py:959` | Dynamic List": ASSUMED, not verifiable here). |
 | `zscaler_rbac_checks.py:141` | "until" values are epoch times (seconds, or milliseconds; assumed).""" |
 | `zscaler_rbac_checks.py:374` | classes when listed; else from its name (assumed: Zscaler's built-in |
 | `zscaler_rbac_checks.py:395` | the API sends it (assumed: {"id", "name"}) and an API key's `roleId`.""" |

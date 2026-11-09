@@ -466,6 +466,63 @@ def plan_remove(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, c
                  notes=["You type the confirmation whatever the count: a removal always asks for it.", ASSUMED[3]])
 
 
+# ── The same removal across several saved tenants ──────────────────────
+#
+# One plan per tenant profile, each previewed, hashed, confirmed (its own
+# typed phrase), re-read, applied, audited and answered on its own; a failure
+# in one tenant is that tenant's row and never touches another. Every cap
+# stays per tenant: MAX_DEVICES (or BULK_MAX) per plan, BATCH_MAX per call,
+# and the hourly Client Connector budget (_LEDGER is keyed by tenant).
+
+MAX_TENANTS = 10
+MULTI_TYPES = (T_REMOVE, T_BULK)
+_PID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$")
+
+
+def check_tenants(ids: Any) -> List[str]:
+    """The saved tenant profile ids of a multi-tenant removal: 1 to MAX_TENANTS, each once, plain ids only."""
+    if not isinstance(ids, list) or not ids:
+        raise _err(f"Pick 1 to {MAX_TENANTS} saved tenant profiles.")
+    out: List[str] = []
+    for v in ids:
+        s = v.strip() if isinstance(v, str) else ""
+        if not _PID_RE.match(s):
+            raise _err("A tenant profile id is letters, digits, - and _ (at most 64).")
+        if s in out:
+            raise _err("Each tenant may appear once.")
+        out.append(s)
+    if len(out) > MAX_TENANTS:
+        raise _err(f"Pick at most {MAX_TENANTS} tenants at a time.")
+    return out
+
+
+def check_multi_operation(op: Any) -> Dict[str, Any]:
+    """The removal planned on every tenant: a device list (zcc_device_remove) or a matched list
+    (zcc_device_bulk_remove); nothing else is planned across tenants."""
+    if not isinstance(op, dict) or op.get("type") not in MULTI_TYPES:
+        raise _err("Only a Client Connector device removal can be planned on several tenants.")
+    return op
+
+
+def per_tenant(ids: Sequence[str], fn: Callable[[str], Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """fn(profile_id) for each tenant, in order, each in its own try: a tenant that fails is
+    {profile_id, status: "failed", message}; the others still run. The row never repeats a secret."""
+    rows: List[Dict[str, Any]] = []
+    for pid in ids:
+        try:
+            row = dict(fn(pid))
+        except ao.Stopped as e:
+            row = {"status": "stopped", "message": str(e)[:300]}
+        except ao.OperationError as e:
+            row = {"status": "refused", "message": str(e)[:300]}
+        except Exception as e:  # noqa: BLE001 — one tenant's failure is its own row
+            detail = getattr(e, "detail", None)
+            row = {"status": "failed", "message": str(detail if isinstance(detail, str) else e)[:300]}
+        row["profile_id"] = pid
+        rows.append(row)
+    return rows
+
+
 def _removed_check(resp: Any, data: Any) -> Optional[str]:
     """ZCC's answer to a removal: errorMsg, or devicesRemoved 0, is a refusal (assumed)."""
     body = ops_zcc._wire(resp)

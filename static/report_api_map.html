@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tenant API map — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .am-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .am-page .rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .am-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.6rem; margin: 0 0 1rem; }
+  .am-stat { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.55rem 0.75rem; min-width: 0; }
+  .am-stat .n { font-size: var(--fs-headline, 1.2rem); font-weight: 700; }
+  .am-stat .k { font-size: 0.72rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; overflow-wrap: anywhere; }
+  .am-note { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.6rem 0.8rem; margin: 0 0 1rem; font-size: 0.88rem; max-width: 90ch; min-width: 0; overflow-wrap: anywhere; }
+  .am-note ul { margin: 0.2rem 0 0; padding-left: 1.2rem; }
+  .am-opts { display: grid; gap: 0.7rem; margin: 0 0 1rem; }
+  .am-opts fieldset { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.5rem 0.8rem 0.7rem; margin: 0; min-width: 0; }
+  .am-opts legend { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); padding: 0 0.3rem; }
+  .am-checks { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; }
+  .am-checks label { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: normal; font-size: 0.9rem; cursor: pointer; }
+  .am-checks input { width: auto; cursor: pointer; }
+  .am-scroll { max-height: 22rem; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-md); }
+  .am-scroll .df-table { margin: 0; }
+  .am-page .df-tablewrap { max-width: 100%; }
+  .am-page .df-table th[scope="row"] { text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 600; min-width: 8rem; }
+  .am-page .df-table td, .am-page .df-table th[scope="row"] { vertical-align: top; overflow-wrap: anywhere; }
+  .am-path { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; }
+  .am-dim { color: var(--dim); }
+  .am-sec { margin-top: 1.2rem; }
+  .am-confirm { border: 2px solid var(--accent); border-radius: var(--r-lg); padding: 0.8rem 1rem; background: var(--card-solid); margin: 0 0 1rem; }
+  .am-confirm h2:focus { outline: none; }
+  .am-prog { width: 100%; max-width: 32rem; height: 0.9rem; }
+  .am-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin: 0 0 0.6rem; }
+  .am-filter select { max-width: 100%; min-width: 0; }
+  .am-page :is(.pa-impact, .am-note, .df-hint, .am-confirm) { min-width: 0; overflow-wrap: anywhere; }
+  .am-page button:focus-visible, .am-page summary:focus-visible, .am-page a:focus-visible, .am-page input:focus-visible, .am-page select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 760px) { .am-page .rp-bar .df-ctl { flex-wrap: wrap; } }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page am-page sh-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Tenant</span> API map</h1>
+      <p>Which Zscaler features does this tenant have, and which of them can your API client read? This page finds out by asking: it reads each readable endpoint once, with <strong>GET only</strong>, and keeps the status, how many items came back and the <strong>names</strong> of the top-level fields. It never keeps a value, an id, a name or a secret. It is <strong>its own tool</strong>, not part of the licence and editions check, and <strong>its own action</strong>: you see every endpoint first and confirm. It reads only the products you ticked on the <a class="am-scope-link" href="/#scopeField">Scope page</a>; the others are listed as skipped. Nothing is changed in your Zscaler.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="amTenantWrap" hidden><span class="lbl">Tenant</span><select id="amTenant" aria-label="Tenant to map"></select></label>
+      <button type="button" class="rp-btn primary" id="amRun">Map this tenant's APIs</button>
+      <a class="rp-btn" id="amExpJson" hidden>JSON</a>
+      <a class="rp-btn" id="amExpFeat" hidden>Features CSV</a>
+      <a class="rp-btn" id="amExpEps" hidden>Endpoints CSV</a>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div class="am-opts" id="amOpts">
+        <fieldset>
+          <legend>What to map</legend>
+          <div class="am-checks" id="amProducts" role="group" aria-label="Products to map"></div>
+          <div class="am-checks">
+            <label><input type="checkbox" id="amFeaturesOnly"> Only the endpoints that decide a feature (about 45)</label>
+            <label>Speed <select id="amSpeed" aria-label="Requests per second">
+              <option value="0.5">1 every 2 seconds</option><option value="1" selected>1 a second</option><option value="2">2 a second</option></select></label>
+          </div>
+        </fieldset>
+      </div>
+      <div id="amConfirmBox" hidden></div>
+      <div id="amSavedBox" hidden></div>
+      <div id="amBody">
+        <div class="pa-intro" id="amHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Choose what to map</strong> (everything readable, or only the endpoints that decide a feature), then click <em>Map this tenant's APIs</em>. It uses the tenant you are signed in to (or the sample tenant) and never asks for new credentials.</li>
+            <li><strong>Read the list and confirm.</strong> The page shows exactly which endpoints it will read, which it skips and why, and how long it takes. Nothing is sent until you confirm. Stop ends it at once.</li>
+            <li><strong>Read the answer.</strong> Each feature is <em>present</em>, <em>not licensed or not enabled</em>, <em>no permission</em> or an <em>error</em>, with the endpoint that decided it. The map is saved on this computer for this tenant, with the time.</li>
+          </ol>
+          <div class="df-hint">Never read into this page: response values, ids, object names, passwords, key and token values, one-time passwords or exports. Endpoints that need an object id, or that return those, are skipped.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/glossary.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script src="/static/tenant_api_map.js"></script>
+</body>
+</html>

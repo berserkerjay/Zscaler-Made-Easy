@@ -60,6 +60,7 @@ STORE_ENV = {
     "DLP_CHECK_CHECKS_CONFIG": "checks_config.json",
     "DLP_CHECK_SAAS_MATRIX": "saas_apps.local.json",
     "DLP_CHECK_POSTURE_SETTINGS": "posture_settings.json",
+    "DLP_CHECK_API_MAP": "tenant_api_map.json",
     "DLP_CHECK_USER_PACKS": "user_packs",
     "DLP_CHECK_FINGERPRINT_KEY": "tenant_fingerprint.key",
     "XDG_CACHE_HOME": "cache",      # Beacon, SSL coverage, update and best-practice caches (Linux)

@@ -54,8 +54,14 @@ Tools exposed (every one read-only; none changes the tenant):
     zdx_summary       — ZDX application scores and alerts (counts only)
     rbac_review       — SOC review: admins (numbered), roles, full vs scoped rights, stale admins, API keys and clients
     telemetry_review  — SOC review: log streams, SIEM destinations and the gaps
+    capacity_review   — licensed vs used counts with headroom
+    postmortem        — incident postmortem template for a window
+    lookup            — Answers from the local reference corpus, with sources
+    cite              — Citations (URL, title, tier, retrieved, excerpt) for a topic or finding id
+    journal_open / journal_add / journal_show — a resumable investigation journal (local)
     timeline          — What the app did since a date (its own records, people counted)
     case_notes        — The admin's workspace notes for the tenant (local)
+    tenant_api_map    — Which Zscaler features the tenant has and which API reads its client may make (the last saved map)
 
 There are no tenant write tools: changes are made in the app's UI, behind
 write mode, a named writer and assessor, a preview and a typed confirmation.
@@ -398,6 +404,10 @@ def get_health() -> dict:
 
 READ_ONLY = (ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True)
              if ToolAnnotations is not None else None)
+
+# The journal tools write the app's own local store (never the tenant).
+JOURNAL_TOOL = (ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
+                if ToolAnnotations is not None else None)
 
 
 # Argument types: the caps and choices are in the schema the assistant
@@ -760,6 +770,105 @@ async def case_notes(tag: Annotated[str, Field(max_length=40)] = "", kind: Annot
     object kind. Authors are counted, not named. Reads no tenant. Read-only.
     """
     return await _run("case_notes", mcp_tools.case_notes, dict(tag=tag, kind=kind), source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def tenant_api_map(source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    The Tenant API map: for each Zscaler feature (Web DLP, Email DLP,
+    Endpoint DLP, SaaS Security, Sandbox, Cloud Firewall, SSL inspection,
+    ZPA, ZDX, Client Connector, AI Guard...) whether the tenant has it
+    (present), does not have it or has not enabled it, or its API client may
+    not read it, with the deciding endpoint, and counts per product. HTTP
+    statuses, item counts and verdicts only: never a value, id or name.
+    live: the newest map an admin saved on the app's page (this tool never
+    reads the live tenant; the map is run on the page, after a confirmation
+    that lists every endpoint). sample or snapshot (with snapshot_id): mapped
+    offline now. Read-only: never changes the tenant.
+    """
+    return await _run("tenant_api_map", mcp_tools.tenant_api_map, {}, source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def capacity_review(source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    Capacity and scaling review: locations, tunnels, ZPA App Connectors and
+    application segments in use against the licensed counts the admin
+    recorded locally, with headroom per metric and a status (ok, watch,
+    low, over). Needs Cloud & Branch Connector or ZPA in scope. Read-only.
+    """
+    return await _run("capacity_review", mcp_tools.capacity_review, {}, source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def postmortem(start: Annotated[str, Field(max_length=40, description="a date such as 2026-10-01; blank with end blank: the last 7 days")] = "",
+                     end: Annotated[str, Field(max_length=40)] = "", title: Annotated[str, Field(max_length=120)] = "") -> dict:
+    """
+    An incident postmortem template for a time window (at most 31 days):
+    summary, timeline, changes by someone else and blank sections to fill
+    in, as Markdown, from the app's own audit log and deployment history.
+    Needs Automation readiness in the server's scope. Reads no tenant. Read-only.
+    """
+    return await _run("postmortem", mcp_tools.postmortem, dict(start=start, end=end, title=title), tenant=False)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def lookup(question: Annotated[str, Field(min_length=1, max_length=300)]) -> dict:
+    """
+    Answer a Zscaler best-practice question from the app's local reference
+    corpus (best-practice catalogue, benchmark guidance, plain-English
+    outcomes); each passage names its source. No network, no tenant. Read-only.
+    """
+    return await _run("lookup", mcp_tools.lookup, dict(question=question), tenant=False)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def cite(topic: Annotated[str, Field(max_length=300)] = "", finding_id: Annotated[str, Field(max_length=60)] = "",
+               fetch: Annotated[bool, Field(description="fetch a fresh excerpt; refused unless the operator turned fetching on where the server runs")] = False) -> dict:
+    """
+    Citations for a topic or a finding id: source URL, title, source tier,
+    retrieved date and a quoted excerpt, from the local catalogue and cache.
+    Fetching is off by default and only reaches Zscaler help and docs hosts.
+    Reads no tenant. Read-only.
+    """
+    return await _run("cite", mcp_tools.cite, dict(topic=topic, finding_id=finding_id, fetch=fetch), tenant=False)
+
+
+@mcp.tool(annotations=JOURNAL_TOOL)
+async def journal_open(title: Annotated[str, Field(min_length=1, max_length=200)], source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    Open an investigation case in the app's local journal (hypothesis ->
+    evidence -> conclusion, plus open questions). Writes only the app's own
+    sealed local store, never the tenant. Needs Automation in scope.
+    """
+    return await _run("journal_open", mcp_tools.journal_open, dict(title=title), source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=JOURNAL_TOOL)
+async def journal_add(case_id: Annotated[str, Field(min_length=8, max_length=8)],
+                      kind: Literal["hypothesis", "evidence", "conclusion", "question", "answer"],
+                      content: Annotated[str, Field(min_length=1, max_length=1000)],
+                      step_id: Annotated[str, Field(max_length=8, description="the step (evidence, conclusion) or question (answer) id")] = "",
+                      tool: Annotated[str, Field(max_length=40, description="evidence: the tool whose result this cites")] = "",
+                      ref: Annotated[str, Field(max_length=200, description="evidence: its read_at or a short quote")] = "",
+                      outcome: Literal["", "supported", "rejected", "inconclusive"] = "",
+                      source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    Add to an investigation case: a hypothesis (starts a step), evidence (a
+    reference to a tool result), a conclusion (needs evidence and an
+    outcome), a question or its answer. Writes only the app's local store.
+    """
+    return await _run("journal_add", mcp_tools.journal_add, dict(case_id=case_id, kind=kind, content=content, step_id=step_id, tool=tool, ref=ref, outcome=outcome),
+                      source=source, snapshot_id=snapshot_id)
+
+
+@mcp.tool(annotations=READ_ONLY)
+async def journal_show(case_id: Annotated[str, Field(max_length=8)] = "", source: _Source = "live", snapshot_id: _SnapId = "") -> dict:
+    """
+    List the tenant's investigation cases, or show one with where it left
+    off (`next`), so a later conversation resumes it. Local, read-only.
+    """
+    return await _run("journal_show", mcp_tools.journal_show, dict(case_id=case_id), source=source, snapshot_id=snapshot_id)
 
 
 # ── Entrypoint ───────────────────────────────────────────────────────

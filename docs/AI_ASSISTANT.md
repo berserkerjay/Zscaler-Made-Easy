@@ -37,9 +37,15 @@ mode, a named writer and assessor, a preview and a typed confirmation.
 | `compliance_map` | Compliance mapping | Framework controls met or not, from the last assessment |
 | `traffic_logs_summary` | Traffic and session logs | A saved report as counts (people counted); never an upload through MCP |
 | `ztw_summary` | Cloud & Branch Connector | Connector counts and the connector checks (admins and keys counted) |
+| `capacity_review` | Capacity | Locations, tunnels, ZPA App Connectors and segments against the licensed counts you record in `capacity_entitlements.json` (or `DLP_CHECK_CAPACITY`), with headroom |
+| `postmortem` | Automation | Incident postmortem template (Markdown) for a window from the app's own records |
+| `lookup` | Reference | Answers from the local corpus (best-practice catalogue, benchmark guidance, plain-English outcomes) with sources |
+| `cite` | Reference | Source URL, title, tier, retrieved date and a quoted excerpt for a topic or finding id; fetching needs `ZSCALER_MCP_ALLOW_FETCH=1` and only reaches Zscaler help and docs hosts |
+| `journal_open` / `journal_add` / `journal_show` | Automation | A resumable investigation journal (hypothesis, evidence, conclusion, open questions) in the app's own sealed local store; these two writers touch no tenant |
 | `zdx_summary` | ZDX | App score bands, the lowest apps, alerts by severity and rule (no devices) |
 | `rbac_review` | SOC review: admin access | Admins (numbered), roles, full vs limited rights, stale admins, API keys and clients, findings |
 | `telemetry_review` | SOC review: logging | Log streams, NSS servers, LSS, Client Connector log settings, destinations and gaps |
+| `tenant_api_map` | Tenant API map | Which features the tenant has and which reads its API client may make: the newest map saved on the app's page (live) or the sample's, statuses and counts only |
 | `timeline` | Audit timeline | What the app did since a date, from its own records (people counted) |
 | `case_notes` | Workspace notes | The admin's notes for the tenant (local) |
 | `run_assessment`, `run_section`, `list_checks`, `get_health` | The assessment | As before |

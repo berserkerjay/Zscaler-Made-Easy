@@ -57,7 +57,7 @@ PAGES = {
     "/report/evalall": "report_evalall.html", "/report/logs": "report_logs.html", "/report/vendor": "report_vendor.html",
     "/report/compliance": "report_compliance.html", "/report/fleet": "report_fleet.html", "/report/view": "report_view.html",
     "/report/flow": "report_flow.html", "/report/bypass": "report_bypass.html", "/report/dataflow": "report_dataflow.html",
-    "/report/live": "report_live.html", "/report/audit": "report_audit.html", "/report/motion": "report_motion.html",
+    "/report/live": "report_live.html", "/report/audit": "report_audit.html", "/report/capacity": "report_capacity.html", "/report/motion": "report_motion.html",
     "/report/shadow": "report_shadow.html", "/report/posture": "report_posture.html",
     "/report/self-heal": "report_self_heal.html", "/report/path": "report_path.html", "/report/pov": "report_pov.html",
     "/report/sslflow": "report_sslflow.html", "/report/sslcoverage": "report_ssl_coverage.html",
@@ -66,6 +66,7 @@ PAGES = {
     "/report/traffic-logs": "report_traffic_logs.html",
     "/report/other-products": "report_other_products.html",
     "/report/aiguard": "report_aiguard.html",
+    "/report/api-map": "report_api_map.html",
 }
 
 
@@ -365,11 +366,13 @@ TOURS = {
                        ["fill", "#scenarioCorpus", "Test card 4111 1111 1111 1111"], ["click", "#scenarioRun"]],
     "/report/live": [["click", "#lfStart"]],
     "/report/audit": [["click", "#atRun"]],
+    "/report/capacity": [["click", "#crRun"]],
     "/report/beacon": [["click", "#bcRun"]],
     "/report/digest": [["click", "#dgRun"]],
     "/report/fleet": [["click", "#zfRun"]],
     "/report/shadow": [["click", "#shRun"]],
     "/report/sslcoverage": [["click", "#scRun"]],
+    "/report/api-map": [["click", "#amRun"], ["wait", "#amConfirm"], ["click", "#amConfirm"], ["wait", "#amFeatures"]],
 }
 # Pages that show a stored report (?id=): the tour opens one built by the
 # app's own code from fake reads (filled in by the fixture).

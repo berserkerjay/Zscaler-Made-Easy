@@ -12,7 +12,7 @@
   const live = $('liveRegion');
   const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
   const PROFILE_KEY = 'pov_profile_v1';
-  let cat = null, profiles = [], pov = null, tenantLabel = '', templates = [];
+  let cat = null, profiles = [], pov = null, tenantLabel = '', templates = [], progress = null;
   let busy = false;
 
   function h(tag, attrs, ...kids) {
@@ -100,7 +100,7 @@
     if (!r.ok) { const e = new Error(errText(d, r.status)); e.status = r.status; throw e; }
     return d;
   }
-  function take(d) { pov = d.pov || null; tenantLabel = d.tenant_label || tenantLabel; if (d.templates) templates = d.templates; render(); }
+  function take(d) { pov = d.pov || null; progress = d.progress || null; tenantLabel = d.tenant_label || tenantLabel; if (d.templates) templates = d.templates; render(); }
 
   async function load() {
     status('Loading…');
@@ -148,6 +148,9 @@
     const had = document.activeElement && document.activeElement.id;
     uid = 0;
     $('rpMeta').textContent = pov ? `${pov.intake.customer} · ${tenantLabel} · ${W(pov.status)}` : (tenantLabel || '');
+    const pg = $('pvProgress');
+    pg.textContent = pov && progress ? `Resume here: ${progress.tests.done} of ${progress.tests.total} tests have a result, ${progress.criteria.met} of ${progress.criteria.total} criteria met`
+      + `${progress.days_left == null ? '' : `, ${progress.days_left} day${progress.days_left === 1 ? '' : 's'} left`}. ${progress.next_step} ${progress.posture.sentence}` : '';
     renderPlan(); renderBuild(); renderRunbook(); renderKit(); renderNotes(); renderReport();
     const back = had && document.getElementById(had);
     if (back && back !== document.activeElement && !back.closest('[hidden]')) back.focus({ preventScroll: true });
