@@ -5,9 +5,9 @@ pyproject.toml's [tool.bandit] configuration, exactly as `make sast` does,
 and the run fails on any finding of medium severity or higher. A finding is
 fixed at the root, or, when bandit misreads the code, suppressed on its own
 line as `# nosec <id> # <why>`; every such suppression must be on the
-reviewed list below, and must still silence a live finding. (CodeQL is
-not used: code scanning on a private personal repository needs GitHub
-Advanced Security, which GitHub offers only to organizations.)
+reviewed list below, and must still silence a live finding. CodeQL
+(.github/workflows/codeql.yml) adds Python and JavaScript data-flow queries
+in CI; its workflow's shape is pinned here too.
 """
 import hashlib
 import io
@@ -228,3 +228,49 @@ def test_an_id_hash_is_not_a_security_use_and_works_on_fips_openssl(monkeypatch,
     got = call()
     # Assert
     assert got == expected and got
+
+
+# ── CodeQL in CI ─────────────────────────────────────────────────────
+
+def _codeql():
+    with open(os.path.join(ROOT, ".github", "workflows", "codeql.yml"), encoding="utf-8") as f:
+        wf = yaml.safe_load(f)
+    if True in wf:   # YAML 1.1 reads the bare key `on` as True
+        wf["on"] = wf.pop(True)
+    return wf
+
+
+def test_codeql_scans_python_and_javascript_on_pull_requests_and_weekly():
+    """Scorecard SAST · SSDF PW.7.2: CodeQL (security-extended) runs on pull requests to dev, qa and main, and weekly, on Linux."""
+    # Arrange
+    wf = _codeql()
+    on, jobs = wf["on"], wf["jobs"]
+    # Act
+    steps = [s for job in jobs.values() for s in job["steps"]]
+    init = next(s for s in steps if str(s.get("uses", "")).startswith("github/codeql-action/init@"))
+    analyze = next(s for s in steps if str(s.get("uses", "")).startswith("github/codeql-action/analyze@"))
+    langs = {x.strip() for x in init["with"]["languages"].split(",")}
+    cron = on["schedule"][0]["cron"].split()
+    # Assert
+    assert set(on["pull_request"]["branches"]) == {"dev", "qa", "main"}
+    assert len(cron) == 5 and cron[2] == "*" and cron[4] not in ("*", "*/1"), "weekly: one day of the week"
+    assert langs == {"python", "javascript-typescript"}
+    assert init["with"]["queries"] == "security-extended"
+    assert init["uses"].split("@")[1] == analyze["uses"].split("@")[1], "init and analyze from the same release"
+    assert all(job["runs-on"] == "ubuntu-latest" for job in jobs.values())
+
+
+def test_codeql_is_least_privilege_cancels_stale_runs_and_is_time_boxed():
+    """Scorecard Token-Permissions · Scorecard SAST · SSDF PO.5.1: read-only at the top, security-events: write only on the analysis job."""
+    # Arrange
+    wf = _codeql()
+    # Act
+    jobs = wf["jobs"]
+    writers = {jid for jid, job in jobs.items() if (job.get("permissions") or {}).get("security-events") == "write"}
+    # Assert
+    assert wf["permissions"] == {"contents": "read"}
+    assert writers == {"analyze"} and len(jobs) == 1
+    assert set(jobs["analyze"]["permissions"]) == {"contents", "actions", "security-events"}
+    assert jobs["analyze"]["permissions"]["actions"] == "read"
+    assert wf["concurrency"]["cancel-in-progress"] is True
+    assert 0 < jobs["analyze"]["timeout-minutes"] <= 30
