@@ -1,15 +1,9 @@
 name: Native local installs
 
-# macOS minutes bill at 10x and Windows at 2x on a private repository, so the seven
-# native installs run on pull requests into main, pushes to main, weekly and by hand,
-# not on every pull request into dev (the Tests workflow covers those on Linux).
 on:
   push:
     branches: ["main"]
   pull_request:
-    branches: ["main"]
-  schedule:
-    - cron: "17 5 * * 1"   # weekly, Monday 05:17 UTC
   workflow_dispatch:
 
 permissions:
