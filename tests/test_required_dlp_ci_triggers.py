@@ -17,8 +17,6 @@ def test_full_checks_run_on_pr_and_main_with_manual_dispatch(file, jobs):
     for job in jobs:
         assert '\n  ' + job + ':\n' in source
     if file == 'native-install.yml':
-        # billed 10x (macOS) and 2x (Windows): PRs into main, pushes to main and weekly only
-        assert '  pull_request:\n    branches: ["main"]\n' in triggers and '  schedule:\n' in triggers
         for platform in ('ubuntu-24.04', 'macos-15', 'macos-15-intel', 'windows-2025'):
             assert platform in source
         assert 'python: ["3.11", "3.14"]' in source

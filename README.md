@@ -1,5 +1,7 @@
 # Zscaler Made Easy — assess, administer, audit and deploy Zscaler, in plain words
 
+> **Project status: paused for community feedback.** I won't be updating this app until I hear from people who use it. If you try it, please open an issue with what worked, what didn't, and what you'd want next. That feedback decides what comes next.
+
 **Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
 
 Zscaler Made Easy connects to a customer's Zscaler tenant with API credentials,
@@ -113,9 +115,9 @@ prerelease (whose ZIA service definition is machine-readable), the
 Zscaler's API reference. Drift opens or updates one issue labelled
 `upstream-drift` with the report; a clean day closes it.
 
-Static analysis is bandit in every test run; see `SECURITY.md` "Static
-analysis (SAST)" (CodeQL code scanning needs GitHub Advanced Security, which
-GitHub offers only to organizations for a private repository).
+CodeQL (`.github/workflows/codeql.yml`) scans the Python and the JavaScript
+with GitHub's security-extended queries on pull requests to `dev`, `qa` and
+`main` and weekly; see `SECURITY.md` "Static analysis (SAST)".
 
 The same watchers also run inside the app as **Beacon** (`beacon.py`, the
 Beacon tab, `/report/beacon`): the SDK, the ZIA API (service definition,
