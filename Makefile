@@ -38,9 +38,8 @@ check:
 # Static analysis (SAST) of the app's Python, offline: bandit with the
 # configuration in pyproject.toml [tool.bandit] (every check, tests/
 # excluded), failing on any finding of medium severity or higher.
-# tests/test_sast.py runs the same gate in every test run; CodeQL
-# (.github/workflows/codeql.yml) adds Python and JavaScript data-flow
-# queries on pull requests and weekly. Needs `make dev` first.
+# tests/test_sast.py runs the same gate in every test run. Needs
+# `make dev` first.
 sast:
 	$(PY) -m bandit -c pyproject.toml -r . --severity-level medium --confidence-level low -q
 
