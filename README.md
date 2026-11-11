@@ -113,9 +113,9 @@ prerelease (whose ZIA service definition is machine-readable), the
 Zscaler's API reference. Drift opens or updates one issue labelled
 `upstream-drift` with the report; a clean day closes it.
 
-CodeQL (`.github/workflows/codeql.yml`) scans the Python and the JavaScript
-with GitHub's security-extended queries on pull requests to `dev`, `qa` and
-`main` and weekly; see `SECURITY.md` "Static analysis (SAST)".
+Static analysis is bandit in every test run; see `SECURITY.md` "Static
+analysis (SAST)" (CodeQL code scanning needs GitHub Advanced Security, which
+GitHub offers only to organizations for a private repository).
 
 The same watchers also run inside the app as **Beacon** (`beacon.py`, the
 Beacon tab, `/report/beacon`): the SDK, the ZIA API (service definition,
