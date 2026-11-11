@@ -1,5 +1,7 @@
 # Zscaler Made Easy — assess, administer, audit and deploy Zscaler, in plain words
 
+> **Project status: paused for community feedback.** I won't be updating this app until I hear from people who use it. If you try it, please open an issue with what worked, what didn't, and what you'd want next. That feedback decides what comes next.
+
 **Open source.** Zscaler Made Easy is open-source software under the Apache License 2.0 (see LICENSE). It is built entirely from information provided by Zscaler (its public documentation, public API and open-source SDKs and Terraform providers) and by third parties. It is an independent project, not an official Zscaler product; Zscaler and related marks belong to Zscaler, Inc.
 
 Zscaler Made Easy connects to a customer's Zscaler tenant with API credentials,
