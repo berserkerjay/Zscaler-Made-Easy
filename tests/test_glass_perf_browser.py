@@ -78,9 +78,10 @@ const open = async off => {
   await until(() => ev(`(document.documentElement.classList.contains('glass-off') || [...document.querySelectorAll('main > section.rp-card')].slice(-12).every(c => c.classList.contains('glass-fit')))
     && document.getAnimations().every(a => a.playState !== 'running' || (a.effect && a.effect.getTiming().iterations === Infinity))`), 'the page to settle', 10000);
   // ... and the compositor has finished drawing the new cards' blurred layers: drawn in software, they land over a few
-  // hundred ms after the marks, and the measured window must not start inside that. Bounded: after 3 s it measures
-  // anyway, so a page that keeps drawing still fails the checks below.
-  for (let i = 0; i < 6; i++) { const q = await traced(() => ev(`new Promise(r => setTimeout(() => r({}), 500))`)); if (q.frames <= 1) break; }
+  // hundred ms after the marks (several seconds on a busy two-CPU CI runner), and the measured window must not start
+  // inside that. Two quiet half-seconds in a row are needed. Bounded: after 10 s it measures anyway, so a page that keeps
+  // drawing still fails the checks below.
+  for (let i = 0, quiet = 0; i < 20 && quiet < 2; i++) { const q = await traced(() => ev(`new Promise(r => setTimeout(() => r({}), 500))`)); quiet = q.frames <= 1 ? quiet + 1 : 0; }
 };
 for (const off of [false, true]) {
   const k = off ? 'off' : 'on';
