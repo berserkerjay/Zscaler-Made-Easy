@@ -1,0 +1,1406 @@
+[
+  {
+    "name": "CA01-Identity-SIN-Web",
+    "description": "Canadian DLP Web monitor: SIN shape + nearby English/French label; no Luhn. Prefer Zscaler native SIN validator.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-SIN"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA01-Identity-SIN-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: SIN shape + nearby English/French label; no Luhn. Prefer Zscaler native SIN validator.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-SIN"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA01-Identity-SIN-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: SIN shape + nearby English/French label; no Luhn. Prefer Zscaler native SIN validator.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-SIN"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA01-Identity-SIN-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: SIN shape + nearby English/French label; no Luhn. Prefer Zscaler native SIN validator.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-SIN"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA02-Identity-Pas-Web",
+    "description": "Canadian DLP Web monitor: Canadian passport new and legacy formats",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-Passports"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA02-Identity-Pas-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Canadian passport new and legacy formats",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-Passports"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA02-Identity-Pas-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Canadian passport new and legacy formats",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-Passports"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA02-Identity-Pas-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Canadian passport new and legacy formats",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-Passports"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA03-Identity-IRC-Web",
+    "description": "Canadian DLP Web monitor: Federal immigration and identity document number formats",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-IRCC"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA03-Identity-IRC-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Federal immigration and identity document number formats",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-IRCC"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA03-Identity-IRC-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Federal immigration and identity document number formats",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-IRCC"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA03-Identity-IRC-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Federal immigration and identity document number formats",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-IRCC"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA04-Identity-Dri-Web",
+    "description": "Canadian DLP Web monitor: 13 provincial and territorial driver licence candidate formats; QA required",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-Driver"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA04-Identity-Dri-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: 13 provincial and territorial driver licence candidate formats; QA required",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-Driver"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA04-Identity-Dri-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: 13 provincial and territorial driver licence candidate formats; QA required",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-Driver"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA04-Identity-Dri-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: 13 provincial and territorial driver licence candidate formats; QA required",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Identity-Driver"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA05-Health-Numbe-Web",
+    "description": "Canadian DLP Web monitor: 13 jurisdictional provincial/territorial healthcare identifiers; context constrained",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Health-Numbers"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA05-Health-Numbe-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: 13 jurisdictional provincial/territorial healthcare identifiers; context constrained",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Health-Numbers"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA05-Health-Numbe-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: 13 jurisdictional provincial/territorial healthcare identifiers; context constrained",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Health-Numbers"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA05-Health-Numbe-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: 13 jurisdictional provincial/territorial healthcare identifiers; context constrained",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Health-Numbers"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA06-Health-Recor-Web",
+    "description": "Canadian DLP Web monitor: Health ID with clinical context; Canadian PHI candidate",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Health-Records"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA06-Health-Recor-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Health ID with clinical context; Canadian PHI candidate",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Health-Records"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA06-Health-Recor-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Health ID with clinical context; Canadian PHI candidate",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Health-Records"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA06-Health-Recor-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Health ID with clinical context; Canadian PHI candidate",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Health-Records"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA07-Finance-Bank-Web",
+    "description": "Canadian DLP Web monitor: Canadian banking references, contextual only",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Banking"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA07-Finance-Bank-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Canadian banking references, contextual only",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Banking"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA07-Finance-Bank-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Canadian banking references, contextual only",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Banking"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA07-Finance-Bank-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Canadian banking references, contextual only",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Banking"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA08-Finance-Tax-Web",
+    "description": "Canadian DLP Web monitor: Federal CRA and Quebec tax/business identification",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Tax"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA08-Finance-Tax-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Federal CRA and Quebec tax/business identification",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Tax"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA08-Finance-Tax-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Federal CRA and Quebec tax/business identification",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Tax"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA08-Finance-Tax-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Federal CRA and Quebec tax/business identification",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Tax"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA09-Finance-Tax--Web",
+    "description": "Canadian DLP Web monitor: Tax forms and taxpayer/CRA identifier",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Tax-Returns"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA09-Finance-Tax--End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Tax forms and taxpayer/CRA identifier",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Tax-Returns"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA09-Finance-Tax--SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Tax forms and taxpayer/CRA identifier",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Tax-Returns"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA09-Finance-Tax--Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Tax forms and taxpayer/CRA identifier",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Tax-Returns"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA10-Finance-Payr-Web",
+    "description": "Canadian DLP Web monitor: Payroll terms with SIN or CRA payroll account",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Payroll"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA10-Finance-Payr-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Payroll terms with SIN or CRA payroll account",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Payroll"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA10-Finance-Payr-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Payroll terms with SIN or CRA payroll account",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Payroll"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA10-Finance-Payr-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Payroll terms with SIN or CRA payroll account",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Finance-Payroll"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA11-Contact-Addr-Web",
+    "description": "Canadian DLP Web monitor: Canadian postal code plus address labeling",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Contact-Address"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA11-Contact-Addr-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Canadian postal code plus address labeling",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Contact-Address"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA11-Contact-Addr-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Canadian postal code plus address labeling",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Contact-Address"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA11-Contact-Addr-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Canadian postal code plus address labeling",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Contact-Address"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA12-Contact-Iden-Web",
+    "description": "Canadian DLP Web monitor: Contact data combination; phone number is shared with USA",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Contact-Identity"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA12-Contact-Iden-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Contact data combination; phone number is shared with USA",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Contact-Identity"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA12-Contact-Iden-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Contact data combination; phone number is shared with USA",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Contact-Identity"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA12-Contact-Iden-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Contact data combination; phone number is shared with USA",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Contact-Identity"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA13-Education-Re-Web",
+    "description": "Canadian DLP Web monitor: Education terminology and birth date/postal context",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Education-Record"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA13-Education-Re-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Education terminology and birth date/postal context",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Education-Record"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA13-Education-Re-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Education terminology and birth date/postal context",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Education-Record"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA13-Education-Re-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Education terminology and birth date/postal context",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Education-Record"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA14-Insurance-Re-Web",
+    "description": "Canadian DLP Web monitor: Insurance data and contextual identifiers",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Insurance-Record"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA14-Insurance-Re-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Insurance data and contextual identifiers",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Insurance-Record"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA14-Insurance-Re-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Insurance data and contextual identifiers",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Insurance-Record"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA14-Insurance-Re-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Insurance data and contextual identifiers",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Insurance-Record"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA15-Privacy-Mark-Web",
+    "description": "Canadian DLP Web monitor: Privacy label plus Canadian identifiers",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Privacy-Marked"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA15-Privacy-Mark-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Privacy label plus Canadian identifiers",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Privacy-Marked"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA15-Privacy-Mark-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Privacy label plus Canadian identifiers",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Privacy-Marked"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA15-Privacy-Mark-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Privacy label plus Canadian identifiers",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-Privacy-Marked"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA16-PII-Composit-Web",
+    "description": "Canadian DLP Web monitor: Canadian identification and composite personal data",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PII-Composite"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA16-PII-Composit-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Canadian identification and composite personal data",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PII-Composite"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA16-PII-Composit-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Canadian identification and composite personal data",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PII-Composite"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA16-PII-Composit-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Canadian identification and composite personal data",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PII-Composite"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA17-PHI-Quebec-Web",
+    "description": "Canadian DLP Web monitor: Quebec RAMQ and clinical narrative",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PHI-Quebec"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA17-PHI-Quebec-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Quebec RAMQ and clinical narrative",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PHI-Quebec"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA17-PHI-Quebec-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Quebec RAMQ and clinical narrative",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PHI-Quebec"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA17-PHI-Quebec-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Quebec RAMQ and clinical narrative",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PHI-Quebec"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  },
+  {
+    "name": "CA18-PHI-Ontario-Web",
+    "description": "Canadian DLP Web monitor: Ontario OHIP and clinical narrative",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PHI-Ontario"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA18-PHI-Ontario-End",
+    "channel": "endpoint",
+    "description": "Canadian DLP Endpoint monitor: Ontario OHIP and clinical narrative",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PHI-Ontario"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false
+  },
+  {
+    "name": "CA18-PHI-Ontario-SaaS",
+    "channel": "saas",
+    "description": "Canadian DLP SaaS monitor: Ontario OHIP and clinical narrative",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PHI-Ontario"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "CA18-PHI-Ontario-Mail",
+    "channel": "email",
+    "description": "Canadian DLP Email monitor: Ontario OHIP and clinical narrative",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA-PHI-Ontario"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "channel_mirror": true,
+    "tenants": "any"
+  }
+]
