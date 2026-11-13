@@ -1,0 +1,92 @@
+[
+  {
+    "name": "CA-Identity-SIN",
+    "description": "SIN shape + nearby English/French label; no Luhn. Prefer Zscaler native SIN validator.",
+    "expression": "(D:CA-SIN-Context > 0)"
+  },
+  {
+    "name": "CA-Identity-Passports",
+    "description": "Canadian passport new and legacy formats",
+    "expression": "((D:CA-Passport-New > 0) OR (D:CA-Passport-Legacy > 0))"
+  },
+  {
+    "name": "CA-Identity-IRCC",
+    "description": "Federal immigration and identity document number formats",
+    "expression": "((D:CA-IRCC-UCI > 0) OR (D:CA-IRCC-COPR > 0) OR (D:CA-IRCC-PR-Card > 0) OR (D:CA-IRCC-Citizenship > 0) OR (D:CA-IRCC-Landing > 0) OR (D:CA-Status-Registration > 0) OR (D:CA-Birth-Registration > 0))"
+  },
+  {
+    "name": "CA-Identity-Driver",
+    "description": "13 provincial and territorial driver licence candidate formats; QA required",
+    "expression": "((D:CA-Driver-NL > 0) OR (D:CA-Driver-PE > 0) OR (D:CA-Driver-NS > 0) OR (D:CA-Driver-NB > 0) OR (D:CA-Driver-QC > 0) OR (D:CA-Driver-ON > 0) OR (D:CA-Driver-MB > 0) OR (D:CA-Driver-SK > 0) OR (D:CA-Driver-AB > 0) OR (D:CA-Driver-BC > 0) OR (D:CA-Driver-YT > 0) OR (D:CA-Driver-NT > 0) OR (D:CA-Driver-NU > 0))"
+  },
+  {
+    "name": "CA-Health-Numbers",
+    "description": "13 jurisdictional provincial/territorial healthcare identifiers; context constrained",
+    "expression": "((D:CA-Health-NL > 0) OR (D:CA-Health-PE > 0) OR (D:CA-Health-NS > 0) OR (D:CA-Health-NB > 0) OR (D:CA-Health-QC > 0) OR (D:CA-Health-ON > 0) OR (D:CA-Health-MB > 0) OR (D:CA-Health-SK > 0) OR (D:CA-Health-AB > 0) OR (D:CA-Health-BC > 0) OR (D:CA-Health-YT > 0) OR (D:CA-Health-NT > 0) OR (D:CA-Health-NU > 0))"
+  },
+  {
+    "name": "CA-Health-Records",
+    "description": "Health ID with clinical context; Canadian PHI candidate",
+    "expression": "(((D:CA-Health-NL > 0) OR (D:CA-Health-PE > 0) OR (D:CA-Health-NS > 0) OR (D:CA-Health-NB > 0) OR (D:CA-Health-QC > 0) OR (D:CA-Health-ON > 0) OR (D:CA-Health-MB > 0) OR (D:CA-Health-SK > 0) OR (D:CA-Health-AB > 0) OR (D:CA-Health-BC > 0) OR (D:CA-Health-YT > 0) OR (D:CA-Health-NT > 0) OR (D:CA-Health-NU > 0)) AND (D:CA-Clinical-Docs > 0))"
+  },
+  {
+    "name": "CA-Finance-Banking",
+    "description": "Canadian banking references, contextual only",
+    "expression": "((D:CA-Bank-EFT > 0) OR (D:CA-Bank-Transit > 0) OR (D:CA-Bank-Account > 0))"
+  },
+  {
+    "name": "CA-Finance-Tax",
+    "description": "Federal CRA and Quebec tax/business identification",
+    "expression": "((D:CA-CRA-BN > 0) OR (D:CA-CRA-Program > 0) OR (D:CA-QC-NEQ > 0) OR (D:CA-QC-QST > 0))"
+  },
+  {
+    "name": "CA-Finance-Tax-Returns",
+    "description": "Tax forms and taxpayer/CRA identifier",
+    "expression": "((D:CA-Tax-Forms > 0) AND ((D:CA-SIN-Context > 0) OR (D:CA-CRA-BN > 0) OR (D:CA-CRA-Program > 0)))"
+  },
+  {
+    "name": "CA-Finance-Payroll",
+    "description": "Payroll terms with SIN or CRA payroll account",
+    "expression": "((D:CA-Payroll-Docs > 0) AND ((D:CA-SIN-Context > 0) OR (D:CA-CRA-Program > 0)))"
+  },
+  {
+    "name": "CA-Contact-Address",
+    "description": "Canadian postal code plus address labeling",
+    "expression": "((D:CA-Canada-Postal > 0) AND (D:CA-Address-Labels > 0))"
+  },
+  {
+    "name": "CA-Contact-Identity",
+    "description": "Contact data combination; phone number is shared with USA",
+    "expression": "((D:CA-Canada-Phone > 0) AND (D:CA-Canada-Postal > 0))"
+  },
+  {
+    "name": "CA-Education-Record",
+    "description": "Education terminology and birth date/postal context",
+    "expression": "((D:CA-Student-Docs > 0) AND ((D:CA-DOB > 0) OR (D:CA-Canada-Postal > 0)))"
+  },
+  {
+    "name": "CA-Insurance-Record",
+    "description": "Insurance data and contextual identifiers",
+    "expression": "((D:CA-Insurance-Docs > 0) AND ((D:CA-Canada-Postal > 0) OR (D:CA-DOB > 0) OR (D:CA-Bank-Account > 0)))"
+  },
+  {
+    "name": "CA-Privacy-Marked",
+    "description": "Privacy label plus Canadian identifiers",
+    "expression": "((D:CA-Privacy-Labels > 0) AND ((D:CA-SIN-Context > 0) OR (D:CA-Canada-Postal > 0) OR (D:CA-Health-QC > 0) OR (D:CA-Health-ON > 0)))"
+  },
+  {
+    "name": "CA-PII-Composite",
+    "description": "Canadian identification and composite personal data",
+    "expression": "(((D:CA-SIN-Context > 0) OR (D:CA-Passport-New > 0) OR (D:CA-Passport-Legacy > 0) OR (D:CA-IRCC-UCI > 0) OR (D:CA-Driver-NL > 0) OR (D:CA-Driver-PE > 0) OR (D:CA-Driver-NS > 0) OR (D:CA-Driver-NB > 0) OR (D:CA-Driver-QC > 0) OR (D:CA-Driver-ON > 0) OR (D:CA-Driver-MB > 0) OR (D:CA-Driver-SK > 0) OR (D:CA-Driver-AB > 0) OR (D:CA-Driver-BC > 0) OR (D:CA-Driver-YT > 0) OR (D:CA-Driver-NT > 0) OR (D:CA-Driver-NU > 0)) OR ((D:CA-DOB > 0) AND (D:CA-Canada-Postal > 0)))"
+  },
+  {
+    "name": "CA-PHI-Quebec",
+    "description": "Quebec RAMQ and clinical narrative",
+    "expression": "((D:CA-Health-QC > 0) AND (D:CA-Clinical-Docs > 0))"
+  },
+  {
+    "name": "CA-PHI-Ontario",
+    "description": "Ontario OHIP and clinical narrative",
+    "expression": "((D:CA-Health-ON > 0) AND (D:CA-Clinical-Docs > 0))"
+  }
+]
