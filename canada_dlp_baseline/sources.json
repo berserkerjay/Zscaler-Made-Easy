@@ -1,0 +1,267 @@
+{
+  "CA-SIN-Context": {
+    "url": "https://help.zscaler.com/zia/understanding-predefined-dlp-dictionaries",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Passport-New": {
+    "url": "https://ircc.canada.ca/english/helpcentre/answer.asp?qnum=1446",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Passport-Legacy": {
+    "url": "https://learn.microsoft.com/en-us/purview/sit-sensitive-information-type-entity-definitions",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-IRCC-UCI": {
+    "url": "https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides/imm0008.html",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-IRCC-COPR": {
+    "url": "https://ircc.canada.ca/english/helpcentre/answer.asp?qnum=1446",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-IRCC-PR-Card": {
+    "url": "https://ircc.canada.ca/english/helpcentre/answer.asp?qnum=1446",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-IRCC-Citizenship": {
+    "url": "https://ircc.canada.ca/english/helpcentre/answer.asp?qnum=1446",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-IRCC-Landing": {
+    "url": "https://ircc.canada.ca/english/helpcentre/answer.asp?qnum=1446",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Status-Registration": {
+    "url": "https://ircc.canada.ca/english/helpcentre/answer.asp?qnum=1446",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Birth-Registration": {
+    "url": "https://ircc.canada.ca/english/helpcentre/answer.asp?qnum=1446",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-NL": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-PE": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-NS": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-NB": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-QC": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-ON": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-MB": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-SK": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-AB": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-BC": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-YT": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-NT": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Health-NU": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-NL": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-PE": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-NS": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-NB": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-QC": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-ON": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-MB": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-SK": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-AB": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-BC": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-YT": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-NT": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Driver-NU": {
+    "url": "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "verification": "COMMUNITY_CANDIDATE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-CRA-BN": {
+    "url": "https://www.canada.ca/en/revenue-agency/services/forms-publications/publications/2-1/required-registration.html",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-CRA-Program": {
+    "url": "https://www.canada.ca/en/revenue-agency/services/forms-publications/publications/2-1/required-registration.html",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-QC-NEQ": {
+    "url": "https://www.quebec.ca/en/businesses-and-self-employed-workers/start-entreprise/register-constitute-enterprise/learn-about-registration/quebec-enterprise-number-neq",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-QC-QST": {
+    "url": "https://www.revenuquebec.ca/en/online-services/tools/application-programming-interface-api-used-to-validate-a-qst-registration-number/",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Bank-EFT": {
+    "url": "https://www.payments.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Bank-Transit": {
+    "url": "https://www.payments.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Bank-Account": {
+    "url": "https://www.payments.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Canada-Postal": {
+    "url": "https://www.canadapost-postescanada.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Canada-Phone": {
+    "url": "https://cnac.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-DOB": {
+    "url": "https://www.canada.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Tax-Forms": {
+    "url": "https://www.canada.ca/en/revenue-agency/services/forms-publications/publications/2-1/required-registration.html",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Payroll-Docs": {
+    "url": "https://www.canada.ca/en/revenue-agency/services/forms-publications/publications/2-1/required-registration.html",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Clinical-Docs": {
+    "url": "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Student-Docs": {
+    "url": "https://www.priv.gc.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Insurance-Docs": {
+    "url": "https://www.priv.gc.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Privacy-Labels": {
+    "url": "https://www.priv.gc.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  },
+  "CA-Address-Labels": {
+    "url": "https://www.canadapost-postescanada.ca",
+    "verification": "FORMAT_REFERENCE",
+    "validation": "Contextual pattern, no checksum or issuance validation unless explicitly native"
+  }
+}
