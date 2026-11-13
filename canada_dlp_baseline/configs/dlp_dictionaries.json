@@ -1,0 +1,1359 @@
+[
+  {
+    "name": "CA-SIN-Context",
+    "description": "Context-only SIN fallback; prefer native Luhn-validating Zscaler dictionary",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{3}[-. ]?\\d{3}[-. ]?\\d{3}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "social insurance number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro d'assurance sociale"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Canada SIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro NAS"
+      }
+    ]
+  },
+  {
+    "name": "CA-Passport-New",
+    "description": "IRCC passport format issued since 2023",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]\\d{6}[A-Z]{2}\\b"
+      }
+    ],
+    "proximity": 60,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Canadian passport number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "passport number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "passeport canadien"
+      }
+    ]
+  },
+  {
+    "name": "CA-Passport-Legacy",
+    "description": "Legacy-format passport candidate; verify issuance samples",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{2}\\d{6}\\b"
+      }
+    ],
+    "proximity": 60,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Canadian passport number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "passport number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "passeport canadien"
+      }
+    ]
+  },
+  {
+    "name": "CA-IRCC-UCI",
+    "description": "IRCC 8- or 10-digit UCI",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:\\d{4}[- ]?\\d{4}|\\d{2}[- ]?\\d{4}[- ]?\\d{4})\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "unique client identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "UCI number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "IRCC client ID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "identificateur unique de client"
+      }
+    ]
+  },
+  {
+    "name": "CA-IRCC-COPR",
+    "description": "COPR document number T + 9 digits",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bT\\d{9}\\b"
+      }
+    ],
+    "proximity": 70,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "confirmation of permanent residence"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "COPR document number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "confirmation de résidence permanente"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "IMM 5292"
+      }
+    ]
+  },
+  {
+    "name": "CA-IRCC-PR-Card",
+    "description": "PR card ID, distinct from UCI",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{4}-\\d{4}\\b"
+      }
+    ],
+    "proximity": 50,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permanent resident card ID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "PR card ID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "carte de résident permanent"
+      }
+    ]
+  },
+  {
+    "name": "CA-IRCC-Citizenship",
+    "description": "Canadian citizenship certificate",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]\\d{7}\\b"
+      }
+    ],
+    "proximity": 50,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "citizenship certificate number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "certificat de citoyenneté"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de certificat de citoyenneté"
+      }
+    ]
+  },
+  {
+    "name": "CA-IRCC-Landing",
+    "description": "Record of Landing document ID",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bW\\d{9}\\b"
+      }
+    ],
+    "proximity": 65,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "record of landing number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "IMM 1000"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "fiche relative au droit d'établissement"
+      }
+    ]
+  },
+  {
+    "name": "CA-Status-Registration",
+    "description": "Ten-digit registration ID; do not interpret the plain number without label",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{10}\\b"
+      }
+    ],
+    "proximity": 35,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "secure certificate of Indian status"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "registration number certificate of Indian status"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro d'inscription certificat de statut"
+      }
+    ]
+  },
+  {
+    "name": "CA-Birth-Registration",
+    "description": "Birth registration identifier: year + 2 digits + 6 digits",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:19\\d{2}|20\\d{2})[ ]?\\d{2}[ ]?\\d{6}\\b"
+      }
+    ],
+    "proximity": 50,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "birth registration number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro d'enregistrement de naissance"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-NL",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{12}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Newfoundland MCP number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro MCP Terre-Neuve-et-Labrador"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-PE",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{8}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Prince Edward Island health card number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "carte santé Île-du-Prince-Édouard"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-NS",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{10}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nova Scotia MSI number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro MSI Nouvelle-Écosse"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-NB",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{9}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "New Brunswick Medicare number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro assurance-maladie Nouveau-Brunswick"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-QC",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{4}\\d{8}\\b"
+      }
+    ],
+    "proximity": 65,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "RAMQ number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro d'assurance maladie du Québec"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-ON",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{10}(?:[ -]?[A-HJ-NP-Z]{1,2})?\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Ontario OHIP number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro carte Santé Ontario"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-MB",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{9}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Manitoba PHIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro personnel de santé Manitoba"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-SK",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{9}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Saskatchewan health services number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de santé Saskatchewan"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-AB",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{9}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Alberta personal health number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro personnel de santé Alberta"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-BC",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{10}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "British Columbia PHN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro personnel de santé Colombie-Britannique"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-YT",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b002\\d{6}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Yukon health care number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de santé Yukon"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-NT",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]\\d{7}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Northwest Territories health number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de santé Territoires du Nord-Ouest"
+      }
+    ]
+  },
+  {
+    "name": "CA-Health-NU",
+    "description": "CIHI 2026 province/territory format; no checksum; requires province-specific healthcare context",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{9}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nunavut health care number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de santé Nunavut"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-NL",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]\\d{9,10}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Newfoundland and Labrador driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Newfoundland and Labrador driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Newfoundland and Labrador"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-PE",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{4,6}\\b"
+      }
+    ],
+    "proximity": 25,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Prince Edward Island driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Prince Edward Island driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Prince Edward Island"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-NS",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{5}\\d{9}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nova Scotia driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nova Scotia driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Nova Scotia"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-NB",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{5,7}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "New Brunswick driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "New Brunswick driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire New Brunswick"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-QC",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]\\d{4}[- ]?\\d{6}[- ]?\\d{2}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Québec driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Québec driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Québec"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-ON",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]\\d{4}[- ]?\\d{5}[- ]?\\d{5}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Ontario driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Ontario driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Ontario"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-MB",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{6}\\d{6}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Manitoba driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Manitoba driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Manitoba"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-SK",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{8}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Saskatchewan driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Saskatchewan driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Saskatchewan"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-AB",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{6,9}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Alberta driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Alberta driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Alberta"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-BC",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{7}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "British Columbia driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "British Columbia driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire British Columbia"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-YT",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{6}\\b"
+      }
+    ],
+    "proximity": 25,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Yukon driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Yukon driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Yukon"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-NT",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{6}\\b"
+      }
+    ],
+    "proximity": 25,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Northwest Territories driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Northwest Territories driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Northwest Territories"
+      }
+    ]
+  },
+  {
+    "name": "CA-Driver-NU",
+    "description": "PROVISIONAL community DL regex; do not enable without province-specific samples; phrase-restricted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{6}\\b"
+      }
+    ],
+    "proximity": 25,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nunavut driver's licence number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nunavut driver license number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "permis de conduire Nunavut"
+      }
+    ]
+  },
+  {
+    "name": "CA-CRA-BN",
+    "description": "Nine-digit CRA BN; format only",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{9}\\b"
+      }
+    ],
+    "proximity": 35,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "CRA business number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Canada business number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro d'entreprise de l'ARC"
+      }
+    ]
+  },
+  {
+    "name": "CA-CRA-Program",
+    "description": "CRA RT RP RC program account, no RM assumption",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{9}[ -]?(?:RT|RP|RC)[ -]?\\d{4}\\b"
+      }
+    ],
+    "proximity": 70,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "GST HST account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "CRA program account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "payroll deductions account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "compte TPS TVH"
+      }
+    ]
+  },
+  {
+    "name": "CA-QC-NEQ",
+    "description": "Quebec enterprise number; verify legal-form prefixes",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:11|22|33|88)\\d{8}\\b"
+      }
+    ],
+    "proximity": 50,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Québec enterprise number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro d'entreprise du Québec"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "NEQ"
+      }
+    ]
+  },
+  {
+    "name": "CA-QC-QST",
+    "description": "Quebec sales tax registration identifier",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{10}[ -]?TQ[ -]?\\d{4}\\b"
+      }
+    ],
+    "proximity": 60,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "QST registration number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro inscription TVQ"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "taxe de vente du Québec"
+      }
+    ]
+  },
+  {
+    "name": "CA-Bank-EFT",
+    "description": "9-digit EFT routing format, no bank verification",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b0\\d{8}\\b"
+      }
+    ],
+    "proximity": 50,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Canadian EFT routing number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "direct deposit routing number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro d'acheminement EFT"
+      }
+    ]
+  },
+  {
+    "name": "CA-Bank-Transit",
+    "description": "5+3 transit/institution candidate; contextual only",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{5}[- ]?\\d{3}\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Canadian bank transit institution"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "transit and institution number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de transit bancaire"
+      }
+    ]
+  },
+  {
+    "name": "CA-Bank-Account",
+    "description": "Variable bank account lengths; highly generic, use EDM where possible",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{7,12}\\b"
+      }
+    ],
+    "proximity": 30,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Canadian bank account number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de compte bancaire canadien"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "direct deposit account number"
+      }
+    ]
+  },
+  {
+    "name": "CA-Canada-Postal",
+    "description": "Canadian postal-code format; not personal by itself",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[ABCEGHJ-NPRSTVXY]\\d[ABCEGHJ-NPRSTV-Z][ -]?\\d[ABCEGHJ-NPRSTV-Z]\\d\\b"
+      }
+    ],
+    "proximity": 50,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Canadian postal code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "postal code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "code postal"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "adresse postale"
+      }
+    ]
+  },
+  {
+    "name": "CA-Canada-Phone",
+    "description": "Shared NANP numbering; not Canada-specific by pattern alone",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:[+]1[-. ]?)?[(]?[2-9]\\d{2}[)]?[-. ]?[2-9]\\d{2}[-. ]?\\d{4}\\b"
+      }
+    ],
+    "proximity": 45,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Canadian phone number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de téléphone canadien"
+      }
+    ]
+  },
+  {
+    "name": "CA-DOB",
+    "description": "ISO birth date format, not calendar-validating",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:19\\d{2}|20\\d{2})[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12]\\d|3[01])\\b"
+      }
+    ],
+    "proximity": 40,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "date of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "birth date"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "date de naissance"
+      }
+    ]
+  },
+  {
+    "name": "CA-Tax-Forms",
+    "description": "Tax document phrases for composite detection",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Statement of Remuneration Paid"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "T4 Statement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "T4A Statement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "T5 Statement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "T1 General Return"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "feuillet T4"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "déclaration de revenus"
+      }
+    ]
+  },
+  {
+    "name": "CA-Payroll-Docs",
+    "description": "Payroll document phrases for composite detection",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "employee payroll register"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "payroll remittance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "registre de paie"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "retenues sur la paie"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "relevé de salaire"
+      }
+    ]
+  },
+  {
+    "name": "CA-Clinical-Docs",
+    "description": "Clinical document context only",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "patient medical record"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "clinical discharge summary"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "personal health information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "renseignements personnels sur la santé"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "dossier médical"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "résumé de sortie"
+      }
+    ]
+  },
+  {
+    "name": "CA-Student-Docs",
+    "description": "Student record context only; issuer-specific IDs need EDM",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "student transcript"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "student record number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "academic transcript"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "relevé de notes"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "dossier scolaire"
+      }
+    ]
+  },
+  {
+    "name": "CA-Insurance-Docs",
+    "description": "Insurance record context only; issuer-specific IDs need EDM",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "insurance policy number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "insurance claim number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de police d'assurance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "numéro de réclamation"
+      }
+    ]
+  },
+  {
+    "name": "CA-Privacy-Labels",
+    "description": "Canadian privacy/confidentiality labels require data corroboration",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "PIPEDA personal information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "PHIPA personal health information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Loi 25 renseignements personnels"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "renseignements personnels confidentiels"
+      }
+    ]
+  },
+  {
+    "name": "CA-Address-Labels",
+    "description": "Canadian address document labels",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "mailing address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "residential address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "adresse postale"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "adresse de résidence"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "adresse municipale"
+      }
+    ]
+  }
+]
