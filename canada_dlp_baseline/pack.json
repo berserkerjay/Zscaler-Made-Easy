@@ -1,0 +1,31 @@
+{
+  "name": "Canada DLP Policy Pack",
+  "version": "0.1.0",
+  "description": "English/French Canadian DLP identifiers, 13 provincial/territorial health IDs, 13 provisional driver's-licence formats, IRCC, CRA, Quebec tax, banking and contextual PII/PHI. Monitor-only candidate: every rule disabled, severity INFO.",
+  "deploy_note": "Deploy one channel per run: Web, Endpoint, SaaS, Email. Inspect preflight; no automatic enablement or activation. Review candidate driver formats and checksum limitations before use.",
+  "baseline": {
+    "immutable": true,
+    "prefix": "CA-",
+    "version": "0.1.0"
+  },
+  "audience": "Canadian commercial organizations and public sector agencies",
+  "when_to_use": "Pilot in disabled monitoring mode to establish Canadian classification coverage before regulated-data enforcement.",
+  "references": [
+    "https://www.cihi.ca/sites/default/files/document/acute-ambulatory-care-data-content-standard-2026-en.pdf",
+    "https://ircc.canada.ca/english/helpcentre/answer.asp?qnum=1446",
+    "https://github.com/oxide11/dlpscan/blob/main/PATTERNS.md",
+    "https://www.canada.ca/en/revenue-agency/services/forms-publications/publications/2-1/required-registration.html",
+    "https://www.quebec.ca/en/businesses-and-self-employed-workers/start-entreprise/register-constitute-enterprise/learn-about-registration/quebec-enterprise-number-neq",
+    "https://www.revenuquebec.ca/en/online-services/tools/application-programming-interface-api-used-to-validate-a-qst-registration-number/",
+    "https://help.zscaler.com/zia/understanding-predefined-dlp-dictionaries"
+  ],
+  "notes": [
+    "Canadian SIN should use the native checksum-validating Zscaler predefined dictionary where tenant exposes it; CA-SIN-Context does NOT validate Luhn.",
+    "All provincially issued health ID patterns are format/context only. Some jurisdictions require checksum/lookup validation that cannot be replicated via plain regex.",
+    "All 13 provincial/territorial driver formats are provisional patterns adapted from an MIT-licensed open-source source and need independent testing.",
+    "CIHI's publication restricts commercial reproduction; only numeric format facts have been used to author original regex, and the original is linked rather than copied.",
+    "Policies remain disabled, monitor-only, severity INFO. They should be inspected and tuned before any activation.",
+    "Short numeric identifiers are particularly noisy; use jurisdiction-labelled phrases, proximity and customer-specific EDM."
+  ],
+  "confidence_tweaks": []
+}
