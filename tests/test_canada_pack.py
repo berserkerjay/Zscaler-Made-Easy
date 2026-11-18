@@ -192,3 +192,16 @@ def test_the_canadian_profiles_offer_the_pack_first_and_mark_their_controls_assu
         assert len(rules) == 16 and all(cp.map_pack_rule(k, r)["controls"] for r in rules)
     assert "Canada" in cp.GROUP_ORDER and {x["profile"] for x in cp.assumed()} >= {"PIPEDA", "QUEBEC_LAW25", "PHIPA"}
     assert "Canada" not in vertical.INDUSTRIES and all(PID not in v for v in vertical.INDUSTRY_PACKS.values())
+
+
+def test_the_offline_validator_fires_every_canadian_engine_on_its_samples_and_nothing_else():
+    """SSDF PW.8.2 · CWE-697: tools/validate_detection.py cross-references the pack (every engine's dictionaries, every rule's engines) and, over randomised Canadian samples and the other packs' look-alikes (US SSN, driver licence), every Canadian engine fires on its own samples and on nothing else."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("validate_detection", os.path.join(ROOT, "tools", "validate_detection.py"))
+    vd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vd)
+    report = vd.run(3)["packs"]["canada_privacy_baseline"]
+    assert report["static"]["problems"] == []
+    assert report["tested_engines"] == 4 and report["untested_engines"] == 0
+    for e in report["engines"]:
+        assert e["recall"] == 1.0 and e["precision"] == 1.0 and e["false_positives"] == 0 and e["cross_fires"] == 0, e

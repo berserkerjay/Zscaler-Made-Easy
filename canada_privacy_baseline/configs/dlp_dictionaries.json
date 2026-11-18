@@ -54,6 +54,14 @@
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
         "phrase": "SIN/NAS"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "NAS"
       }
     ]
   },

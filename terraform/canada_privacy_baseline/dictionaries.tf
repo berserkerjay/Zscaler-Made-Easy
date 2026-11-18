@@ -58,6 +58,14 @@ resource "zia_dlp_dictionaries" "ca_sin" {
     action = "PHRASE_COUNT_TYPE_ALL"
     phrase = "SIN/NAS"
   }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SIN"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "NAS"
+  }
 }
 
 resource "zia_dlp_dictionaries" "ca_health_card_on" {
