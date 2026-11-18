@@ -138,6 +138,12 @@ PROFILES: Dict[str, Dict[str, Any]] = {
                  "account numbers and the names and addresses in return information. FTI markings are left to the FTI policy pack.",
                  "block": ["US_SSN", "US_ITIN", "US_BANK_NUMBER", "DATE_OF_BIRTH", "STREET_ADDRESS", "CREDIT_CARD"],
                  "detect": ["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS"], "deep": True},
+    # Canadian privacy (PIPEDA, Quebec Law 25, PHIPA). AI Guard has no Canadian SIN, health card or passport entity (assumed:
+    # none confirmed), so these cover the identifiers it does have; the Canada DLP pack covers the Canadian numbers.
+    "CANADA_PRIVACY": {"name": "Canadian privacy (PIPEDA, Quebec Law 25, PHIPA)", "why": "Personal and health information of people in Canada: dates of birth, "
+                       "card numbers and the names and contact details around them. Canadian SIN and health card numbers are left to the Canada DLP pack.",
+                       "block": ["DATE_OF_BIRTH", "CREDIT_CARD", "MEDICAL_LICENSE"],
+                       "detect": ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "STREET_ADDRESS", "LOCATION"], "deep": True},
     "GENERAL": {"name": "General (high-risk personal data)", "why": "Card, bank and government IDs every organisation protects.",
                 "block": ["US_SSN", "CREDIT_CARD", "US_BANK_NUMBER", "US_PASSPORT", "US_DRIVER_LICENSE", "US_ITIN"], "detect": ["PERSON"], "deep": False},
 }
