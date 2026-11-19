@@ -166,6 +166,9 @@ SOURCES: Dict[str, Dict[str, str]] = {
     "sox": {"title": "Sarbanes-Oxley Act of 2002, Section 404", "url": "https://www.govinfo.gov/content/pkg/PLAW-107publ204/pdf/PLAW-107publ204.pdf"},
     "ferpa": {"title": "FERPA, 34 CFR Part 99", "url": "https://www.ecfr.gov/current/title-34/subtitle-A/part-99"},
     "gdpr": {"title": "GDPR, Regulation (EU) 2016/679", "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"},
+    "pipeda": {"title": "PIPEDA, Personal Information Protection and Electronic Documents Act (S.C. 2000, c. 5)", "url": "https://laws-lois.justice.gc.ca/eng/acts/p-8.6/"},
+    "law25": {"title": "Quebec Law 25 (Act to modernize legislative provisions as regards the protection of personal information)", "url": "https://www.cai.gouv.qc.ca/"},
+    "phipa": {"title": "Ontario PHIPA, Personal Health Information Protection Act, 2004", "url": "https://www.ontario.ca/laws/statute/04p03"},
 }
 
 # Overlays: the framework's key in compliance_mapping.CONTROL_DOMAINS
@@ -198,6 +201,19 @@ OVERLAYS: Dict[str, Dict[str, Any]] = {
         "url_filtering": ["34 CFR 99.31(a)(1)(ii) (reasonable methods to limit access to education records)"],
         "dlp": ["34 CFR 99.31(a)(1)(ii) (reasonable methods to limit access to education records)"]}},
     "GDPR": {"label": "GDPR", "source": "gdpr", "cm_key": "GDPR"},
+    # Canadian privacy overlays: described generically, no control or article numbers (assumed).
+    "PIPEDA": {"label": "PIPEDA", "source": "pipeda",
+               "assumed": "Control wording is this app's generic reading of PIPEDA's safeguards obligation; no clause numbers are cited.", "controls": {
+        "url_filtering": ["Safeguards: limit access to personal information to what its sensitivity warrants (generic)"],
+        "dlp": ["Safeguards: protect personal information against unauthorised disclosure (generic)"]}},
+    "QUEBEC_LAW25": {"label": "Quebec Law 25", "source": "law25",
+                     "assumed": "Control wording is this app's generic reading of Law 25's security-measures obligation; no article numbers are cited.", "controls": {
+        "url_filtering": ["Security measures: limit access to personal information (generic)"],
+        "dlp": ["Security measures: prevent disclosure of personal information outside the organisation (generic)"]}},
+    "PHIPA": {"label": "PHIPA", "source": "phipa",
+              "assumed": "Control wording is this app's generic reading of PHIPA's safeguards duty for health information custodians; no section numbers are cited.", "controls": {
+        "url_filtering": ["Safeguards: protect personal health information against unauthorised access (generic)"],
+        "dlp": ["Safeguards: protect personal health information against unauthorised disclosure (generic)"]}},
 }
 
 # ---------------------------------------------------------------------------
@@ -587,7 +603,8 @@ def overlay_controls(domains: Sequence[str], overlays: Sequence[str]) -> List[Di
                 if c not in ctrls:
                     ctrls.append(c)
         if ctrls:
-            out.append({"overlay": key, "label": ov["label"], "controls": ctrls, "source": dict(SOURCES[ov["source"]], id=ov["source"])})
+            out.append({"overlay": key, "label": ov["label"], "controls": ctrls, "source": dict(SOURCES[ov["source"]], id=ov["source"]),
+                        "assumed": ov.get("assumed", "")})
     return out
 
 

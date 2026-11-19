@@ -1,0 +1,22 @@
+[
+  {
+    "name": "CA PIPEDA Personal Information",
+    "description": "A Canadian identifier (SIN, health card, passport or driver's licence) with a name or date-of-birth label.",
+    "expression": "(((D:CA-SIN > 0) OR (D:CA-Health-Card-ON > 0) OR (D:CA-Health-Card-QC > 0) OR (D:CA-Health-Card-BC > 0) OR (D:CA-Passport > 0) OR (D:CA-Drivers-Licence-ON > 0) OR (D:CA-Drivers-Licence-QC > 0)) AND (D:CA-Privacy-Name-DOB-Keywords > 0))"
+  },
+  {
+    "name": "CA Provincial Health Information",
+    "description": "A provincial health card number (Ontario, Quebec, British Columbia) with health information terms (PHIPA, Quebec Law 25 health).",
+    "expression": "(((D:CA-Health-Card-ON > 0) OR (D:CA-Health-Card-QC > 0) OR (D:CA-Health-Card-BC > 0)) AND (D:CA-Health-Context-Keywords > 0))"
+  },
+  {
+    "name": "CA Identifier Bulk",
+    "description": "Five or more Canadian identifiers of one kind in one document (a list or export), no name label needed.",
+    "expression": "((D:CA-SIN > 4) OR (D:CA-Health-Card-ON > 4) OR (D:CA-Health-Card-QC > 4) OR (D:CA-Health-Card-BC > 4) OR (D:CA-Passport > 4) OR (D:CA-Drivers-Licence-ON > 4) OR (D:CA-Drivers-Licence-QC > 4))"
+  },
+  {
+    "name": "CA Bank Account Low Confidence",
+    "description": "LOW CONFIDENCE: a transit or institution number with an account number, each beside its label. Expect false positives; review before enabling.",
+    "expression": "((D:CA-Bank-Transit-Institution > 0) AND (D:CA-Bank-Account-Number > 0))"
+  }
+]

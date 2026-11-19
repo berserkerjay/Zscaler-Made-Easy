@@ -133,7 +133,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
          "tests": ("test_ops_*.py", "test_config_*.py", "test_pack_*.py", "test_pov.py", "test_readiness.py", "test_offline_tenant.py", "test_tenant_terraform_w12.py", "test_tenant_terraform.py", "test_zcc_multi_tenant_w12.py", "test_docs_audit.py", "test_health_diag.py", "test_pov_*.py",
                    "test_vendor_migrate.py", "test_policy_exports.py", "test_qa6_*.py", "test_c6_zia_baseline_aiguard.py",
                    "test_c6_zcc_zdx.py", "test_rank_inherit.py", "test_compliance_profiles.py", "test_zcc_fleet_plus*.py", "test_w8_zia_threat_saas.py", "test_shadow_it.py", "test_w8_zwa_aiguard.py", "test_w8_zdx_zid_zcc.py",
-                   "test_compliance_profiles_browser.py", "test_panos_migrate.py", "test_net_files*.py", "test_w9_zia_activation.py", "test_block_page_theme.py", "test_education_pack.py", "test_w12_pov_posture.py", "test_w12_audit_export.py", "test_w12_ai_prompt.py", "test_w12_leftover_keep.py", "test_w12_wizard_evidence.py", "test_w9_url_category_admin.py",
+                   "test_compliance_profiles_browser.py", "test_panos_migrate.py", "test_net_files*.py", "test_w9_zia_activation.py", "test_block_page_theme.py", "test_education_pack.py", "test_canada_pack.py", "test_w12_pov_posture.py", "test_w12_audit_export.py", "test_w12_ai_prompt.py", "test_w12_leftover_keep.py", "test_w12_wizard_evidence.py", "test_w9_url_category_admin.py",
                    "test_w9_ip_groups.py", "test_w9_dlp_objects.py", "test_w9_zid_user.py", "test_w9_service_edge_toggle.py",
                    "test_rehearsal_simulation.py", "test_simulation_ui.py", "test_editions.py", "test_baseline_selection.py",
                    "test_tf_providers_w9.py", "test_fix_flow_browser.py"),

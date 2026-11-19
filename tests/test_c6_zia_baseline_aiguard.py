@@ -836,7 +836,7 @@ def test_an_undo_has_no_review():
 def test_the_catalog_lists_every_tier_overlay_area_rule_and_atp_switch():
     """ASVS V1.4.1 · CWE-1059: the form's catalog lists the four tiers, nine overlays, eight areas (ATP not ticked by default), every rule and 20 ATP switches."""
     c = zb.catalog()
-    assert [t["key"] for t in c["tiers"]] == list(zb.TIERS) and len(c["overlays"]) == len(zb.OVERLAYS) == 9
+    assert [t["key"] for t in c["tiers"]] == list(zb.TIERS) and len(c["overlays"]) == len(zb.OVERLAYS) == 12
     assert {a["key"]: a["default"] for a in c["areas"]}["atp"] is False and len(c["rules"]) == len(zb.CATALOG) and len(c["atp"]) == 20
     assert c["max_name"] == 31 and all(r["choices"] == [] for r in c["rules"] if r["locked"] or r["action_locked"])
 
