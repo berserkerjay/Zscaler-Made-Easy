@@ -1,0 +1,314 @@
+[
+  {
+    "name": "CA-PIPEDA-Personal-Info-Monitor",
+    "description": "Monitor outbound Canadian personal information: an identifier with a name or date-of-birth label.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA PIPEDA Personal Information"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA-Prov-Health-Info-Monitor",
+    "description": "Monitor outbound provincial health information: a health card number with health terms.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA Provincial Health Information"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA-Identifier-Bulk-Monitor",
+    "description": "Monitor outbound bulk Canadian identifiers (five or more of one kind).",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA Identifier Bulk"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA-Bank-Account-LowConf-Monitor",
+    "description": "Monitor outbound Canadian bank transit and account numbers (low confidence).",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CA Bank Account Low Confidence"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CA-PIPEDA-Personal-Info [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"CA-PIPEDA-Personal-Info-Monitor\" (CA PIPEDA Personal Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA PIPEDA Personal Information"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "CA-PIPEDA-Personal-Info [SaaS]",
+    "channel": "saas",
+    "description": "SaaS DLP: the same detection as the inline rule \"CA-PIPEDA-Personal-Info-Monitor\" (CA PIPEDA Personal Information). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA PIPEDA Personal Information"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "CA-PIPEDA-Personal-Info [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"CA-PIPEDA-Personal-Info-Monitor\" (CA PIPEDA Personal Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA PIPEDA Personal Information"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "CA-Prov-Health-Info [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"CA-Prov-Health-Info-Monitor\" (CA Provincial Health Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA Provincial Health Information"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "CA-Prov-Health-Info [SaaS]",
+    "channel": "saas",
+    "description": "SaaS DLP: the same detection as the inline rule \"CA-Prov-Health-Info-Monitor\" (CA Provincial Health Information). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA Provincial Health Information"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "CA-Prov-Health-Info [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"CA-Prov-Health-Info-Monitor\" (CA Provincial Health Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA Provincial Health Information"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "CA-Identifier-Bulk [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"CA-Identifier-Bulk-Monitor\" (CA Identifier Bulk). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA Identifier Bulk"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "CA-Identifier-Bulk [SaaS]",
+    "channel": "saas",
+    "description": "SaaS DLP: the same detection as the inline rule \"CA-Identifier-Bulk-Monitor\" (CA Identifier Bulk). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA Identifier Bulk"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "CA-Identifier-Bulk [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"CA-Identifier-Bulk-Monitor\" (CA Identifier Bulk). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA Identifier Bulk"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "CA-Bank-Account-LowConf [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"CA-Bank-Account-LowConf-Monitor\" (CA Bank Account Low Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA Bank Account Low Confidence"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "CA-Bank-Account-LowConf [SaaS]",
+    "channel": "saas",
+    "description": "SaaS DLP: the same detection as the inline rule \"CA-Bank-Account-LowConf-Monitor\" (CA Bank Account Low Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA Bank Account Low Confidence"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "CA-Bank-Account-LowConf [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"CA-Bank-Account-LowConf-Monitor\" (CA Bank Account Low Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CA Bank Account Low Confidence"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  }
+]
