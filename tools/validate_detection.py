@@ -406,6 +406,16 @@ CODE_SAMPLES = {
     "VBNet": "Imports System\nImports System.Collections.Generic\n\nPublic Class OrderService\n    Private ReadOnly _orders As New List(Of Order)()\n\n    Public Function Find(id As Integer) As Order\n        For Each o In _orders\n            If o.Id = id Then Return o\n        Next\n        Return Nothing\n    End Function\n\n    Public Sub Add(o As Order)\n        _orders.Add(o)\n    End Sub\nEnd Class\n",
 }
 
+
+def ca_sin(rng) -> str:
+    """A Luhn-valid Social Insurance Number (first digit 1-7 or 9), as 123 456 782."""
+    while True:
+        d = [rng.choice([1, 2, 3, 4, 5, 6, 7, 9])] + [rng.randint(0, 9) for _ in range(8)]
+        s = sum((x * 2 - 9 if x * 2 > 9 else x * 2) if i % 2 else x for i, x in enumerate(d))
+        if s % 10 == 0:
+            return f"{d[0]}{d[1]}{d[2]} {d[3]}{d[4]}{d[5]} {d[6]}{d[7]}{d[8]}"
+
+
 OTHER_SAMPLES = {
     "healthcare": {
         "phi_record": lambda rng: f"Patient: A. Nguyen, MRN {rng.randint(1000000,9999999)}, account number {rng.randint(100000000,999999999)}, date of birth {rng.randint(1,12):02d}/{rng.randint(1,28):02d}/19{rng.randint(50,95)}, legal sex F. Discharge summary: diagnosis pneumonia, prescribed amoxicillin 500 mg daily, attending physician Dr. Rao. History of present illness: three days of fever. Assessment and plan: follow up in clinic.",
@@ -422,6 +432,13 @@ OTHER_SAMPLES = {
         "itar_mention": lambda rng: "This technical data is controlled under the International Traffic in Arms Regulations (ITAR), 22 CFR 120-130. Export controlled: USML Category VIII. Not for release to foreign persons without a license from the Directorate of Defense Trade Controls. ECCN 9A610.",
         "tlp_red": lambda rng: "TLP:RED. Incident 2026-0412: credential stuffing against the customer portal from 14 IPs. Not for disclosure, restricted to participants only. Indicators attached.",
         "us_pii_export": lambda rng: "\n".join(f"{n}, SSN {ssn(rng)}, DOB {rng.randint(1,12):02d}/{rng.randint(1,28):02d}/19{rng.randint(50,95)}, driver license number {rng.choice('ABC')}{rng.randint(1000000,9999999)}" for n in ("A. Kim", "B. Ortiz", "C. Weber", "D. Chen", "E. Rossi", "F. Byrne")) + "\nHR export for the benefits enrolment vendor.",
+    },
+    "canada": {
+        "ca_pii_record": lambda rng: f"Employee onboarding: Jean Tremblay, date of birth 1985-0{rng.randint(1,9)}-1{rng.randint(0,9)}. Social insurance number {ca_sin(rng)} for payroll. Direct deposit to follow.",
+        "ca_pii_record_fr": lambda rng: f"Dossier employé : Marie Gagnon, date de naissance 19{rng.randint(60,99)}-0{rng.randint(1,9)}-2{rng.randint(0,8)}. Passeport canadien {rng.choice(['AB','GK','HL'])}{rng.randint(100000,999999)}.",
+        "ca_health_record": lambda rng: f"Patient: R. Singh, date of birth 1972-03-14. OHIP {rng.randint(1000,9999)}-{rng.randint(100,999)}-{rng.randint(100,999)}-{rng.choice(['AB','XK'])}. Diagnosis: type 2 diabetes; prescription renewed.",
+        "ca_bulk_export": lambda rng: "\n".join(f"{n}, SIN {ca_sin(rng)}, date of birth 19{rng.randint(50,99)}-0{rng.randint(1,9)}-1{rng.randint(0,9)}" for n in ("A. Roy", "B. Côté", "C. Leblanc", "D. Morin", "E. Wong", "F. Patel")),
+        "ca_bank_details": lambda rng: f"Please update payroll: transit number {rng.randint(10000,99999)}-00{rng.randint(1,9)}, account number {rng.randint(1000000,9999999)} at the chequing account.",
     },
     "cjis": {
         "ncic_query": lambda rng: f"NCIC/III query results. ORI CA{rng.randint(1000000,9999999)}, purpose code C, QH inquiry on subject DOB {rng.randint(1,12):02d}/{rng.randint(1,28):02d}/19{rng.randint(60,95)}, SSN {ssn(rng)}. Criminal history record information returned: two prior arrests. Hit confirmation requested. Law Enforcement Sensitive, CJIS.",
@@ -444,7 +461,8 @@ def build_docs(rng, iteration: int) -> List[Dict[str, Any]]:
             ex = list(item["examples"]); rng.shuffle(ex)
             docs.append({"pack": "zbp_source_code_baseline", "cls": lang, "positive": True, "text": "\n".join(ex[: max(10, len(ex) // 2)]), "source": "library examples"})
     for pack, items in (("healthcare_phi_baseline", OTHER_SAMPLES["healthcare"]), ("fed_policy_pack", OTHER_SAMPLES["cui"]), ("cjis_policy_pack", OTHER_SAMPLES["cjis"]),
-                        ("zbp_enterprise_baseline", OTHER_SAMPLES["zbp"]), ("fed_policy_pack", OTHER_SAMPLES["zbp"])):
+                        ("zbp_enterprise_baseline", OTHER_SAMPLES["zbp"]), ("fed_policy_pack", OTHER_SAMPLES["zbp"]),
+                        ("canada_privacy_baseline", OTHER_SAMPLES["canada"])):
         for k, fn in items.items():
             docs.append({"pack": pack, "cls": k, "positive": True, "text": fn(rng)})
     for k, items in NEGATIVES.items():
@@ -476,6 +494,9 @@ EXPECT = {
     },
     "zbp_source_code_baseline": {lang: [f"SRC-{lang}"] for lang in CODE_SAMPLES},
     "healthcare_phi_baseline": {"phi_record": ["E_HEALTHCARE_PHI"], "phi_bulk": ["E_PHI_BULK_EXPORT"]},
+    "canada_privacy_baseline": {"ca_pii_record": ["CA PIPEDA Personal Information"], "ca_pii_record_fr": ["CA PIPEDA Personal Information"],
+                                "ca_health_record": ["CA PIPEDA Personal Information", "CA Provincial Health Information"],
+                                "ca_bulk_export": ["CA PIPEDA Personal Information", "CA Identifier Bulk"], "ca_bank_details": ["CA Bank Account Low Confidence"]},
     "cjis_policy_pack": {"rap_sheet": ["CJIS Any-Signal Engine", "Criminal History - RAP Sheet Engine"], "ncic_query": ["CJIS Any-Signal Engine", "NCIC - III Data Engine"], "warrant": ["Warrant - Wanted-Person Engine"]},
     "zbp_enterprise_baseline": {"tax_forms": ["ZBP-Financial Information", "ZBP-US PII"], "private_key": ["ZBP-Private Keys"], "itar_legend": ["ZBP-ITAR Phrases"], "itar_mention": [], "tlp_red": ["ZBP-TLP Red"], "us_pii_export": ["ZBP-US PII"]},
     "fed_policy_pack": {"tax_forms": ["Financial Information", "US PII"], "private_key": ["Private Keys"], "itar_legend": ["ITAR Phrases"], "itar_mention": [], "tlp_red": ["TLP Red"], "us_pii_export": ["US PII"],

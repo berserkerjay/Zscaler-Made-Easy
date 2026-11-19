@@ -13,9 +13,10 @@ Two kinds of profile:
   Publication 1075 (federal tax information) and GovRAMP Moderate.
 * Framework profiles: the nine compliance overlays the ZIA baseline already
   had (HIPAA, HITRUST, NIST 800-53, NIST 800-171, PCI DSS, CJIS, SOX, FERPA,
-  GDPR). They keep the operator's tier and cite the overlay's area-level
-  controls, as before; picking one also sets the packs and the AI Guard
-  profile.
+  GDPR), plus three Canadian ones (PIPEDA, Quebec Law 25, PHIPA) whose
+  controls are generic and assumed, not clause numbers. They keep the
+  operator's tier and cite the overlay's area-level controls, as before;
+  picking one also sets the packs and the AI Guard profile.
 
 Every rule mapped
 -----------------
@@ -436,6 +437,9 @@ _FW = {
     "NIST_800_53": ("NIST SP 800-53", "Any industry", ["fed_policy_pack"], "NIST_800_53"),
     "NIST_800_171": ("NIST SP 800-171", "Any industry", ["fed_policy_pack"], "NIST_800_171"),
     "GDPR": ("GDPR", "Any industry", ["zbp_enterprise_baseline"], "GDPR"),
+    "PIPEDA": ("PIPEDA", "Canada", ["canada_privacy_baseline", "zbp_enterprise_baseline"], "CANADA_PRIVACY"),
+    "QUEBEC_LAW25": ("Quebec Law 25", "Canada", ["canada_privacy_baseline", "zbp_enterprise_baseline"], "CANADA_PRIVACY"),
+    "PHIPA": ("PHIPA (Ontario health information)", "Canada", ["canada_privacy_baseline", "healthcare_phi_baseline"], "CANADA_PRIVACY"),
 }
 for _k, (_label, _group, _packs, _aig) in _FW.items():
     PROFILES[_k] = {"label": _label, "kind": FRAMEWORK, "group": _group,
@@ -444,8 +448,14 @@ for _k, (_label, _group, _packs, _aig) in _FW.items():
                     "packs": _packs, "aiguard": _aig,
                     "reuses": "Whatever tier you pick, unchanged: the overlay adds the area-level controls and changes no rule."}
 
+# The Canadian overlays cite generic safeguards, not clause numbers: every control is assumed (see the overlay's text).
+_CA_ASSUMED = ("The Canadian profiles' controls are generic readings of the law's safeguards duty; clause or article numbers are not "
+               "checked or cited here (assumed). The Canada pack's identifier formats are described in its own notes.")
+for _k in ("PIPEDA", "QUEBEC_LAW25", "PHIPA"):
+    PROFILES[_k]["assumed"] = _CA_ASSUMED
+
 FEDERAL_KEYS = tuple(k for k, p in PROFILES.items() if p["kind"] == FEDERAL)
-GROUP_ORDER = ("Federal and public sector", "Healthcare", "Financial services", "Education", "Any industry")
+GROUP_ORDER = ("Federal and public sector", "Healthcare", "Financial services", "Education", "Canada", "Any industry")
 
 
 class ProfileError(ValueError):
@@ -523,7 +533,7 @@ def _overlay_catalogue(profile_key: str) -> List[Dict[str, Any]]:
             if cid not in seen:
                 seen.add(cid)
                 out.append({"id": cid, "title": "", "source": ov["source"]["id"], "source_ref": ov["source"], "baseline": "",
-                            "assumed": False, "assumed_why": "", "area_level": True})
+                            "assumed": bool(ov.get("assumed")), "assumed_why": ov.get("assumed", ""), "area_level": True})
     return out
 
 
@@ -533,8 +543,8 @@ def objective_controls(profile_key: str, objective: str) -> List[Dict[str, Any]]
         import ops_zia_baseline as zb
         out = []
         for ov in zb.overlay_controls(list(OBJECTIVES[objective]["domains"]), [p["overlay"]]):
-            out += [{"id": cid, "title": "", "source": ov["source"]["id"], "source_ref": ov["source"], "assumed": False,
-                     "assumed_why": "", "area_level": True} for cid in ov["controls"]]
+            out += [{"id": cid, "title": "", "source": ov["source"]["id"], "source_ref": ov["source"], "assumed": bool(ov.get("assumed")),
+                     "assumed_why": ov.get("assumed", ""), "area_level": True} for cid in ov["controls"]]
         return out
     return [control(profile_key, cid) for cid in p["map"].get(objective, [])]
 
@@ -690,7 +700,7 @@ def assumed() -> List[Dict[str, str]]:
     """Every assumed control (and profile-level assumption), for the report."""
     out = []
     for k, p in PROFILES.items():
-        if p["kind"] != FEDERAL:
+        if p["kind"] != FEDERAL and not p.get("assumed"):
             continue
         for c in controls(k):
             if c.get("assumed"):

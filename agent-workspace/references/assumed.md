@@ -5,7 +5,7 @@
 Every place the code relies on Zscaler behaviour it could not verify against the installed SDK or Zscaler's
 documentation. A verify stage treats these as unproven; a spec that depends on one says so.
 
-558 markers.
+570 markers.
 
 | File:line | Note |
 |---|---|
@@ -22,13 +22,14 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ai_guard.py:19` | What is verified against zscaler-sdk-python 1.11.3 and what is assumed is |
 | `ai_guard.py:20` | listed in VERIFIED and ASSUMED below, and the page shows the assumptions. |
 | `ai_guard.py:51` | ASSUMED = ( |
-| `ai_guard.py:183` | "gateway_steps": list(GATEWAY_STEPS), "portal_steps": list(PORTAL_STEPS), "assumed": list(ASSUMED)} |
-| `ai_guard.py:299` | """Root certificates for proxy chaining (raw GET, assumed path).""" |
-| `ai_guard.py:411` | verified, assumed}. Never writes and never raises on a tenant answer.""" |
-| `ai_guard.py:548` | "builder": BUILDER_PAGE, "verified": list(VERIFIED), "assumed": list(ASSUMED)} |
-| `ai_guard.py:584` | create/update times are assumed from the other AI Guard models; the |
-| `ai_guard.py:668` | "errors": {}, "verified": list(VERIFIED) + list(DEPTH_VERIFIED), "assumed": list(ASSUMED) + list(DEPTH_ASSUMED)} |
-| `ai_guard.py:768` | "policy_id": pid, "verified": list(DEPTH_VERIFIED), "assumed": list(DEPTH_ASSUMED)} |
+| `ai_guard.py:141` | Canadian privacy (PIPEDA, Quebec Law 25, PHIPA). AI Guard has no Canadian SIN, health card or passport entity (assumed: |
+| `ai_guard.py:189` | "gateway_steps": list(GATEWAY_STEPS), "portal_steps": list(PORTAL_STEPS), "assumed": list(ASSUMED)} |
+| `ai_guard.py:305` | """Root certificates for proxy chaining (raw GET, assumed path).""" |
+| `ai_guard.py:417` | verified, assumed}. Never writes and never raises on a tenant answer.""" |
+| `ai_guard.py:554` | "builder": BUILDER_PAGE, "verified": list(VERIFIED), "assumed": list(ASSUMED)} |
+| `ai_guard.py:590` | create/update times are assumed from the other AI Guard models; the |
+| `ai_guard.py:674` | "errors": {}, "verified": list(VERIFIED) + list(DEPTH_VERIFIED), "assumed": list(ASSUMED) + list(DEPTH_ASSUMED)} |
+| `ai_guard.py:774` | "policy_id": pid, "verified": list(DEPTH_VERIFIED), "assumed": list(DEPTH_ASSUMED)} |
 | `app_services.py:25` | names are assumed, as Zscaler does not publish them through the API), and |
 | `app_services.py:27` | LOGMEIN, TALKDESK: vendor_endpoints, names assumed) the provider's list, |
 | `app_services.py:29` | Zscaler builds those groups from those lists (assumed from its One Click |
@@ -55,34 +56,40 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `compliance_pack.py:405` | rows.append([c["control"], c["title"], "yes" if c["assumed"] else "", t["id"], t["rule"], t["source"], t["steps"], t["expected"], |
 | `compliance_pack.py:419` | mark = ' <span class="a">(assumed)</span>' if c["assumed"] else "" |
 | `compliance_pack.py:749` | "Controls marked 'assumed' are not verified against their source; the mapping report lists why."] |
-| `compliance_profiles.py:27` | What is sourced and what is assumed |
-| `compliance_profiles.py:32` | `assumed: True` and an `assumed_why`; assumed() lists them all, and every |
-| `compliance_profiles.py:171` | def _c(cid: str, title: str, source: str, baseline: str = "", assumed: str = "") -> Dict[str, Any]: |
-| `compliance_profiles.py:172` | return {"id": cid, "title": title, "source": source, "baseline": baseline, "assumed": bool(assumed), "assumed_why": assumed} |
-| `compliance_profiles.py:202` | assumed="SC-21 asks the resolver to verify the origin and integrity of answers (DNSSEC); whether the Zscaler Trusted Resolver " |
-| `compliance_profiles.py:203` | "validates DNSSEC is not confirmed here, so crediting the DNS redirect to SC-21 is assumed."), |
-| `compliance_profiles.py:254` | "m2209", assumed="The Data actions are summarised from memory of the memorandum; check the wording against section III.E."), |
-| `compliance_profiles.py:258` | assumed="Crediting web malware and phishing blocking to the Devices pillar's threat protection function is this app's reading."), |
-| `compliance_profiles.py:264` | assumed="Crediting web content isolation to Application Threat Protections is this app's reading."), |
-| `compliance_profiles.py:268` | assumed="Crediting incident response checks to Automation and Orchestration is this app's reading."), |
-| `compliance_profiles.py:271` | if _z["source"] == "m2209" and not _z["assumed"]: |
-| `compliance_profiles.py:424` | "assumed": "GovRAMP's own Moderate control list is not checked here; it is taken as the NIST SP 800-53B Moderate baseline.", |
-| `compliance_profiles.py:480` | if cid in _IRS_ENHANCEMENTS_UNVERIFIED and not x["assumed"]: |
-| `compliance_profiles.py:481` | x["assumed"] = True |
-| `compliance_profiles.py:496` | if profile_key == "GOVRAMP" and not c["assumed"]: |
-| `compliance_profiles.py:497` | c["assumed"], c["assumed_why"] = True, PROFILES["GOVRAMP"]["assumed"] |
-| `compliance_profiles.py:504` | assessment area maps to, with its source and assumed flag.""" |
-| `compliance_profiles.py:526` | "assumed": False, "assumed_why": "", "area_level": True}) |
-| `compliance_profiles.py:536` | out += [{"id": cid, "title": "", "source": ov["source"]["id"], "source_ref": ov["source"], "assumed": False, |
-| `compliance_profiles.py:673` | "aiguard_name": ap.get("name", p["aiguard"]), "reuses": p["reuses"], "assumed_profile": p.get("assumed", ""), |
-| `compliance_profiles.py:675` | "assumed_controls": [c["id"] for c in controls(profile_key) if c.get("assumed")]} |
-| `compliance_profiles.py:689` | def assumed() -> List[Dict[str, str]]: |
-| `compliance_profiles.py:690` | """Every assumed control (and profile-level assumption), for the report.""" |
-| `compliance_profiles.py:696` | if c.get("assumed"): |
-| `compliance_profiles.py:756` | "assumed": sum(1 for r in rows if any(c.get("assumed") for c in r["controls"]))}} |
-| `compliance_profiles.py:828` | c = cat.get(cid, {"id": cid, "title": "", "assumed": False, "assumed_why": ""}) |
-| `compliance_profiles.py:829` | rows.append({"control": cid, "title": c.get("title", ""), "status": status, "assumed": bool(c.get("assumed")), |
-| `compliance_profiles.py:843` | "map_pack_rule", "applies", "controls", "assumed", "assessment_view", "get", "key_of", "ProfileError", "FEDERAL_KEYS"] |
+| `compliance_profiles.py:17` | controls are generic and assumed, not clause numbers. They keep the |
+| `compliance_profiles.py:28` | What is sourced and what is assumed |
+| `compliance_profiles.py:33` | `assumed: True` and an `assumed_why`; assumed() lists them all, and every |
+| `compliance_profiles.py:172` | def _c(cid: str, title: str, source: str, baseline: str = "", assumed: str = "") -> Dict[str, Any]: |
+| `compliance_profiles.py:173` | return {"id": cid, "title": title, "source": source, "baseline": baseline, "assumed": bool(assumed), "assumed_why": assumed} |
+| `compliance_profiles.py:203` | assumed="SC-21 asks the resolver to verify the origin and integrity of answers (DNSSEC); whether the Zscaler Trusted Resolver " |
+| `compliance_profiles.py:204` | "validates DNSSEC is not confirmed here, so crediting the DNS redirect to SC-21 is assumed."), |
+| `compliance_profiles.py:255` | "m2209", assumed="The Data actions are summarised from memory of the memorandum; check the wording against section III.E."), |
+| `compliance_profiles.py:259` | assumed="Crediting web malware and phishing blocking to the Devices pillar's threat protection function is this app's reading."), |
+| `compliance_profiles.py:265` | assumed="Crediting web content isolation to Application Threat Protections is this app's reading."), |
+| `compliance_profiles.py:269` | assumed="Crediting incident response checks to Automation and Orchestration is this app's reading."), |
+| `compliance_profiles.py:272` | if _z["source"] == "m2209" and not _z["assumed"]: |
+| `compliance_profiles.py:425` | "assumed": "GovRAMP's own Moderate control list is not checked here; it is taken as the NIST SP 800-53B Moderate baseline.", |
+| `compliance_profiles.py:451` | The Canadian overlays cite generic safeguards, not clause numbers: every control is assumed (see the overlay's text). |
+| `compliance_profiles.py:453` | "checked or cited here (assumed). The Canada pack's identifier formats are described in its own notes.") |
+| `compliance_profiles.py:455` | PROFILES[_k]["assumed"] = _CA_ASSUMED |
+| `compliance_profiles.py:490` | if cid in _IRS_ENHANCEMENTS_UNVERIFIED and not x["assumed"]: |
+| `compliance_profiles.py:491` | x["assumed"] = True |
+| `compliance_profiles.py:506` | if profile_key == "GOVRAMP" and not c["assumed"]: |
+| `compliance_profiles.py:507` | c["assumed"], c["assumed_why"] = True, PROFILES["GOVRAMP"]["assumed"] |
+| `compliance_profiles.py:514` | assessment area maps to, with its source and assumed flag.""" |
+| `compliance_profiles.py:536` | "assumed": bool(ov.get("assumed")), "assumed_why": ov.get("assumed", ""), "area_level": True}) |
+| `compliance_profiles.py:546` | out += [{"id": cid, "title": "", "source": ov["source"]["id"], "source_ref": ov["source"], "assumed": bool(ov.get("assumed")), |
+| `compliance_profiles.py:547` | "assumed_why": ov.get("assumed", ""), "area_level": True} for cid in ov["controls"]] |
+| `compliance_profiles.py:683` | "aiguard_name": ap.get("name", p["aiguard"]), "reuses": p["reuses"], "assumed_profile": p.get("assumed", ""), |
+| `compliance_profiles.py:685` | "assumed_controls": [c["id"] for c in controls(profile_key) if c.get("assumed")]} |
+| `compliance_profiles.py:699` | def assumed() -> List[Dict[str, str]]: |
+| `compliance_profiles.py:700` | """Every assumed control (and profile-level assumption), for the report.""" |
+| `compliance_profiles.py:703` | if p["kind"] != FEDERAL and not p.get("assumed"): |
+| `compliance_profiles.py:706` | if c.get("assumed"): |
+| `compliance_profiles.py:766` | "assumed": sum(1 for r in rows if any(c.get("assumed") for c in r["controls"]))}} |
+| `compliance_profiles.py:838` | c = cat.get(cid, {"id": cid, "title": "", "assumed": False, "assumed_why": ""}) |
+| `compliance_profiles.py:839` | rows.append({"control": cid, "title": c.get("title", ""), "status": status, "assumed": bool(c.get("assumed")), |
+| `compliance_profiles.py:853` | "map_pack_rule", "applies", "controls", "assumed", "assessment_view", "get", "key_of", "ProfileError", "FEDERAL_KEYS"] |
 | `config_backup.py:58` | one exists). Assumed, not verifiable without a tenant: that the SDK's add_ / |
 | `config_backup.py:154` | operands carry the profile's UDID and the network's network id (assumed from the portal's payloads). |
 | `config_backup.py:301` | """A bandwidth class the customer made (assumed: Zscaler's own classes are |
@@ -219,6 +226,11 @@ documentation. A verify stage treats these as unproven; a spec that depends on o
 | `ops_zia_activation.py:59` | "tool or this app): check with the other admins first (assumed: the SDK does not say whose changes it activates).") |
 | `ops_zia_ai_prompt.py:24` | ASSUMED (the SDK model lists only six prompt fields; the others come from |
 | `ops_zia_baseline.py:65` | read them; the others are assumed and the tenant refuses what it lacks. |
+| `ops_zia_baseline.py:204` | Canadian privacy overlays: described generically, no control or article numbers (assumed). |
+| `ops_zia_baseline.py:206` | "assumed": "Control wording is this app's generic reading of PIPEDA's safeguards obligation; no clause numbers are cited.", "controls": { |
+| `ops_zia_baseline.py:210` | "assumed": "Control wording is this app's generic reading of Law 25's security-measures obligation; no article numbers are cited.", "cont… |
+| `ops_zia_baseline.py:214` | "assumed": "Control wording is this app's generic reading of PHIPA's safeguards duty for health information custodians; no section number… |
+| `ops_zia_baseline.py:607` | "assumed": ov.get("assumed", "")}) |
 | `ops_zia_directory.py:42` | delete_department. ASSUMED (not checkable without a tenant): that ZIA |
 | `ops_zia_eun.py:28` | snake_case list in its docstring, camelCased: assumed, not checked against a |
 | `ops_zia_objects.py:53` | NAME_MAX = 255           # assumed for these objects (the API refuses longer) |
