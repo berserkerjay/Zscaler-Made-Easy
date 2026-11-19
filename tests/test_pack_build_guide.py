@@ -332,15 +332,15 @@ def test_an_uploaded_pack_gets_a_guide_too(lib_client, no_tenant):
 def test_the_committed_guide_exists_and_matches_a_fresh_build(pid):
     """SSDF PS.3.1 · CWE-1357: docs/packs/<pack>_build_guide.docx is committed for every pack and its text equals a fresh build (text, not zip bytes)."""
     path = os.path.join(ROOT, "docs", "packs", f"{pid}_build_guide.docx")
-    assert os.path.isfile(path), f"run: python tools/pack_build_guide.py --all --out docs/packs ({path} is missing)"
+    assert os.path.isfile(path), f"run: python tools/build_pack_guides.py --all --out docs/packs ({path} is missing)"
     committed = _text(open(path, "rb").read())
-    assert _norm(committed) == _norm(_text(_built(pid))), f"{pid}: stale; regenerate with python tools/pack_build_guide.py --all --out docs/packs"
+    assert _norm(committed) == _norm(_text(_built(pid))), f"{pid}: stale; regenerate with python tools/build_pack_guides.py --all --out docs/packs"
 
 
 def test_the_cli_writes_one_file_per_pack(tmp_path):
-    """SSDF PS.3.1 · CWE-1357: tools/pack_build_guide.py --pack writes <id>_build_guide.docx and refuses an unknown pack."""
+    """SSDF PS.3.1 · CWE-1357: tools/build_pack_guides.py --pack writes <id>_build_guide.docx and refuses an unknown pack."""
     import importlib.util
-    spec = importlib.util.spec_from_file_location("pack_build_guide_cli", os.path.join(ROOT, "tools", "pack_build_guide.py"))
+    spec = importlib.util.spec_from_file_location("pack_build_guide_cli", os.path.join(ROOT, "tools", "build_pack_guides.py"))
     cli = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cli)
     assert cli.main(["--pack", "irs_fti_pack", "--out", str(tmp_path)]) == 0

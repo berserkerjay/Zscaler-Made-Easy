@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Write the Word build guide of one or every DLP policy pack.
 
-    python tools/pack_build_guide.py --all --out docs/packs
-    python tools/pack_build_guide.py --pack canada_privacy_baseline --out docs/packs
+    python tools/build_pack_guides.py --all --out docs/packs
+    python tools/build_pack_guides.py --pack canada_privacy_baseline --out docs/packs
 
 One file per pack: <out>/<pack_id>_build_guide.docx. It reads the local pack
 files only; it never touches a tenant. The same guide is served by the app at

@@ -370,7 +370,7 @@ for p in dlp_importer.discover_packs():
 
 ### Word build guide (every pack)
 
-Every pack, shipped or uploaded, has a Word build guide in one fixed format: what to type into the console, form by form, for each custom dictionary, engine and web rule, with the steps, the times and a sign-off table. Get it from the **Build guide (Word)** link on the pack in Deploy Studio or in Advanced settings, from `GET /api/dlp-packs/{pack_id}/build-guide` (optional `prepared_for` and `prepared_by` for the cover), or with `python tools/pack_build_guide.py --all --out docs/packs` (`--pack ID` for one). It reads the local pack files only and never touches a tenant. The nine shipped packs' guides are committed in `docs/packs/`; a test fails when one no longer matches its pack, so run the command again after you change a pack.
+Every pack, shipped or uploaded, has a Word build guide in one fixed format: what to type into the console, form by form, for each custom dictionary, engine and web rule, with the steps, the times and a sign-off table. Get it from the **Build guide (Word)** link on the pack in Deploy Studio or in Advanced settings, from `GET /api/dlp-packs/{pack_id}/build-guide` (optional `prepared_for` and `prepared_by` for the cover), or with `python tools/build_pack_guides.py --all --out docs/packs` (`--pack ID` for one). It reads the local pack files only and never touches a tenant. The nine shipped packs' guides are committed in `docs/packs/`; a test fails when one no longer matches its pack, so run the command again after you change a pack.
 
 ### Web UI: Advanced settings (bring your own pack)
 
