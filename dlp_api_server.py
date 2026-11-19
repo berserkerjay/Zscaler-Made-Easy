@@ -5800,6 +5800,25 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
     return out
 
 
+@app.get("/api/dlp-packs/{pack_id}/build-guide")
+async def dlp_pack_build_guide(pack_id: str, prepared_for: str = "", prepared_by: str = ""):
+    """The Word build guide for one pack (shipped or uploaded): what to type
+    into the console, form by form, in one fixed format. Read-only: it reads
+    the pack's local files only and never the tenant. `prepared_for` and
+    `prepared_by` fill the cover (cut to 80 characters)."""
+    import pack_build_guide
+    if pack_id not in {p["id"] for p in __import__("dlp_importer").discover_packs()}:
+        raise HTTPException(status_code=404, detail=f"Unknown pack '{pack_id[:64]}'.")
+    try:
+        data = await asyncio.to_thread(pack_build_guide.build, pack_id, prepared_for[:pack_build_guide.MAX_PARAM], prepared_by[:pack_build_guide.MAX_PARAM])
+    except pack_build_guide.GuideError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    fname = re.sub(r"[^A-Za-z0-9_-]", "_", pack_id)[:64] + "_build_guide.docx"
+    return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"', "Cache-Control": "no-store",
+                             "X-DLP-Check-Mode": "local-files"})
+
+
 @app.get("/api/dlp-packs/{pack_id}/terraform")
 async def dlp_pack_terraform_summary(pack_id: str):
     """What the Terraform hand-off for one pack contains: the files of the
