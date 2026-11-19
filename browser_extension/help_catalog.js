@@ -5046,6 +5046,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "nav"
    },
+   "#opPackGuides a[href=\"/report/advanced#advLibH\"]": {
+    "what": "Opens the Policy pack library in Advanced settings. Each pack has a Build guide (Word) link that downloads its Word build guide.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#opSocReview a[href=\"/report/soc-review\"]": {
     "what": "Opens the SOC review: who can administer each Zscaler product and what is sent to your SIEM. It only reads.",
     "input": "Nothing to type. Just click it.",

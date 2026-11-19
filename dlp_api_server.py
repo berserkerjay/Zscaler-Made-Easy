@@ -5813,9 +5813,9 @@ async def dlp_pack_build_guide(pack_id: str, prepared_for: str = "", prepared_by
         data = await asyncio.to_thread(pack_build_guide.build, pack_id, prepared_for[:pack_build_guide.MAX_PARAM], prepared_by[:pack_build_guide.MAX_PARAM])
     except pack_build_guide.GuideError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    token = re.sub(r"[^A-Za-z0-9_-]", "_", pack_id)[:64] or "pack"
+    fname = re.sub(r"[^A-Za-z0-9_-]", "_", pack_id)[:64] + "_build_guide.docx"
     return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    headers={"Content-Disposition": f'attachment; filename="{token}_build_guide.docx"', "Cache-Control": "no-store",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"', "Cache-Control": "no-store",
                              "X-DLP-Check-Mode": "local-files"})
 
 
