@@ -283,6 +283,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/dlp-packs/terraform/start": READ,
     "POST /api/dlp-packs/export/start": READ,
     "GET /api/dlp-packs/jobs/{job_id}/download": READ,
+    "GET /api/dlp-packs/{pack_id}/build-guide": READ,           # local pack files only, never the tenant
     "GET /api/deployments": READ,            # filtered
     "POST /api/dlp-packs/{pack_id}/verify": READ,
     "POST /api/dlp-packs/inventory/start": READ,

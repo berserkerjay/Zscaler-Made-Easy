@@ -334,6 +334,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "nav"
    },
+   "#dlpDeployModal #dzBody a[href$=\"/build-guide\"]": {
+    "what": "Download the Word build guide for this pack. It lists every dictionary, engine and rule as a console form to copy from, with the steps to build them by hand. It reads the pack files on this computer only. Nothing is read from or written to the Zscaler tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
    "#dlpDeployModal #dzFoot button[onclick*=\"openToolTab('terraform'\"]": {
     "what": "Close this gap with Terraform instead. It opens the hand-off page for the selected packs. In gap mode the first terraform plan creates only what is missing here and imports the rest.",
     "input": "Nothing to type. Just click it.",
@@ -2601,6 +2606,11 @@ window.HELP_CATALOG = {
    "#advPacks a[href$=\"/terraform.zip\"]": {
     "what": "Download this pack as a Terraform workspace for the zscaler/zia provider (static mode).",
     "input": "Fill in the assessor name above first. Without a name the download is refused.",
+    "effect": "download"
+   },
+   "#advPacks a[href$=\"/build-guide\"]": {
+    "what": "Download the Word build guide for this pack. It lists every dictionary, engine and rule as a console form to copy from. It reads the pack files on this computer only. Nothing is read from or written to the Zscaler tenant.",
+    "input": "Nothing to type. Just click it.",
     "effect": "download"
    },
    "#advPacks button[data-remove]": {

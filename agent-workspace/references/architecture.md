@@ -104,6 +104,7 @@ Find the files a change touches here, then read only those.
 | `ops_zwa.py` | Close Workflow Automation incidents as false positives, on the Bulk |
 | `other_products.py` | Other Zscaler products, read-only: Zero Trust Branch (ZTB), External |
 | `pac_eval.py` | A safe PAC evaluator: what a PAC file answers for one URL, without |
+| `pack_build_guide.py` | Word build guide for a DLP policy pack, in one fixed format. |
 | `pack_channels.py` | DLP policy channels — how each rule type is listed, built, created, and |
 | `pack_deploy.py` | DLP Policy Pack Deployment Planner |
 | `pack_export.py` | Export from tenant as a pack. |
