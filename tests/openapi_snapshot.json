@@ -618,6 +618,29 @@
     }
    }
   },
+  "GET /api/dlp-packs/{pack_id}/build-guide": {
+   "body": null,
+   "params": {
+    "path:pack_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:prepared_by": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:prepared_for": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
   "GET /api/dlp-packs/{pack_id}/terraform": {
    "body": null,
    "params": {
